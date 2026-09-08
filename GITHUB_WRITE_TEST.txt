@@ -1,3 +1,0 @@
-GitHub write access test for Arora Textiles HR Software.
-Created by ChatGPT to verify that repository write/commit access is working.
-No existing software code was changed.
