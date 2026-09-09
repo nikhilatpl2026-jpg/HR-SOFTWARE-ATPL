@@ -1,28 +1,208 @@
-/* Arora Textiles Employee Master enhancement layer.
-   HR Workplace intentionally removed. */
-(function(){'use strict';
-var EXTRA=[
- {k:'aadhaar_no',l:'AADHAAR NO',t:'text',ph:'Enter Aadhaar No.'},
- {k:'phone_no',l:'PHONE NO',t:'tel',ph:'Enter Phone No.'},
- {k:'qualification',l:'QUALIFICATION',t:'text',ph:'Enter Qualification'},
- {k:'present_address',l:'PRESENT ADDRESS',t:'textarea',ph:'Enter Present Address'},
- {k:'permanent_address',l:'PERMANENT ADDRESS',t:'textarea',ph:'Enter Permanent Address'},
- {k:'marital_status',l:'MARITAL STATUS',t:'select',o:['','SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},
- {k:'nominee_name',l:'NOMINEE NAME',t:'text',ph:'Enter Nominee Name'},
- {k:'nominee_relation',l:'RELATION WITH NOMINEE',t:'text',ph:'e.g. Wife / Father / Mother / Son'},
- {k:'nominee_dob',l:'DOB OF NOMINEE',t:'date',ph:''}
-];
-function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;')}
-function employee(){try{if(typeof EM!=='undefined'&&EM.editIdx>=0&&EM.data&&EM.data[EM.editIdx])return EM.data[EM.editIdx]}catch(e){}return {status:'NEW JOINING'} }
-function injectCss(){if(document.getElementById('aroraExtraCss'))return;var s=document.createElement('style');s.id='aroraExtraCss';s.textContent=`#aroraFillMoreTrigger{display:inline-flex!important;align-items:center!important;gap:5px!important;margin-left:10px!important;padding:7px 12px!important;border:1px solid #818cf8!important;border-radius:8px!important;background:#312e81!important;color:#fff!important;font-size:11px!important;font-weight:900!important;cursor:pointer!important;white-space:nowrap!important}#aroraStatusCell{margin-top:6px;padding-top:6px;border-top:1px solid #334155}#aroraStatusCell span{display:block;font-size:8px;color:#94a3b8;font-weight:900;margin-bottom:3px}#aroraStatusCell select{width:100%;box-sizing:border-box;padding:5px;background:#0f172a;color:#fff;border:1px solid #475569;border-radius:6px;font-size:9px;font-weight:800}#aroraExtraOverlay{position:fixed;inset:0;z-index:100001;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.72);padding:18px}#aroraExtraCard{width:min(700px,95vw);max-height:92vh;overflow:auto;background:#fff;color:#0f172a;border-radius:16px;box-shadow:0 30px 90px rgba(0,0,0,.5);border:1px solid #cbd5e1}#aroraExtraHead{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;background:linear-gradient(90deg,#0284c7,#0ea5e9);color:#fff}#aroraExtraHead b{font-size:16px}#aroraExtraHead small{display:block;font-size:10px;opacity:.85;margin-top:3px}#aroraExtraClose{width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:18px;cursor:pointer}#aroraExtraBody{padding:18px 20px}.aroraEF{margin-bottom:13px}.aroraEF label{display:block;font-size:10px;font-weight:900;color:#475569;margin-bottom:5px;letter-spacing:.3px}.aroraEF input,.aroraEF textarea,.aroraEF select{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;outline:none}.aroraEF textarea{min-height:72px;resize:vertical}.aroraEF input:focus,.aroraEF textarea:focus,.aroraEF select:focus{border-color:#0284c7;box-shadow:0 0 0 3px rgba(14,165,233,.12)}#aroraExtraStatusBox{padding:12px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc;margin-top:4px}#aroraExtraStatusBox label{display:block;font-size:10px;font-weight:900;color:#475569;margin-bottom:5px}#aroraExtraStatusBox select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-weight:800;background:#fff}#aroraExtraFoot{display:flex;justify-content:flex-end;gap:8px;padding:13px 20px;border-top:1px solid #e2e8f0;background:#f8fafc}#aroraExtraFoot button{border:1px solid #cbd5e1;border-radius:8px;padding:9px 15px;font-weight:800;cursor:pointer}#aroraExtraSave{background:#0284c7!important;color:#fff!important;border-color:#0284c7!important}`;document.head.appendChild(s)}
-function build(){if(document.getElementById('aroraExtraOverlay'))return;var o=document.createElement('div');o.id='aroraExtraOverlay';o.innerHTML='<div id="aroraExtraCard"><div id="aroraExtraHead"><div><b>👤 Additional Employee Details</b><small>Personal, address & nominee information</small></div><button type="button" id="aroraExtraClose">×</button></div><div id="aroraExtraBody"></div><div id="aroraExtraFoot"><button type="button" id="aroraExtraCancel">Cancel</button><button type="button" id="aroraExtraSave">💾 Save Details</button></div></div>';document.body.appendChild(o);document.getElementById('aroraExtraClose').onclick=close;document.getElementById('aroraExtraCancel').onclick=close;o.addEventListener('click',function(e){if(e.target===o)close()});document.getElementById('aroraExtraSave').onclick=save}
-function open(){injectCss();build();var e=employee(),h='';EXTRA.forEach(function(x){var val=e[x.k]||'';h+='<div class="aroraEF"><label>'+x.l+'</label>';if(x.t==='textarea')h+='<textarea id="aroraX_'+x.k+'" placeholder="'+esc(x.ph||'')+'">'+esc(val)+'</textarea>';else if(x.t==='select'){h+='<select id="aroraX_'+x.k+'">';x.o.forEach(function(q){h+='<option value="'+esc(q)+'" '+(String(q)===String(val)?'selected':'')+'>'+esc(q||'Select marital status')+'</option>'});h+='</select>'}else h+='<input id="aroraX_'+x.k+'" type="'+x.t+'" value="'+esc(val)+'" placeholder="'+esc(x.ph||'')+'">';h+='</div>'});h+='<div id="aroraExtraStatusBox"><label>EMPLOYEE STATUS</label><select id="aroraX_status"><option>ACTIVE</option><option>INACTIVE</option><option>NEW JOINING</option></select></div>';document.getElementById('aroraExtraBody').innerHTML=h;document.getElementById('aroraX_status').value=e.status||'NEW JOINING';document.getElementById('aroraExtraOverlay').style.display='flex';setTimeout(function(){var x=document.getElementById('aroraX_aadhaar_no');if(x)x.focus()},50)}
-function close(){var o=document.getElementById('aroraExtraOverlay');if(o)o.style.display='none'}
-function read(){var d={};EXTRA.forEach(function(x){var el=document.getElementById('aroraX_'+x.k);d[x.k]=el?String(el.value||'').trim():''});d.status=(document.getElementById('aroraX_status')||{}).value||'ACTIVE';return d}
-function save(){var d=read();try{if(typeof EM!=='undefined'&&EM.editIdx>=0&&EM.data&&EM.data[EM.editIdx]){Object.assign(EM.data[EM.editIdx],d);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));if(typeof emFilter==='function')emFilter();close();alert('✅ Additional employee details saved.')}else{window.__aroraPendingExtra=d;localStorage.setItem('AroraTextsEmployeeExtraDraft',JSON.stringify(d));close();alert('✅ Details saved. Ab main Employee Save karo; ye details us employee ke saath attach ho jayengi.')}}catch(e){alert('⚠️ Details save nahi ho paayi: '+e.message)}}
-function ensureTrigger(){injectCss();var modal=document.getElementById('emModal');if(!modal||getComputedStyle(modal).display==='none')return;var title=document.getElementById('emModalTitle');if(title&&!document.getElementById('aroraFillMoreTrigger')){var b=document.createElement('button');b.type='button';b.id='aroraFillMoreTrigger';b.textContent='＋ Fill More';b.onclick=open;title.parentNode.appendChild(b)}var inp=document.getElementById('emf_emp_id');if(inp&&inp.parentElement&&!document.getElementById('aroraStatusCell')){var cell=inp.parentElement;var box=document.createElement('div');box.id='aroraStatusCell';var e=employee();box.innerHTML='<span>STATUS</span><select id="aroraMainStatus"><option>ACTIVE</option><option>INACTIVE</option><option>NEW JOINING</option></select>';cell.appendChild(box);document.getElementById('aroraMainStatus').value=e.status||'NEW JOINING'}}
-function mergePending(){try{var d=window.__aroraPendingExtra;if(!d){var raw=localStorage.getItem('AroraTextsEmployeeExtraDraft');if(raw)d=JSON.parse(raw)}if(!d||typeof EM==='undefined')return;var code=(document.getElementById('emf_emp_id')||{}).value||'';var idx=EM.editIdx>=0?EM.editIdx:EM.data.findIndex(function(e){return String(e.emp_id||'').trim()===String(code).trim()});if(idx>=0&&EM.data[idx]){Object.assign(EM.data[idx],d);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));window.__aroraPendingExtra=null;localStorage.removeItem('AroraTextsEmployeeExtraDraft')}}catch(e){}}
-function hookSave(){if(window.__aroraSaveHook)return;if(typeof window.emSaveModal!=='function')return;var original=window.emSaveModal;window.emSaveModal=function(){try{var st=document.getElementById('aroraMainStatus');if(st&&typeof EM!=='undefined'&&EM.editIdx>=0&&EM.data&&EM.data[EM.editIdx])EM.data[EM.editIdx].status=st.value}catch(e){}original.apply(this,arguments);setTimeout(mergePending,50);setTimeout(ensureTrigger,100)};window.__aroraSaveHook=true}
-function boot(){injectCss();build();ensureTrigger();hookSave();setInterval(function(){ensureTrigger();hookSave()},300);var obs=new MutationObserver(function(){ensureTrigger();hookSave()});obs.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']})}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+/* Arora Textiles — Employee Master additional fields only.
+   Existing Excel Paste and existing Employee Master logic are intentionally untouched. */
+(function () {
+  'use strict';
+
+  var EXTRA_FIELDS = [
+    { key: 'aadhaar_no', label: 'Aadhaar Number', type: 'text', placeholder: 'Enter Aadhaar Number' },
+    { key: 'phone_no', label: 'Phone Number', type: 'tel', placeholder: 'Enter Phone Number' },
+    { key: 'qualification', label: 'Qualification', type: 'text', placeholder: 'Enter Qualification' },
+    { key: 'present_address', label: 'Present Address', type: 'textarea', placeholder: 'Enter Present Address' },
+    { key: 'permanent_address', label: 'Permanent Address', type: 'textarea', placeholder: 'Enter Permanent Address' },
+    { key: 'marital_status', label: 'Marital Status', type: 'select', options: ['', 'SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED', 'SEPARATED'] },
+    { key: 'nominee_name', label: 'Nominee Name', type: 'text', placeholder: 'Enter Nominee Name' },
+    { key: 'nominee_relation', label: 'Relationship with Nominee', type: 'text', placeholder: 'e.g. Wife / Husband / Father / Mother / Son / Daughter' },
+    { key: 'nominee_dob', label: 'Nominee DOB', type: 'date', placeholder: '' }
+  ];
+
+  window.ARORA_EMP_EXTRA_FIELDS = EXTRA_FIELDS.slice();
+  window.ARORA_EMP_EXTRA_EXCEL_ALIASES = {
+    aadhaar_no: ['aadhaar', 'aadhaar no', 'aadhaar number', 'aadhar', 'aadhar no'],
+    phone_no: ['phone', 'phone no', 'phone number', 'mobile', 'mobile no', 'mobile number'],
+    qualification: ['qualification', 'education', 'educational qualification'],
+    present_address: ['present address', 'current address'],
+    permanent_address: ['permanent address', 'parmanent address'],
+    marital_status: ['marital status', 'marital'],
+    nominee_name: ['nominee', 'nominee name'],
+    nominee_relation: ['relationship with nominee', 'relation with nominee', 'nominee relation'],
+    nominee_dob: ['nominee dob', 'dob of nominee', 'nominee date of birth']
+  };
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function getCurrentEmployee() {
+    try {
+      if (typeof EM !== 'undefined' && EM.editIdx >= 0 && EM.data && EM.data[EM.editIdx]) {
+        return EM.data[EM.editIdx];
+      }
+    } catch (e) {}
+    return {};
+  }
+
+  function getEmployeeCodeFromForm() {
+    var row = document.getElementById('emSingleRow');
+    if (!row) return '';
+    var first = row.querySelector('input,select,textarea');
+    return first ? String(first.value || '').trim() : '';
+  }
+
+  function saveMaster() {
+    try {
+      if (typeof EM !== 'undefined' && EM.data) {
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+      }
+    } catch (e) {}
+  }
+
+  function injectCss() {
+    if (document.getElementById('aroraEmpExtraCss')) return;
+    var style = document.createElement('style');
+    style.id = 'aroraEmpExtraCss';
+    style.textContent = [
+      '#aroraEmpExtraWrap{display:block;min-width:100%;padding:12px 16px 16px;background:#0f172a;border-top:1px solid #334155;}',
+      '#aroraEmpExtraToggle{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid #6366f1;border-radius:8px;background:#312e81;color:#fff;font-size:11px;font-weight:800;cursor:pointer;}',
+      '#aroraEmpExtraToggle:hover{background:#3730a3;}',
+      '#aroraEmpExtraPanel{display:none;margin-top:12px;padding:14px;border:1px solid #334155;border-radius:10px;background:#111827;}',
+      '#aroraEmpExtraPanel.open{display:block;}',
+      '#aroraEmpExtraTitle{font-size:12px;font-weight:800;color:#f1f5f9;margin-bottom:12px;}',
+      '.aroraEmpExtraField{display:block;margin-bottom:11px;}',
+      '.aroraEmpExtraField:last-child{margin-bottom:0;}',
+      '.aroraEmpExtraField label{display:block;margin-bottom:5px;font-size:9px;font-weight:800;letter-spacing:.7px;text-transform:uppercase;color:#94a3b8;}',
+      '.aroraEmpExtraField input,.aroraEmpExtraField textarea,.aroraEmpExtraField select{display:block;width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #475569;border-radius:7px;background:#0b1220;color:#f8fafc;font-size:12px;outline:none;}',
+      '.aroraEmpExtraField textarea{min-height:74px;resize:vertical;}',
+      '.aroraEmpExtraField input:focus,.aroraEmpExtraField textarea:focus,.aroraEmpExtraField select:focus{border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.15);}',
+      '#aroraEmpExtraHint{margin-top:9px;font-size:9px;color:#64748b;}'
+    ].join('');
+    document.head.appendChild(style);
+  }
+
+  function fieldHtml(field, value) {
+    var id = 'arora_emp_extra_' + field.key;
+    var h = '<div class="aroraEmpExtraField"><label for="' + id + '">' + esc(field.label) + '</label>';
+    if (field.type === 'textarea') {
+      h += '<textarea id="' + id + '" placeholder="' + esc(field.placeholder || '') + '">' + esc(value) + '</textarea>';
+    } else if (field.type === 'select') {
+      h += '<select id="' + id + '">';
+      field.options.forEach(function (opt) {
+        var text = opt || 'Select Marital Status';
+        h += '<option value="' + esc(opt) + '"' + (String(value) === String(opt) ? ' selected' : '') + '>' + esc(text) + '</option>';
+      });
+      h += '</select>';
+    } else {
+      h += '<input id="' + id + '" type="' + field.type + '" value="' + esc(value) + '" placeholder="' + esc(field.placeholder || '') + '">';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function fillPanelFromEmployee() {
+    var emp = getCurrentEmployee();
+    EXTRA_FIELDS.forEach(function (f) {
+      var el = document.getElementById('arora_emp_extra_' + f.key);
+      if (el) el.value = emp[f.key] == null ? '' : emp[f.key];
+    });
+  }
+
+  function buildInlinePanel() {
+    injectCss();
+    var modal = document.getElementById('emModal');
+    var singlePanel = document.getElementById('emTabPanel-single');
+    var singleRow = document.getElementById('emSingleRow');
+    if (!modal || !singlePanel || !singleRow) return;
+    if (getComputedStyle(modal).display === 'none') return;
+
+    var existing = document.getElementById('aroraEmpExtraWrap');
+    if (existing) {
+      fillPanelFromEmployee();
+      return;
+    }
+
+    var wrap = document.createElement('div');
+    wrap.id = 'aroraEmpExtraWrap';
+    var html = '<button type="button" id="aroraEmpExtraToggle">＋ View More / Fill More</button>' +
+      '<div id="aroraEmpExtraPanel"><div id="aroraEmpExtraTitle">Additional Employee Details</div>';
+    var emp = getCurrentEmployee();
+    EXTRA_FIELDS.forEach(function (f) { html += fieldHtml(f, emp[f.key] == null ? '' : emp[f.key]); });
+    html += '<div id="aroraEmpExtraHint">These fields are saved with the employee record. Existing Excel Paste remains unchanged.</div></div>';
+    wrap.innerHTML = html;
+
+    if (singleRow.nextSibling) singlePanel.insertBefore(wrap, singleRow.nextSibling);
+    else singlePanel.appendChild(wrap);
+
+    var toggle = document.getElementById('aroraEmpExtraToggle');
+    var panel = document.getElementById('aroraEmpExtraPanel');
+    toggle.addEventListener('click', function () {
+      var open = !panel.classList.contains('open');
+      panel.classList.toggle('open', open);
+      toggle.textContent = open ? '− View Less' : '＋ View More / Fill More';
+      if (open) fillPanelFromEmployee();
+    });
+  }
+
+  function readExtraFields() {
+    var out = {};
+    EXTRA_FIELDS.forEach(function (f) {
+      var el = document.getElementById('arora_emp_extra_' + f.key);
+      out[f.key] = el ? String(el.value || '').trim() : '';
+    });
+    return out;
+  }
+
+  function attachToEmployee(code, editIdx, values) {
+    try {
+      if (typeof EM === 'undefined' || !EM.data) return;
+      var idx = (typeof editIdx === 'number' && editIdx >= 0) ? editIdx : -1;
+      if (idx < 0 && code) {
+        idx = EM.data.findIndex(function (e) {
+          return String(e.emp_id || '').trim() === String(code).trim();
+        });
+      }
+      if (idx >= 0 && EM.data[idx]) {
+        Object.assign(EM.data[idx], values);
+        saveMaster();
+        if (typeof emFilter === 'function') emFilter();
+        else if (typeof emRenderTable === 'function') emRenderTable();
+      }
+    } catch (e) {}
+  }
+
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target && ev.target.closest ? ev.target.closest('button') : null;
+    if (!btn) return;
+    var modal = document.getElementById('emModal');
+    if (!modal || getComputedStyle(modal).display === 'none') return;
+
+    var text = String(btn.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (text === 'save' || text.indexOf('save employee') >= 0 || text.indexOf('💾 save') >= 0) {
+      var panel = document.getElementById('aroraEmpExtraPanel');
+      if (!panel) return;
+      var code = getEmployeeCodeFromForm();
+      var editIdx = (typeof EM !== 'undefined' && typeof EM.editIdx === 'number') ? EM.editIdx : -1;
+      var values = readExtraFields();
+      setTimeout(function () { attachToEmployee(code, editIdx, values); }, 80);
+    }
+  }, true);
+
+  function monitor() {
+    var modal = document.getElementById('emModal');
+    if (!modal || getComputedStyle(modal).display === 'none') return;
+    buildInlinePanel();
+  }
+
+  function boot() {
+    injectCss();
+    monitor();
+    var obs = new MutationObserver(function () { monitor(); });
+    obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    setInterval(monitor, 500);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
