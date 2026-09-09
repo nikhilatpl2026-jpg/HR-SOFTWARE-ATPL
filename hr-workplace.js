@@ -1,26 +1,100 @@
-/* Employee Master extension: 9 extra fields, extended Excel paste, vertical View. */
-(function(){'use strict';
-var X=[['aadhaar_no','Aadhaar Number','text'],['phone_no','Phone Number','tel'],['qualification','Qualification','text'],['present_address','Present Address','textarea'],['permanent_address','Permanent Address','textarea'],['marital_status','Marital Status','select'],['nominee_name','Nominee Name','text'],['nominee_relation','Relationship with Nominee','text'],['nominee_dob','Nominee DOB','date']];
-var C=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','cat1','basic','hra','gross'],P=C.concat(X.map(function(x){return x[0]}));
-var E='Expected columns: Code | Name | Father | DOB | DOJ | PF No | ESI No | Bank | IFSC | Account | Gender | Dept | Category | Basic | HRA | Gross | Aadhaar Number | Phone Number | Qualification | Present Address | Permanent Address | Marital Status | Nominee Name | Relationship with Nominee | Nominee DOB';
-var A={emp_id:['code','emp code','employee code','employee id'],name:['name','employee name','emp name'],father:['father','father name','fathers name','father s name'],dob:['dob','d o b','date of birth'],doj:['doj','d o j','date of joining','joining date'],pf_no:['pf no','pf number','uan','uan no'],esi_no:['esi no','esi number','esic no','ip no'],bank_name:['bank','bank name'],ifsc:['ifsc','ifsc code'],account_no:['account','account no','account number','a c no'],gender:['gender','sex'],dept:['dept','department'],cat1:['category','category 1','category 01','cat'],basic:['basic','basic salary','basic wages'],hra:['hra','house rent allowance'],gross:['gross','gross salary','gross wages'],aadhaar_no:['aadhaar','aadhaar no','aadhaar number','aadhar','aadhar no'],phone_no:['phone','phone no','phone number','mobile','mobile no'],qualification:['qualification','education'],present_address:['present address','current address'],permanent_address:['permanent address','parmanent address'],marital_status:['marital status','marital'],nominee_name:['nominee','nominee name'],nominee_relation:['relationship with nominee','relation with nominee','nominee relation'],nominee_dob:['nominee dob','dob of nominee','nominee date of birth']};
-function n(v){return String(v==null?'':v).toLowerCase().replace(/[.\-_\/\\()&:#]+/g,' ').replace(/\s+/g,' ').trim()}
-function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function val(k,v){var s=String(v==null?'':v).trim();if(k==='basic'||k==='hra'||k==='gross'){var q=parseFloat(s.replace(/,/g,''));return isFinite(q)?q:0}if(k==='dob'||k==='doj'||k==='nominee_dob'){var m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);if(m)return m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+(m[3].length===2?'20'+m[3]:m[3])}return s}
-function hmap(h){var m={};Object.keys(A).forEach(function(k){m[k]=-1});h.forEach(function(c,i){var z=n(c);Object.keys(A).some(function(k){if(m[k]>=0)return false;if(A[k].some(function(a){return z===n(a)})){m[k]=i;return true}return false})});return m}
-function hscore(r){var s=0;r.forEach(function(c){var z=n(c);if(Object.keys(A).some(function(k){return A[k].some(function(a){return z===n(a)})}))s++});return s}
-function expected(){var b=document.getElementById('emTabPanel-bulk');if(!b)return;var els=b.querySelectorAll('span,div');for(var i=0;i<els.length;i++){var t=(els[i].textContent||'').replace(/\s+/g,' ').trim();if(t.indexOf('Expected columns:')===0){els[i].textContent=E;els[i].style.whiteSpace='normal';els[i].style.lineHeight='1.7';return}}}
-function installPaste(){if(window.__xPaste||typeof window.emParseBulkPaste!=='function')return;window.emParseBulkPaste=function(){var a=document.getElementById('emBulkPasteArea');if(!a||!a.value.trim())return;var r=a.value.replace(/\r/g,'').split('\n').filter(function(x){return x.trim()}).map(function(x){return x.split('\t')});var hh=hscore(r[0]||[])>=2,m=hh?hmap(r[0]):null,rows=hh?r.slice(1):r;window.EM_BULK_ROWS=rows.map(function(row){var e={};if(hh)Object.keys(A).forEach(function(k){e[k]=val(k,m[k]>=0?row[m[k]]:'')});else P.forEach(function(k,i){e[k]=val(k,row[i]===undefined?'':row[i])});if(e.desig===undefined)e.desig='';if(e.cat2===undefined)e.cat2='';return e}).filter(function(e){return e.emp_id||e.name});if(typeof renderBulkPreview==='function')renderBulkPreview();var bt=document.getElementById('emBulkSaveBtn');if(bt){bt.disabled=!EM_BULK_ROWS.length;bt.style.opacity=EM_BULK_ROWS.length?'1':'.4'}var bar=document.getElementById('emPasteBar'),info=document.getElementById('emPasteInfo');if(bar)bar.style.display='flex';if(info)info.textContent='✅ '+EM_BULK_ROWS.length+' employee rows detected. Additional fields supported.'};window.__xPaste=1}
-function css(){if(document.getElementById('xEmpCss'))return;var s=document.createElement('style');s.id='xEmpCss';s.textContent='#xMore{display:block;min-width:100%;padding:12px 16px;background:#0f172a;border-top:1px solid #334155}#xMoreBtn{padding:8px 14px;border:1px solid #6366f1;border-radius:8px;background:#312e81;color:#fff;font-size:11px;font-weight:800;cursor:pointer}#xMoreBody{display:none;margin-top:12px;padding:14px;border:1px solid #334155;border-radius:10px;background:#111827}#xMoreBody.open{display:block}.xf{margin-bottom:11px}.xf label{display:block;margin-bottom:5px;font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase}.xf input,.xf textarea,.xf select{width:100%;padding:9px 10px;border:1px solid #475569;border-radius:7px;background:#0b1220;color:#fff;font-size:12px}.xf textarea{min-height:72px;resize:vertical}#xView{position:fixed;inset:0;z-index:100005;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.82);padding:18px}#xCard{width:min(760px,96vw);max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:15px;overflow:hidden}#xHead{padding:15px 18px;background:linear-gradient(135deg,#075985,#0ea5e9);color:#fff;display:flex;align-items:center}#xClose{margin-left:auto;border:0;border-radius:50%;width:31px;height:31px;background:rgba(255,255,255,.18);color:#fff;font-size:18px}#xBody{overflow:auto;padding:16px 18px;background:#f8fafc}.xv{margin-bottom:10px}.xv label{display:block;margin-bottom:4px;font-size:9px;font-weight:900;color:#64748b;text-transform:uppercase}.xval{padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;white-space:pre-wrap}';document.head.appendChild(s)}
-function cur(){try{return EM.editIdx>=0&&EM.data[EM.editIdx]?EM.data[EM.editIdx]:{}}catch(e){return {}}}
-function more(){var mo=document.getElementById('emModal'),p=document.getElementById('emTabPanel-single'),row=document.getElementById('emSingleRow');if(!mo||!p||!row||getComputedStyle(mo).display==='none'||document.getElementById('xMore'))return;var e=cur(),w=document.createElement('div');w.id='xMore';var h='<button type="button" id="xMoreBtn">＋ View More / Fill More</button><div id="xMoreBody">';X.forEach(function(x){var v=e[x[0]]||'';h+='<div class="xf"><label>'+x[1]+'</label>';if(x[2]==='textarea')h+='<textarea id="xf_'+x[0]+'">'+esc(v)+'</textarea>';else if(x[2]==='select')h+='<select id="xf_'+x[0]+'"><option></option><option>SINGLE</option><option>MARRIED</option><option>DIVORCED</option><option>WIDOWED</option><option>SEPARATED</option></select>';else h+='<input id="xf_'+x[0]+'" type="'+x[2]+'" value="'+esc(v)+'">';h+='</div>'});h+='</div>';w.innerHTML=h;row.parentNode.insertBefore(w,row.nextSibling);X.forEach(function(x){var z=document.getElementById('xf_'+x[0]);if(z)z.value=e[x[0]]||''});var b=document.getElementById('xMoreBtn'),body=document.getElementById('xMoreBody');b.onclick=function(){var o=!body.classList.contains('open');body.classList.toggle('open',o);b.textContent=o?'− View Less':'＋ View More / Fill More'}}
-function extra(){var d={};X.forEach(function(x){var z=document.getElementById('xf_'+x[0]);d[x[0]]=z?String(z.value||'').trim():''});return d}
-function code(){var r=document.getElementById('emSingleRow'),z=r&&r.querySelector('input,select');return z?String(z.value||'').trim():''}
-function saveExtra(c,i,d){try{var idx=i>=0?i:EM.data.findIndex(function(e){return String(e.emp_id||'').trim()===c});if(idx>=0){Object.assign(EM.data[idx],d);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));if(typeof emFilter==='function')emFilter()}}catch(e){}}
-function capture(){if(window.__xCap)return;document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('button');if(!b||!document.getElementById('xMore'))return;var t=(b.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='save'||t.indexOf('💾 save')>=0){var c=code(),i=typeof EM!=='undefined'?EM.editIdx:-1,d=extra();setTimeout(function(){saveExtra(c,i,d)},100)}},true);window.__xCap=1}
-function viewBox(){if(document.getElementById('xView'))return;var o=document.createElement('div');o.id='xView';o.innerHTML='<div id="xCard"><div id="xHead"><div><strong>👤 Employee Complete Details</strong><div id="xSub" style="font-size:10px;opacity:.85;margin-top:2px"></div></div><button id="xClose">×</button></div><div id="xBody"></div></div>';document.body.appendChild(o);document.getElementById('xClose').onclick=function(){o.style.display='none'};o.onclick=function(e){if(e.target===o)o.style.display='none'}}
-function installView(){if(window.__xView||typeof window.emViewEmp!=='function')return;window.emViewEmp=function(i){try{var e=EM.data[i];if(!e)return;viewBox();document.getElementById('xSub').textContent=(e.name||'Employee')+' • Code: '+(e.emp_id||'—');var keys=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'].concat(X.map(function(x){return x[0]})),h='';keys.forEach(function(k){var z=X.find(function(x){return x[0]===k}),label=z?z[1]:k,v=e[k];if(v===undefined||v===null||v==='')v='—';h+='<div class="xv"><label>'+esc(label)+'</label><div class="xval">'+esc(v)+'</div></div>'});document.getElementById('xBody').innerHTML=h;document.getElementById('xView').style.display='flex'}catch(e){}};window.__xView=1}
-function go(){expected();installPaste();more();installView()}
-function boot(){css();viewBox();capture();go();new MutationObserver(go).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});setInterval(go,300)}
+/* Employee Master extension: safe, no DOM observer loop. */
+(function(){
+'use strict';
+
+var EXTRA=[
+ ['aadhaar_no','Aadhaar Number','text'],
+ ['phone_no','Phone Number','tel'],
+ ['qualification','Qualification','text'],
+ ['present_address','Present Address','textarea'],
+ ['permanent_address','Permanent Address','textarea'],
+ ['marital_status','Marital Status','select'],
+ ['nominee_name','Nominee Name','text'],
+ ['nominee_relation','Relationship with Nominee','text'],
+ ['nominee_dob','Nominee DOB','date']
+];
+var CORE=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','cat1','basic','hra','gross'];
+var ORDER=CORE.concat(EXTRA.map(function(x){return x[0];}));
+var EXPECTED='Expected columns: Code | Name | Father | DOB | DOJ | PF No | ESI No | Bank | IFSC | Account | Gender | Dept | Category | Basic | HRA | Gross | Aadhaar Number | Phone Number | Qualification | Present Address | Permanent Address | Marital Status | Nominee Name | Relationship with Nominee | Nominee DOB';
+
+var ALIASES={
+ emp_id:['code','emp code','employee code','employee id','emp id'],
+ name:['name','employee name','emp name'],
+ father:['father','father name','fathers name','father s name'],
+ dob:['dob','d o b','date of birth'],
+ doj:['doj','d o j','date of joining','joining date'],
+ pf_no:['pf no','pf number','uan','uan no'],
+ esi_no:['esi no','esi number','esic no','ip no'],
+ bank_name:['bank','bank name'],
+ ifsc:['ifsc','ifsc code'],
+ account_no:['account','account no','account number','a c no'],
+ gender:['gender','sex'],dept:['dept','department'],cat1:['category','category 1','category 01','cat'],
+ basic:['basic','basic salary','basic wages'],hra:['hra','house rent allowance'],gross:['gross','gross salary','gross wages'],
+ aadhaar_no:['aadhaar','aadhaar no','aadhaar number','aadhar','aadhar no'],
+ phone_no:['phone','phone no','phone number','mobile','mobile no','mobile number'],
+ qualification:['qualification','education','educational qualification'],
+ present_address:['present address','current address'],permanent_address:['permanent address','parmanent address'],
+ marital_status:['marital status','marital'],nominee_name:['nominee','nominee name'],
+ nominee_relation:['relationship with nominee','relation with nominee','nominee relation'],
+ nominee_dob:['nominee dob','dob of nominee','nominee date of birth']
+};
+
+function norm(v){return String(v==null?'':v).toLowerCase().replace(/[.\-_\/\\()&:#]+/g,' ').replace(/\s+/g,' ').trim();}
+function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function val(k,v){var s=String(v==null?'':v).trim();if(k==='basic'||k==='hra'||k==='gross'){var n=parseFloat(s.replace(/,/g,''));return isFinite(n)?n:0;}return s;}
+function saveMaster(){try{if(typeof EM!=='undefined'&&EM.data)localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));}catch(e){}}
+
+function patchExpected(){
+ var bulk=document.getElementById('emTabPanel-bulk');if(!bulk)return;
+ var nodes=bulk.querySelectorAll('span,div');
+ for(var i=0;i<nodes.length;i++){
+  var t=(nodes[i].textContent||'').replace(/\s+/g,' ').trim();
+  if(t.indexOf('Expected columns:')===0){
+   if(nodes[i].textContent!==EXPECTED) nodes[i].textContent=EXPECTED;
+   nodes[i].style.whiteSpace='normal';nodes[i].style.lineHeight='1.7';return;
+  }
+ }
+}
+
+function mapHeader(h){var m={};Object.keys(ALIASES).forEach(function(k){m[k]=-1;});h.forEach(function(c,i){var z=norm(c);Object.keys(ALIASES).forEach(function(k){if(m[k]<0&&ALIASES[k].some(function(a){return z===norm(a);})){m[k]=i;}});});return m;}
+function headerScore(r){var s=0;(r||[]).forEach(function(c){var z=norm(c);if(Object.keys(ALIASES).some(function(k){return ALIASES[k].some(function(a){return z===norm(a);});}))s++;});return s;}
+
+function installPaste(){
+ if(window.__safeExtraPasteInstalled||typeof window.emParseBulkPaste!=='function')return;
+ var original=window.emParseBulkPaste;
+ window.emParseBulkPaste=function(){
+  var a=document.getElementById('emBulkPasteArea');var raw=a?String(a.value||'').trim():'';
+  if(!raw)return original.apply(this,arguments);
+  var rows=raw.replace(/\r/g,'').split('\n').filter(function(x){return x.trim();}).map(function(x){return x.split('\t');});
+  if(!rows.length)return original.apply(this,arguments);
+  var hasHeader=headerScore(rows[0])>=2;
+  var hasExtra=hasHeader?/(aadhaar|aadhar|phone|mobile|qualification|present address|permanent address|nominee)/i.test(rows[0].join(' ')):rows.some(function(r){return r.length>16;});
+  if(!hasExtra)return original.apply(this,arguments);
+  var map=hasHeader?mapHeader(rows[0]):null;var data=hasHeader?rows.slice(1):rows;var out=[];
+  data.forEach(function(r){if(!r.some(function(x){return String(x||'').trim();}))return;var e={};
+   if(hasHeader){Object.keys(ALIASES).forEach(function(k){e[k]=val(k,map[k]>=0?r[map[k]]:'');});}
+   else{ORDER.forEach(function(k,i){e[k]=val(k,r[i]===undefined?'':r[i]);});}
+   if(e.desig===undefined)e.desig='';if(e.cat2===undefined)e.cat2='';if(e.emp_id||e.name)out.push(e);
+  });
+  window.EM_BULK_ROWS=out;
+  if(typeof renderBulkPreview==='function')renderBulkPreview();
+  var b=document.getElementById('emBulkSaveBtn');if(b){b.disabled=!out.length;b.style.opacity=out.length?'1':'.4';}
+  var bar=document.getElementById('emPasteBar'),info=document.getElementById('emPasteInfo');if(bar)bar.style.display='flex';if(info)info.textContent='✅ '+out.length+' employee rows detected. Additional fields supported.';
+ };
+ window.__safeExtraPasteInstalled=true;
+}
+
+function injectCss(){if(document.getElementById('safeExtraCss'))return;var s=document.createElement('style');s.id='safeExtraCss';s.textContent='#safeMoreWrap{display:block;min-width:100%;padding:12px 16px;background:#0f172a;border-top:1px solid #334155}#safeMoreBtn{padding:8px 14px;border:1px solid #6366f1;border-radius:8px;background:#312e81;color:#fff;font-size:11px;font-weight:800;cursor:pointer}#safeMoreBody{display:none;margin-top:12px;padding:14px;border:1px solid #334155;border-radius:10px;background:#111827}#safeMoreBody.open{display:block}.safeF{margin-bottom:11px}.safeF label{display:block;margin-bottom:5px;font-size:9px;font-weight:800;color:#94a3b8;text-transform:uppercase}.safeF input,.safeF textarea,.safeF select{width:100%;padding:9px 10px;border:1px solid #475569;border-radius:7px;background:#0b1220;color:#fff;font-size:12px}.safeF textarea{min-height:72px;resize:vertical}#safeView{position:fixed;inset:0;z-index:100005;display:none;align-items:center;justify-content:center;background:rgba(2,6,23,.82);padding:18px}#safeViewCard{width:min(760px,96vw);max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:15px;overflow:hidden}#safeViewHead{padding:15px 18px;background:linear-gradient(135deg,#075985,#0ea5e9);color:#fff;display:flex;align-items:center}#safeViewClose{margin-left:auto;border:0;border-radius:50%;width:31px;height:31px;background:rgba(255,255,255,.18);color:#fff;font-size:18px;cursor:pointer}#safeViewBody{overflow:auto;padding:16px 18px;background:#f8fafc}.safeV{margin-bottom:10px}.safeV label{display:block;margin-bottom:4px;font-size:9px;font-weight:900;color:#64748b;text-transform:uppercase}.safeVal{padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-size:12px;white-space:pre-wrap}';document.head.appendChild(s);}
+function current(){try{return EM.editIdx>=0&&EM.data[EM.editIdx]?EM.data[EM.editIdx]:{};}catch(e){return {};}}
+function buildMore(){var modal=document.getElementById('emModal'),panel=document.getElementById('emTabPanel-single'),row=document.getElementById('emSingleRow');if(!modal||!panel||!row||getComputedStyle(modal).display==='none'||document.getElementById('safeMoreWrap'))return;var e=current(),w=document.createElement('div');w.id='safeMoreWrap';var h='<button type="button" id="safeMoreBtn">＋ View More / Fill More</button><div id="safeMoreBody">';EXTRA.forEach(function(x){var v=e[x[0]]||'';h+='<div class="safeF"><label>'+x[1]+'</label>';if(x[2]==='textarea')h+='<textarea id="safe_'+x[0]+'">'+esc(v)+'</textarea>';else if(x[2]==='select')h+='<select id="safe_'+x[0]+'"><option></option><option>SINGLE</option><option>MARRIED</option><option>DIVORCED</option><option>WIDOWED</option><option>SEPARATED</option></select>';else h+='<input id="safe_'+x[0]+'" type="'+x[2]+'" value="'+esc(v)+'">';h+='</div>';});h+='</div>';w.innerHTML=h;row.parentNode.insertBefore(w,row.nextSibling);EXTRA.forEach(function(x){var z=document.getElementById('safe_'+x[0]);if(z)z.value=e[x[0]]||'';});var b=document.getElementById('safeMoreBtn'),body=document.getElementById('safeMoreBody');b.onclick=function(){var o=!body.classList.contains('open');body.classList.toggle('open',o);b.textContent=o?'− View Less':'＋ View More / Fill More';};}
+function readExtra(){var d={};EXTRA.forEach(function(x){var z=document.getElementById('safe_'+x[0]);d[x[0]]=z?String(z.value||'').trim():'';});return d;}
+function formCode(){var r=document.getElementById('emSingleRow'),z=r&&r.querySelector('input,select');return z?String(z.value||'').trim():'';}
+function captureSave(){if(window.__safeExtraCapture)return;document.addEventListener('click',function(ev){var b=ev.target&&ev.target.closest?ev.target.closest('button'):null;if(!b||!document.getElementById('safeMoreWrap'))return;var t=(b.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t==='save'||t.indexOf('💾 save')>=0){var c=formCode(),idx=typeof EM!=='undefined'?EM.editIdx:-1,d=readExtra();setTimeout(function(){try{var i=idx>=0?idx:EM.data.findIndex(function(e){return String(e.emp_id||'').trim()===c;});if(i>=0&&EM.data[i]){Object.assign(EM.data[i],d);saveMaster();if(typeof emFilter==='function')emFilter();}}catch(e){}},120);}},true);window.__safeExtraCapture=true;}
+
+function buildView(){if(document.getElementById('safeView'))return;var o=document.createElement('div');o.id='safeView';o.innerHTML='<div id="safeViewCard"><div id="safeViewHead"><div><strong>👤 Employee Complete Details</strong><div id="safeViewSub" style="font-size:10px;opacity:.85;margin-top:2px"></div></div><button id="safeViewClose">×</button></div><div id="safeViewBody"></div></div>';document.body.appendChild(o);document.getElementById('safeViewClose').onclick=function(){o.style.display='none';};o.onclick=function(e){if(e.target===o)o.style.display='none';};}
+function installView(){if(window.__safeVerticalViewInstalled||typeof window.emViewEmp!=='function')return;window.emViewEmp=function(i){try{var e=EM.data[i];if(!e)return;buildView();document.getElementById('safeViewSub').textContent=(e.name||'Employee')+' • Code: '+(e.emp_id||'—');var labels={emp_id:'Employee Code',name:'Employee Name',father:"Father\'s Name",dob:'D.O.B',doj:'D.O.J',pf_no:'PF No.',esi_no:'ESI No.',bank_name:'Bank Name',ifsc:'IFSC Code',account_no:'Account No.',gender:'Gender',dept:'Department',desig:'Designation',cat1:'Category 01',cat2:'Category 02',basic:'Basic',hra:'HRA',gross:'Gross'};EXTRA.forEach(function(x){labels[x[0]]=x[1];});var keys=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'].concat(EXTRA.map(function(x){return x[0];})),h='';keys.forEach(function(k){var v=e[k];if(v===undefined||v===null||v==='')v='—';h+='<div class="safeV"><label>'+esc(labels[k]||k)+'</label><div class="safeVal">'+esc(v)+'</div></div>';});document.getElementById('safeViewBody').innerHTML=h;document.getElementById('safeView').style.display='flex';}catch(err){}};window.__safeVerticalViewInstalled=true;}
+
+function tick(){patchExpected();installPaste();installView();buildMore();}
+function boot(){injectCss();buildView();captureSave();tick();setInterval(tick,700);}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
