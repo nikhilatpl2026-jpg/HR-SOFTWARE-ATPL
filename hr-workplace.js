@@ -1,26 +1,170 @@
-/* Employee Master enhancement layer. HR Workplace UI intentionally removed. */
-(function(){'use strict';
-var F=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'];
-var A={emp_id:['emp code','employee code','employee id','emp id','employee no','employee number','code'],name:['name','employee name','emp name','worker name','staff name'],father:['father','father name','fathers name','father s name','fathername','guardian name'],dob:['dob','d o b','date of birth','birth date','birthdate'],doj:['doj','d o j','date of joining','joining date','join date','date joined'],pf_no:['pf no','pf number','pf account','pf account no','uan','uan no','uan number'],esi_no:['esi no','esi number','esic no','esic number','ip no','ip number','insurance no','insurance number'],bank_name:['bank','bank name','banker'],ifsc:['ifsc','ifsc code','ifsc number'],account_no:['account','account no','account number','bank account','bank account no','a c no'],gender:['gender','sex'],dept:['department','dept','department name'],desig:['designation','desig','post','job title'],cat1:['category','category 01','category 1','cat','cat 1','employee category'],cat2:['category 02','category 2','cat 2','sub category','subcategory'],basic:['basic','basic salary','basic wages','basic pay'],hra:['hra','house rent allowance','house rent','hra allowance'],gross:['gross','gross salary','gross wages','gross earning','gross pay']};
-var X=[{k:'aadhaar_no',l:'Aadhaar No.',t:'text'},{k:'phone_no',l:'Phone No.',t:'tel'},{k:'qualification',l:'Qualification',t:'text'},{k:'present_address',l:'Present Address',t:'textarea'},{k:'permanent_address',l:'Permanent Address',t:'textarea'},{k:'marital_status',l:'Marital Status',t:'select',o:['','SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},{k:'nominee_name',l:'Nominee Name',t:'text'},{k:'nominee_relation',l:'Relation With Nominee',t:'text'},{k:'nominee_dob',l:'DOB of Nominee',t:'date'}];
-var XA={aadhaar_no:['aadhaar','aadhaar no','aadhaar number','aadhar','aadhar no','uid'],phone_no:['phone','phone no','phone number','mobile','mobile no','mobile number','contact','contact no'],qualification:['qualification','education','educational qualification'],present_address:['present address','current address','residential address'],permanent_address:['permanent address','parmanent address','native address'],marital_status:['marital status','marital','marriage status'],nominee_name:['nominee','nominee name'],nominee_relation:['nominee relation','relation with nominee','relation nominee','relationship with nominee'],nominee_dob:['nominee dob','dob of nominee','nominee date of birth']};
-var ALL=Object.assign({},A,XA);
-function n(v){return String(v==null?'':v).toLowerCase().replace(/[\u00a0]/g,' ').replace(/[.\-_\/\\()&:#]+/g,' ').replace(/\s+/g,' ').trim()}
-function d(v){if(v==null||v==='')return '';if(v instanceof Date&&!isNaN(v.getTime()))return String(v.getDate()).padStart(2,'0')+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+v.getFullYear();var s=String(v).trim(),m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);return m?m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+(m[3].length===2?'20'+m[3]:m[3]):s}
-function v(k,x){if(k==='dob'||k==='doj'||k==='nominee_dob')return d(x);if(k==='basic'||k==='hra'||k==='gross'){var z=parseFloat(String(x||'').replace(/,/g,'').replace(/[₹$]/g,'').trim());return isFinite(z)?z:0}var s=String(x==null?'':x).trim();if(k==='gender'){var g=s.toUpperCase();return /FEMALE|WOMAN/.test(g)||g==='F'?'FEMALE':/MALE|MAN/.test(g)||g==='M'?'MALE':g}return s}
-function map(h){var m={};Object.keys(ALL).forEach(function(k){m[k]=-1});(h||[]).forEach(function(c,i){var q=n(c);Object.keys(ALL).forEach(function(k){if(m[k]<0&&ALL[k].some(function(a){return q===n(a)}))m[k]=i})});return m}
-function score(r){var s=0;Object.keys(ALL).forEach(function(k){if((r||[]).some(function(c){var q=n(c);return ALL[k].some(function(a){return q===n(a)})}))s++});return s}
-function rowsTo(rows,m){var out=[];for(var r=1;r<rows.length;r++){var row=rows[r]||[];if(!row.some(function(x){return String(x||'').trim()}))continue;var e={};F.forEach(function(k){e[k]=v(k,m[k]>=0?row[m[k]]:'')});X.forEach(function(x){e[x.k]=x.k==='nominee_dob'?d(m[x.k]>=0?row[m[x.k]]:''):String(m[x.k]>=0?row[m[x.k]]||'':'').trim()});if(e.emp_id||e.name)out.push(e)}return out}
-function positional(row){var p=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','cat1','basic','hra','gross'],e={};p.forEach(function(k,i){e[k]=v(k,row[i]===undefined?'':row[i])});e.desig='';e.cat2='';X.forEach(function(x){e[x.k]=''});e.status='NEW JOINING';return e}
-function save(){try{localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data))}catch(e){}}
-function refresh(){try{EM.filtered=EM.data.slice();if(typeof emBuildDeptFilter==='function')emBuildDeptFilter();if(typeof emUpdateStats==='function')emUpdateStats();if(typeof emFilter==='function')emFilter();else if(typeof emRenderTable==='function')emRenderTable()}catch(e){}}
-function merge(e){var c=String(e.emp_id||'').trim();if(!c)return 'SKIPPED';var i=EM.data.findIndex(function(x){return String(x.emp_id||'').trim()===c});if(i>=0){EM.data[i]=Object.assign({},EM.data[i],Object.keys(e).reduce(function(a,k){if(e[k]!==''&&e[k]!==null&&e[k]!==undefined)a[k]=e[k];return a},{}));return 'UPDATED'}EM.data.push(e);return 'NEW'}
-window.emParseBulkPaste=function(){var a=document.getElementById('emBulkPasteArea');if(!a||!a.value.trim())return;var rs=a.value.replace(/\r/g,'').split('\n').filter(function(x){return x.trim()}).map(function(x){return x.split('\t')});var h=score(rs[0]||[]),emps;if(h>=2){emps=rowsTo(rs,map(rs[0]));window.__aroraPasteSource={header:rs[0],data:rs.slice(1)}}else{emps=rs.map(positional);window.__aroraPasteSource=null}window.EM_BULK_ROWS=emps;if(typeof renderBulkPreview==='function')renderBulkPreview();var b=document.getElementById('emBulkSaveBtn');if(b){b.disabled=!emps.length;b.style.opacity=emps.length?'1':'.4'}var i=document.getElementById('emPasteInfo'),bar=document.getElementById('emPasteBar');if(bar)bar.style.display='flex';if(i)i.textContent='✅ '+emps.length+' employee rows detected. '+(h>=2?'Excel headers auto-mapped.':'Exact 16-column format mapped.');addRemap()};
-function addRemap(){var host=document.getElementById('emPasteBar');if(!host||!window.__aroraPasteSource)return;var old=document.getElementById('aroraRemapBtn');if(old)old.remove();var b=document.createElement('button');b.id='aroraRemapBtn';b.type='button';b.textContent='⚙️ Remap Excel Columns';b.style.cssText='margin-left:8px;border:1px solid #818cf8;background:#eef2ff;color:#3730a3;border-radius:8px;padding:7px 11px;font-size:10px;font-weight:900;cursor:pointer';b.onclick=openMap;host.appendChild(b)}
-function openMap(){var s=window.__aroraPasteSource;if(!s)return;var old=document.getElementById('aroraMap');if(old)old.remove();var labels={};Object.keys(ALL).forEach(function(k){labels[k]=k});labels.father="FATHER'S NAME";labels.emp_id='EMP CODE';labels.name='NAME';labels.dob='D.O.B';labels.doj='D.O.J';labels.pf_no='PF NO';labels.esi_no='ESI NO';labels.bank_name='BANK NAME';labels.ifsc='IFSC CODE';labels.account_no='ACCOUNT NO';labels.gender='GENDER';labels.dept='DEPARTMENT';labels.desig='DESIGNATION';labels.cat1='CATEGORY 01';labels.cat2='CATEGORY 02';labels.basic='BASIC';labels.hra='HRA';labels.gross='GROSS';X.forEach(function(x){labels[x.k]=x.l});var m=map(s.header),html='<div id="aroraMap" style="position:fixed;inset:0;z-index:100000;background:rgba(2,6,23,.75);display:flex;align-items:center;justify-content:center;padding:20px"><div style="background:#fff;color:#0f172a;width:min(1050px,96vw);max-height:88vh;overflow:auto;border-radius:16px;padding:20px"><div style="display:flex;justify-content:space-between;align-items:center"><div><b style="font-size:18px">⚙️ Excel Column Mapping</b><div style="font-size:11px;color:#64748b;margin-top:4px">Excel columns aage-peeche ho to dropdown se exact software field select karo.</div></div><button id="aroraMapX">✕</button></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px">';s.header.forEach(function(h,i){html+='<label style="display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc"><span style="font-size:10px;font-weight:800;overflow:hidden">'+String(h||('Column '+(i+1))).replace(/</g,'&lt;')+'</span><select class="aroraMapSel" data-i="'+i+'" style="padding:6px">';html+='<option value="">— Ignore —</option>';Object.keys(ALL).forEach(function(k){html+='<option value="'+k+'" '+(m[k]===i?'selected':'')+'>'+labels[k]+'</option>'});html+='</select></label>'});html+='</div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:15px"><button id="aroraMapCancel">Cancel</button><button id="aroraMapApply" style="background:#4f46e5;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:800">Apply Mapping & Preview</button></div></div></div>';document.body.insertAdjacentHTML('beforeend',html);var close=function(){document.getElementById('aroraMap').remove()};document.getElementById('aroraMapX').onclick=close;document.getElementById('aroraMapCancel').onclick=close;document.getElementById('aroraMapApply').onclick=function(){var mm={};document.querySelectorAll('.aroraMapSel').forEach(function(q){if(q.value)mm[q.value]=parseInt(q.dataset.i,10)});window.EM_BULK_ROWS=rowsTo([s.header].concat(s.data),mm);if(typeof renderBulkPreview==='function')renderBulkPreview();var inf=document.getElementById('emPasteInfo');if(inf)inf.textContent='✅ '+EM_BULK_ROWS.length+' employee rows detected. Custom mapping applied.';close()}}
-window.emSaveBulk=function(){if(!window.EM_BULK_ROWS||!EM_BULK_ROWS.length)return;var a=0,u=0;EM_BULK_ROWS.forEach(function(e){var z=merge(e);if(z==='NEW')a++;if(z==='UPDATED')u++});save();refresh();EM_BULK_ROWS=[];alert('✅ Done! '+a+' new + '+u+' updated employees saved.');if(typeof emCloseModal==='function')emCloseModal()};
-function extraUI(e){var host=document.getElementById('emModalFields')||document.getElementById('emSingleRow');if(!host)return;var old=document.getElementById('aroraFillMore');if(old)old.remove();var w=document.createElement('div');w.id='aroraFillMore';w.style.cssText='margin-top:12px;border-top:1px solid #475569;padding-top:12px';var h='<div style="display:flex;justify-content:space-between;align-items:center"><div><b style="font-size:12px">Additional Employee Details</b><div style="font-size:9px;color:#94a3b8">Aadhaar, phone, address, nominee aur marital details</div></div><button type="button" id="aroraMoreBtn" style="background:#312e81;color:#fff;border:1px solid #818cf8;border-radius:8px;padding:7px 12px;font-weight:900">＋ Fill More</button></div><div id="aroraMoreGrid" style="display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:10px">';X.forEach(function(x){h+='<label style="display:flex;flex-direction:column;gap:4px"><span style="font-size:9px;color:#94a3b8;font-weight:800">'+x.l+'</span>';if(x.t==='textarea')h+='<textarea id="ax_'+x.k+'" rows="2" style="padding:7px;background:#0f172a;color:#fff;border:1px solid #475569;border-radius:7px"></textarea>';else if(x.t==='select'){h+='<select id="ax_'+x.k+'" style="padding:7px;background:#0f172a;color:#fff;border:1px solid #475569;border-radius:7px">';x.o.forEach(function(o){h+='<option>'+o+'</option>'});h+='</select>'}else h+='<input id="ax_'+x.k+'" type="'+x.t+'" style="padding:7px;background:#0f172a;color:#fff;border:1px solid #475569;border-radius:7px">';h+='</label>'});h+='</div>';w.innerHTML=h;host.parentNode.appendChild(w);document.getElementById('aroraMoreBtn').onclick=function(){var g=document.getElementById('aroraMoreGrid'),o=g.style.display!=='grid';g.style.display=o?'grid':'none';this.textContent=o?'− Hide Extra Fields':'＋ Fill More'};X.forEach(function(x){var el=document.getElementById('ax_'+x.k);if(el)el.value=e&&e[x.k]||''});var code=document.getElementById('emf_emp_id');if(code&&!document.getElementById('aroraStatus')){var q=document.createElement('label');q.id='aroraStatus';q.style.cssText='display:flex;flex-direction:column;gap:4px';q.innerHTML='<span style="font-size:9px;color:#94a3b8;font-weight:800">EMPLOYEE STATUS</span><select id="aroraStatusSel" style="padding:8px;background:#0f172a;color:#fff;border:1px solid #475569;border-radius:7px"><option>ACTIVE</option><option>INACTIVE</option><option>NEW JOINING</option></select>';code.parentNode.parentNode.insertBefore(q,code.parentNode.nextSibling);document.getElementById('aroraStatusSel').value=e&&e.status?e.status:'NEW JOINING'}}
-function readExtra(){var o={};X.forEach(function(x){var el=document.getElementById('ax_'+x.k);o[x.k]=el?String(el.value||'').trim():''});o.status=(document.getElementById('aroraStatusSel')||{}).value||'ACTIVE';return o}
-function hooks(){if(typeof window.emOpenAdd==='function'&&!window.__aroraAdd){var a=window.emOpenAdd,ed=window.emOpenEdit;window.emOpenAdd=function(){a.apply(this,arguments);setTimeout(function(){extraUI({status:'NEW JOINING'})},0)};window.emOpenEdit=function(i){ed.apply(this,arguments);setTimeout(function(){extraUI(EM.data[i]||{})},0)};window.__aroraAdd=1}if(typeof window.emSaveModal==='function'&&!window.__aroraSave){var s=window.emSaveModal;window.emSaveModal=function(){var z=readExtra(),idx=EM.editIdx,code=(document.getElementById('emf_emp_id')||{}).value;s.apply(this,arguments);setTimeout(function(){var j=idx>=0?idx:(EM.data||[]).findIndex(function(e){return String(e.emp_id||'').trim()===String(code||'').trim()});if(j>=0&&EM.data[j]){Object.assign(EM.data[j],z);save();refresh()}},0)};window.__aroraSave=1}}
-function boot(){hooks();setTimeout(hooks,500)}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();setInterval(hooks,1000);
+/* Employee Master enhancement layer — HR Workplace UI removed. */
+(function(){
+'use strict';
+
+/* =========================================================
+   1) SAFE EXCEL IMPORT MAPPING
+   ========================================================= */
+var CORE=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'];
+var EXTRA=[
+ {k:'aadhaar_no',l:'AADHAAR NO',t:'text'},
+ {k:'phone_no',l:'PHONE NO',t:'tel'},
+ {k:'qualification',l:'QUALIFICATION',t:'text'},
+ {k:'present_address',l:'PRESENT ADDRESS',t:'textarea'},
+ {k:'permanent_address',l:'PERMANENT ADDRESS',t:'textarea'},
+ {k:'marital_status',l:'MARITAL STATUS',t:'select',o:['','SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},
+ {k:'nominee_name',l:'NOMINEE NAME',t:'text'},
+ {k:'nominee_relation',l:'RELATION WITH NOMINEE',t:'text'},
+ {k:'nominee_dob',l:'DOB OF NOMINEE',t:'date'}
+];
+var AL={
+ emp_id:['emp code','employee code','employee id','emp id','employee no','employee number','code'],
+ name:['name','employee name','emp name','worker name','staff name'],
+ father:['father','father name','fathers name','father s name','fathername','guardian name'],
+ dob:['dob','d o b','date of birth','birth date','birthdate'],
+ doj:['doj','d o j','date of joining','joining date','join date','date joined'],
+ pf_no:['pf no','pf number','pf account','pf account no','uan','uan no','uan number'],
+ esi_no:['esi no','esi number','esic no','esic number','ip no','ip number','insurance no','insurance number'],
+ bank_name:['bank','bank name','banker'],
+ ifsc:['ifsc','ifsc code','ifsc number'],
+ account_no:['account','account no','account number','bank account','bank account no','a c no','a c number'],
+ gender:['gender','sex'],
+ dept:['department','dept','department name'],
+ desig:['designation','desig','post','job title'],
+ cat1:['category','category 01','category 1','cat','cat 1','employee category'],
+ cat2:['category 02','category 2','cat 2','sub category','subcategory'],
+ basic:['basic','basic salary','basic wages','basic pay'],
+ hra:['hra','house rent allowance','house rent','hra allowance'],
+ gross:['gross','gross salary','gross wages','gross earning','gross pay'],
+ aadhaar_no:['aadhaar','aadhaar no','aadhaar number','aadhar','aadhar no','uid'],
+ phone_no:['phone','phone no','phone number','mobile','mobile no','mobile number','contact','contact no'],
+ qualification:['qualification','education','educational qualification'],
+ present_address:['present address','current address','residential address'],
+ permanent_address:['permanent address','parmanent address','native address'],
+ marital_status:['marital status','marital','marriage status'],
+ nominee_name:['nominee','nominee name'],
+ nominee_relation:['nominee relation','relation with nominee','relation nominee','relationship with nominee'],
+ nominee_dob:['nominee dob','dob of nominee','nominee date of birth']
+};
+function norm(x){return String(x==null?'':x).toLowerCase().replace(/[\u00a0]/g,' ').replace(/[.\-_\/\\()&:#]+/g,' ').replace(/\s+/g,' ').trim()}
+function dateOut(x){
+ if(x==null||x==='')return '';
+ if(x instanceof Date&&!isNaN(x.getTime()))return String(x.getDate()).padStart(2,'0')+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+x.getFullYear();
+ var s=String(x).trim(),m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+ return m?m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+(m[3].length===2?'20'+m[3]:m[3]):s;
+}
+function value(k,x){
+ if(k==='dob'||k==='doj'||k==='nominee_dob')return dateOut(x);
+ if(k==='basic'||k==='hra'||k==='gross'){var n=parseFloat(String(x||'').replace(/,/g,'').replace(/[₹$]/g,'').trim());return isFinite(n)?n:0}
+ var s=String(x==null?'':x).trim();
+ if(k==='gender'){var g=s.toUpperCase();return /FEMALE|WOMAN/.test(g)||g==='F'?'FEMALE':/MALE|MAN/.test(g)||g==='M'?'MALE':g}
+ return s;
+}
+function mapHeaders(header){
+ var m={};Object.keys(AL).forEach(function(k){m[k]=-1});
+ (header||[]).forEach(function(c,i){var q=norm(c);Object.keys(AL).forEach(function(k){if(m[k]<0&&AL[k].some(function(a){return q===norm(a)}))m[k]=i})});
+ return m;
+}
+function headerScore(row){var s=0;Object.keys(AL).forEach(function(k){if((row||[]).some(function(c){var q=norm(c);return AL[k].some(function(a){return q===norm(a)})}))s++});return s}
+function fromMapped(row,m){
+ var e={};CORE.forEach(function(k){e[k]=value(k,m[k]>=0?row[m[k]]:'')});
+ EXTRA.forEach(function(x){e[x.k]=m[x.k]>=0?value(x.k,row[m[x.k]]):''});
+ e.status='NEW JOINING';return e;
+}
+function from16(row){
+ var p=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','cat1','basic','hra','gross'],e={};
+ p.forEach(function(k,i){e[k]=value(k,row[i]===undefined?'':row[i])});
+ e.desig='';e.cat2='';EXTRA.forEach(function(x){e[x.k]=''});e.status='NEW JOINING';return e;
+}
+window.emParseBulkPaste=function(){
+ var area=document.getElementById('emBulkPasteArea');if(!area||!area.value.trim())return;
+ var rs=area.value.replace(/\r/g,'').split('\n').filter(function(x){return x.trim()}).map(function(x){return x.split('\t')});
+ var hasHeader=headerScore(rs[0]||[])>=2, emps;
+ if(hasHeader){var m=mapHeaders(rs[0]);emps=rs.slice(1).map(function(r){return fromMapped(r,m)})}else emps=rs.map(from16);
+ emps=emps.filter(function(e){return e.emp_id||e.name});window.EM_BULK_ROWS=emps;
+ if(typeof renderBulkPreview==='function')renderBulkPreview();
+ var b=document.getElementById('emBulkSaveBtn');if(b){b.disabled=!emps.length;b.style.opacity=emps.length?'1':'.4'}
+ var i=document.getElementById('emPasteInfo');if(i)i.textContent='✅ '+emps.length+' employee rows detected. '+(hasHeader?'Excel headers auto-mapped exactly.':'Exact 16-column format mapped exactly.');
+};
+function saveMaster(){try{localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data))}catch(e){}}
+function mergeEmployee(e){
+ var code=String(e.emp_id||'').trim();if(!code)return;
+ var idx=EM.data.findIndex(function(x){return String(x.emp_id||'').trim()===code});
+ if(idx>=0)EM.data[idx]=Object.assign({},EM.data[idx],e);else EM.data.push(e);
+}
+window.emSaveBulk=function(){if(!window.EM_BULK_ROWS||!EM_BULK_ROWS.length)return;EM_BULK_ROWS.forEach(mergeEmployee);saveMaster();if(typeof emFilter==='function')emFilter();EM_BULK_ROWS=[];alert('✅ Employee data saved successfully.');if(typeof emCloseModal==='function')emCloseModal()};
+
+/* =========================================================
+   2) FILL MORE — TRUE VERTICAL FORM
+   ========================================================= */
+function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function extraMarkup(e){
+ e=e||{};
+ var html='';
+ EXTRA.forEach(function(x){
+  var val=e[x.k]||'';
+  html+='<div class="arora-extra-field">';
+  html+='<div class="arora-extra-label">'+x.l+'</div>';
+  if(x.t==='textarea') html+='<textarea id="arora_extra_'+x.k+'" rows="3" placeholder="Enter '+x.l.toLowerCase()+'">'+esc(val)+'</textarea>';
+  else if(x.t==='select'){
+   html+='<select id="arora_extra_'+x.k+'">';x.o.forEach(function(o){html+='<option value="'+esc(o)+'" '+(String(val)===String(o)?'selected':'')+'>'+esc(o||'Select '+x.l.toLowerCase())+'</option>'});html+='</select>';
+  }else html+='<input id="arora_extra_'+x.k+'" type="'+x.t+'" value="'+esc(val)+'" placeholder="Enter '+x.l.toLowerCase()+'">';
+  html+='</div>';
+ });
+ return html;
+}
+function injectStyles(){
+ if(document.getElementById('aroraExtraStyles'))return;
+ var s=document.createElement('style');s.id='aroraExtraStyles';s.textContent='\
+#aroraFillMorePanel{margin-top:14px;border:1px solid #475569;border-radius:12px;background:#111827;padding:12px;color:#fff;}\
+#aroraFillMoreHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;}\
+#aroraFillMoreHeader b{font-size:13px;}\
+#aroraFillMoreBtn{border:1px solid #818cf8!important;background:#312e81!important;color:#fff!important;border-radius:8px!important;padding:8px 13px!important;font-weight:900!important;cursor:pointer!important;}\
+#aroraFillMoreBody{display:none;margin-top:12px;}\
+#aroraFillMoreBody.open{display:block;}\
+.arora-extra-field{display:block;margin:0 0 11px 0;}\
+.arora-extra-label{font-size:10px;font-weight:900;color:#cbd5e1;margin-bottom:5px;letter-spacing:.3px;}\
+#aroraFillMoreBody input,#aroraFillMoreBody textarea,#aroraFillMoreBody select{box-sizing:border-box;width:100%;display:block;background:#0b1220!important;color:#fff!important;border:1px solid #64748b!important;border-radius:7px!important;padding:9px 10px!important;font-size:12px!important;outline:none;}\
+#aroraFillMoreBody textarea{resize:vertical;min-height:70px;}\
+#aroraStatusBox{margin-top:10px;padding:10px;border:1px solid #475569;border-radius:9px;background:#111827;}\
+#aroraStatusBox label{display:block;font-size:10px;font-weight:900;color:#cbd5e1;margin-bottom:5px;}\
+#aroraStatusBox select{width:100%;box-sizing:border-box;background:#0b1220;color:#fff;border:1px solid #64748b;border-radius:7px;padding:9px;font-weight:800;}\
+';document.head.appendChild(s);
+}
+function findModalHost(){return document.getElementById('emModalFields')||document.getElementById('emSingleRow')||document.querySelector('#emModal .modal-body')||document.querySelector('#emModal form')}
+function currentEmployee(){try{if(typeof EM!=='undefined'&&EM.editIdx>=0&&EM.data[EM.editIdx])return EM.data[EM.editIdx]}catch(e){}return {status:'NEW JOINING'} }
+function injectFillMore(){
+ injectStyles();
+ var modal=document.getElementById('emModal');if(!modal||getComputedStyle(modal).display==='none')return;
+ var host=findModalHost();if(!host)return;
+ var panel=document.getElementById('aroraFillMorePanel');
+ if(!panel){
+  panel=document.createElement('div');panel.id='aroraFillMorePanel';panel.innerHTML='<div id="aroraFillMoreHeader"><div><b>＋ Fill More</b><div style="font-size:9px;color:#94a3b8;margin-top:3px">Additional employee details — vertical form</div></div><button type="button" id="aroraFillMoreBtn">＋ Fill More</button></div><div id="aroraFillMoreBody">'+extraMarkup(currentEmployee())+'</div><div id="aroraStatusBox"><label>EMPLOYEE STATUS</label><select id="aroraStatusSelect"><option value="ACTIVE">ACTIVE</option><option value="INACTIVE">INACTIVE</option><option value="NEW JOINING">NEW JOINING</option></select></div>';
+  host.parentNode.appendChild(panel);
+  document.getElementById('aroraFillMoreBtn').onclick=function(){var b=document.getElementById('aroraFillMoreBody'),open=!b.classList.contains('open');b.classList.toggle('open',open);this.textContent=open?'− Hide More':'＋ Fill More';};
+ }
+ var emp=currentEmployee(),st=document.getElementById('aroraStatusSelect');if(st)st.value=emp.status||'NEW JOINING';
+}
+function readExtra(){
+ var out={};EXTRA.forEach(function(x){var el=document.getElementById('arora_extra_'+x.k);out[x.k]=el?String(el.value||'').trim():''});var st=document.getElementById('aroraStatusSelect');out.status=st?st.value:'ACTIVE';return out;
+}
+function saveExtraToEmployee(){
+ try{
+  var idx=typeof EM!=='undefined'?EM.editIdx:-1;if(idx>=0&&EM.data[idx]){Object.assign(EM.data[idx],readExtra());saveMaster();return}
+  var codeEl=document.getElementById('emf_emp_id'),code=codeEl?String(codeEl.value||'').trim():'';if(code&&typeof EM!=='undefined'){var j=EM.data.findIndex(function(e){return String(e.emp_id||'').trim()===code});if(j>=0){Object.assign(EM.data[j],readExtra());saveMaster()}}
+ }catch(e){}
+}
+/* Capture the modal even if the original app redraws it. */
+var lastOpenState=false;
+function monitor(){
+ var modal=document.getElementById('emModal');
+ if(modal){var visible=getComputedStyle(modal).display!=='none';if(visible){injectFillMore();lastOpenState=true}else if(lastOpenState){lastOpenState=false}}
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){injectStyles();setInterval(monitor,300)});else{injectStyles();setInterval(monitor,300)}
+/* Save extra fields whenever the app's Save button/form is used. */
+document.addEventListener('click',function(ev){
+ var t=ev.target;if(!t)return;
+ var txt=(t.textContent||'').trim().toLowerCase();
+ if((txt==='save'||txt==='💾 save'||txt.indexOf('save employee')>=0)&&document.getElementById('emModal')){setTimeout(saveExtraToEmployee,80)}
+});
 })();
