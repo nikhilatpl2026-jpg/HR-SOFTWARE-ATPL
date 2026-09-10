@@ -11,27 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Append shared auth bridge
+      - name: Keep only shared auth loader in hr-workplace
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          target = Path('hr-workplace.js')
-          addon = Path('shared-google-auth-v6.js').read_text(encoding='utf-8')
-          marker = 'Shared Google Apps Script auth bridge — V6 cross-browser'
-          text = target.read_text(encoding='utf-8')
-          if marker not in text:
-              target.write_text(text.rstrip() + '\n\n' + addon, encoding='utf-8')
+          p = Path('hr-workplace.js')
+          text = p.read_text(encoding='utf-8')
+          marker = '\n\n/* Shared Google Apps Script auth bridge — V6 cross-browser. Event-driven only. */'
+          if marker in text:
+              text = text.split(marker,1)[0].rstrip() + '\n'
+              p.write_text(text, encoding='utf-8')
           PY
       - name: Verify JavaScript syntax
         shell: bash
-        run: node --check hr-workplace.js
-      - name: Commit patch
+        run: node --check hr-workplace.js && node --check shared-auth.js
+      - name: Commit cleanup
         shell: bash
         run: |
           if git diff --quiet -- hr-workplace.js; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add hr-workplace.js
-          git commit -m 'Connect user access to shared Google Apps Script backend'
+          git commit -m 'Use single shared Google auth bridge'
           git push
