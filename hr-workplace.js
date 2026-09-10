@@ -76,3 +76,6 @@ function wrapEnter(){if(window.__uaEnterV5)return;oldEnter=window.enterApp;if(ty
 function init(){css();bootstrap();inject();guardGoPage();guardClicks();wrapEnter();clearSession();applyAccess();showLogin('')}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
+
+/* Shared Google auth loader */
+(function(){var s=document.createElement('script');s.src='shared-auth.js?v=20260910a';s.async=false;document.head.appendChild(s)})();
