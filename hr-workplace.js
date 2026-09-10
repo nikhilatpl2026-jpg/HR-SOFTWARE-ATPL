@@ -79,3 +79,6 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 /* Shared Google auth loader */
 (function(){var s=document.createElement('script');s.src='shared-auth.js?v=20260910c';s.async=false;document.head.appendChild(s)})();
+
+/* Mam Sheet to Compliance Salary loader */
+(function(){var s=document.createElement('script');s.src='mam-salary.js?v=20260910a';s.async=false;document.head.appendChild(s)})();
