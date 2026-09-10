@@ -1,0 +1,38 @@
+name: Load shared auth bridge
+
+on:
+  push:
+    paths:
+      - .github/workflows/load-shared-auth.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Append shared auth loader safely
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('hr-workplace.js')
+          text = p.read_text(encoding='utf-8')
+          marker = 'shared-auth.js?v=20260910a'
+          if marker not in text:
+              loader = "\n\n/* Shared Google auth loader */\n(function(){var s=document.createElement('script');s.src='shared-auth.js?v=20260910a';s.async=false;document.head.appendChild(s)})();\n"
+              p.write_text(text.rstrip() + loader, encoding='utf-8')
+          PY
+          node --check hr-workplace.js
+      - name: Commit loader
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hr-workplace.js
+          git diff --cached --quiet && exit 0
+          git commit -m "Load shared Google auth bridge"
+          git push origin main
