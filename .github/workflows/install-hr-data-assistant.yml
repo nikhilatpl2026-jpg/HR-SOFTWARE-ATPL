@@ -30,9 +30,17 @@ jobs:
               '<script src="hr-data-assistant-payload-4.js?v=20260911-2"></script>',
               '<script src="hr-data-assistant-payload-5.js?v=20260911-2"></script>',
               '<script src="hr-data-assistant.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant-pro-payload-1.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro-payload-2.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro-payload-3.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro-payload-4.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro-payload-5.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro-payload-6.js?v=20260911-3"></script>',
+              '<script src="hr-data-assistant-pro.js?v=20260911-3"></script>',
           ]
-          # Clean only prior assistant loader attempts; preserve every pre-existing ERP loader.
+          # Clean only prior AI-assistant loader tags; preserve every pre-existing ERP loader/module.
           text = re.sub(r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>', '', text)
+          text = re.sub(r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>', '', text)
           block = '\n'.join(tags)
           text = text.replace(anchor, anchor + '\n' + block, 1)
           p.write_text(text, encoding='utf-8')
@@ -46,6 +54,13 @@ jobs:
           node --check hr-data-assistant-payload-4.js
           node --check hr-data-assistant-payload-5.js
           node --check hr-data-assistant.js
+          node --check hr-data-assistant-pro-payload-1.js
+          node --check hr-data-assistant-pro-payload-2.js
+          node --check hr-data-assistant-pro-payload-3.js
+          node --check hr-data-assistant-pro-payload-4.js
+          node --check hr-data-assistant-pro-payload-5.js
+          node --check hr-data-assistant-pro-payload-6.js
+          node --check hr-data-assistant-pro.js
           git diff --check
           git diff -- index.html
       - name: Commit loader only if needed
@@ -55,5 +70,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          git commit -m 'Load full-screen HR ERP Data Assistant'
+          git commit -m 'Load HR ERP Data Assistant PRO V2'
           git push
