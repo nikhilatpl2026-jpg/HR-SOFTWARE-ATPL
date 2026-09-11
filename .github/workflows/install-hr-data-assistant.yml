@@ -1,0 +1,43 @@
+name: Install HR ERP Data Assistant
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/install-hr-data-assistant.yml'
+permissions:
+  contents: write
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add isolated HR Data Assistant loader
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          tag = '<script src="hr-data-assistant.js?v=20260911-1"></script>'
+          if tag not in text:
+              anchor = '<script src="hr-workplace.js"></script>'
+              if anchor not in text:
+                  raise SystemExit('Expected hr-workplace.js loader not found; refusing to modify index.html')
+              text = text.replace(anchor, anchor + '\n' + tag, 1)
+              p.write_text(text, encoding='utf-8')
+          PY
+      - name: Verify assistant syntax and scoped change
+        shell: bash
+        run: |
+          node --check hr-data-assistant.js
+          git diff --check
+          git diff -- index.html
+      - name: Commit loader only if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Load full-screen HR ERP Data Assistant'
+          git push
