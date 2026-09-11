@@ -1,13 +1,18 @@
 /* ATPL ERP upgrades loader. Loads the staged upgrade bundle without changing existing modules. */
 (function(){'use strict';
 if(window.__ATPL_ERP_UPGRADES_LOADER__)return;window.__ATPL_ERP_UPGRADES_LOADER__=1;
+function decodeBase64Safe(text){
+  var b64=String(text||'').replace(/^\uFEFF/,'').trim().replace(/\s+/g,'').replace(/-/g,'+').replace(/_/g,'/');
+  b64=b64.replace(/[^A-Za-z0-9+/=]/g,'');
+  while(b64.length%4)b64+='=';
+  return atob(b64);
+}
 async function boot(){
-  var res=await fetch('erp-upgrades.js.gz.b64?v=20260911-1',{cache:'no-store'});
+  var res=await fetch('erp-upgrades.js.gz.b64?v=20260911-2',{cache:'no-store'});
   if(!res.ok)throw new Error('ERP upgrade bundle not found: '+res.status);
-  var b64=(await res.text()).replace(/\s+/g,'');
-  var raw=atob(b64),bytes=new Uint8Array(raw.length);
+  var raw=decodeBase64Safe(await res.text()),bytes=new Uint8Array(raw.length);
   for(var i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
-  if(typeof DecompressionStream!=='function')throw new Error('This browser does not support secure upgrade decompression. Please use current Chrome/Edge.');
+  if(typeof DecompressionStream!=='function')throw new Error('This browser does not support upgrade decompression. Please use current Chrome/Edge.');
   var ds=new DecompressionStream('gzip');
   var code=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).text();
   (0,eval)(code+'\n//# sourceURL=erp-upgrades.js');
