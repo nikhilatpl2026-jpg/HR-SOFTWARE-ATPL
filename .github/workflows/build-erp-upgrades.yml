@@ -18,11 +18,26 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Decode upgrade bundle
+      - name: Decode and validate upgrade bundle
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '\r\n\t ' < erp-upgrades.js.gz.b64 | base64 --decode | gzip -dc > erp-upgrades.js
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip
+
+          src = Path('erp-upgrades.js.gz.b64').read_text(encoding='utf-8-sig')
+          alphabet = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/')
+          clean = ''.join(ch for ch in src if ch in alphabet)
+          clean += '=' * ((4 - len(clean) % 4) % 4)
+          raw = base64.b64decode(clean, validate=False)
+          print('source chars:', len(src), 'clean chars:', len(clean), 'decoded bytes:', len(raw), 'magic:', raw[:4].hex())
+          if raw[:2] != b'\x1f\x8b':
+              raise SystemExit('Decoded bundle is not gzip data')
+          code = gzip.decompress(raw)
+          Path('erp-upgrades.js').write_bytes(code)
+          print('plain js bytes:', len(code))
+          PY
           node --check erp-upgrades.js
           test -s erp-upgrades.js
       - name: Commit plain JavaScript bundle
