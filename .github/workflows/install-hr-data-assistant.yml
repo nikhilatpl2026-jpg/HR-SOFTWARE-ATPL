@@ -16,11 +16,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
           p = Path('index.html')
           text = p.read_text(encoding='utf-8')
-          anchor = '<script src="hr-workplace.js"></script>'
-          if anchor not in text:
+          m = re.search(r'<script src="hr-workplace\.js[^"]*"></script>', text)
+          if not m:
               raise SystemExit('Expected hr-workplace.js loader not found; refusing to modify index.html')
+          anchor = m.group(0)
           tags = [
               '<script src="hr-data-assistant-payload-1.js?v=20260911-2"></script>',
               '<script src="hr-data-assistant-payload-2.js?v=20260911-2"></script>',
@@ -29,12 +31,11 @@ jobs:
               '<script src="hr-data-assistant-payload-5.js?v=20260911-2"></script>',
               '<script src="hr-data-assistant.js?v=20260911-2"></script>',
           ]
-          # Remove an earlier standalone assistant loader if a prior attempt inserted it.
-          text = text.replace('\n<script src="hr-data-assistant.js?v=20260911-1"></script>', '')
+          # Clean only prior assistant loader attempts; preserve every pre-existing ERP loader.
+          text = re.sub(r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>', '', text)
           block = '\n'.join(tags)
-          if block not in text:
-              text = text.replace(anchor, anchor + '\n' + block, 1)
-              p.write_text(text, encoding='utf-8')
+          text = text.replace(anchor, anchor + '\n' + block, 1)
+          p.write_text(text, encoding='utf-8')
           PY
       - name: Verify assistant syntax and scoped change
         shell: bash
