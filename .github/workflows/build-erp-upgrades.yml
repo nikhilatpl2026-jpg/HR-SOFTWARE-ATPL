@@ -18,7 +18,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Decode and validate upgrade bundle
+      - name: Recover, decode and validate upgrade bundle
         shell: bash
         run: |
           set -euo pipefail
@@ -29,14 +29,45 @@ jobs:
           src = Path('erp-upgrades.js.gz.b64').read_text(encoding='utf-8-sig')
           alphabet = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/')
           clean = ''.join(ch for ch in src if ch in alphabet)
-          clean += '=' * ((4 - len(clean) % 4) % 4)
-          raw = base64.b64decode(clean, validate=False)
-          print('source chars:', len(src), 'clean chars:', len(clean), 'decoded bytes:', len(raw), 'magic:', raw[:4].hex())
-          if raw[:2] != b'\x1f\x8b':
-              raise SystemExit('Decoded bundle is not gzip data')
-          code = gzip.decompress(raw)
-          Path('erp-upgrades.js').write_bytes(code)
+          print('source chars:', len(src), 'base64 data chars:', len(clean), 'mod4:', len(clean) % 4)
+
+          def decode_and_unpack(s):
+              padded = s + '=' * ((4 - len(s) % 4) % 4)
+              raw = base64.b64decode(padded, validate=True)
+              if raw[:2] != b'\x1f\x8b':
+                  raise ValueError('not gzip')
+              return gzip.decompress(raw)
+
+          code = None
+          removed = None
+
+          # First try the data as-is when structurally possible.
+          if len(clean) % 4 != 1:
+              try:
+                  code = decode_and_unpack(clean)
+              except Exception:
+                  pass
+
+          # Current bundle has one extra data character. Find it by requiring
+          # a complete gzip decode with CRC validation; never guess silently.
+          if code is None and len(clean) % 4 == 1:
+              for i in range(len(clean)):
+                  candidate = clean[:i] + clean[i+1:]
+                  try:
+                      out = decode_and_unpack(candidate)
+                  except Exception:
+                      continue
+                  code = out
+                  removed = (i, clean[i])
+                  break
+
+          if code is None:
+              raise SystemExit('Could not recover a CRC-valid gzip bundle; refusing to publish broken JS')
+
+          if removed:
+              print('Recovered bundle by removing one corrupt Base64 char at index', removed[0], 'char', repr(removed[1]))
           print('plain js bytes:', len(code))
+          Path('erp-upgrades.js').write_bytes(code)
           PY
           node --check erp-upgrades.js
           test -s erp-upgrades.js
@@ -47,5 +78,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add erp-upgrades.js
           git diff --cached --quiet && exit 0
-          git commit -m "Build plain ERP upgrade bundle"
+          git commit -m "Build validated plain ERP upgrade bundle"
           git push origin main
