@@ -11,24 +11,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Add isolated HR Data Assistant loader
+      - name: Add isolated HR Data Assistant loaders
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('index.html')
           text = p.read_text(encoding='utf-8')
-          tag = '<script src="hr-data-assistant.js?v=20260911-1"></script>'
-          if tag not in text:
-              anchor = '<script src="hr-workplace.js"></script>'
-              if anchor not in text:
-                  raise SystemExit('Expected hr-workplace.js loader not found; refusing to modify index.html')
-              text = text.replace(anchor, anchor + '\n' + tag, 1)
+          anchor = '<script src="hr-workplace.js"></script>'
+          if anchor not in text:
+              raise SystemExit('Expected hr-workplace.js loader not found; refusing to modify index.html')
+          tags = [
+              '<script src="hr-data-assistant-payload-1.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant-payload-2.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant-payload-3.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant-payload-4.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant-payload-5.js?v=20260911-2"></script>',
+              '<script src="hr-data-assistant.js?v=20260911-2"></script>',
+          ]
+          # Remove an earlier standalone assistant loader if a prior attempt inserted it.
+          text = text.replace('\n<script src="hr-data-assistant.js?v=20260911-1"></script>', '')
+          block = '\n'.join(tags)
+          if block not in text:
+              text = text.replace(anchor, anchor + '\n' + block, 1)
               p.write_text(text, encoding='utf-8')
           PY
       - name: Verify assistant syntax and scoped change
         shell: bash
         run: |
+          node --check hr-data-assistant-payload-1.js
+          node --check hr-data-assistant-payload-2.js
+          node --check hr-data-assistant-payload-3.js
+          node --check hr-data-assistant-payload-4.js
+          node --check hr-data-assistant-payload-5.js
           node --check hr-data-assistant.js
           git diff --check
           git diff -- index.html
