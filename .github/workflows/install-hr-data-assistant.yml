@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Add isolated HR Data Assistant loaders
+      - name: Install only tiny lazy AI loader
         shell: bash
         run: |
           python - <<'PY'
@@ -23,62 +23,48 @@ jobs:
           if not m:
               raise SystemExit('Expected hr-workplace.js loader not found; refusing to modify index.html')
           anchor = m.group(0)
-          tags = [
-              '<script src="hr-data-assistant-payload-1.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant-payload-2.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant-payload-3.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant-payload-4.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant-payload-5.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant.js?v=20260911-2"></script>',
-              '<script src="hr-data-assistant-pro-payload-1.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro-payload-2.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro-payload-3.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro-payload-4.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro-payload-5.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro-payload-6.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-pro.js?v=20260911-3"></script>',
-              '<script src="hr-data-assistant-v3-payload.js?v=20260911-4"></script>',
-              '<script src="hr-data-assistant-v3.js?v=20260911-4"></script>',
-              '<script src="hr-ai-llm-v5.js?v=20260911-6"></script>',
+
+          # Remove ONLY AI assistant loaders from startup. Keep every normal ERP module untouched.
+          patterns = [
+              r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-data-assistant-v3(?:-payload)?\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-ai-llm-v4(?:-payload)?\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-ai-unified-v6\.js\?v=[^"]+"></script>',
+              r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>',
           ]
-          # Clean only AI-assistant loader tags; preserve every pre-existing ERP loader/module.
-          text = re.sub(r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>', '', text)
-          text = re.sub(r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>', '', text)
-          text = re.sub(r'\n<script src="hr-data-assistant-v3(?:-payload)?\.js\?v=[^"]+"></script>', '', text)
-          # Keep heavy V4 disabled and remove any stale V5 loader before inserting the current lightweight V5.
-          text = re.sub(r'\n<script src="hr-ai-llm-v4(?:-payload)?\.js\?v=[^"]+"></script>', '', text)
-          text = re.sub(r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>', '', text)
-          block = '\n'.join(tags)
-          text = text.replace(anchor, anchor + '\n' + block, 1)
+          for pat in patterns:
+              text = re.sub(pat, '', text)
+
+          lazy = '<script src="hr-ai-lazy-loader.js?v=20260912-1"></script>'
+          text = text.replace(anchor, anchor + '\n' + lazy, 1)
           p.write_text(text, encoding='utf-8')
           PY
-      - name: Verify assistant syntax and scoped change
+      - name: Verify lazy AI syntax and scoped change
         shell: bash
         run: |
-          node --check hr-data-assistant-payload-1.js
-          node --check hr-data-assistant-payload-2.js
-          node --check hr-data-assistant-payload-3.js
-          node --check hr-data-assistant-payload-4.js
-          node --check hr-data-assistant-payload-5.js
-          node --check hr-data-assistant.js
-          node --check hr-data-assistant-pro-payload-1.js
-          node --check hr-data-assistant-pro-payload-2.js
-          node --check hr-data-assistant-pro-payload-3.js
-          node --check hr-data-assistant-pro-payload-4.js
-          node --check hr-data-assistant-pro-payload-5.js
-          node --check hr-data-assistant-pro-payload-6.js
-          node --check hr-data-assistant-pro.js
-          node --check hr-data-assistant-v3-payload.js
-          node --check hr-data-assistant-v3.js
-          node --check hr-ai-llm-v5.js
+          node --check hr-ai-lazy-loader.js
+          node --check hr-ai-unified-v6.js
           git diff --check
           git diff -- index.html
-      - name: Commit loader only if needed
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          t = Path('index.html').read_text(encoding='utf-8')
+          ai = re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"', t)
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-1']:
+              raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
+          if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
+              raise SystemExit('hr-workplace version changed unexpectedly')
+          print('Startup AI loader OK:', ai)
+          PY
+      - name: Commit loader-only index change if needed
         shell: bash
         run: |
           if git diff --quiet -- index.html; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          git commit -m 'Load lightweight Arora ERP LLM V5'
+          git commit -m 'Use lazy HR ERP AI V6 loader for fast login'
           git push
