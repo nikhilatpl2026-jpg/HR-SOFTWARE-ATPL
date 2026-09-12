@@ -1,0 +1,1 @@
+Arora ERP AI PRO V9.2 chunked-worker rollout verified on 2026-09-12. Accuracy suite: 110/110. Startup remains lazy; core hr-workplace loader unchanged.
