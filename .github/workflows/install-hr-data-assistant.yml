@@ -11,135 +11,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch V6 for responsive all-file search
+      - name: Install only V7 lazy loader
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
-
-          p = Path('hr-ai-unified-v6.js')
-          text = p.read_text(encoding='utf-8')
-
-          new_load = "\n".join([
-              "async function loadRows(force){",
-              "  if(rowsCache&&!force)return rowsCache;",
-              "  var all=[], files=Array.isArray(window.FILES)?window.FILES:[], pushed=0;",
-              "  // Use already-loaded ERP files directly. Never preload 30k+ AI rows with getAll().",
-              "  for(var fi=0;fi<files.length;fi++){",
-              "    var f=files[fi], sheets=f&&f.sheets&&typeof f.sheets==='object'?f.sheets:{};",
-              "    var names=Object.keys(sheets);",
-              "    for(var si=0;si<names.length;si++){",
-              "      var sn=names[si], rs=sheets[sn];",
-              "      if(!Array.isArray(rs))continue;",
-              "      for(var ri=0;ri<rs.length;ri++){",
-              "        all.push({__source:(f.name||'ERP File')+' / '+sn,data:rs[ri]});",
-              "        pushed++;",
-              "        if(pushed%250===0)await delay();",
-              "      }",
-              "      await delay();",
-              "    }",
-              "  }",
-              "  try{",
-              "    if(window.EM&&Array.isArray(window.EM.data)){",
-              "      window.EM.data.forEach(function(r){all.push({__source:'Employee Master',data:r});});",
-              "    }",
-              "  }catch(_){ }",
-              "  rowsCache=all;searchIndex=null;return all;",
-              "}",
-              ""
-          ])
-          text, n = re.subn(r'async function loadRows\(force\)\{.*?\n\}\n(?=async function ensureIndex)', new_load, text, count=1, flags=re.S)
-          if n != 1:
-              raise SystemExit('loadRows marker not found exactly once')
-
-          text = text.replace('if(i&&i%1000===0)await delay();','if(i&&i%150===0)await delay();',1)
-          text = text.replace('if(i&&i%3000===0)await delay();','if(i&&i%500===0)await delay();',1)
-
-          helper = "\n".join([
-              "function contextualQuery(q){",
-              "  if(extractCode(q))return q;",
-              "  var now=queryTokens(q);",
-              "  if(now.length>4)return q;",
-              "  for(var i=chat.length-2;i>=0;i--){",
-              "    if(chat[i].role!=='user')continue;",
-              "    var prev=String(chat[i].text||''), c=extractCode(prev);",
-              "    if(c)return q+' '+c;",
-              "    var a=norm(prev).split(' ').filter(function(x){",
-              "      if(x.length<3)return false;",
-              "      if(/^(salary|selry|slry|pf|epf|esic|esi|working|days|day|payment|gross|net|amount|bank|account|ifsc|bonus|overtime|last|latest|month|employee|emp|code|kitna|kitni|bata|bhai|check|dekh)$/.test(x))return false;",
-              "      if(/^(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|october|oct|november|nov|december|dec)$/.test(x))return false;",
-              "      if(/^20\\d{2}$/.test(x))return false;",
-              "      return true;",
-              "    });",
-              "    if(a.length)return q+' '+a.slice(0,3).join(' ');",
-              "  }",
-              "  return q;",
-              "}",
-              ""
-          ])
-          marker = 'async function retrieve(q){\n'
-          if marker not in text:
-              raise SystemExit('retrieve marker missing')
-          text = text.replace(marker, helper + marker + '  q=contextualQuery(q);\n', 1)
-
-          old_month = "function monthMatchesQuestion(text,q){\n  var mt=monthTokens(q);if(!mt)return true;var n=norm(text);return mt.some(function(x){return x&&n.indexOf(norm(x))>=0;});\n}"
-          new_month = "function monthMatchesQuestion(text,q){\n  var mt=monthTokens(q),n=norm(text),ym=String(q||'').match(/\\b20\\d{2}\\b/);\n  if(ym&&n.indexOf(ym[0])<0)return false;\n  if(!mt)return true;return mt.some(function(x){return x&&n.indexOf(norm(x))>=0;});\n}"
-          if old_month not in text:
-              raise SystemExit('monthMatchesQuestion marker missing')
-          text = text.replace(old_month,new_month,1)
-
-          old_sync = "overlay.querySelector('#aiv6sync').onclick=async function(){rowsCache=null;searchIndex=null;this.disabled=true;this.textContent='Syncing…';await loadRows(true);this.disabled=false;this.textContent='↻ Sync Data';add('assistant','Data cache refresh ho gaya. Latest indexed ERP records next question me use honge.');};"
-          new_sync = "overlay.querySelector('#aiv6sync').onclick=function(){rowsCache=null;searchIndex=null;add('assistant','Data cache clear ho gaya. Agle question par '+((window.FILES&&window.FILES.length)||0)+' loaded ERP files fresh read honge.');};"
-          if old_sync not in text:
-              raise SystemExit('sync handler marker missing')
-          text = text.replace(old_sync,new_sync,1)
-
-          old_try = "  try{\n    var r=await retrieve(q), local=localAnswer(q,r);"
-          new_try = "  try{\n    if(/(?:kitni|kitne|how many|count).*files?|files?.*(?:uploaded|loaded|saved|count)/i.test(q)){var fc=(window.FILES&&window.FILES.length)||0;add('assistant','Main ERP me '+fc+' files currently loaded hain. Ye live FILES count hai; AI ab in sab files ki sheets search karega.','Live ERP file count');st.innerHTML='<b>'+fc+' ERP files available</b><br>No heavy preload used.';return;}\n    var r=await retrieve(q), local=localAnswer(q,r);"
-          if old_try not in text:
-              raise SystemExit('send try marker missing')
-          text = text.replace(old_try,new_try,1)
-
-          text = text.replace('<b>Startup safe mode ON</b><br>AI data tabhi read karega jab aap question poochoge. Login/reload par heavy scan nahi chalega.','<b>Responsive all-file mode ON</b><br>AI 30k-row preload nahi karta. Question par loaded ERP files chunk-by-chunk search hote hain.',1)
+          p=Path('index.html')
+          text=p.read_text(encoding='utf-8')
+          m=re.search(r'<script src="hr-workplace\.js[^"]*"></script>',text)
+          if not m:
+              raise SystemExit('hr-workplace loader missing; refusing to modify index')
+          anchor=m.group(0)
+          # Remove only AI startup loader tags. Keep every normal ERP module untouched.
+          patterns=[
+            r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-data-assistant-v3(?:-payload)?\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-llm-v4(?:-payload)?\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-unified-v6\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-pro-v7\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>',
+          ]
+          for pat in patterns:
+              text=re.sub(pat,'',text)
+          lazy='<script src="hr-ai-lazy-loader.js?v=20260912-7"></script>'
+          text=text.replace(anchor,anchor+'\n'+lazy,1)
           p.write_text(text,encoding='utf-8')
-
-          lp=Path('hr-ai-lazy-loader.js')
-          lazy=lp.read_text(encoding='utf-8').replace('hr-ai-unified-v6.js?v=20260912-1','hr-ai-unified-v6.js?v=20260912-2')
-          lp.write_text(lazy,encoding='utf-8')
-
-          ip=Path('index.html')
-          idx=ip.read_text(encoding='utf-8')
-          idx=re.sub(r'<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>','<script src="hr-ai-lazy-loader.js?v=20260912-2"></script>',idx)
-          ip.write_text(idx,encoding='utf-8')
           PY
-      - name: Verify hotfix syntax and startup isolation
+      - name: Verify V7 syntax and startup isolation
         shell: bash
         run: |
-          node --check hr-ai-unified-v6.js
           node --check hr-ai-lazy-loader.js
-          git diff --check
+          node --check hr-ai-pro-v7.js
           python - <<'PY'
           from pathlib import Path
-          import re
+          import re,base64,gzip
           t=Path('index.html').read_text(encoding='utf-8')
           ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
-          if ai != ['hr-ai-lazy-loader.js?v=20260912-2']:
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-7']:
               raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
-          v=Path('hr-ai-unified-v6.js').read_text(encoding='utf-8')
-          segment=v[v.find('async function loadRows'):v.find('async function ensureIndex')]
-          if "getStoreAll('ATPL_HR_AI_PRO','rows')" in segment:
-              raise SystemExit('Heavy AI-PRO getAll still present in loadRows')
-          if "typeof f.sheets==='object'" not in v:
-              raise SystemExit('Object-form ERP sheets support missing')
-          print('Responsive all-file hotfix verified')
+          if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
+              raise SystemExit('hr-workplace version changed unexpectedly')
+          js=Path('hr-ai-pro-v7.js').read_text(encoding='utf-8')
+          m=re.search(r"var b='([^']+)'",js)
+          if not m: raise SystemExit('V7 compressed payload missing')
+          inner=gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
+          Path('/tmp/hr-ai-v7-inner.js').write_text(inner,encoding='utf-8')
+          for required in ['ATPL_HR_AI_PRO','openCursor','Data Library','Arora ERP AI PRO V7','scanLive','scanLibrary','answerCompare']:
+              if required not in inner: raise SystemExit('V7 feature missing: '+required)
+          print('V7 inner payload extracted and required features found')
           PY
-      - name: Commit scoped AI hotfix
+          node --check /tmp/hr-ai-v7-inner.js
+          git diff --check
+          git diff -- index.html
+      - name: Commit loader-only index change if needed
         shell: bash
         run: |
-          if git diff --quiet -- hr-ai-unified-v6.js hr-ai-lazy-loader.js index.html; then exit 0; fi
+          if git diff --quiet -- index.html; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add hr-ai-unified-v6.js hr-ai-lazy-loader.js index.html
-          git commit -m 'Fix AI hang and search all loaded ERP files'
+          git add index.html
+          git commit -m 'Load Arora ERP AI PRO V7 lazily'
           git push
