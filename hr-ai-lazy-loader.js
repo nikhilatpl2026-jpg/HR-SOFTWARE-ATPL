@@ -9,12 +9,12 @@ function openAI(q){
   if(window.AroraAIV8&&typeof window.AroraAIV8.open==='function'){window.AroraAIV8.open();return;}
   if(loading)return;
   window.__ARORA_AI_V8_B64='';
-  loading=loadSrc('hr-ai-fast-v8-p1.js?v=20260912-8')
-    .then(function(){return loadSrc('hr-ai-fast-v8-p2.js?v=20260912-8');})
-    .then(function(){return loadSrc('hr-ai-fast-v8-p3.js?v=20260912-8');})
-    .then(function(){return loadSrc('hr-ai-fast-v8-p4a.js?v=20260912-8');})
-    .then(function(){return loadSrc('hr-ai-fast-v8-p4b.js?v=20260912-8');})
-    .then(function(){return loadSrc('hr-ai-fast-v8.js?v=20260912-8');})
+  loading=loadSrc('hr-ai-fast-v8-p1.js?v=20260912-9')
+    .then(function(){return loadSrc('hr-ai-fast-v8-p2.js?v=20260912-9');})
+    .then(function(){return loadSrc('hr-ai-fast-v8-p3.js?v=20260912-9');})
+    .then(function(){return loadSrc('hr-ai-fast-v8-p4a.js?v=20260912-9');})
+    .then(function(){return loadSrc('hr-ai-fast-v8-p4b.js?v=20260912-9');})
+    .then(function(){return loadSrc('hr-ai-fast-v8.js?v=20260912-9');})
     .then(function(){return new Promise(function(resolve,reject){var tries=0;(function waitReady(){if(window.AroraAIV8&&typeof window.AroraAIV8.open==='function'){resolve();window.AroraAIV8.open();return;}if(++tries>100){reject(new Error('AI V8 init timeout'));return;}setTimeout(waitReady,40);})();});})
     .catch(function(e){loading=null;console.error(e);alert('AI Assistant load nahi hua. Page refresh karke dobara try karo.');});
 }
