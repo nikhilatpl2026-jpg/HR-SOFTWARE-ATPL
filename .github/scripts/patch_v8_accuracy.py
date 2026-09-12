@@ -12,7 +12,7 @@ js=gzip.decompress(base64.b64decode(b)).decode()
 def subfn(name,nextname,new):
  global js
  pat=rf"function {name}\(.*?(?=\nfunction {nextname}\()"
- js2,n=re.subn(pat,new,js,count=1,flags=re.S)
+ js2,n=re.subn(pat,lambda _m:new,js,count=1,flags=re.S)
  if n!=1: raise SystemExit('replace failed '+name)
  js=js2
 
