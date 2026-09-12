@@ -1,17 +1,16 @@
-/* Tiny lazy loader for Arora ERP AI PRO V9. No ERP data work runs at startup. */
+/* Tiny lazy loader for Arora ERP AI PRO V9.1 Worker Mode. No ERP data work runs at startup. */
 (function(){
 'use strict';
-if(window.__ARORA_AI_LAZY_V9__)return;window.__ARORA_AI_LAZY_V9__=1;
+if(window.__ARORA_AI_LAZY_V91__)return;window.__ARORA_AI_LAZY_V91__=1;
 var loading=null;
 function loadSrc(src){return new Promise(function(resolve,reject){var s=document.createElement('script');s.src=src;s.async=false;s.onload=resolve;s.onerror=function(){reject(new Error('AI module load failed: '+src));};document.head.appendChild(s);});}
 function openAI(q){
   if(q)window.__ARORA_AI_PENDING=q;
-  if(window.AroraAIV9&&typeof window.AroraAIV9.open==='function'){window.AroraAIV9.open(q||'');return;}
+  if(window.AroraAIV91&&typeof window.AroraAIV91.open==='function'){window.AroraAIV91.open(q||'');return;}
   if(loading)return;
-  loading=loadSrc('hr-ai-v9-core.js?v=20260912-10')
-    .then(function(){return loadSrc('hr-ai-structured-v9.js?v=20260912-10');})
-    .then(function(){return new Promise(function(resolve,reject){var tries=0;(function waitReady(){if(window.AroraAIV9&&typeof window.AroraAIV9.open==='function'){resolve();window.AroraAIV9.open(q||'');return;}if(++tries>120){reject(new Error('AI V9 init timeout'));return;}setTimeout(waitReady,40);})();});})
-    .catch(function(e){loading=null;console.error(e);alert('AI Assistant V9 load nahi hua. Page refresh karke dobara try karo.');});
+  loading=loadSrc('hr-ai-v91-ui.js?v=20260912-11')
+    .then(function(){return new Promise(function(resolve,reject){var tries=0;(function waitReady(){if(window.AroraAIV91&&typeof window.AroraAIV91.open==='function'){resolve();window.AroraAIV91.open(q||'');return;}if(++tries>120){reject(new Error('AI V9.1 init timeout'));return;}setTimeout(waitReady,40);})();});})
+    .catch(function(e){loading=null;console.error(e);alert('AI Assistant V9.1 load nahi hua. Page refresh karke dobara try karo.');});
 }
 window.toggleAIChat=function(){openAI('');};
 window.sendAIMsg=function(){var i=document.getElementById('aiInput'),q=i&&i.value?i.value:'';if(i)i.value='';openAI(q);};
