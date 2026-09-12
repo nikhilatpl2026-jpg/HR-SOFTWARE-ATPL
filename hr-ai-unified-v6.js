@@ -77,12 +77,27 @@ function getStoreAll(dbName,store){
 }
 async function loadRows(force){
   if(rowsCache&&!force)return rowsCache;
-  var all=[];
-  try{var dbrows=await getStoreAll('ATPL_HR_AI_PRO','rows');if(dbrows.length)all=all.concat(dbrows);}catch(_){ }
-  try{if(window.EM&&Array.isArray(window.EM.data))window.EM.data.forEach(function(r){all.push({__source:'Employee Master',data:r});});}catch(_){ }
-  if(all.length<100){
-    try{if(Array.isArray(window.FILES))window.FILES.forEach(function(f){if(f&&Array.isArray(f.sheets))f.sheets.forEach(function(sh){var rs=sh.rows||sh.data||[];if(Array.isArray(rs))rs.slice(0,2500).forEach(function(r){all.push({__source:(f.name||'ERP File')+' / '+(sh.name||'Sheet'),data:r});});});});}catch(_){ }
+  var all=[], files=Array.isArray(window.FILES)?window.FILES:[], pushed=0;
+  // Use already-loaded ERP files directly. Never preload 30k+ AI rows with getAll().
+  for(var fi=0;fi<files.length;fi++){
+    var f=files[fi], sheets=f&&f.sheets&&typeof f.sheets==='object'?f.sheets:{};
+    var names=Object.keys(sheets);
+    for(var si=0;si<names.length;si++){
+      var sn=names[si], rs=sheets[sn];
+      if(!Array.isArray(rs))continue;
+      for(var ri=0;ri<rs.length;ri++){
+        all.push({__source:(f.name||'ERP File')+' / '+sn,data:rs[ri]});
+        pushed++;
+        if(pushed%250===0)await delay();
+      }
+      await delay();
+    }
   }
+  try{
+    if(window.EM&&Array.isArray(window.EM.data)){
+      window.EM.data.forEach(function(r){all.push({__source:'Employee Master',data:r});});
+    }
+  }catch(_){ }
   rowsCache=all;searchIndex=null;return all;
 }
 async function ensureIndex(){
@@ -91,7 +106,7 @@ async function ensureIndex(){
   for(var i=0;i<rows.length;i++){
     var text=rowText(rows[i]);
     idx.push({raw:rows[i],text:text,n:norm(text)});
-    if(i&&i%1000===0)await delay();
+    if(i&&i%150===0)await delay();
   }
   searchIndex=idx;return idx;
 }
@@ -106,11 +121,31 @@ function score(x,q,qt,als,code){
   if(/salary|pf|esic|esi|working|bank|ot|bonus/.test(n))s+=1;
   return s;
 }
+function contextualQuery(q){
+  if(extractCode(q))return q;
+  var now=queryTokens(q);
+  if(now.length>4)return q;
+  for(var i=chat.length-2;i>=0;i--){
+    if(chat[i].role!=='user')continue;
+    var prev=String(chat[i].text||''), c=extractCode(prev);
+    if(c)return q+' '+c;
+    var a=norm(prev).split(' ').filter(function(x){
+      if(x.length<3)return false;
+      if(/^(salary|selry|slry|pf|epf|esic|esi|working|days|day|payment|gross|net|amount|bank|account|ifsc|bonus|overtime|last|latest|month|employee|emp|code|kitna|kitni|bata|bhai|check|dekh)$/.test(x))return false;
+      if(/^(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|october|oct|november|nov|december|dec)$/.test(x))return false;
+      if(/^20\d{2}$/.test(x))return false;
+      return true;
+    });
+    if(a.length)return q+' '+a.slice(0,3).join(' ');
+  }
+  return q;
+}
 async function retrieve(q){
+  q=contextualQuery(q);
   var idx=await ensureIndex(),qt=queryTokens(q),als=aliasesFor(q),code=extractCode(q),sc=[];
   for(var i=0;i<idx.length;i++){
     var s=score(idx[i],q,qt,als,code);if(s>0)sc.push({s:s,x:idx[i]});
-    if(i&&i%3000===0)await delay();
+    if(i&&i%500===0)await delay();
   }
   sc.sort(function(a,b){return b.s-a.s;});
   var seen={},picked=[];
@@ -140,7 +175,9 @@ function extractMonth(text){
   return null;
 }
 function monthMatchesQuestion(text,q){
-  var mt=monthTokens(q);if(!mt)return true;var n=norm(text);return mt.some(function(x){return x&&n.indexOf(norm(x))>=0;});
+  var mt=monthTokens(q),n=norm(text),ym=String(q||'').match(/\b20\d{2}\b/);
+  if(ym&&n.indexOf(ym[0])<0)return false;
+  if(!mt)return true;return mt.some(function(x){return x&&n.indexOf(norm(x))>=0;});
 }
 function localAnswer(q,r){
   if(!r.picked.length)return '';
@@ -195,9 +232,9 @@ function render(){
 function css(){return '<style id="aiv6css">#aroraAIV6{position:fixed;inset:0;z-index:2147483000;background:#f5f7fb;display:flex;flex-direction:column;font-family:Inter,Arial,sans-serif;color:#0f172a}#aroraAIV6 .head{height:62px;background:#0f1b35;color:#fff;display:flex;align-items:center;padding:0 18px;gap:10px}#aroraAIV6 .title{font-weight:800;font-size:17px}#aroraAIV6 .sub{font-size:11px;color:#b6c2d8;margin-top:2px}#aroraAIV6 .sp{flex:1}#aroraAIV6 .pill{border:1px solid #ffffff33;background:#ffffff12;color:#fff;border-radius:18px;padding:7px 11px;cursor:pointer}#aroraAIV6 .body{display:flex;flex:1;min-height:0}#aroraAIV6 aside{width:245px;background:#fff;border-right:1px solid #e2e8f0;padding:14px;overflow:auto}#aroraAIV6 .label{font-size:10px;font-weight:800;color:#94a3b8;letter-spacing:1.2px;margin:7px 0}#aroraAIV6 .quick{display:block;width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:9px;padding:9px;margin:7px 0;cursor:pointer}#aroraAIV6 .status{margin-top:15px;padding:10px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0;font-size:11px;line-height:1.5;color:#047857}#aroraAIV6 main{flex:1;display:flex;flex-direction:column;min-width:0}#aiv6msgs{flex:1;overflow:auto;padding:24px 30px}#aroraAIV6 .aiv6msg{display:flex;flex-direction:column;margin:12px 0;max-width:76%}#aroraAIV6 .aiv6msg.u{margin-left:auto;align-items:flex-end}#aroraAIV6 .aiv6bubble{padding:12px 14px;border-radius:13px;background:#fff;border:1px solid #e2e8f0;box-shadow:0 2px 7px #0001;line-height:1.5;font-size:14px}#aroraAIV6 .u .aiv6bubble{background:#3930a3;color:#fff;border-color:#3930a3}#aroraAIV6 .aiv6meta{font-size:10px;color:#94a3b8;margin:4px 5px}#aroraAIV6 .aiv6meta button{border:0;background:none;color:#64748b;cursor:pointer;font-size:10px;padding:0 3px}#aroraAIV6 .composer{padding:12px 16px;background:#fff;border-top:1px solid #e2e8f0;display:flex;gap:9px}#aiv6input{flex:1;border:1px solid #cbd5e1;border-radius:11px;padding:12px 14px;font:inherit;outline:none}#aiv6send{border:0;border-radius:11px;background:#4f46e5;color:#fff;padding:0 20px;font-weight:700;cursor:pointer}#aiv6send:disabled{opacity:.55}@media(max-width:800px){#aroraAIV6 aside{display:none}#aiv6msgs{padding:16px 10px}#aroraAIV6 .aiv6msg{max-width:93%}}</style>';}
 function ensureUI(){
   if(overlay&&document.body.contains(overlay))return overlay;if(!document.getElementById('aiv6css'))document.head.insertAdjacentHTML('beforeend',css());
-  overlay=document.createElement('div');overlay.id='aroraAIV6';overlay.innerHTML='<div class="head"><div><div class="title">🧠 Arora ERP AI Assistant</div><div class="sub">Lazy-load · Local ERP answers + Groq LLM · Hindi / English / Hinglish</div></div><div class="sp"></div><button class="pill" id="aiv6sync">↻ Sync Data</button><button class="pill" id="aiv6clear">Clear Chat</button><button class="pill" id="aiv6close">✕ Close</button></div><div class="body"><aside><div class="label">QUICK TESTS</div><button class="quick">26286 ne last konse month me salary li?</button><button class="quick">Manisha Juneja ki July PF amount kitni hai?</button><button class="quick">00135 ki August working days kitni thi?</button><button class="quick">ESIC ke current general rules samjhao</button><div class="status" id="aiv6status"><b>Startup safe mode ON</b><br>AI data tabhi read karega jab aap question poochoge. Login/reload par heavy scan nahi chalega.</div></aside><main><div id="aiv6msgs"></div><div class="composer"><input id="aiv6input" placeholder="Kuch bhi poochho — spelling galat ho to bhi try karega"><button id="aiv6send">Send</button></div></main></div>';document.body.appendChild(overlay);
+  overlay=document.createElement('div');overlay.id='aroraAIV6';overlay.innerHTML='<div class="head"><div><div class="title">🧠 Arora ERP AI Assistant</div><div class="sub">Lazy-load · Local ERP answers + Groq LLM · Hindi / English / Hinglish</div></div><div class="sp"></div><button class="pill" id="aiv6sync">↻ Sync Data</button><button class="pill" id="aiv6clear">Clear Chat</button><button class="pill" id="aiv6close">✕ Close</button></div><div class="body"><aside><div class="label">QUICK TESTS</div><button class="quick">26286 ne last konse month me salary li?</button><button class="quick">Manisha Juneja ki July PF amount kitni hai?</button><button class="quick">00135 ki August working days kitni thi?</button><button class="quick">ESIC ke current general rules samjhao</button><div class="status" id="aiv6status"><b>Responsive all-file mode ON</b><br>AI 30k-row preload nahi karta. Question par loaded ERP files chunk-by-chunk search hote hain.</div></aside><main><div id="aiv6msgs"></div><div class="composer"><input id="aiv6input" placeholder="Kuch bhi poochho — spelling galat ho to bhi try karega"><button id="aiv6send">Send</button></div></main></div>';document.body.appendChild(overlay);
   overlay.querySelector('#aiv6close').onclick=function(){overlay.style.display='none';};
-  overlay.querySelector('#aiv6sync').onclick=async function(){rowsCache=null;searchIndex=null;this.disabled=true;this.textContent='Syncing…';await loadRows(true);this.disabled=false;this.textContent='↻ Sync Data';add('assistant','Data cache refresh ho gaya. Latest indexed ERP records next question me use honge.');};
+  overlay.querySelector('#aiv6sync').onclick=function(){rowsCache=null;searchIndex=null;add('assistant','Data cache clear ho gaya. Agle question par '+((window.FILES&&window.FILES.length)||0)+' loaded ERP files fresh read honge.');};
   overlay.querySelector('#aiv6clear').onclick=function(){if(confirm('AI chat history clear karni hai?')){chat=[];saveChat();render();}};
   overlay.querySelector('#aiv6send').onclick=send;overlay.querySelector('#aiv6input').onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}};
   overlay.querySelectorAll('.quick').forEach(function(b){b.onclick=function(){overlay.querySelector('#aiv6input').value=b.textContent;send();};});
@@ -207,6 +244,7 @@ function ensureUI(){
 async function send(){
   var ui=ensureUI(),inp=ui.querySelector('#aiv6input'),btn=ui.querySelector('#aiv6send'),st=ui.querySelector('#aiv6status'),q=inp.value.trim();if(!q||busy)return;inp.value='';add('user',q);busy=true;btn.disabled=true;btn.textContent='Searching…';st.innerHTML='<b>Searching local ERP…</b><br>Only relevant records will be sent to LLM.';
   try{
+    if(/(?:kitni|kitne|how many|count).*files?|files?.*(?:uploaded|loaded|saved|count)/i.test(q)){var fc=(window.FILES&&window.FILES.length)||0;add('assistant','Main ERP me '+fc+' files currently loaded hain. Ye live FILES count hai; AI ab in sab files ki sheets search karega.','Live ERP file count');st.innerHTML='<b>'+fc+' ERP files available</b><br>No heavy preload used.';return;}
     var r=await retrieve(q), local=localAnswer(q,r);
     if(local){add('assistant',local,'Local ERP · '+r.count+' matches');st.innerHTML='<b>Answered locally</b><br>No LLM tokens used for this exact payroll lookup.';return;}
     btn.textContent='Thinking…';var ctx=buildContext(q,r),ans=await callLLM(q,ctx);add('assistant',ans,(r.count?'ERP evidence: '+r.count+' records':'General LLM answer'));st.innerHTML='<b>LLM answer ready</b><br>Compact context used to protect free Groq limit.';

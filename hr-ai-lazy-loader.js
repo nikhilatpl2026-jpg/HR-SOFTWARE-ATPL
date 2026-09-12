@@ -8,7 +8,7 @@ function openAI(q){
   if(window.AroraAIV6&&typeof window.AroraAIV6.open==='function'){window.AroraAIV6.open();return;}
   if(loading)return;
   loading=new Promise(function(resolve,reject){
-    var s=document.createElement('script');s.src='hr-ai-unified-v6.js?v=20260912-1';s.async=true;
+    var s=document.createElement('script');s.src='hr-ai-unified-v6.js?v=20260912-2';s.async=true;
     s.onload=function(){resolve();if(window.AroraAIV6)window.AroraAIV6.open();};
     s.onerror=function(){loading=null;reject(new Error('AI module load failed'));alert('AI Assistant load nahi hua. Page refresh karke dobara try karo.');};
     document.head.appendChild(s);
