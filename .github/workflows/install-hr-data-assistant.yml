@@ -31,7 +31,7 @@ jobs:
             r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-unified-v6\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-pro-v7\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-fast-v8\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-fast-v8(?:-p[1-4])?\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>',
           ]
           for pat in patterns:
@@ -40,11 +40,15 @@ jobs:
           text=text.replace(anchor,anchor+'\n'+lazy,1)
           p.write_text(text,encoding='utf-8')
           PY
-      - name: Verify V8 syntax and startup isolation
+      - name: Verify V8 syntax payload and startup isolation
         shell: bash
         run: |
           node --check hr-ai-lazy-loader.js
           node --check hr-ai-fast-v8.js
+          node --check hr-ai-fast-v8-p1.js
+          node --check hr-ai-fast-v8-p2.js
+          node --check hr-ai-fast-v8-p3.js
+          node --check hr-ai-fast-v8-p4.js
           python - <<'PY'
           from pathlib import Path
           import re,base64,gzip
@@ -54,14 +58,25 @@ jobs:
               raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
           if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
               raise SystemExit('hr-workplace version changed unexpectedly')
-          js=Path('hr-ai-fast-v8.js').read_text(encoding='utf-8')
-          m=re.search(r"var b='([^']+)'",js)
-          if not m: raise SystemExit('V8 compressed payload missing')
-          inner=gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
+          chunks=[]
+          for i in range(1,5):
+              s=Path(f'hr-ai-fast-v8-p{i}.js').read_text(encoding='utf-8')
+              m=re.search(r"\+'([^']+)'",s)
+              if not m: raise SystemExit(f'V8 payload chunk {i} missing')
+              chunks.append(m.group(1))
+          b=''.join(chunks)
+          if len(b) < 12000 or len(b)%4:
+              raise SystemExit('V8 payload length invalid: '+str(len(b)))
+          inner=gzip.decompress(base64.b64decode(b)).decode('utf-8')
           Path('/tmp/hr-ai-v8-inner.js').write_text(inner,encoding='utf-8')
           for required in ['ATPL_HR_AI_PRO','openCursor','Arora ERP AI PRO V8','buildIndex','Fast local engine','Last 3 months']:
               if required not in inner: raise SystemExit('V8 feature missing: '+required)
-          print('V8 inner payload extracted and required speed features found')
+          runtime=Path('hr-ai-fast-v8.js').read_text(encoding='utf-8')
+          if '__ARORA_AI_V8_B64' not in runtime: raise SystemExit('V8 split runtime missing global payload reader')
+          loader=Path('hr-ai-lazy-loader.js').read_text(encoding='utf-8')
+          for i in range(1,5):
+              if f'hr-ai-fast-v8-p{i}.js?v=20260912-8' not in loader: raise SystemExit(f'V8 loader missing part {i}')
+          print('V8 split payload joined, decompressed and verified')
           PY
           node --check /tmp/hr-ai-v8-inner.js
           git diff --check
