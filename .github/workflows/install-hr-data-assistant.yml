@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode and inspect V8 answer logic
+      - name: Decode and inspect V8 parsing logic
         shell: bash
         run: |
           python - <<'PY'
@@ -25,17 +25,10 @@ jobs:
               if not m: raise SystemExit(f'chunk missing {part}')
               chunks.append(m.group(1))
           inner=gzip.decompress(base64.b64decode(''.join(chunks))).decode('utf-8')
-          Path('/tmp/v8.js').write_text(inner,encoding='utf-8')
-          print('--- FUNCTION NAMES ---')
-          for m in re.finditer(r'function\s+([A-Za-z0-9_$]+)\s*\(',inner):
-              print(m.group(1))
-          print('--- PF / EMPLOYEE / ANSWER SNIPPETS ---')
           lines=inner.splitlines()
-          for i,line in enumerate(lines):
-              low=line.lower()
-              if any(k in low for k in ['pf','employee','answerone','answerfield','fieldvalue','extractfield','strict','entity']):
-                  a=max(0,i-2); b=min(len(lines),i+3)
-                  print(f'### lines {a+1}-{b}')
-                  for j in range(a,b): print(lines[j])
+          for a,b in [(8,38),(48,60),(76,83)]:
+              print(f'--- LINES {a}-{b} ---')
+              for i in range(a-1,min(b,len(lines))): print(f'{i+1}: {lines[i]}')
+          Path('/tmp/v8.js').write_text(inner,encoding='utf-8')
           PY
           node --check /tmp/v8.js
