@@ -1,4 +1,4 @@
-name: Fix HR ERP AI V8 Accuracy Final
+name: Install HR ERP AI V9 Structured Engine
 on:
   push:
     branches: [main]
@@ -7,48 +7,76 @@ on:
 permissions:
   contents: write
 jobs:
-  fix:
+  install:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply V8 accuracy patch
-        run: python .github/scripts/patch_v8_accuracy.py
-      - name: Verify V8 runtime
+      - name: Verify V9 syntax and 110-case accuracy suite
         shell: bash
         run: |
+          node --check hr-ai-v9-core.js
+          node --check hr-ai-structured-v9.js
           node --check hr-ai-lazy-loader.js
-          node --check hr-ai-fast-v8.js
-          node --check hr-ai-fast-v8-p1.js
-          node --check hr-ai-fast-v8-p2.js
-          node --check hr-ai-fast-v8-p3.js
-          node --check hr-ai-fast-v8-p4a.js
-          node --check hr-ai-fast-v8-p4b.js
+          node --check tests/hr-ai-v9.test.js
+          node tests/hr-ai-v9.test.js | tee /tmp/v9-test.log
+          grep -q 'V9 ACCURACY TEST: 110/110 = 100.0%' /tmp/v9-test.log
+      - name: Install only V9 lazy loader in ERP startup
+        shell: bash
+        run: |
           python - <<'PY'
           from pathlib import Path
-          import re,base64,gzip
-          b=''
-          for p in ['p1','p2','p3','p4a','p4b']:
-              s=Path(f'hr-ai-fast-v8-{p}.js').read_text()
-              m=re.search(r"\+'([^']*)'",s)
-              if not m: raise SystemExit('missing '+p)
-              b+=m.group(1)
-          js=gzip.decompress(base64.b64decode(b)).decode()
-          Path('/tmp/v8-fixed.js').write_text(js)
-          for x in ['resolveEntity','strictRows','PF deduction','n>100000','Never answer using data from a different employee']:
-              if x not in js: raise SystemExit('guard missing '+x)
-          idx=Path('index.html').read_text()
-          if 'hr-ai-lazy-loader.js?v=20260912-9' not in idx: raise SystemExit('new lazy loader not installed')
-          if 'hr-workplace.js?v=20260911-loader-fix1' not in idx: raise SystemExit('core loader changed')
-          print('V8 accuracy guards verified')
+          import re
+          p=Path('index.html')
+          text=p.read_text(encoding='utf-8')
+          m=re.search(r'<script src="hr-workplace\.js[^"]*"></script>',text)
+          if not m:
+              raise SystemExit('hr-workplace loader missing; refusing to modify index')
+          anchor=m.group(0)
+          # Remove AI-only startup tags from prior versions; no non-AI script is touched.
+          patterns=[
+            r'\n<script src="hr-data-assistant[^\"]*\.js\?v=[^\"]+"></script>',
+            r'\n<script src="hr-ai-[^\"]*\.js\?v=[^\"]+"></script>',
+          ]
+          for pat in patterns:
+              text=re.sub(pat,'',text)
+          lazy='<script src="hr-ai-lazy-loader.js?v=20260912-10"></script>'
+          text=text.replace(anchor,anchor+'\n'+lazy,1)
+          p.write_text(text,encoding='utf-8')
           PY
-          node --check /tmp/v8-fixed.js
-          git diff --check
-      - name: Commit scoped fix
+      - name: Verify startup isolation and core ERP preservation
         shell: bash
         run: |
-          if git diff --quiet -- hr-ai-fast-v8-p1.js hr-ai-fast-v8-p2.js hr-ai-fast-v8-p3.js hr-ai-fast-v8-p4a.js hr-ai-fast-v8-p4b.js hr-ai-lazy-loader.js index.html; then exit 0; fi
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          t=Path('index.html').read_text(encoding='utf-8')
+          ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-10']:
+              raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
+          if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
+              raise SystemExit('Core ERP loader changed unexpectedly')
+          loader=Path('hr-ai-lazy-loader.js').read_text(encoding='utf-8')
+          for required in ['hr-ai-v9-core.js?v=20260912-10','hr-ai-structured-v9.js?v=20260912-10','AroraAIV9']:
+              if required not in loader:
+                  raise SystemExit('V9 loader missing: '+required)
+          core=Path('hr-ai-v9-core.js').read_text(encoding='utf-8')
+          for required in ['normalizeSheet','resolveEntity','pfEmployee','pfNumber','exactLookup','conflictText','lastNCompare']:
+              if required not in core:
+                  raise SystemExit('V9 core feature missing: '+required)
+          ui=Path('hr-ai-structured-v9.js').read_text(encoding='utf-8')
+          for required in ['ATPL_HR_AI_V9','ATPL_HR_AI_PRO','salaryFiles','Structured Payroll Database','rebuild']:
+              if required not in ui:
+                  raise SystemExit('V9 structured layer missing: '+required)
+          print('V9 startup isolation and core ERP preservation verified')
+          PY
+          git diff --check
+          git diff -- index.html
+      - name: Commit loader-only index change if needed
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add hr-ai-fast-v8-p1.js hr-ai-fast-v8-p2.js hr-ai-fast-v8-p3.js hr-ai-fast-v8-p4a.js hr-ai-fast-v8-p4b.js hr-ai-lazy-loader.js index.html
-          git commit -m 'Fix V8 exact employee month and PF deduction accuracy'
+          git add index.html
+          git commit -m 'Load Arora ERP AI PRO V9 structured engine lazily'
           git push
