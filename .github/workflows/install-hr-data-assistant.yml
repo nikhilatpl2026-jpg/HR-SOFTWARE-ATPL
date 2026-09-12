@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install only V7 lazy loader
+      - name: Install only V8 lazy loader
         shell: bash
         run: |
           python - <<'PY'
@@ -23,7 +23,6 @@ jobs:
           if not m:
               raise SystemExit('hr-workplace loader missing; refusing to modify index')
           anchor=m.group(0)
-          # Remove only AI startup loader tags. Keep every normal ERP module untouched.
           patterns=[
             r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>',
@@ -32,38 +31,39 @@ jobs:
             r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-unified-v6\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-pro-v7\.js\?v=[^"]+"></script>',
+            r'\n<script src="hr-ai-fast-v8\.js\?v=[^"]+"></script>',
             r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>',
           ]
           for pat in patterns:
               text=re.sub(pat,'',text)
-          lazy='<script src="hr-ai-lazy-loader.js?v=20260912-7"></script>'
+          lazy='<script src="hr-ai-lazy-loader.js?v=20260912-8"></script>'
           text=text.replace(anchor,anchor+'\n'+lazy,1)
           p.write_text(text,encoding='utf-8')
           PY
-      - name: Verify V7 syntax and startup isolation
+      - name: Verify V8 syntax and startup isolation
         shell: bash
         run: |
           node --check hr-ai-lazy-loader.js
-          node --check hr-ai-pro-v7.js
+          node --check hr-ai-fast-v8.js
           python - <<'PY'
           from pathlib import Path
           import re,base64,gzip
           t=Path('index.html').read_text(encoding='utf-8')
           ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
-          if ai != ['hr-ai-lazy-loader.js?v=20260912-7']:
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-8']:
               raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
           if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
               raise SystemExit('hr-workplace version changed unexpectedly')
-          js=Path('hr-ai-pro-v7.js').read_text(encoding='utf-8')
+          js=Path('hr-ai-fast-v8.js').read_text(encoding='utf-8')
           m=re.search(r"var b='([^']+)'",js)
-          if not m: raise SystemExit('V7 compressed payload missing')
+          if not m: raise SystemExit('V8 compressed payload missing')
           inner=gzip.decompress(base64.b64decode(m.group(1))).decode('utf-8')
-          Path('/tmp/hr-ai-v7-inner.js').write_text(inner,encoding='utf-8')
-          for required in ['ATPL_HR_AI_PRO','openCursor','Data Library','Arora ERP AI PRO V7','scanLive','scanLibrary','answerCompare']:
-              if required not in inner: raise SystemExit('V7 feature missing: '+required)
-          print('V7 inner payload extracted and required features found')
+          Path('/tmp/hr-ai-v8-inner.js').write_text(inner,encoding='utf-8')
+          for required in ['ATPL_HR_AI_PRO','openCursor','Arora ERP AI PRO V8','buildIndex','Fast local engine','Last 3 months']:
+              if required not in inner: raise SystemExit('V8 feature missing: '+required)
+          print('V8 inner payload extracted and required speed features found')
           PY
-          node --check /tmp/hr-ai-v7-inner.js
+          node --check /tmp/hr-ai-v8-inner.js
           git diff --check
           git diff -- index.html
       - name: Commit loader-only index change if needed
@@ -73,5 +73,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          git commit -m 'Load Arora ERP AI PRO V7 lazily'
+          git commit -m 'Load Arora ERP AI PRO V8 fast cache lazily'
           git push
