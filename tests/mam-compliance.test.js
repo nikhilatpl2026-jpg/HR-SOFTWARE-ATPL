@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const {parseMam,parsePayroll,reconcile,monthOf}=require('../mam-salary-v2-legacy.js');
+const m=parseMam([['S.NO','Code','Card 1','Total'],[1,'00123','Employee A',100],[2,'','No Code',200],[3,'00123','Employee B',300]],'Card','test');
+assert.equal(m.length,3);assert.equal(m[0].code,'00123');assert.equal(m[1].code,'');
+const r=reconcile(m,[]);assert(r[0].issues.includes('Duplicate Mam code'));assert(r[1].issues.includes('Missing employee code'));assert.equal(r[0].a[20],null);assert.equal(r[0].a[21],null);
+assert.equal(monthOf('Salary Sheet Month of June-26'),'2026-06');
+const p=parsePayroll([['June-2026'],['Employee ID','Name of employee','Basic','HRA','Gross Total Salary','Paid Days','Basic','HRA','Total Gross salary'],['00123','Employee A',70,30,100,30,70,30,100]],'Main Sheet','test');
+assert.equal(p.rows[0].a[12],70);assert.equal(p.rows[0].a[22],70);assert.equal(p.rows[0].a[30],null);
+const conflict=reconcile([m[0]],[p.rows[0],p.rows[0]]);assert(conflict[0].issues.includes('Duplicate payroll code'));assert.equal(conflict[0].p,null);
+assert.equal(parseMam([['Code','Name','Amount'],['1','A','#N/A']],'Main','test')[0].amount,null);
+console.log('Mam Compliance: parsing, identity, duplicate and missing-data checks passed');
