@@ -12,6 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply pre-test V9.3 static-ID authority fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('hr-ai-v93-query-patch.js')
+          t=p.read_text(encoding='utf-8')
+          old="if(r.sourceType==='master')s+=STATIC[field]?120:0;"
+          new="if(r.sourceType==='master')s+=STATIC[field]?300:0;"
+          if old in t: t=t.replace(old,new,1)
+          elif new not in t: raise SystemExit('static source-priority anchor missing')
+          p.write_text(t,encoding='utf-8')
+          PY
       - name: Verify V9.3 syntax, 110-case suite and screenshot regressions
         shell: bash
         run: |
@@ -32,16 +45,12 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-
-          # Worker: load query patch after deterministic core. DB name/signature stays unchanged,
-          # so the already-built 60k+ record browser cache can be reused.
           p=Path('hr-ai-v91-worker.js')
           t=p.read_text(encoding='utf-8')
           t=re.sub(r"importScripts\('hr-ai-v9-core\.js\?v=[^']+'\);(?:\nimportScripts\('hr-ai-v93-query-patch\.js\?v=[^']+'\);)?",
                    "importScripts('hr-ai-v9-core.js?v=20260912-13');\nimportScripts('hr-ai-v93-query-patch.js?v=20260912-13');",t,1)
           p.write_text(t,encoding='utf-8')
 
-          # UI: cache-bust worker, show V9.3, and never expose raw TypeError to user.
           p=Path('hr-ai-v92-ui.js')
           t=p.read_text(encoding='utf-8')
           t=re.sub(r"hr-ai-v91-worker\.js\?v=\d+",'hr-ai-v91-worker.js?v=20260912-13',t)
@@ -50,14 +59,12 @@ jobs:
           t=t.replace("/abort/i.test(String(e))?'AI backend timeout hua. Exact payroll queries structured database se phir bhi chalengi.':String(e)","/abort/i.test(String(e))?'AI backend timeout hua. Exact payroll queries structured database se phir bhi chalengi.':'AI language backend connect nahi hua. Exact payroll/database questions Structured DB se chalenge.'")
           p.write_text(t,encoding='utf-8')
 
-          # Lazy loader: force fresh V9.3 UI, keep same public integration hooks.
           p=Path('hr-ai-lazy-loader.js')
           t=p.read_text(encoding='utf-8')
           t=re.sub(r"hr-ai-v92-ui\.js\?v=\d+",'hr-ai-v92-ui.js?v=20260912-13',t)
           t=t.replace('V9.2 Chunked Worker','V9.3 Query Accuracy').replace('AI Assistant V9.2 load nahi hua','AI Assistant V9.3 load nahi hua')
           p.write_text(t,encoding='utf-8')
 
-          # Index: AI-only cache bust. Core ERP loader must remain unchanged.
           p=Path('index.html')
           t=p.read_text(encoding='utf-8')
           m=re.search(r'<script src="hr-workplace\.js[^"]*"></script>',t)
@@ -72,7 +79,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
           idx=Path('index.html').read_text(encoding='utf-8')
           if 'hr-workplace.js?v=20260911-loader-fix1' not in idx: raise SystemExit('Core ERP loader changed')
           if 'hr-ai-lazy-loader.js?v=20260912-13' not in idx: raise SystemExit('V9.3 lazy loader not installed')
@@ -83,7 +89,7 @@ jobs:
           for x in ['Arora ERP AI PRO V9.3',"new Worker('hr-ai-v91-worker.js?v=20260912-13')",'CHUNK=80','AI language backend connect nahi hua']:
               if x not in ui: raise SystemExit('V9.3 UI invariant missing: '+x)
           patch=Path('hr-ai-v93-query-patch.js').read_text(encoding='utf-8')
-          for x in ['manualAmount','monthOnlyFollowup','globalChanges','pfPercentChanges','C.answer=function']:
+          for x in ['manualAmount','monthOnlyFollowup','globalChanges','pfPercentChanges','C.answer=function',"STATIC[field]?300:0"]:
               if x not in patch: raise SystemExit('V9.3 query fix missing: '+x)
           print('V9.3 hotfix verified; cached DB signature preserved')
           PY
@@ -91,9 +97,9 @@ jobs:
       - name: Commit AI-only hotfix
         shell: bash
         run: |
-          if git diff --quiet -- index.html hr-ai-v91-worker.js hr-ai-v92-ui.js hr-ai-lazy-loader.js; then exit 0; fi
+          if git diff --quiet -- index.html hr-ai-v91-worker.js hr-ai-v92-ui.js hr-ai-lazy-loader.js hr-ai-v93-query-patch.js; then exit 0; fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html hr-ai-v91-worker.js hr-ai-v92-ui.js hr-ai-lazy-loader.js
+          git add index.html hr-ai-v91-worker.js hr-ai-v92-ui.js hr-ai-lazy-loader.js hr-ai-v93-query-patch.js
           git commit -m 'Load Arora ERP AI PRO V9.3 query accuracy hotfix'
           git push
