@@ -1,4 +1,4 @@
-/* Tiny lazy loader for Arora ERP AI PRO V9.4.2. No ERP data work runs at startup. */
+/* Tiny lazy loader for Arora ERP AI PRO V9.4.2 Stable. No ERP data work runs at startup. */
 (function(){
 'use strict';
 if(window.__ARORA_AI_LAZY_V942__)return;window.__ARORA_AI_LAZY_V942__=1;
@@ -8,7 +8,7 @@ function openAI(q){
   if(q)window.__ARORA_AI_PENDING=q;
   if(window.AroraAIV92&&typeof window.AroraAIV92.open==='function'){window.AroraAIV92.open(q||'');return;}
   if(loading)return;
-  loading=loadSrc('hr-ai-v942-shim.js?v=20260912-16')
+  loading=loadSrc('hr-ai-v942-shim.js?v=20260912-17')
     .then(function(){return loadSrc('hr-ai-v92-ui.js?v=20260912-15');})
     .then(function(){return new Promise(function(resolve,reject){var tries=0;(function waitReady(){if(window.AroraAIV92&&typeof window.AroraAIV92.open==='function'){resolve();window.AroraAIV92.open(q||'');return;}if(++tries>120){reject(new Error('AI V9.4.2 init timeout'));return;}setTimeout(waitReady,40);})();});})
     .catch(function(e){loading=null;console.error(e);alert('AI Assistant V9.4.2 load nahi hua. Page refresh karke dobara try karo.');});
