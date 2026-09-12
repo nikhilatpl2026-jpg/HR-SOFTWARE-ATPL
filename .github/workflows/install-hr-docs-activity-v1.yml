@@ -1,0 +1,56 @@
+name: Install HR Documents Stability and Activity V1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/install-hr-docs-activity-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify isolated HR module syntax
+        run: |
+          node --check hr-docs-activity-v1.js
+      - name: Install one loader only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          core='<script src="hr-workplace.js?v=20260911-loader-fix1"></script>'
+          ai='<script src="hr-ai-lazy-loader.js?v=20260912-13"></script>'
+          mod='<script src="hr-docs-activity-v1.js?v=20260912-1"></script>'
+          if core not in s:
+              raise SystemExit('Core ERP loader not found; refusing broad edit')
+          if ai not in s:
+              raise SystemExit('AI loader not found; refusing broad edit')
+          if mod not in s:
+              target=core+'\n'+ai
+              if target not in s:
+                  raise SystemExit('Expected loader adjacency not found; refusing broad edit')
+              s=s.replace(target, core+'\n'+mod+'\n'+ai, 1)
+              p.write_text(s,encoding='utf-8')
+          assert s.count(mod)==1
+          assert s.count(core)==1
+          assert s.count(ai)==1
+          print('HR Documents module loader verified; existing core and AI loader preserved.')
+          PY
+      - name: Commit loader change
+        run: |
+          if git diff --quiet -- index.html; then
+            echo 'No loader change needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Load isolated HR Documents stability and activity module'
+          git push
