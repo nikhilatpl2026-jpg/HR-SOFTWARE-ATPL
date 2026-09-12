@@ -1,0 +1,55 @@
+name: Install HR Documents Open Fix V2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/install-hr-docs-open-fix-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify Open fix syntax
+        run: node --check hr-docs-open-fix-v2.js
+      - name: Install isolated Open fix loader
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='<script src="hr-docs-activity-v1.js?v=20260912-1"></script>'
+          fix='<script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>'
+          ai='<script src="hr-ai-lazy-loader.js?v=20260912-13"></script>'
+          if old not in s:
+              raise SystemExit('HR Documents V1 loader missing; refusing broad edit')
+          if ai not in s:
+              raise SystemExit('AI loader missing; refusing broad edit')
+          if fix not in s:
+              target=old+'\n'+ai
+              if target not in s:
+                  raise SystemExit('Expected loader adjacency missing; refusing broad edit')
+              s=s.replace(target,old+'\n'+fix+'\n'+ai,1)
+              p.write_text(s,encoding='utf-8')
+          assert s.count(old)==1
+          assert s.count(fix)==1
+          assert s.count(ai)==1
+          print('Open fix loader installed; existing HR and AI loaders preserved.')
+          PY
+      - name: Commit loader change
+        run: |
+          if git diff --quiet -- index.html; then
+            echo 'No loader change needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m 'Load isolated HR Documents Open fix V2'
+          git push
