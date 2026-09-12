@@ -1,4 +1,4 @@
-name: Fix HR ERP AI V8 Accuracy
+name: Fix HR ERP AI V8 Accuracy Retry
 on:
   push:
     branches: [main]
