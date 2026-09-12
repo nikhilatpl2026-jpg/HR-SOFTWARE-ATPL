@@ -1,22 +1,23 @@
-name: Inspect HR ERP AI V8 Logic
+name: Fix HR ERP AI V8 Accuracy
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/install-hr-data-assistant.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
-  inspect:
+  fix:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode and inspect V8 parsing logic
+      - name: Patch strict employee month and PF deduction lookup
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re,base64,gzip
+          import re,base64,gzip,math
+
           parts=['p1','p2','p3','p4a','p4b']
           chunks=[]
           for part in parts:
@@ -25,10 +26,102 @@ jobs:
               if not m: raise SystemExit(f'chunk missing {part}')
               chunks.append(m.group(1))
           inner=gzip.decompress(base64.b64decode(''.join(chunks))).decode('utf-8')
-          lines=inner.splitlines()
-          for a,b in [(8,38),(48,60),(76,83)]:
-              print(f'--- LINES {a}-{b} ---')
-              for i in range(a-1,min(b,len(lines))): print(f'{i+1}: {lines[i]}')
-          Path('/tmp/v8.js').write_text(inner,encoding='utf-8')
+
+          old_field="function fieldVal(d,field){var aliases=SYN[field]||[field],keys=Object.keys(d.kv||{}),best='';for(var a=0;a<aliases.length;a++){var na=nkey(aliases[a]);for(var i=0;i<keys.length;i++){var nk=nkey(keys[i]);if(nk===na||nk.endsWith(na)||nk.indexOf(na)>=0){var v=d.kv[keys[i]];if(String(v).trim()!=='')return v;}}}return best;}"
+          new_field="function fieldVal(d,field){var aliases=SYN[field]||[field],keys=Object.keys(d.kv||{}),cand=[];for(var i=0;i<keys.length;i++){var raw=norm(keys[i]),nk=nkey(raw),v=d.kv[keys[i]];if(String(v==null?'':v).trim()==='')continue;if(field==='pf'&&/(?:pf|epf)/.test(raw)&&/(?:no|number|account|uan|member|establishment|wage|rate|percent|employer)/.test(raw))continue;if(field==='esic'&&/(?:esi|esic)/.test(raw)&&/(?:no|number|account|employer|wage|rate|percent)/.test(raw))continue;var score=0;for(var a=0;a<aliases.length;a++){var na=nkey(aliases[a]);if(nk===na)score=Math.max(score,120-a);else if(nk.endsWith(na))score=Math.max(score,90-a);else if(nk.indexOf(na)>=0)score=Math.max(score,55-a);}if(!score)continue;if(field==='pf'){if(/pf.*deduction|deduction.*pf|employee.*pf|pf.*employee|pf.*amount|amount.*pf|epf.*employee/.test(raw))score+=45;if(raw==='pf'||raw==='epf')score+=30;}if(field==='esic'){if(/esi.*deduction|esic.*deduction|employee.*esi|employee.*esic|esi.*amount|esic.*amount/.test(raw))score+=35;}cand.push({s:score,v:v});}cand.sort(function(a,b){return b.s-a.s;});return cand.length?cand[0].v:'';}"
+          if old_field not in inner: raise SystemExit('fieldVal marker missing')
+          inner=inner.replace(old_field,new_field,1)
+
+          old_num="function numericField(d,f){var v=fieldVal(d,f),n=num(v);return isNaN(n)?null:n;}"
+          new_num="function numericField(d,f){var v=fieldVal(d,f),n=num(v);if(isNaN(n))return null;if(f==='pf'&&(n<0||n>100000))return null;if(f==='esic'&&(n<0||n>50000))return null;if(f==='wd'&&(n<0||n>31))return null;if((f==='salary'||f==='gross')&&(n<0||n>10000000))return null;if((f==='ot'||f==='bonus')&&(n<0||n>1000000))return null;return n;}"
+          if old_num not in inner: raise SystemExit('numericField marker missing')
+          inner=inner.replace(old_num,new_num,1)
+
+          emp_line="function employeeLabel(d){return (d.name||'Employee')+(d.code?' ('+d.code+')':'');}"
+          helpers="""function employeeLabel(d){return (d.name||'Employee')+(d.code?' ('+d.code+')':'');}
+function resolveEntity(q){var c=extractCode(q);if(c)return {code:c,name:''};var nq=' '+norm(q)+' ',best=null;for(var i=0;i<docs.length;i++){var d=docs[i];if(!d.nn||d.nn.length<3)continue;if(nq.indexOf(' '+d.nn+' ')>=0&&(!best||d.nn.length>best.name.length))best={code:d.code||'',name:d.nn,label:d.name||''};}return best;}
+function strictRows(q,rs){var e=resolveEntity(q);if(!e)return rs;var out=[];for(var i=0;i<docs.length;i++){var d=docs[i];if((e.code&&d.code===e.code)||(e.name&&d.nn===e.name))out.push(d);}return out.length?out:rs;}"""
+          if emp_line not in inner: raise SystemExit('employeeLabel marker missing')
+          inner=inner.replace(emp_line,helpers,1)
+
+          old_exact="""function exactLookup(q,rs){var f=fieldIntent(q),qm=queryMonth(q);if(!f||!rs.length||/highest|lowest|sabse|total|average|avg|compare|change|increase|decrease|department|last\\s+\\d+/.test(norm(q)))return '';
+ var vals=[];for(var i=0;i<rs.length;i++){var d=rs[i];if(qm&&d.month&&(d.month.m!==qm.m||(qm.y&&d.month.y&&d.month.y!==qm.y)))continue;var v=(f==='bank'||f==='uan'||f==='doj'||f==='dol')?fieldVal(d,f):numericField(d,f);if(v!==null&&v!==''&&!vals.some(function(x){return String(x.v)===String(v);}))vals.push({v:v,d:d});}
+ if(vals.length===1){var x=vals[0],u={pf:' PF',esic:' ESIC',wd:' working days',ot:' OT',bonus:' bonus',salary:' salary',gross:' gross'}[f]||'';return employeeLabel(x.d)+(x.d.month?' — '+x.d.month.label:'')+': '+(typeof x.v==='number'?fmtN(x.v):x.v)+u+'.\\nSource: '+x.d.source;}
+ return '';}"""
+          new_exact="""function exactLookup(q,rs){var f=fieldIntent(q),qm=queryMonth(q);rs=strictRows(q,rs);if(!f||!rs.length||/highest|lowest|sabse|total|average|avg|compare|change|increase|decrease|department|last\\s+\\d+/.test(norm(q)))return '';
+ var vals=[];for(var i=0;i<rs.length;i++){var d=rs[i];if(qm&&(!d.month||d.month.m!==qm.m||(qm.y&&d.month.y!==qm.y)))continue;var v=(f==='bank'||f==='uan'||f==='doj'||f==='dol')?fieldVal(d,f):numericField(d,f);if(v!==null&&v!==''&&!vals.some(function(x){return String(x.v)===String(v);}))vals.push({v:v,d:d});}
+ if(vals.length===1){var x=vals[0],u={pf:' PF deduction',esic:' ESIC deduction',wd:' working days',ot:' OT',bonus:' bonus',salary:' salary',gross:' gross'}[f]||'';return employeeLabel(x.d)+(x.d.month?' — '+x.d.month.label:'')+': '+(typeof x.v==='number'?fmtN(x.v):x.v)+u+'.\\nSource: '+x.d.source;}
+ return '';}"""
+          if old_exact not in inner: raise SystemExit('exactLookup marker missing')
+          inner=inner.replace(old_exact,new_exact,1)
+
+          inner=inner.replace("function latestSalary(q,rs){if(!/last|latest|konse month|kaunse month|kab/.test(norm(q))", "function latestSalary(q,rs){rs=strictRows(q,rs);if(!/last|latest|konse month|kaunse month|kab/.test(norm(q))",1)
+          inner=inner.replace("function lastNCompare(q,rs){var n=queryLastN(q);", "function lastNCompare(q,rs){rs=strictRows(q,rs);var n=queryLastN(q);",1)
+          inner=inner.replace("var cq=contextQ(q),rs=search(cq,40),ans='';", "var cq=contextQ(q),rs=strictRows(cq,search(cq,40)),ans='';",1)
+          inner=inner.replace("var ev=search(cq,MAX_EVIDENCE),ctx=buildContext(cq,ev);", "var ev=strictRows(cq,search(cq,MAX_EVIDENCE)),ctx=buildContext(cq,ev);",1)
+
+          # Accuracy guard in LLM evidence prompt.
+          inner=inner.replace("Use ERP evidence exactly; never invent. If evidence is insufficient, say so.", "Use ERP evidence exactly; never invent. Never answer with another employee's data. For PF, use PF deduction/employee PF amount only, never PF number/UAN/member/account/wage fields. If exact employee + requested month/year evidence is insufficient, say exact data was not found.",1)
+
+          # Repack verified payload into five chunks.
+          packed=base64.b64encode(gzip.compress(inner.encode('utf-8'),compresslevel=9,mtime=0)).decode('ascii')
+          step=math.ceil(len(packed)/5)
+          newchunks=[packed[i*step:(i+1)*step] for i in range(5)]
+          for part,ch in zip(parts,newchunks):
+              Path(f'hr-ai-fast-v8-{part}.js').write_text("window.__ARORA_AI_V8_B64=(window.__ARORA_AI_V8_B64||'')+'"+ch+"';\n",encoding='utf-8')
+
+          # Cache bust only the lazy AI loader and V8 parts/runtime.
+          lp=Path('hr-ai-lazy-loader.js')
+          lazy=lp.read_text(encoding='utf-8').replace('v=20260912-8','v=20260912-9')
+          lp.write_text(lazy,encoding='utf-8')
+          ip=Path('index.html')
+          idx=ip.read_text(encoding='utf-8')
+          idx=re.sub(r'<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>','<script src="hr-ai-lazy-loader.js?v=20260912-9"></script>',idx)
+          ip.write_text(idx,encoding='utf-8')
           PY
-          node --check /tmp/v8.js
+      - name: Verify accuracy fix and startup isolation
+        shell: bash
+        run: |
+          node --check hr-ai-lazy-loader.js
+          node --check hr-ai-fast-v8.js
+          node --check hr-ai-fast-v8-p1.js
+          node --check hr-ai-fast-v8-p2.js
+          node --check hr-ai-fast-v8-p3.js
+          node --check hr-ai-fast-v8-p4a.js
+          node --check hr-ai-fast-v8-p4b.js
+          python - <<'PY'
+          from pathlib import Path
+          import re,base64,gzip
+          parts=['p1','p2','p3','p4a','p4b']
+          b=''
+          for part in parts:
+              s=Path(f'hr-ai-fast-v8-{part}.js').read_text(encoding='utf-8')
+              m=re.search(r"\+'([^']*)'",s)
+              if not m: raise SystemExit('missing '+part)
+              b+=m.group(1)
+          inner=gzip.decompress(base64.b64decode(b)).decode('utf-8')
+          Path('/tmp/v8-fixed.js').write_text(inner,encoding='utf-8')
+          required=['resolveEntity','strictRows','PF deduction','n>100000','Never answer with another employee']
+          for x in required:
+              if x not in inner: raise SystemExit('accuracy guard missing: '+x)
+          if "if(qm&&(!d.month||d.month.m!==qm.m||(qm.y&&d.month.y!==qm.y)))continue" not in inner:
+              raise SystemExit('strict month/year filter missing')
+          t=Path('index.html').read_text(encoding='utf-8')
+          ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-9']:
+              raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
+          if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
+              raise SystemExit('core ERP loader changed unexpectedly')
+          print('Strict employee/month/PF accuracy guards verified')
+          PY
+          node --check /tmp/v8-fixed.js
+          git diff --check
+      - name: Commit scoped V8 accuracy fix
+        shell: bash
+        run: |
+          if git diff --quiet -- hr-ai-fast-v8-p1.js hr-ai-fast-v8-p2.js hr-ai-fast-v8-p3.js hr-ai-fast-v8-p4a.js hr-ai-fast-v8-p4b.js hr-ai-lazy-loader.js index.html; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hr-ai-fast-v8-p1.js hr-ai-fast-v8-p2.js hr-ai-fast-v8-p3.js hr-ai-fast-v8-p4a.js hr-ai-fast-v8-p4b.js hr-ai-lazy-loader.js index.html
+          git commit -m 'Fix V8 exact employee month and PF deduction accuracy'
+          git push
