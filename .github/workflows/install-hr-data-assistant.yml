@@ -1,4 +1,4 @@
-name: Fix HR ERP AI V8 Accuracy Retry
+name: Fix HR ERP AI V8 Accuracy Final
 on:
   push:
     branches: [main]
@@ -34,7 +34,7 @@ jobs:
               b+=m.group(1)
           js=gzip.decompress(base64.b64decode(b)).decode()
           Path('/tmp/v8-fixed.js').write_text(js)
-          for x in ['resolveEntity','strictRows','PF deduction','n>100000','Never answer with another employee']:
+          for x in ['resolveEntity','strictRows','PF deduction','n>100000','Never answer using data from a different employee']:
               if x not in js: raise SystemExit('guard missing '+x)
           idx=Path('index.html').read_text()
           if 'hr-ai-lazy-loader.js?v=20260912-9' not in idx: raise SystemExit('new lazy loader not installed')
