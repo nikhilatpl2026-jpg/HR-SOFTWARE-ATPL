@@ -1,6 +1,7 @@
 /* Arora ERP AI PRO V9.1 background worker — all heavy normalization/query work stays off the UI thread. */
 'use strict';
-importScripts('hr-ai-v9-core.js?v=20260912-11');
+importScripts('hr-ai-v9-core.js?v=20260912-13');
+importScripts('hr-ai-v93-query-patch.js?v=20260912-13');
 var C=self.AroraAIV9Core;
 var DB='ATPL_HR_AI_V91',DBV=1,records=[],pending=[],sig='',coverage={},building=false;
 function post(type,data){self.postMessage(Object.assign({type:type},data||{}));}

@@ -1,4 +1,4 @@
-/* Tiny lazy loader for Arora ERP AI PRO V9.2 Chunked Worker. No ERP data work runs at startup. */
+/* Tiny lazy loader for Arora ERP AI PRO V9.3 Query Accuracy. No ERP data work runs at startup. */
 (function(){
 'use strict';
 if(window.__ARORA_AI_LAZY_V92__)return;window.__ARORA_AI_LAZY_V92__=1;
@@ -8,9 +8,9 @@ function openAI(q){
   if(q)window.__ARORA_AI_PENDING=q;
   if(window.AroraAIV92&&typeof window.AroraAIV92.open==='function'){window.AroraAIV92.open(q||'');return;}
   if(loading)return;
-  loading=loadSrc('hr-ai-v92-ui.js?v=20260912-12')
+  loading=loadSrc('hr-ai-v92-ui.js?v=20260912-13')
     .then(function(){return new Promise(function(resolve,reject){var tries=0;(function waitReady(){if(window.AroraAIV92&&typeof window.AroraAIV92.open==='function'){resolve();window.AroraAIV92.open(q||'');return;}if(++tries>120){reject(new Error('AI V9.2 init timeout'));return;}setTimeout(waitReady,40);})();});})
-    .catch(function(e){loading=null;console.error(e);alert('AI Assistant V9.2 load nahi hua. Page refresh karke dobara try karo.');});
+    .catch(function(e){loading=null;console.error(e);alert('AI Assistant V9.3 load nahi hua. Page refresh karke dobara try karo.');});
 }
 window.toggleAIChat=function(){openAI('');};
 window.sendAIMsg=function(){var i=document.getElementById('aiInput'),q=i&&i.value?i.value:'';if(i)i.value='';openAI(q);};
