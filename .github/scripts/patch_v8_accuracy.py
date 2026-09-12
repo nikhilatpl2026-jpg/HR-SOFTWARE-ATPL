@@ -31,7 +31,7 @@ repls=[
 ("function lastNCompare(q,rs){","function lastNCompare(q,rs){rs=strictRows(q,rs);"),
 ("var cq=contextQ(q),rs=search(cq,40),ans='';","var cq=contextQ(q),rs=strictRows(cq,search(cq,40)),ans='';"),
 ("var ev=search(cq,MAX_EVIDENCE),ctx=buildContext(cq,ev);","var ev=strictRows(cq,search(cq,MAX_EVIDENCE)),ctx=buildContext(cq,ev);"),
-("Use ERP evidence exactly; never invent. If evidence is insufficient, say so.","Use ERP evidence exactly; never invent. Never answer with another employee's data. For PF use PF deduction/employee PF amount only, never PF number/UAN/member/account/wage. If exact employee + requested month/year evidence is insufficient, say exact data was not found.")]
+("Use ERP evidence exactly; never invent. If evidence is insufficient, say so.","Use ERP evidence exactly; never invent. Never answer using data from a different employee. For PF use PF deduction/employee PF amount only, never PF number/UAN/member/account/wage. If exact employee + requested month/year evidence is insufficient, say exact data was not found.")]
 for a,z in repls:
  if a not in js: raise SystemExit('marker missing '+a[:40])
  js=js.replace(a,z,1)
@@ -42,6 +42,6 @@ for i,p in enumerate(parts):
  Path(f'hr-ai-fast-v8-{p}.js').write_text("window.__ARORA_AI_V8_B64=(window.__ARORA_AI_V8_B64||'')+'"+ch+"';\n")
 lp=Path('hr-ai-lazy-loader.js'); lp.write_text(re.sub(r'v=20260912-\d+','v=20260912-9',lp.read_text()))
 ip=Path('index.html'); ip.write_text(re.sub(r'<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>','<script src="hr-ai-lazy-loader.js?v=20260912-9"></script>',ip.read_text()))
-for x in ['resolveEntity','strictRows','PF deduction','n>100000','Never answer with another employee']:
+for x in ['resolveEntity','strictRows','PF deduction','n>100000','Never answer using data from a different employee']:
  if x not in js: raise SystemExit('guard missing '+x)
 print('V8 strict accuracy patch ready')
