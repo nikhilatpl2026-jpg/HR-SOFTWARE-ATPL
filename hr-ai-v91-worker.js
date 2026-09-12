@@ -1,7 +1,8 @@
-/* Arora ERP AI PRO V9.4 background worker — cache-first, no automatic full re-index. */
+/* Arora ERP AI PRO V9.4.1 background worker — cache-first, no automatic full re-index. */
 'use strict';
 importScripts('hr-ai-v9-core.js?v=20260912-13');
 importScripts('hr-ai-v93-query-patch.js?v=20260912-13');
+importScripts('hr-ai-v941-followup-patch.js?v=20260912-15');
 var C=self.AroraAIV9Core;
 var DB='ATPL_HR_AI_V91',DBV=1,records=[],pending=[],sig='',coverage={},building=false,cachedSignature='',cacheStale=false;
 function post(type,data){self.postMessage(Object.assign({type:type},data||{}));}
