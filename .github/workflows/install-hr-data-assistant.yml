@@ -1,3 +1,4 @@
+# V9.1 verified worker rollout
 name: Install HR ERP AI V9.1 Worker Mode
 on:
   push:
