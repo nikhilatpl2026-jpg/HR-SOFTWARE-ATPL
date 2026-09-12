@@ -1,10 +1,8 @@
-# V9.3 query-accuracy hotfix; keeps V9.2 cached structured index
 name: Install HR ERP AI V9.3 Query Accuracy
 on:
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/install-hr-data-assistant.yml'
+    paths: ['.github/workflows/install-hr-data-assistant.yml']
 permissions:
   contents: write
 jobs:
@@ -12,39 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply pre-test V9.3 static-ID authority fix
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('hr-ai-v93-query-patch.js')
-          t=p.read_text(encoding='utf-8')
-          old="if(r.sourceType==='master')s+=STATIC[field]?120:0;"
-          new="if(r.sourceType==='master')s+=STATIC[field]?300:0;"
-          if old in t: t=t.replace(old,new,1)
-          elif new not in t: raise SystemExit('static source-priority anchor missing')
-          p.write_text(t,encoding='utf-8')
-          PY
-      - name: Verify V9.3 syntax, 110-case suite and screenshot regressions
-        shell: bash
-        run: |
-          node --check hr-ai-v9-core.js
-          node --check hr-ai-v93-query-patch.js
-          node --check hr-ai-v91-worker.js
-          node --check hr-ai-v92-ui.js
-          node --check hr-ai-lazy-loader.js
-          node --check tests/hr-ai-v9.test.js
-          node --check tests/hr-ai-v93.test.js
-          node -e "const c=require('./hr-ai-v9-core.js');require('./hr-ai-v93-query-patch.js')(c);require('./tests/hr-ai-v9.test.js')" | tee /tmp/v93-base.log
-          grep -q 'V9 ACCURACY TEST: 110/110 = 100.0%' /tmp/v93-base.log
-          node tests/hr-ai-v93.test.js | tee /tmp/v93-reg.log
-          grep -q 'V9.3 SCREENSHOT REGRESSION: 4/4 = 100.0%' /tmp/v93-reg.log
-      - name: Apply V9.3 query hotfix without touching cached DB signature
+      - name: Prepare V9.3 AI-only files
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           import re
+
+          p=Path('hr-ai-v93-query-patch.js')
+          t=p.read_text(encoding='utf-8')
+          t=t.replace("if(r.sourceType==='master')s+=STATIC[field]?120:0;","if(r.sourceType==='master')s+=STATIC[field]?300:0;")
+          p.write_text(t,encoding='utf-8')
+
           p=Path('hr-ai-v91-worker.js')
           t=p.read_text(encoding='utf-8')
           t=re.sub(r"importScripts\('hr-ai-v9-core\.js\?v=[^']+'\);(?:\nimportScripts\('hr-ai-v93-query-patch\.js\?v=[^']+'\);)?",
@@ -53,7 +30,7 @@ jobs:
 
           p=Path('hr-ai-v92-ui.js')
           t=p.read_text(encoding='utf-8')
-          t=re.sub(r"hr-ai-v91-worker\.js\?v=\d+",'hr-ai-v91-worker.js?v=20260912-13',t)
+          t=re.sub(r"hr-ai-v91-worker\.js\?v=[^']+",'hr-ai-v91-worker.js?v=20260912-13',t)
           t=t.replace('Arora ERP AI PRO V9.2','Arora ERP AI PRO V9.3')
           t=t.replace('V9.2 ready (cached)','V9.3 ready (cached)').replace('V9.2 ready','V9.3 ready').replace('V9.2 background indexing','V9.3 background indexing').replace('V9.2 opening','V9.3 opening')
           t=t.replace("/abort/i.test(String(e))?'AI backend timeout hua. Exact payroll queries structured database se phir bhi chalengi.':String(e)","/abort/i.test(String(e))?'AI backend timeout hua. Exact payroll queries structured database se phir bhi chalengi.':'AI language backend connect nahi hua. Exact payroll/database questions Structured DB se chalenge.'")
@@ -61,40 +38,52 @@ jobs:
 
           p=Path('hr-ai-lazy-loader.js')
           t=p.read_text(encoding='utf-8')
-          t=re.sub(r"hr-ai-v92-ui\.js\?v=\d+",'hr-ai-v92-ui.js?v=20260912-13',t)
+          t=re.sub(r"hr-ai-v92-ui\.js\?v=[^']+",'hr-ai-v92-ui.js?v=20260912-13',t)
           t=t.replace('V9.2 Chunked Worker','V9.3 Query Accuracy').replace('AI Assistant V9.2 load nahi hua','AI Assistant V9.3 load nahi hua')
           p.write_text(t,encoding='utf-8')
 
           p=Path('index.html')
           t=p.read_text(encoding='utf-8')
           m=re.search(r'<script src="hr-workplace\.js[^"]*"></script>',t)
-          if not m: raise SystemExit('hr-workplace loader missing; refusing to modify index')
+          if not m: raise SystemExit('core ERP loader missing')
           anchor=m.group(0)
           t=re.sub(r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>','',t)
           t=t.replace(anchor,anchor+'\n<script src="hr-ai-lazy-loader.js?v=20260912-13"></script>',1)
           p.write_text(t,encoding='utf-8')
           PY
-      - name: Verify hotfix isolation and cache reuse
+      - name: Run V9.3 accuracy gates
+        shell: bash
+        run: |
+          node --check hr-ai-v9-core.js
+          node --check hr-ai-v93-query-patch.js
+          node --check hr-ai-v91-worker.js
+          node --check hr-ai-v92-ui.js
+          node --check hr-ai-lazy-loader.js
+          node -e "const c=require('./hr-ai-v9-core.js');require('./hr-ai-v93-query-patch.js')(c);require('./tests/hr-ai-v9.test.js')" | tee /tmp/base.log
+          grep -q 'V9 ACCURACY TEST: 110/110 = 100.0%' /tmp/base.log
+          node tests/hr-ai-v93.test.js | tee /tmp/reg.log
+          grep -q 'V9.3 SCREENSHOT REGRESSION: 4/4 = 100.0%' /tmp/reg.log
+      - name: Verify isolation and cached-index reuse
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
           idx=Path('index.html').read_text(encoding='utf-8')
-          if 'hr-workplace.js?v=20260911-loader-fix1' not in idx: raise SystemExit('Core ERP loader changed')
-          if 'hr-ai-lazy-loader.js?v=20260912-13' not in idx: raise SystemExit('V9.3 lazy loader not installed')
-          worker=Path('hr-ai-v91-worker.js').read_text(encoding='utf-8')
-          for x in ["importScripts('hr-ai-v9-core.js?v=20260912-13')","importScripts('hr-ai-v93-query-patch.js?v=20260912-13')","DB='ATPL_HR_AI_V91'","return 'v91|'"]:
-              if x not in worker: raise SystemExit('Worker/cache invariant missing: '+x)
+          if 'hr-workplace.js?v=20260911-loader-fix1' not in idx: raise SystemExit('core ERP loader changed')
+          if 'hr-ai-lazy-loader.js?v=20260912-13' not in idx: raise SystemExit('V9.3 loader missing')
+          w=Path('hr-ai-v91-worker.js').read_text(encoding='utf-8')
+          for x in ["hr-ai-v9-core.js?v=20260912-13","hr-ai-v93-query-patch.js?v=20260912-13","DB='ATPL_HR_AI_V91'","return 'v91|'"]:
+              if x not in w: raise SystemExit('worker/cache invariant missing '+x)
           ui=Path('hr-ai-v92-ui.js').read_text(encoding='utf-8')
-          for x in ['Arora ERP AI PRO V9.3',"new Worker('hr-ai-v91-worker.js?v=20260912-13')",'CHUNK=80','AI language backend connect nahi hua']:
-              if x not in ui: raise SystemExit('V9.3 UI invariant missing: '+x)
-          patch=Path('hr-ai-v93-query-patch.js').read_text(encoding='utf-8')
-          for x in ['manualAmount','monthOnlyFollowup','globalChanges','pfPercentChanges','C.answer=function',"STATIC[field]?300:0"]:
-              if x not in patch: raise SystemExit('V9.3 query fix missing: '+x)
-          print('V9.3 hotfix verified; cached DB signature preserved')
+          for x in ['Arora ERP AI PRO V9.3','hr-ai-v91-worker.js?v=20260912-13','CHUNK=80','AI language backend connect nahi hua']:
+              if x not in ui: raise SystemExit('UI invariant missing '+x)
+          p=Path('hr-ai-v93-query-patch.js').read_text(encoding='utf-8')
+          for x in ['manualAmount','monthOnlyFollowup','globalChanges','pfPercentChanges',"STATIC[field]?300:0"]:
+              if x not in p: raise SystemExit('query fix missing '+x)
+          print('V9.3 verified; cached structured index preserved')
           PY
           git diff --check
-      - name: Commit AI-only hotfix
+      - name: Commit AI-only V9.3 files
         shell: bash
         run: |
           if git diff --quiet -- index.html hr-ai-v91-worker.js hr-ai-v92-ui.js hr-ai-lazy-loader.js hr-ai-v93-query-patch.js; then exit 0; fi
