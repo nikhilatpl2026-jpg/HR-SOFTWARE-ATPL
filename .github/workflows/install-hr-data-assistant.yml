@@ -1,5 +1,5 @@
-# V9.1 verified worker rollout
-name: Install HR ERP AI V9.1 Worker Mode
+# V9.2 chunked worker rollout
+name: Install HR ERP AI V9.2 Chunked Worker
 on:
   push:
     branches: [main]
@@ -12,17 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify V9.1 syntax and payroll accuracy suite
+      - name: Verify V9.2 syntax and payroll accuracy suite
         shell: bash
         run: |
           node --check hr-ai-v9-core.js
           node --check hr-ai-v91-worker.js
-          node --check hr-ai-v91-ui.js
+          node --check hr-ai-v92-ui.js
           node --check hr-ai-lazy-loader.js
           node --check tests/hr-ai-v9.test.js
           node tests/hr-ai-v9.test.js | tee /tmp/v9-test.log
           grep -q 'V9 ACCURACY TEST: 110/110 = 100.0%' /tmp/v9-test.log
-      - name: Install only V9.1 lazy loader in ERP startup
+      - name: Install only V9.2 lazy loader in ERP startup
         shell: bash
         run: |
           python - <<'PY'
@@ -35,10 +35,10 @@ jobs:
               raise SystemExit('hr-workplace loader missing; refusing to modify index')
           anchor=m.group(0)
           text=re.sub(r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>','',text)
-          text=text.replace(anchor,anchor+'\n<script src="hr-ai-lazy-loader.js?v=20260912-11"></script>',1)
+          text=text.replace(anchor,anchor+'\n<script src="hr-ai-lazy-loader.js?v=20260912-12"></script>',1)
           p.write_text(text,encoding='utf-8')
           PY
-      - name: Verify responsiveness architecture and core ERP preservation
+      - name: Verify freeze prevention and core ERP preservation
         shell: bash
         run: |
           python - <<'PY'
@@ -46,20 +46,19 @@ jobs:
           import re
           t=Path('index.html').read_text(encoding='utf-8')
           ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
-          if ai != ['hr-ai-lazy-loader.js?v=20260912-11']:
+          if ai != ['hr-ai-lazy-loader.js?v=20260912-12']:
               raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
           if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
               raise SystemExit('Core ERP loader changed unexpectedly')
           loader=Path('hr-ai-lazy-loader.js').read_text(encoding='utf-8')
-          for x in ['hr-ai-v91-ui.js?v=20260912-11','AroraAIV91']:
-              if x not in loader: raise SystemExit('V9.1 loader missing '+x)
-          ui=Path('hr-ai-v91-ui.js').read_text(encoding='utf-8')
-          for x in ["new Worker('hr-ai-v91-worker.js?v=20260912-11')",'Background Worker Mode','feedLive','setTimeout(r,0)']:
-              if x not in ui: raise SystemExit('V9.1 UI responsiveness feature missing '+x)
-          w=Path('hr-ai-v91-worker.js').read_text(encoding='utf-8')
-          for x in ['importScripts','ATPL_HR_AI_V91','normalizeSheet','queryResult','needLive']:
-              if x not in w: raise SystemExit('V9.1 worker feature missing '+x)
-          print('V9.1 background-worker isolation verified')
+          for x in ['hr-ai-v92-ui.js?v=20260912-12','AroraAIV92']:
+              if x not in loader: raise SystemExit('V9.2 loader missing '+x)
+          ui=Path('hr-ai-v92-ui.js').read_text(encoding='utf-8')
+          for x in ["new Worker('hr-ai-v91-worker.js?v=20260912-12')",'CHUNK=80','head.concat(rows.slice(pos,end))','await breathe(10)','compactMaster','No giant sheet copies on UI thread']:
+              if x not in ui: raise SystemExit('V9.2 freeze guard missing '+x)
+          if "sendSheet(base,sn,rows,stype)" in ui:
+              raise SystemExit('Full-sheet worker transfer still present')
+          print('V9.2 chunked-transfer freeze prevention verified')
           PY
           git diff --check
           git diff -- index.html
@@ -70,5 +69,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          git commit -m 'Load Arora ERP AI PRO V9.1 worker mode lazily'
+          git commit -m 'Load Arora ERP AI PRO V9.2 chunked worker lazily'
           git push
