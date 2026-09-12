@@ -1,94 +1,41 @@
-name: Install HR ERP Data Assistant
+name: Inspect HR ERP AI V8 Logic
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/install-hr-data-assistant.yml'
 permissions:
-  contents: write
+  contents: read
 jobs:
-  install:
+  inspect:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install only V8 lazy loader
+      - name: Decode and inspect V8 answer logic
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          p=Path('index.html')
-          text=p.read_text(encoding='utf-8')
-          m=re.search(r'<script src="hr-workplace\.js[^"]*"></script>',text)
-          if not m:
-              raise SystemExit('hr-workplace loader missing; refusing to modify index')
-          anchor=m.group(0)
-          patterns=[
-            r'\n<script src="hr-data-assistant(?:-payload-[1-5])?\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-data-assistant-pro(?:-payload-[1-6])?\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-data-assistant-v3(?:-payload)?\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-llm-v4(?:-payload)?\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-llm-v5\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-unified-v6\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-pro-v7\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-fast-v8(?:-p(?:[1-4]|4a|4b))?\.js\?v=[^"]+"></script>',
-            r'\n<script src="hr-ai-lazy-loader\.js\?v=[^"]+"></script>',
-          ]
-          for pat in patterns:
-              text=re.sub(pat,'',text)
-          lazy='<script src="hr-ai-lazy-loader.js?v=20260912-8"></script>'
-          text=text.replace(anchor,anchor+'\n'+lazy,1)
-          p.write_text(text,encoding='utf-8')
-          PY
-      - name: Verify V8 syntax payload and startup isolation
-        shell: bash
-        run: |
-          node --check hr-ai-lazy-loader.js
-          node --check hr-ai-fast-v8.js
-          node --check hr-ai-fast-v8-p1.js
-          node --check hr-ai-fast-v8-p2.js
-          node --check hr-ai-fast-v8-p3.js
-          node --check hr-ai-fast-v8-p4a.js
-          node --check hr-ai-fast-v8-p4b.js
           python - <<'PY'
           from pathlib import Path
           import re,base64,gzip
-          t=Path('index.html').read_text(encoding='utf-8')
-          ai=re.findall(r'<script src="(hr-(?:data-assistant|ai-)[^"]+)"',t)
-          if ai != ['hr-ai-lazy-loader.js?v=20260912-8']:
-              raise SystemExit('Unexpected AI startup loaders: '+repr(ai))
-          if 'hr-workplace.js?v=20260911-loader-fix1' not in t:
-              raise SystemExit('hr-workplace version changed unexpectedly')
           parts=['p1','p2','p3','p4a','p4b']
           chunks=[]
           for part in parts:
               s=Path(f'hr-ai-fast-v8-{part}.js').read_text(encoding='utf-8')
               m=re.search(r"\+'([^']+)'",s)
-              if not m: raise SystemExit(f'V8 payload chunk {part} missing')
+              if not m: raise SystemExit(f'chunk missing {part}')
               chunks.append(m.group(1))
-          b=''.join(chunks)
-          if len(b) != 12408 or len(b)%4:
-              raise SystemExit('V8 payload length invalid: '+str(len(b)))
-          inner=gzip.decompress(base64.b64decode(b)).decode('utf-8')
-          Path('/tmp/hr-ai-v8-inner.js').write_text(inner,encoding='utf-8')
-          for required in ['ATPL_HR_AI_PRO','openCursor','Arora ERP AI PRO V8','buildIndex','Fast local engine','Last 3 months']:
-              if required not in inner: raise SystemExit('V8 feature missing: '+required)
-          runtime=Path('hr-ai-fast-v8.js').read_text(encoding='utf-8')
-          if '__ARORA_AI_V8_B64' not in runtime: raise SystemExit('V8 split runtime missing global payload reader')
-          loader=Path('hr-ai-lazy-loader.js').read_text(encoding='utf-8')
-          for part in parts:
-              if f'hr-ai-fast-v8-{part}.js?v=20260912-8' not in loader: raise SystemExit(f'V8 loader missing {part}')
-          print('V8 split payload joined, decompressed and verified')
+          inner=gzip.decompress(base64.b64decode(''.join(chunks))).decode('utf-8')
+          Path('/tmp/v8.js').write_text(inner,encoding='utf-8')
+          print('--- FUNCTION NAMES ---')
+          for m in re.finditer(r'function\s+([A-Za-z0-9_$]+)\s*\(',inner):
+              print(m.group(1))
+          print('--- PF / EMPLOYEE / ANSWER SNIPPETS ---')
+          lines=inner.splitlines()
+          for i,line in enumerate(lines):
+              low=line.lower()
+              if any(k in low for k in ['pf','employee','answerone','answerfield','fieldvalue','extractfield','strict','entity']):
+                  a=max(0,i-2); b=min(len(lines),i+3)
+                  print(f'### lines {a+1}-{b}')
+                  for j in range(a,b): print(lines[j])
           PY
-          node --check /tmp/hr-ai-v8-inner.js
-          git diff --check
-          git diff -- index.html
-      - name: Commit loader-only index change if needed
-        shell: bash
-        run: |
-          if git diff --quiet -- index.html; then exit 0; fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html
-          git commit -m 'Load Arora ERP AI PRO V8 fast cache lazily'
-          git push
+          node --check /tmp/v8.js
