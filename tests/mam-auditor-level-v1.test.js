@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('assert');
+const a=require('../mam-auditor-level-v1.js');
+assert.strictEqual(a.LEVELS.length,5);
+assert.deepStrictEqual(a.LEVELS.map(x=>x.rank),[6,7,8,9,10]);
+assert.strictEqual(a.levelOf(3).label,'High');
+const fields={department:true,designation:true,category:true,dob:true,doj:true,paidDays:true,diff:true};
+const ready={code:'SYNTH-001',status:'READY',department:'SYNTH-DEPT',designation:'SYNTH-DESIG',category:'SYNTH-CAT',dob:'01-01-1990',doj:'01-01-2020',paidDays:'31',manual:'20000',gross:'20000',diff:'0',issues:''};
+assert.strictEqual(a.assessRows(5,[ready],fields).blockers,0);
+const warning={...ready,code:'SYNTH-002',status:'WARNING',diff:'100'};
+assert.strictEqual(a.assessRows(2,[warning],fields).blockers,0);
+assert(a.assessRows(3,[warning],fields).blockers>=1);
+assert(a.assessRows(4,[warning],fields).reasons.some(x=>x.code==='MANUAL_DIFF_REVIEW'));
+const missing={...ready,code:'SYNTH-003',department:''};
+assert(a.assessRows(2,[missing],fields).reasons.some(x=>x.code==='MISSING_DEPARTMENT'));
+console.log('mam-auditor-level-v1.test.js: all assertions passed');
