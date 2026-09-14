@@ -3,7 +3,7 @@
 if(window.__ATPL_MAM_STABLE_BOOTSTRAP__)return;
 window.__ATPL_MAM_STABLE_BOOTSTRAP__=1;
 function load(src,done){var s=document.createElement('script');s.src=src;s.async=false;s.onload=function(){if(done)done()};s.onerror=function(){console.error('ATPL module load failed:',src);if(done)done(new Error(src+' load failed'))};document.head.appendChild(s)}
-function loadAuthRecovery(){load('shared-auth-recovery-v1.js?v=20260914-authrecovery1')}
+function loadAuthRecovery(){load('shared-auth-recovery-v1.js?v=20260914-authrecovery2')}
 function loadShared(){load('erp-shared-activity-v2.js?v=20260914-shared2')}
 function legacy(){load('mam-salary-v2-legacy.js?v=20260911-stable1')}
 function generatorFallback(){load('mam-salary-generator.js?v=20260914-generator1',function(err){if(err)legacy()})}
