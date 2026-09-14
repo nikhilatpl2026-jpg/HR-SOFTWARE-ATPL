@@ -11,7 +11,8 @@ function v5(){load('mam-compliance-rules-india-v1.js?v=20260914-rules1a',functio
   if(ruleErr||!window.ATPLComplianceRulesIndiaV1)return v4Fallback();
   load('mam-compliance-v5.js?v=20260914-v5a',function(err){
     var old=document.getElementById('atplUpgradeLoadError');if(old)old.remove();
-    if(err||!window.__MAM_COMPLIANCE_V5__)v4Fallback();
+    if(err||!window.__MAM_COMPLIANCE_V5__)return v4Fallback();
+    load('mam-compliance-v5-open-fix.js?v=20260914-openfix1');
   });
 })}
 v5();
