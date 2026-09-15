@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('assert');
+const lock=require('../mam-lokesh-format-lock-v1.js');
+const s=lock.normalizeState('{"month":"2026-09","lokesh":false}');
+assert.strictEqual(s.month,'2026-09');
+assert.strictEqual(s.lokesh,true);
+assert.strictEqual(s.format,'LOKESH');
+assert.strictEqual(s.formatLocked,true);
+for(let level=1;level<=5;level++) assert.strictEqual(lock.formatForLevel(level),'LOKESH');
+console.log('mam-lokesh-format-lock-v1.test.js: all assertions passed');
