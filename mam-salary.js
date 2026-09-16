@@ -4,8 +4,8 @@ if(window.__ATPL_MAM_STABLE_BOOTSTRAP__)return;
 window.__ATPL_MAM_STABLE_BOOTSTRAP__=1;
 function load(src,done){var s=document.createElement('script');s.src=src;s.async=false;s.onload=function(){if(done)done()};s.onerror=function(){console.error('ATPL module load failed:',src);if(done)done(new Error(src+' load failed'))};document.head.appendChild(s)}
 function loadAuthRecovery(){load('shared-auth-recovery-v1.js?v=20260914-authrecovery2')}
-function loadShared(){load('erp-shared-activity-v2.js?v=20260914-shared2')}
-function loadCloud(){load('erp-cloud-sync-v1.js?v=20260916-cloud1')}
+function loadShared(){load('erp-shared-activity-v2.js?v=20260916-shared3')}
+function loadCloud(){load('erp-cloud-sync-v1.js?v=20260916-cloud2')}
 function loadLokeshLock(done){load('mam-lokesh-format-lock-v2.js?v=20260916-lokeshlock2',done)}
 function loadScopedV1(done){load('mam-compliance-v5-scoped-loader-v1.js?v=20260916-real-mam-format1',function(err){if(err||typeof window.ATPLLoadMamComplianceV5ScopedV1!=='function')return done(err||new Error('Scoped V1 loader unavailable'));window.ATPLLoadMamComplianceV5ScopedV1(done)})}
 function runScopedV2(done){if(typeof window.ATPLLoadMamComplianceV5ScopedV2!=='function')return loadScopedV1(done);window.ATPLLoadMamComplianceV5ScopedV2(function(v2err){if(v2err&&!window.__MAM_COMPLIANCE_V5__)return loadScopedV1(done);done(v2err)})}

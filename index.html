@@ -8095,6 +8095,12 @@ function emDeleteRow(idx) {
   var e = EM.data[idx];
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?')) return;
   EM.data.splice(idx,1);
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+  } catch(err) {}
+  if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.deleteMaster==='function') {
+    window.ATPLCloudSyncV1.deleteMaster(e.emp_id);
+  }
   EM.selectedRows.clear();
   emFilter();
   emUpdateStats();
@@ -8366,11 +8372,23 @@ function emSaveModal() {
   });
   if(!valid){ alert('Employee Code aur Name mandatory hain!'); return; }
 
+  var savedEmp;
   if(EM.editIdx >= 0) {
     EM.data[EM.editIdx] = Object.assign({}, EM.data[EM.editIdx], newEmp);
+    savedEmp = EM.data[EM.editIdx];
   } else {
     EM.data.push(newEmp);
+    savedEmp = newEmp;
   }
+
+  /* Persist every single-row save, then push it explicitly to the shared backend. */
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+  } catch(e) {}
+  if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster==='function') {
+    window.ATPLCloudSyncV1.pushMaster(savedEmp);
+  }
+
   emCloseModal();
   emFilter();
   emUpdateStats();
@@ -10722,7 +10740,7 @@ else AInit();
 })();
 </script>
 
-<script src="hr-workplace.js?v=20260911-loader-fix1"></script>
+<script src="hr-workplace.js?v=20260916-loader-fix2"></script>
 <script src="hr-docs-activity-v1.js?v=20260912-1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
