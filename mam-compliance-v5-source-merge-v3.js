@@ -1,6 +1,7 @@
-/* ATPL Mam Compliance source merge V3.1.
+/* ATPL Mam Compliance source merge V3.2.
    Reuses V2 source patches, merges split monthly sheets without double-counting,
-   and allows provisional salary calculations from Employee Master + Paid Days. */
+   allows provisional salary calculations from Employee Master + Paid Days,
+   and persists direct Mam uploads into the shared saved-file flow. */
 (function(g){'use strict';
  function finish(done,err){try{if(typeof done==='function')done(err||null)}catch(_){}}
  function replaceBlock(code,a,b,repl){var s=code.indexOf(a),e=s<0?-1:code.indexOf(b,s);return s>=0&&e>s?code.slice(0,s)+repl+code.slice(e):code}
@@ -41,6 +42,10 @@ function normalizeSavedWorkbook(XLSX,buf,file,targetMonth){
 `;
    code=replaceBlock(code,'async function loadExactMonthSource(){','function duplicateCount(',sourceLoader);
 
+   var mamPersistOld="UI.mamFile=file.name;UI.mamImportedAt=new Date().toISOString();UI.mamRows=best.rows;return best;";
+   var mamPersistNew="UI.mamFile=file.name;UI.mamImportedAt=new Date().toISOString();UI.mamRows=best.rows;try{if(typeof root.saveFileToDB==='function'){const _copy=buf&&typeof buf.slice==='function'?buf.slice(0):buf;root.saveFileToDB(file.name,_copy,function(){});}}catch(_saveErr){console.warn('Mam upload local/shared save skipped',_saveErr);}return best;";
+   if(code.indexOf(mamPersistOld)>=0)code=code.replace(mamPersistOld,mamPersistNew);
+
    var oldAssign="row.paidDays=num(src.paidDays);row.workingDays=num(src.workingDays);row.otHours=num(src.otHours);row.otRate=num(src.otRate);row.otAmount=num(src.otAmount);row.advance=src.fieldPresence&&src.fieldPresence.advance?(num(src.advance)||0):null;row.otherApprovedDeduction=src.fieldPresence&&src.fieldPresence.otherDeduction?(num(src.otherDeduction)||0):null;row.normalHourlyRate=num(src.normalHourlyRate);";
    var newAssign="row.paidDays=num(src.paidDays);row.workingDays=num(src.workingDays);row.otHours=num(src.otHours);row.otRate=num(src.otRate);row.otAmount=num(src.otAmount);const _fp=src.fieldPresence||{};row._advanceDefaultZero=!_fp.advance;row._otherDeductionDefaultZero=!_fp.otherDeduction;row.advance=_fp.advance?(num(src.advance)||0):0;row.otherApprovedDeduction=_fp.otherDeduction?(num(src.otherDeduction)||0):0;row.normalHourlyRate=num(src.normalHourlyRate);";
    if(code.indexOf(oldAssign)>=0)code=code.replace(oldAssign,newAssign);
@@ -59,8 +64,8 @@ function normalizeSavedWorkbook(XLSX,buf,file,targetMonth){
    if(g.__MAM_COMPLIANCE_V5__)return true;
    var base=g.__ATPL_MAM_V5_PATCH_V2__&&g.__ATPL_MAM_V5_PATCH_V2__.patchAll;if(typeof base!=='function')throw new Error('V2 patch transformer unavailable');
    code=extraPatch(base(String(code||'')));
-   var s=document.createElement('script');s.type='text/javascript';s.text='(function(root){\n'+code+'\n})(window);\n//# sourceURL=mam-compliance-v5.source-merge-v3.1.js';(document.head||document.documentElement).appendChild(s);if(s.parentNode)s.parentNode.removeChild(s);return !!g.__MAM_COMPLIANCE_V5__;
+   var s=document.createElement('script');s.type='text/javascript';s.text='(function(root){\n'+code+'\n})(window);\n//# sourceURL=mam-compliance-v5.source-merge-v3.2.js';(document.head||document.documentElement).appendChild(s);if(s.parentNode)s.parentNode.removeChild(s);return !!g.__MAM_COMPLIANCE_V5__;
  }
- function load(done){if(g.__MAM_COMPLIANCE_V5__)return finish(done);fetch('mam-compliance-v5.js?v=20260916-source-merge4',{cache:'no-store',credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('Mam core HTTP '+r.status);return r.text()}).then(code=>{if(!execute(code))throw new Error('Mam source merge V3.1 init failed');finish(done)}).catch(err=>{console.error('ATPL Mam source merge V3.1 failed:',err);finish(done,err)})}
+ function load(done){if(g.__MAM_COMPLIANCE_V5__)return finish(done);fetch('mam-compliance-v5.js?v=20260916-source-merge5',{cache:'no-store',credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('Mam core HTTP '+r.status);return r.text()}).then(code=>{if(!execute(code))throw new Error('Mam source merge V3.2 init failed');finish(done)}).catch(err=>{console.error('ATPL Mam source merge V3.2 failed:',err);finish(done,err)})}
  g.ATPLLoadMamComplianceV5SourceMergeV3=load;
 })(window);
