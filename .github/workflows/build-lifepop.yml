@@ -1,0 +1,64 @@
+name: Build LifePop APK
+
+on:
+  push:
+    branches: [build-lifepop-apk-20260916]
+    paths:
+      - 'lifepop-build/**'
+      - '.github/workflows/build-lifepop.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reassemble source
+        run: |
+          cat lifepop-build/src.part00 lifepop-build/src.part01 lifepop-build/src.part02 lifepop-build/src.part03 lifepop-build/src.part04 > /tmp/lifepop.tar.gz.b64
+          base64 -d /tmp/lifepop.tar.gz.b64 > /tmp/lifepop.tar.gz
+          echo '8cd0c922b5e314d7d4f649ecc47c3cb4ffe5da7c7edceeab84c4fce1e68487d1  /tmp/lifepop.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/lifepop.tar.gz
+
+      - name: Run LifePop logic tests
+        run: node lifepop/test.cjs
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build Android APK
+        working-directory: lifepop
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK and prepare files
+        run: |
+          mkdir -p out build-output
+          cp lifepop/app/build/outputs/apk/debug/app-debug.apk out/LifePop_v1.0.apk
+          unzip -t out/LifePop_v1.0.apk >/dev/null
+          jarsigner -verify -certs out/LifePop_v1.0.apk >/dev/null
+          sha256sum out/LifePop_v1.0.apk | tee out/SHA256.txt
+          base64 -w 0 out/LifePop_v1.0.apk > build-output/LifePop_v1.0.apk.b64
+          cp out/SHA256.txt build-output/SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifePop-v1.0
+          path: out/
+
+      - name: Publish encoded build output to build branch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add build-output/LifePop_v1.0.apk.b64 build-output/SHA256.txt
+          git diff --cached --quiet && exit 0
+          git commit -m 'build: publish LifePop v1.0 APK output'
+          git push
