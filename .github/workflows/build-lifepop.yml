@@ -8,7 +8,7 @@ on:
       - '.github/workflows/build-lifepop.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -23,19 +23,70 @@ jobs:
           echo '8cd0c922b5e314d7d4f649ecc47c3cb4ffe5da7c7edceeab84c4fce1e68487d1  /tmp/lifepop.tar.gz' | sha256sum -c -
           tar -xzf /tmp/lifepop.tar.gz
 
-      - name: Harden overdue To-Do reminder rescheduling
+      - name: Apply LifePop 1.1 compatibility fixes
         run: |
           python - <<'PY'
           from pathlib import Path
+
+          # JS: remove newer syntax that can fail on older Android System WebView,
+          # add a modal fallback, and keep all existing app behavior.
+          p=Path('lifepop/app/src/main/assets/app.js')
+          s=p.read_text()
+          s=s.replace("const esc=s=>String(s??'').replace", "const esc=s=>String(s==null?'':s).replace")
+          s=s.replace("function short(s,n){s=String(s??'');", "function short(s,n){s=String(s==null?'':s);")
+          s=s.replace("function toast(s){document.querySelector('.toast')?.remove();const e=document.createElement('div');", "function toast(s){const oldToast=document.querySelector('.toast');if(oldToast)oldToast.remove();const e=document.createElement('div');")
+          s=s.replace("  $('#expenseMonth')?.addEventListener('change',e=>{if(e.target.value){expenseMonth=e.target.value;render()}});", "  const em=$('#expenseMonth');if(em)em.addEventListener('change',e=>{if(e.target.value){expenseMonth=e.target.value;render()}});")
+          s=s.replace("  $('#habitMonth')?.addEventListener('change',e=>{if(e.target.value){habitMonth=e.target.value;render()}});", "  const hm=$('#habitMonth');if(hm)hm.addEventListener('change',e=>{if(e.target.value){habitMonth=e.target.value;render()}});")
+          s=s.replace("  $('#delete')?.addEventListener('click',()=>confirmBox('Delete expense?'", "  {const del=$('#delete');if(del)del.addEventListener('click',()=>confirmBox('Delete expense?'")
+          s=s.replace("toast('Expense deleted')}}));\n}", "toast('Expense deleted')}}));}\n}", 1)
+          s=s.replace("  $('#delete')?.addEventListener('click',()=>confirmBox('Delete task?'", "  {const del=$('#delete');if(del)del.addEventListener('click',()=>confirmBox('Delete task?'")
+          s=s.replace("toast('Task deleted')}}));\n}", "toast('Task deleted')}}));}\n}", 1)
+          s=s.replace("  $('#delete')?.addEventListener('click',()=>confirmBox('Delete goal?'", "  {const del=$('#delete');if(del)del.addEventListener('click',()=>confirmBox('Delete goal?'")
+          s=s.replace("toast('Goal deleted')}}));\n}", "toast('Goal deleted')}}));}\n}", 1)
+          needle="function notificationReady(){try{return !!(window.Native&&Native.notificationsReady())}catch(e){return false}}\n"
+          insert=needle+"function modalEl(){return $('#modal')}\nfunction openModal(){const m=modalEl();if(!m)return;try{if(typeof m.showModal==='function'){m.showModal();return}}catch(e){}m.setAttribute('open','');m.style.display='block'}\nfunction closeModal(){const m=modalEl();if(!m)return;try{if(typeof m.close==='function'){m.close();return}}catch(e){}m.removeAttribute('open');m.style.display='none'}\nfunction modalOpen(){const m=modalEl();return !!(m&&(m.open||m.hasAttribute('open')||m.style.display==='block'))}\n"
+          if needle not in s: raise SystemExit('modal helper target missing')
+          s=s.replace(needle,insert)
+          s=s.replace("$('#modal').showModal()", "openModal()")
+          s=s.replace("$('#modal').close()", "closeModal()")
+          s=s.replace("if($('#modal').open)", "if(modalOpen())")
+          s=s.replace("if($('#modal').open)settings()", "if(modalOpen())settings()")
+          s=s.replace('LifePop 1.0','LifePop 1.1')
+          marker="function exportPdf(){if(!window.Native)return toast('PDF export is available in the Android app.');try{Native.exportMonthlyPdf(expenseMonth,JSON.stringify(state));toast('Choose where to save the PDF')}catch(e){toast('Could not start PDF export')}\n"
+          # tolerate exact one-line form already present
+          if "function exportPdf()" in s and "window.onerror=" not in s:
+              idx=s.index("document.addEventListener('click'")
+              s=s[:idx]+"window.onerror=function(){try{toast('LifePop hit a compatibility error. Please reopen the app.')}catch(e){}return false};\n\n"+s[idx:]
+          if s.rstrip().endswith('render();'):
+              s=s.rstrip()+"\nwindow.__lifepopReady=true;\n"
+          p.write_text(s)
+
+          # Android: use direct bundled asset loading instead of a fake HTTPS host.
+          p=Path('lifepop/app/src/main/java/com/nikhil/lifepop/MainActivity.java')
+          s=p.read_text()
+          s=s.replace('import android.webkit.WebResourceResponse;\n','').replace('import java.io.ByteArrayInputStream;\n','')
+          old='''        s.setDomStorageEnabled(false);\n        s.setAllowFileAccess(false);\n        s.setAllowContentAccess(false);\n        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);\n        web.addJavascriptInterface(new Bridge(),"Native");\n        web.setWebChromeClient(new WebChromeClient());\n        web.setWebViewClient(new WebViewClient(){\n            @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r){\n                Uri u=r.getUrl();\n                if("https".equals(u.getScheme()) && "lifepop.local".equals(u.getHost())){\n                    String p=u.getPath(); if(p==null||p.equals("/")||p.isEmpty())p="/index.html";\n                    try{\n                        String mime=p.endsWith(".js")?"application/javascript":"text/html";\n                        return new WebResourceResponse(mime,"UTF-8",getAssets().open(p.substring(1)));\n                    }catch(Exception ignored){}\n                }\n                return new WebResourceResponse("text/plain","UTF-8",new ByteArrayInputStream(new byte[0]));\n            }\n            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){ return true; }\n        });\n        String raw=getSharedPreferences("lifepop",0).getString("data","");\n        ReminderScheduler.scheduleFromState(this,raw);\n        web.loadUrl("https://lifepop.local/");'''
+          new='''        s.setDomStorageEnabled(true);\n        s.setAllowFileAccess(true);\n        s.setAllowContentAccess(false);\n        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);\n        web.addJavascriptInterface(new Bridge(),"Native");\n        web.setWebChromeClient(new WebChromeClient());\n        web.setWebViewClient(new WebViewClient(){\n            @Override public boolean shouldOverrideUrlLoading(WebView v,WebResourceRequest r){\n                Uri u=r.getUrl();\n                return u==null || !"file".equals(u.getScheme()) || !u.toString().startsWith("file:///android_asset/");\n            }\n            @Override public void onPageFinished(WebView v,String url){\n                super.onPageFinished(v,url);\n                v.evaluateJavascript("Boolean(window.__lifepopReady)", value->{\n                    if(!"true".equals(value)) toast("LifePop UI compatibility check failed. Please update Android System WebView.");\n                });\n            }\n        });\n        String raw=getSharedPreferences("lifepop",0).getString("data","");\n        ReminderScheduler.scheduleFromState(this,raw);\n        web.loadUrl("file:///android_asset/index.html");'''
+          if old not in s: raise SystemExit('WebView loader target missing')
+          p.write_text(s.replace(old,new))
+
+          # Keep the overdue reminder hardening from the final v1.0 build.
           p=Path('lifepop/app/src/main/java/com/nikhil/lifepop/ReminderScheduler.java')
           s=p.read_text()
           old='''                long at=parseDue(date,time);\n                if (!id.isEmpty() && at>System.currentTimeMillis()) schedule(c,id,title,at);'''
-          new='''                long at=parseDue(date,time);\n                if (!id.isEmpty() && at>0) {\n                    long now=System.currentTimeMillis();\n                    // Restore the reminder chain for overdue pending tasks after reboot/state sync.\n                    schedule(c,id,title,at>now?at:now+60_000L);\n                }'''
-          if old not in s:
-              raise SystemExit('Reminder patch target not found')
+          new='''                long at=parseDue(date,time);\n                if (!id.isEmpty() && at>0) {\n                    long now=System.currentTimeMillis();\n                    schedule(c,id,title,at>now?at:now+60_000L);\n                }'''
+          if old not in s: raise SystemExit('Reminder patch target missing')
           p.write_text(s.replace(old,new))
+
+          p=Path('lifepop/app/build.gradle')
+          s=p.read_text().replace('versionCode 1','versionCode 2').replace("versionName '1.0'","versionName '1.1'")
+          p.write_text(s)
           PY
-          grep -q 'now+60_000L' lifepop/app/src/main/java/com/nikhil/lifepop/ReminderScheduler.java
+          node --check lifepop/app/src/main/assets/app.js
+          ! grep -qF '?.' lifepop/app/src/main/assets/app.js
+          ! grep -qF '??' lifepop/app/src/main/assets/app.js
+          grep -q 'file:///android_asset/index.html' lifepop/app/src/main/java/com/nikhil/lifepop/MainActivity.java
+          grep -q "versionName '1.1'" lifepop/app/build.gradle
 
       - name: Run LifePop logic tests
         working-directory: lifepop
@@ -50,40 +101,25 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Build Android APK
+      - name: Build unsigned release APK
         working-directory: lifepop
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:assembleRelease
 
-      - name: Verify Android APK
+      - name: Verify unsigned package
         run: |
-          mkdir -p out build-output
-          cp lifepop/app/build/outputs/apk/debug/app-debug.apk out/LifePop_v1.0.apk
-          unzip -t out/LifePop_v1.0.apk >/dev/null
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          mkdir -p out
+          cp lifepop/app/build/outputs/apk/release/app-release-unsigned.apk out/LifePop_v1.1-unsigned.apk
+          unzip -t out/LifePop_v1.1-unsigned.apk >/dev/null
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          test -n "$APKSIGNER" && test -x "$APKSIGNER"
           test -n "$AAPT" && test -x "$AAPT"
-          "$APKSIGNER" verify --verbose --print-certs out/LifePop_v1.0.apk | tee out/SIGNATURE.txt
-          "$AAPT" dump badging out/LifePop_v1.0.apk | grep "package: name='com.nikhil.lifepop'"
-          if "$AAPT" dump permissions out/LifePop_v1.0.apk | grep -q 'android.permission.INTERNET'; then
+          "$AAPT" dump badging out/LifePop_v1.1-unsigned.apk | grep "package: name='com.nikhil.lifepop' versionCode='2' versionName='1.1'"
+          if "$AAPT" dump permissions out/LifePop_v1.1-unsigned.apk | grep -q 'android.permission.INTERNET'; then
             echo 'Unexpected INTERNET permission found' >&2
             exit 1
           fi
-          sha256sum out/LifePop_v1.0.apk | tee out/SHA256.txt
-          base64 -w 6000 out/LifePop_v1.0.apk > build-output/LifePop_v1.0.apk.b64
-          cp out/SHA256.txt build-output/SHA256.txt
-          cp out/SIGNATURE.txt build-output/SIGNATURE.txt
+          sha256sum out/LifePop_v1.1-unsigned.apk | tee out/SHA256-UNSIGNED.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: LifePop-v1.0-final
+          name: LifePop-v1.1-unsigned
           path: out/
-
-      - name: Publish final encoded build output to build branch
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add build-output/LifePop_v1.0.apk.b64 build-output/SHA256.txt build-output/SIGNATURE.txt
-          git diff --cached --quiet && exit 0
-          git commit -m 'build: publish final LifePop v1.0 APK output'
-          git push
