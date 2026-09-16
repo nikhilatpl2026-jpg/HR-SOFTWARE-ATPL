@@ -1,0 +1,63 @@
+name: Build LifePop Native v1.2
+
+on:
+  push:
+    branches: [build-lifepop-apk-20260916]
+    paths:
+      - 'lifepop-native-v12/**'
+      - '.github/workflows/build-lifepop-native-v12.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reassemble native source
+        run: |
+          base64 -d lifepop-native-v12/src.b64 > /tmp/lifepop-v12.tar.gz
+          echo 'b311bfbfefb1968adbd2fb2f70d3ec0c5c16cf9d457ebc0758431537bc74e62e  /tmp/lifepop-v12.tar.gz' | sha256sum -c -
+          mkdir native-src
+          tar -xzf /tmp/lifepop-v12.tar.gz -C native-src
+          test -f native-src/lifepop_v11/app/src/main/java/com/nikhil/lifepop/MainActivity.java
+          ! grep -R -q 'android.webkit.WebView' native-src/lifepop_v11/app/src/main/java
+          grep -q "versionName '1.2'" native-src/lifepop_v11/app/build.gradle
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Compile native release APK
+        working-directory: native-src/lifepop_v11
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify native package
+        run: |
+          mkdir -p out
+          cp native-src/lifepop_v11/app/build/outputs/apk/release/app-release-unsigned.apk out/LifePop_v1.2_NATIVE-unsigned.apk
+          unzip -t out/LifePop_v1.2_NATIVE-unsigned.apk >/dev/null
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging out/LifePop_v1.2_NATIVE-unsigned.apk | grep "package: name='com.nikhil.lifepop' versionCode='3' versionName='1.2'"
+          if "$AAPT" dump permissions out/LifePop_v1.2_NATIVE-unsigned.apk | grep -q 'android.permission.INTERNET'; then
+            echo 'Unexpected INTERNET permission found' >&2
+            exit 1
+          fi
+          unzip -l out/LifePop_v1.2_NATIVE-unsigned.apk | tee out/APK-CONTENTS.txt
+          if unzip -l out/LifePop_v1.2_NATIVE-unsigned.apk | grep -q 'assets/app.js'; then
+            echo 'Unexpected WebView assets found' >&2
+            exit 1
+          fi
+          sha256sum out/LifePop_v1.2_NATIVE-unsigned.apk | tee out/SHA256-UNSIGNED.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifePop-v1.2-native-unsigned
+          path: out/
