@@ -1,0 +1,31 @@
+name: Export Android apksigner
+
+on:
+  push:
+    branches: [build-lifepop-apk-20260916]
+    paths:
+      - '.github/workflows/export-apksigner.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package official Android apksigner
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          test -n "$APKSIGNER" && test -x "$APKSIGNER"
+          BT=$(dirname "$APKSIGNER")
+          test -f "$BT/lib/apksigner.jar"
+          mkdir -p signer/lib
+          cp "$APKSIGNER" signer/apksigner
+          cp "$BT/lib/apksigner.jar" signer/lib/apksigner.jar
+          chmod +x signer/apksigner
+          sha256sum signer/apksigner signer/lib/apksigner.jar > signer/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-android-apksigner
+          path: signer/
