@@ -24,7 +24,8 @@ jobs:
           tar -xzf /tmp/lifepop.tar.gz
 
       - name: Run LifePop logic tests
-        run: node lifepop/test.cjs
+        working-directory: lifepop
+        run: node test.cjs
 
       - uses: actions/setup-java@v4
         with:
@@ -46,7 +47,7 @@ jobs:
           unzip -t out/LifePop_v1.0.apk >/dev/null
           jarsigner -verify -certs out/LifePop_v1.0.apk >/dev/null
           sha256sum out/LifePop_v1.0.apk | tee out/SHA256.txt
-          base64 -w 0 out/LifePop_v1.0.apk > build-output/LifePop_v1.0.apk.b64
+          base64 -w 6000 out/LifePop_v1.0.apk > build-output/LifePop_v1.0.apk.b64
           cp out/SHA256.txt build-output/SHA256.txt
 
       - uses: actions/upload-artifact@v4
