@@ -4,7 +4,7 @@ on:
   push:
     branches: [build-lifepop-apk-20260916]
     paths:
-      - 'lifepop-build-v2/**'
+      - 'lifepop-build/**'
       - '.github/workflows/build-lifepop.yml'
 
 permissions:
@@ -16,12 +16,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reassemble final source
+      - name: Reassemble verified source
         run: |
-          cat lifepop-build-v2/src.part00 lifepop-build-v2/src.part01 > /tmp/lifepop.tar.gz.b64
+          cat lifepop-build/src.part00 lifepop-build/src.part01 lifepop-build/src.part02 lifepop-build/src.part03 lifepop-build/src.part04 > /tmp/lifepop.tar.gz.b64
           base64 -d /tmp/lifepop.tar.gz.b64 > /tmp/lifepop.tar.gz
-          echo '4f9d91e4d66cd21a8e01aa378291878822400c58e9407448ec503d353caec2f2  /tmp/lifepop.tar.gz' | sha256sum -c -
+          echo '8cd0c922b5e314d7d4f649ecc47c3cb4ffe5da7c7edceeab84c4fce1e68487d1  /tmp/lifepop.tar.gz' | sha256sum -c -
           tar -xzf /tmp/lifepop.tar.gz
+
+      - name: Harden overdue To-Do reminder rescheduling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('lifepop/app/src/main/java/com/nikhil/lifepop/ReminderScheduler.java')
+          s=p.read_text()
+          old='''                long at=parseDue(date,time);\n                if (!id.isEmpty() && at>System.currentTimeMillis()) schedule(c,id,title,at);'''
+          new='''                long at=parseDue(date,time);\n                if (!id.isEmpty() && at>0) {\n                    long now=System.currentTimeMillis();\n                    // Restore the reminder chain for overdue pending tasks after reboot/state sync.\n                    schedule(c,id,title,at>now?at:now+60_000L);\n                }'''
+          if old not in s:
+              raise SystemExit('Reminder patch target not found')
+          p.write_text(s.replace(old,new))
+          PY
+          grep -q 'now+60_000L' lifepop/app/src/main/java/com/nikhil/lifepop/ReminderScheduler.java
 
       - name: Run LifePop logic tests
         working-directory: lifepop
