@@ -7,6 +7,7 @@ function loadAuthRecovery(){load('shared-auth-recovery-v1.js?v=20260914-authreco
 function loadShared(){load('erp-shared-activity-v2.js?v=20260916-shared3')}
 function loadCloud(){load('erp-cloud-sync-v1.js?v=20260917-cloud4')}
 function loadSharedStore(){load('erp-cloud-shared-storage-v1.js?v=20260916-sharedstore1')}
+function loadPersistenceGuard(){load('erp-persistence-guard-v1.js?v=20260917-permanent1')}
 function loadLokeshLock(done){load('mam-lokesh-format-lock-v2.js?v=20260916-lokeshlock2',done)}
 function loadScopedV1(done){load('mam-compliance-v5-scoped-loader-v1.js?v=20260916-real-mam-format1',function(err){if(err||typeof window.ATPLLoadMamComplianceV5ScopedV1!=='function')return done(err||new Error('Scoped V1 loader unavailable'));window.ATPLLoadMamComplianceV5ScopedV1(done)})}
 function runScopedV2(done){if(typeof window.ATPLLoadMamComplianceV5ScopedV2!=='function')return loadScopedV1(done);window.ATPLLoadMamComplianceV5ScopedV2(function(v2err){if(v2err&&!window.__MAM_COMPLIANCE_V5__)return loadScopedV1(done);done(v2err)})}
@@ -27,5 +28,6 @@ loadAuthRecovery();
 loadShared();
 loadCloud();
 loadSharedStore();
+loadPersistenceGuard();
 v5();
 })();
