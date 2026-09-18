@@ -26,8 +26,9 @@ function ensureBankNav(){
       item.id='vn-bankverify';
       item.setAttribute('onclick',"goPage('bankverify')");
       item.innerHTML='<span class="vi">🏦</span>Bank A/C Verifier';
-      var anchor=d.getElementById('vn-compliance');
+      var anchor=d.getElementById('vn-audit'),lookup=d.getElementById('vn-lookup');
       if(anchor&&anchor.parentNode===sub)sub.insertBefore(item,anchor.nextSibling);
+      else if(lookup&&lookup.parentNode===sub)sub.insertBefore(item,lookup);
       else sub.appendChild(item);
       return item;
     }catch(e){console.error('Bank verifier nav init failed:',e);return null;}
@@ -39,7 +40,7 @@ async function boot(){
     if(g.__ATPL_BANK_ACCOUNT_VERIFIER_V3__&&document.getElementById('page-bankverify')&&document.getElementById('vn-bankverify'))return;
     ensureBankNav();
     if(typeof DecompressionStream!=='function')throw new Error('Browser gzip support unavailable');
-    var r=await fetch('bank-account-verifier-v3.js.gz.b64?v=20260918-4',{cache:'no-store',credentials:'same-origin'});
+    var r=await fetch('bank-account-verifier-v3.js.gz.b64?v=20260918-5',{cache:'no-store',credentials:'same-origin'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     var b64=(await r.text()).replace(/\s+/g,''),bin=atob(b64),bytes=new Uint8Array(bin.length);
     for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
