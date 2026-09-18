@@ -57,7 +57,7 @@ function mostCommon(counter){
   return{rate:best==null?null:Number(best),count:bestCount,tie:tie};
 }
 function compactGroup(x){
-  return{key:x.key,sheet:x.sheet,card:x.card,machine:x.machine,rows:x.rows.slice(0,80),rowCount:x.rows.length,rates:x.rates,rateList:x.rateList,common:x.common,commonCount:x.commonCount,tie:x.tie,mismatch:x.mismatch,min:x.min,max:x.max,delta:x.delta};
+  return{key:x.key,sheet:x.sheet,card:x.card,machine:x.machine,rows:x.rows.slice(0,40),rowCount:x.rows.length,rates:x.rates,rateList:x.rateList,common:x.common,commonCount:x.commonCount,tie:x.tie,mismatch:x.mismatch,min:x.min,max:x.max,delta:x.delta};
 }
 function analyze(buffer,mode){
   postMessage({type:'progress',stage:'Opening workbook in background',percent:6});
