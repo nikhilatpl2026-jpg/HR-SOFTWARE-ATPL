@@ -192,6 +192,7 @@ function wire(type){
 function patchGo(){
   if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)'}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
+g.ATPLComplianceDolV1={version:'2026.09.18-1',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel};
 async function boot(){
   addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();await Promise.all([refresh('esic'),refresh('pf')]);setTimeout(function(){ensureNav('esic');ensureNav('pf');patchGo()},800);
 }
