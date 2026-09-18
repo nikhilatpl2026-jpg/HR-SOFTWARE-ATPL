@@ -69,9 +69,9 @@
     return order.map(function(k){return map[k]})
   }
   function serialize(k,fn){
-    var prev=chains[k]||Promise.resolve(),next=prev.catch(function(){}).then(fn);
-    chains[k]=next.finally(function(){if(chains[k]===next)delete chains[k]});
-    return next
+    var prev=chains[k]||Promise.resolve(),next=prev.catch(function(){}).then(fn),tracked;
+    tracked=next.finally(function(){if(chains[k]===tracked)delete chains[k]});chains[k]=tracked;
+    return tracked
   }
   async function upsertRaw(record){
     var id=codeOf(record),token=tok();if(!id||isSystemRecord(record)||!token)throw new Error('Valid employee/login required');
