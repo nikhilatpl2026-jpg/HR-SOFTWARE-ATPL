@@ -218,7 +218,7 @@ function renderFiles(type){
 }
 
 async function uploadFiles(type,files){
-  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),ok=0,failed=0,dupes=0;
+  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),ok=0,failed=0,dupes=0,errors=[];
   if(!api){if(status)status.textContent='Save Failed — shared backend service unavailable.';return}
   try{await pullCloud(type)}catch(e){if(status)status.textContent='Save Failed — backend could not be loaded: '+(e.message||e);return}
   var existing=await dbAll();
@@ -231,12 +231,12 @@ async function uploadFiles(type,files){
       var now=new Date().toISOString(),rec={id:uid(type),type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fingerprint:p.fingerprint,parseVersion:'2',archived:false,buffer:p.buffer};
       if(status)status.textContent='Saving to backend: '+f.name+'…';
       var back=await api.saveComplianceDolConfirmed(rec);rec.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(rec);existing.push(rec);ok++;notifyChange()
-    }catch(e){failed++;console.error(e);if(status)status.textContent=((/parse/i.test(String(e&&e.message||e)))?'Parse Failed — ':'Save Failed — ')+f.name+': '+(e.message||e)}
+    }catch(e){failed++;console.error(e);var em=String(e&&e.message||e),kind=/parse|not found|unreadable|pdf engine|unsupported file/i.test(em)?'Parse Failed':/backend|cloud|read-back|login|save/i.test(em)?'Save Failed':'Upload Failed';errors.push(kind+' — '+f.name+': '+em);if(status)status.textContent=errors[errors.length-1]}
     await sleep(0)
   }
   await refresh(type);
   if(status){
-    if(failed)status.textContent=(ok?ok+' Saved ✓ · ':'')+failed+' Upload/Parse/Save Failed'+(dupes?' · '+dupes+' duplicate skipped':'');
+    if(failed)status.textContent=(ok?ok+' Saved ✓ · ':'')+errors.slice(0,3).join(' | ')+(errors.length>3?' | +'+(errors.length-3)+' more':'')+(dupes?' · '+dupes+' duplicate skipped':'');
     else status.textContent='Saved ✓ — '+ok+' challan(s) backend confirmed'+(dupes?' · '+dupes+' duplicate skipped':'')+'.'+(cache[type].some(function(r){return!r.period&&r.cloudConfirmedAt})?' Yellow files ka month set karo.':'')
   }
 }
@@ -310,7 +310,7 @@ function wire(type){
 function patchGo(){
   if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)'}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
-g.ATPLComplianceDolV1={version:'2026.09.18-4',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
+g.ATPLComplianceDolV1={version:'2026.09.18-5',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
 async function boot(){
   addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
   await Promise.all([refresh('esic'),refresh('pf')]);
