@@ -220,7 +220,7 @@ function addCss(){
 }
 function addViewerCss(){
   if(q('cdf-viewer-style'))return;var s=document.createElement('style');s.id='cdf-viewer-style';
-  s.textContent='.cdf-file{grid-template-columns:1fr 118px auto auto!important}.cdf-viewBtn{border-color:#bfdbfe!important;background:#eff6ff!important;color:#1d4ed8!important}#cdfViewer{position:fixed;inset:0;z-index:100000;background:#0b1220;display:none;flex-direction:column;color:#e5e7eb}#cdfViewer.show{display:flex}#cdfViewerTop{height:58px;flex:0 0 58px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#111827;border-bottom:1px solid #334155}#cdfViewerTitle{min-width:0;flex:1}#cdfViewerTitle b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cdfViewerTitle span{display:block;font-size:9px;color:#94a3b8;margin-top:2px}#cdfViewerTop button,#cdfViewerTop select{border:1px solid #475569;background:#1f2937;color:#e5e7eb;border-radius:7px;padding:7px 9px;font-size:10px;font-weight:750;cursor:pointer}#cdfViewerTop button:disabled{opacity:.35;cursor:not-allowed}#cdfViewerBody{flex:1;min-height:0;overflow:auto;padding:16px;display:flex;align-items:flex-start;justify-content:center;background:#111827}#cdfViewerCanvas{display:block;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.35);margin:auto}#cdfViewerExcel{width:100%;min-width:720px;background:#fff;color:#111827;border-radius:8px;overflow:auto}#cdfViewerExcel table{width:100%;border-collapse:collapse;font-size:10px}#cdfViewerExcel th,#cdfViewerExcel td{border:1px solid #e5e7eb;padding:6px 8px;white-space:nowrap}#cdfViewerExcel th{position:sticky!important;top:0;background:#f8fafc!important;z-index:1}#cdfViewerError{max-width:700px;margin:auto;padding:24px;border:1px solid #7f1d1d;background:#450a0a;color:#fecaca;border-radius:12px;text-align:center;line-height:1.6}@media(max-width:900px){#cdfViewerTop{height:auto;min-height:58px;flex-wrap:wrap;padding:8px}#cdfViewerTitle{flex-basis:100%}#cdfViewerBody{padding:8px}}';
+  s.textContent='.cdf-file{grid-template-columns:1fr 118px auto auto auto!important}.cdf-deleteBtn{border-color:#fecaca!important;background:#fef2f2!important;color:#b91c1c!important}.cdf-viewBtn{border-color:#bfdbfe!important;background:#eff6ff!important;color:#1d4ed8!important}#cdfViewer{position:fixed;inset:0;z-index:100000;background:#0b1220;display:none;flex-direction:column;color:#e5e7eb}#cdfViewer.show{display:flex}#cdfViewerTop{height:58px;flex:0 0 58px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#111827;border-bottom:1px solid #334155}#cdfViewerTitle{min-width:0;flex:1}#cdfViewerTitle b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cdfViewerTitle span{display:block;font-size:9px;color:#94a3b8;margin-top:2px}#cdfViewerTop button,#cdfViewerTop select{border:1px solid #475569;background:#1f2937;color:#e5e7eb;border-radius:7px;padding:7px 9px;font-size:10px;font-weight:750;cursor:pointer}#cdfViewerTop button:disabled{opacity:.35;cursor:not-allowed}#cdfViewerBody{flex:1;min-height:0;overflow:auto;padding:16px;display:flex;align-items:flex-start;justify-content:center;background:#111827}#cdfViewerCanvas{display:block;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.35);margin:auto}#cdfViewerExcel{width:100%;min-width:720px;background:#fff;color:#111827;border-radius:8px;overflow:auto}#cdfViewerExcel table{width:100%;border-collapse:collapse;font-size:10px}#cdfViewerExcel th,#cdfViewerExcel td{border:1px solid #e5e7eb;padding:6px 8px;white-space:nowrap}#cdfViewerExcel th{position:sticky!important;top:0;background:#f8fafc!important;z-index:1}#cdfViewerError{max-width:700px;margin:auto;padding:24px;border:1px solid #7f1d1d;background:#450a0a;color:#fecaca;border-radius:12px;text-align:center;line-height:1.6}@media(max-width:900px){#cdfViewerTop{height:auto;min-height:58px;flex-wrap:wrap;padding:8px}#cdfViewerTitle{flex-basis:100%}#cdfViewerBody{padding:8px}}';
   document.head.appendChild(s)
 }
 function ensureViewer(){
@@ -375,7 +375,7 @@ function renderFiles(type){
   }).join('');
 }
 async function uploadFiles(type,files){
-  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),errors=[],duplicates=[],prepared=[],selectedHashes={};
+  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),errors=[],duplicates=[],repairs=[],prepared=[],selectedHashes={},repairBackups={};
   if(!api){if(status)status.textContent='Save Failed — shared backend service unavailable.';return}
   setStatus(type,'Checking','Loading backend fingerprints…',2);
   try{await withTimeout(pullCloud(type),45000,'Backend check timeout');await refresh(type)}catch(e){if(status)status.textContent='Save Failed — Retry: '+(e.message||e);return}
@@ -384,14 +384,17 @@ async function uploadFiles(type,files){
     var f=files[i];setStatus(type,'Checking',(i+1)+' / '+files.length+' · '+f.name,5+Math.round(((i+1)/files.length)*20));
     try{
       var buf=await f.arrayBuffer(),sha=await hashBuffer(buf),dup=existing[sha]||selectedHashes[sha];
-      if(dup){duplicates.push({file:f,existing:dup});continue}
+      if(dup){
+        if(dup.id&&(!dup.buffer||!dup.buffer.byteLength)){var local=await dbGet(dup.id)||dup;local.buffer=buf;await dbPut(local)}
+        duplicates.push({file:f,existing:dup,viewerAttached:true});continue
+      }
       var item={file:f,buffer:buf,fileHash:sha};prepared.push(item);selectedHashes[sha]=item
     }catch(e0){errors.push('Upload Failed — '+f.name+': '+(e0.message||e0))}
     await sleep(0)
   }
   if(!prepared.length){
     await refresh(type);
-    if(status)status.textContent=duplicates.length?'Already Uploaded ✓ — '+duplicates.map(function(x){var r=x.existing;return x.file.name+' → '+(r.name||'existing challan')+(r.period?' ('+periodLabel(r.period)+')':'')}).slice(0,3).join(' | ')+(duplicates.length>3?' | +'+(duplicates.length-3)+' more':''):errors.join(' | ');
+    if(status)status.textContent=duplicates.length?'Already Uploaded ✓ — '+duplicates.map(function(x){var r=x.existing;return x.file.name+' → '+(r.name||'existing challan')+(r.period?' ('+periodLabel(r.period)+')':'')+(x.viewerAttached?' · viewer ready':'')}).slice(0,3).join(' | ')+(duplicates.length>3?' | +'+(duplicates.length-3)+' more':''):errors.join(' | ');
     return
   }
   var records=[];
@@ -399,28 +402,38 @@ async function uploadFiles(type,files){
     var x=prepared[j],basePct=25+Math.round((j/prepared.length)*45);setStatus(type,'Parsing',(j+1)+' / '+prepared.length+' · '+x.file.name,basePct);
     try{
       var p=await parseBuffer(x.buffer,x.file.name||'',type,function(stage,pct){setStatus(type,'Parsing',(j+1)+' / '+prepared.length+' · '+stage,basePct+Math.round((Number(pct)||0)/100*(45/Math.max(1,prepared.length))))});
-      var now=new Date().toISOString(),rec={id:uid(type),type:type,name:x.file.name,size:x.file.size,lastModified:x.file.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fileHash:x.fileHash,fingerprint:p.fingerprint,parseVersion:'3',archived:false,buffer:x.buffer,viewerSheets:p.viewerSheets||null};
+      var legacy=all.find(function(r){return sameLegacyFileCandidate(r,x.file,p)}),now=new Date().toISOString(),rec;
+      if(legacy){
+        repairBackups[String(legacy.id)]=Object.assign({},legacy);
+        rec=Object.assign({},legacy,{name:legacy.name||x.file.name,size:x.file.size,lastModified:x.file.lastModified||legacy.lastModified||0,updatedAt:now,period:legacy.period||p.period,periodSource:legacy.period?legacy.periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fileHash:x.fileHash,fingerprint:p.fingerprint,parseVersion:'3',archived:false,archivedAt:'',duplicateOf:'',cloudConfirmedAt:'',buffer:x.buffer,viewerSheets:p.viewerSheets||null});
+        repairs.push({file:x.file,existing:legacy})
+      }else{
+        rec={id:uid(type),type:type,name:x.file.name,size:x.file.size,lastModified:x.file.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fileHash:x.fileHash,fingerprint:p.fingerprint,parseVersion:'3',archived:false,buffer:x.buffer,viewerSheets:p.viewerSheets||null}
+      }
       await dbPut(rec);records.push(Object.assign({},rec,{buffer:null,viewerSheets:null}));x.buffer=null;p.viewerSheets=null
     }catch(e1){var em=String(e1&&e1.message||e1),kind=/parse|not found|unreadable|pdf engine|unsupported file/i.test(em)?'Parse Failed':'Upload Failed';errors.push(kind+' — '+x.file.name+': '+em)}
     await sleep(0)
   }
   if(records.length){
-    setStatus(type,'Saving',records.length+' new challan(s) · one batch confirmation',75);
+    setStatus(type,'Saving',records.length+' new/repair challan(s) · batch confirmation',75);
     try{
       var res=await withTimeout(api.saveComplianceDolBatchConfirmed(records),120000,'Save Failed — Retry');
-      (res.results||[]).forEach(function(rr){if(!rr.ok)errors.push('Save Failed — '+((rr.record&&rr.record.name)||'challan')+': '+(rr.error||'backend confirmation failed'))});
+      for(var ri=0;ri<(res.results||[]).length;ri++){var rr=res.results[ri];if(!rr.ok){var rid=rr.record&&rr.record.id;if(rid&&repairBackups[String(rid)])await dbPut(repairBackups[String(rid)]);errors.push('Save Failed — '+((rr.record&&rr.record.name)||'challan')+': '+(rr.error||'backend confirmation failed'))}}
       setStatus(type,'Saving','Backend read-back confirmed '+(res.saved||0)+' / '+records.length,96)
-    }catch(e2){errors.push('Save Failed — Retry: '+(e2.message||e2))}
+    }catch(e2){
+      for(var bk in repairBackups)await dbPut(repairBackups[bk]);
+      errors.push('Save Failed — Retry: '+(e2.message||e2))
+    }
   }
-  cloudReady[type]=true;await refresh(type);notifyChange();
+  cloudReady[type]=true;try{await pullCloud(type)}catch(_){}
+  await refresh(type);var removed=await collapseExactDuplicates(type);if(removed)await refresh(type);notifyChange();
   var saved=records.filter(function(r){var z=cache[type].find(function(x){return x.id===r.id});return z&&z.cloudConfirmedAt}).length;
   if(status){
-    var dupMsg=duplicates.length?(duplicates.length===1?'Already Uploaded ✓ — '+duplicates[0].file.name+' → '+(duplicates[0].existing.name||'existing challan'):duplicates.length+' already uploaded skipped'):'';
-    if(errors.length)status.textContent=(saved?saved+' Saved ✓ · ':'')+(dupMsg?dupMsg+' · ':'')+errors.slice(0,3).join(' | ')+(errors.length>3?' | +'+(errors.length-3)+' more':'');
-    else status.textContent=(saved?saved+' Saved ✓':'')+(saved&&dupMsg?' · ':'')+dupMsg+(cache[type].some(function(r){return!r.period&&r.cloudConfirmedAt&&!r.duplicateOf})?' · Yellow files ka month set karo.':'')
+    var parts=[];if(saved)parts.push(saved+' Saved ✓');if(repairs.length)parts.push(repairs.length+' legacy challan repaired ✓');if(duplicates.length)parts.push(duplicates.length+' Already Uploaded ✓');if(removed)parts.push(removed+' duplicate removed');
+    if(errors.length)parts.push(errors.slice(0,3).join(' | ')+(errors.length>3?' | +'+(errors.length-3)+' more':''));
+    status.textContent=parts.join(' · ')+(cache[type].some(function(r){return!r.period&&r.cloudConfirmedAt&&!r.duplicateOf})?' · Yellow files ka month set karo.':'')
   }
 }
-
 function containsId(rec,type,id){
   var all=[].concat(rec&&rec.digitIds||[],rec&&rec.alnumIds||[]);
   for(var i=0;i<all.length;i++)if(normalizeQuery(type,all[i])===id)return true;
@@ -472,6 +485,18 @@ async function archive(type,id){
   catch(e){r.archived=oldArchived;r.archivedAt=oldAt;r.updatedAt=oldUpdated;if(status)status.textContent='Save Failed — challan status not stored: '+(e.message||e);await refresh(type)}
 }
 
+async function deleteChallan(type,id){
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;var api=cloudApi(),status=q(type+'DolStatus');
+  if(!api){status.textContent='Delete Failed — backend unavailable.';return}
+  if(!confirm('Permanently delete this challan?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis removes this saved challan/index record from shared ERP.'))return;
+  setStatus(type,'Deleting',r.name||'challan',35);
+  try{
+    await withTimeout(api.deleteComplianceDolConfirmed(id),60000,'Delete Failed — Retry');
+    await pullCloud(type);await refresh(type);status.textContent='Deleted ✓ — '+(r.name||'challan');
+    var queries=parseInputs(type);if(queries.length)await search(type);else{lastResults[type]=[];renderResults(type)}
+  }catch(e){status.textContent='Delete Failed — Retry: '+(e.message||e)}
+}
+
 function exportResults(type){
   var res=lastResults[type]||[];if(!res.length)return;
   var data=[['COMPLIANCE DOL FINDER — '+typeLabel(type)],['Generated',new Date().toLocaleString()],[],[idLabel(type),'Last Contribution Month','Matched Months','Later Uploaded Periods Checked','Matched Files','Status']];
@@ -484,12 +509,12 @@ function wire(type){
   document.querySelectorAll('[data-cdf-search="'+type+'"]').forEach(function(b){b.addEventListener('click',function(){search(type)})});
   q(type+'DolExport').addEventListener('click',function(){exportResults(type)});
   q(type+'DolFiles').addEventListener('change',function(e){var id=e.target.getAttribute('data-cdf-period');if(id)setPeriod(type,id,e.target.value)});
-  q(type+'DolFiles').addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cdf-view]');if(v){openViewer(type,v.getAttribute('data-cdf-view'));return}var b=e.target.closest&&e.target.closest('[data-cdf-archive]');if(b)archive(type,b.getAttribute('data-cdf-archive'))});
+  q(type+'DolFiles').addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cdf-view]');if(v){openViewer(type,v.getAttribute('data-cdf-view'));return}var d=e.target.closest&&e.target.closest('[data-cdf-delete]');if(d){deleteChallan(type,d.getAttribute('data-cdf-delete'));return}var b=e.target.closest&&e.target.closest('[data-cdf-archive]');if(b)archive(type,b.getAttribute('data-cdf-archive'))});
 }
 function patchGo(){
   if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)';var t=name==='esictodol'?'esic':'pf';if(!cloudReady[t])setTimeout(function(){pullCloud(t).then(function(){return refresh(t)}).catch(function(e){console.warn('Challan index sync skipped',e)})},80)}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
-g.ATPLComplianceDolV1={version:'2026.09.18-perf-view2',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,parseBuffer:parseBuffer,hashBuffer:hashBuffer,fingerprintFor:fingerprintFor,pullCloud:pullCloud,rebuildIndex:rebuildIndex,openViewer:openViewer};
+g.ATPLComplianceDolV1={version:'2026.09.18-dedupe-delete3',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,parseBuffer:parseBuffer,hashBuffer:hashBuffer,fingerprintFor:fingerprintFor,pullCloud:pullCloud,rebuildIndex:rebuildIndex,openViewer:openViewer};
 async function boot(){
   addCss();addViewerCss();ensureViewer();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
   await Promise.all([refresh('esic'),refresh('pf')]);
