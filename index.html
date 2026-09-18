@@ -1040,7 +1040,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="vnav-sub" id="cat-sal">
       <div class="vitem" id="vn-sync" onclick="goPage('sync')"><span class="vi">🔄</span>Salary Sync</div>
       <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
-      <div class="vitem" id="vn-compliance" onclick="goPage('compliance')"><span class="vi">⚖️</span>Compliance</div>
       <div class="vitem" id="vn-lookup" onclick="goPage('lookup')"><span class="vi">🔎</span>Salary Lookup</div>
     </div>
   </div>
@@ -1051,7 +1050,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>👥 Employee</span><span class="vnav-arrow" id="arr-emp">▾</span>
     </div>
     <div class="vnav-sub" id="cat-emp">
-      <div class="vitem" id="vn-newjoin" onclick="goPage('newjoin')"><span class="vi">✨</span>New Joiners <span class="vbadge purple" id="njBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-dol" onclick="goPage('dol')"><span class="vi">📅</span>Date of Leaving</div>
       <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')"><span class="vi">✅</span>DOL Verifier</div>
       <div class="vitem" id="vn-ff" onclick="goPage('ff')"><span class="vi">📄</span>F&amp;F Settlement</div>
@@ -1066,9 +1064,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>🛠️ Tools</span><span class="vnav-arrow" id="arr-tools">▾</span>
     </div>
     <div class="vnav-sub" id="cat-tools">
-      <div class="vitem" id="vn-misspunch" onclick="goPage('misspunch')"><span class="vi">👊</span>Miss Punch</div>
       <div class="vitem" id="vn-esic" onclick="goPage('esic')"><span class="vi">🏥</span>ESIC DOL Filler</div>
-      <div class="vitem" id="vn-formula" onclick="goPage('formula')"><span class="vi">🔬</span>Formula Detector</div>
     </div>
   </div>
 
@@ -1119,9 +1115,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="qc" onclick="sc('dono sheets ke common naam dhundo jinka punch out missing hai')"><div class="qi">🔍</div>Common naam — punch-out missing</div>
       <div class="qc" onclick="sc('sheet1 mein hai lekin sheet2 mein nahi aise naam dhundo')"><div class="qi">➖</div>Sheet1 mein hai Sheet2 mein nahi</div>
       <div class="qc" onclick="sc('saare blank aur empty cells dhundo')"><div class="qi">🟡</div>Blank cells dhundo</div>
-
-      <div class="qg-lbl">✨ New Joiners</div>
-      <div class="qc purple" onclick="goPage('newjoin')"><div class="qi">✨</div>New Joiners dhundo (2 months compare)</div>
 
       <div class="qg-lbl">🔍 Salary Audit</div>
       <div class="qc red" onclick="goPage('audit')"><div class="qi">🔴</div>Salary formula divisor check karo</div>
@@ -10744,6 +10737,7 @@ else AInit();
 <script src="hr-docs-activity-v1.js?v=20260912-1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
-<script src="bank-account-verifier-loader-v3.js?v=20260918-4"></script>
+<script src="erp-durable-everything-v1.js?v=20260918-1"></script>
+<script src="bank-account-verifier-loader-v3.js?v=20260918-5"></script>
 </body>
 </html>
