@@ -54,8 +54,22 @@ async function fingerprintFor(type,digits,alnums){
   var ids=type==='esic'?(digits||[]):Array.from(new Set([].concat(digits||[],alnums||[])));
   ids=ids.map(String).filter(Boolean).sort();return hashText(type+'|'+ids.join('|'))
 }
-function duplicateKey(r){if(r&&r.fileHash)return String(r.type||'')+'|sha256|'+String(r.fileHash);return String(r&&r.type||'')+'|legacy|'+String(r&&r.id||'')}
-function cloudApi(){var a=g.ATPLDurableEverythingV1;return a&&typeof a.saveComplianceDolConfirmed==='function'&&typeof a.saveComplianceDolBatchConfirmed==='function'&&typeof a.getComplianceDolRecords==='function'?a:null}
+function cleanFileName(v){return String(v||'').toLowerCase().replace(/\s+/g,' ').trim()}
+function legacySafeKey(r){
+  if(!r||r.fileHash||!r.period||!r.size||!r.fingerprint||!r.name)return'';
+  var sig=String(r.detail||'').toLowerCase().replace(/\s+/g,' ').trim(),lm=Number(r.lastModified||0)||0;
+  return String(r.type||'')+'|legacy-safe|'+r.period+'|'+Number(r.size||0)+'|'+r.fingerprint+'|'+cleanFileName(r.name)+'|'+lm+'|'+sig
+}
+function duplicateKey(r){if(r&&r.fileHash)return String(r.type||'')+'|sha256|'+String(r.fileHash);return legacySafeKey(r)||String(r&&r.type||'')+'|legacy-id|'+String(r&&r.id||'')}
+function sameLegacyFileCandidate(r,file,parsed){
+  if(!r||r.fileHash||r.duplicateOf||!r.cloudConfirmedAt)return false;
+  if(Number(r.size||0)!==Number(file&&file.size||0))return false;
+  var rn=cleanFileName(r.name),fn=cleanFileName(file&&file.name),lm1=Number(r.lastModified||0)||0,lm2=Number(file&&file.lastModified||0)||0;
+  if(rn===fn&&lm1&&lm2&&lm1===lm2)return true;
+  if(parsed&&r.period&&parsed.period&&r.period===parsed.period&&r.fingerprint&&parsed.fingerprint&&r.fingerprint===parsed.fingerprint&&rn===fn)return true;
+  return false
+}
+function cloudApi(){var a=g.ATPLDurableEverythingV1;return a&&typeof a.saveComplianceDolConfirmed==='function'&&typeof a.saveComplianceDolBatchConfirmed==='function'&&typeof a.deleteComplianceDolConfirmed==='function'&&typeof a.deleteComplianceDolBatchConfirmed==='function'&&typeof a.getComplianceDolRecords==='function'?a:null}
 function withTimeout(p,ms,msg){return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error(msg||'Operation timeout'))},ms)})])}
 function setStatus(type,phase,msg,pct){
   var s=q(type+'DolStatus');if(!s)return;var p=Math.max(0,Math.min(100,Number(pct)||0));
@@ -313,36 +327,32 @@ async function backfillHashes(type){
 }
 async function collapseExactDuplicates(type){
   var api=cloudApi();if(!api)return 0;await refresh(type);
-  var groups={},updates=[],collapsed=0;
-  cache[type].filter(function(r){return r.cloudConfirmedAt&&r.fileHash&&!r.duplicateOf}).forEach(function(r){(groups[r.fileHash]||(groups[r.fileHash]=[])).push(r)});
-  Object.keys(groups).forEach(function(h){
-    var arr=groups[h];if(arr.length<2)return;
-    var periods=Array.from(new Set(arr.map(function(r){return r.period}).filter(Boolean)));
-    if(periods.length>1)return;
-    arr.sort(function(a,b){return (b.buffer?1:0)-(a.buffer?1:0)||(b.viewerSheets?1:0)-(a.viewerSheets?1:0)||(b.period?1:0)-(a.period?1:0)||String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||''))});
-    var keep=arr[0],p=periods[0]||'';
-    if(!keep.period&&p){keep.period=p;keep.periodSource='dedupe-merge';keep.updatedAt=new Date().toISOString();updates.push(keep)}
-    for(var i=1;i<arr.length;i++){var d=arr[i];d.duplicateOf=keep.id;d.archived=true;d.archivedAt=d.archivedAt||new Date().toISOString();d.updatedAt=new Date().toISOString();updates.push(d);collapsed++}
+  var groups={},deleteIds=[];
+  cache[type].filter(function(r){return r.cloudConfirmedAt&&!r.duplicateOf}).forEach(function(r){
+    var k=r.fileHash?('sha:'+r.fileHash):legacySafeKey(r);if(!k)return;(groups[k]||(groups[k]=[])).push(r)
   });
-  if(updates.length){
-    try{
-      var res=await withTimeout(api.saveComplianceDolBatchConfirmed(updates.map(function(r){return Object.assign({},r,{buffer:null,viewerSheets:null})})),120000,'Duplicate cleanup timeout');
-      var okIds={};(res.results||[]).forEach(function(x){if(x.ok&&x.record&&x.record.id)okIds[String(x.record.id)]=1});
-      for(var j=0;j<updates.length;j++)if(okIds[String(updates[j].id)])await dbPut(updates[j]);
-      collapsed=updates.filter(function(r){return r.duplicateOf&&okIds[String(r.id)]}).length
-    }catch(e){console.warn('Exact duplicate cleanup backend update skipped',e);return 0}
-  }
-  if(collapsed)await refresh(type);return collapsed
+  Object.keys(groups).forEach(function(k){
+    var arr=groups[k];if(arr.length<2)return;
+    var periods=Array.from(new Set(arr.map(function(r){return r.period}).filter(Boolean)));if(periods.length>1)return;
+    arr.sort(function(a,b){return (b.buffer?1:0)-(a.buffer?1:0)||(b.viewerSheets?1:0)-(a.viewerSheets?1:0)||String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||''))});
+    for(var i=1;i<arr.length;i++)deleteIds.push(arr[i].id)
+  });
+  if(!deleteIds.length)return 0;
+  try{
+    var res=await withTimeout(api.deleteComplianceDolBatchConfirmed(deleteIds),120000,'Duplicate cleanup timeout');
+    if(res.deleted){await pullCloud(type);await refresh(type)}
+    return res.deleted||0
+  }catch(e){console.warn('Exact duplicate cleanup skipped',e);return 0}
 }
 function logicalRecords(type){
   var seen={},out=[];
-  cache[type].filter(function(r){return!r.archived&&!r.duplicateOf&&!!r.cloudConfirmedAt}).forEach(function(r){var k=r.fileHash?'sha:'+r.fileHash:'id:'+r.id;if(seen[k])return;seen[k]=1;out.push(r)});
+  cache[type].filter(function(r){return!r.archived&&!r.duplicateOf&&!!r.cloudConfirmedAt}).forEach(function(r){var k=duplicateKey(r);if(seen[k])return;seen[k]=1;out.push(r)});
   return out
 }
 function rebuildIndex(type){
   var idx={},files=logicalRecords(type),periods=Array.from(new Set(files.map(function(r){return r.period}).filter(Boolean))).sort();
   files.forEach(function(r){
-    var ids=type==='esic'?(r.digitIds||[]):Array.from(new Set([].concat(r.digitIds||[],r.alnumIds||[])));
+    var ids=Array.from(new Set([].concat(r.digitIds||[],r.alnumIds||[])));
     ids.forEach(function(id){id=normalizeQuery(type,id);if(!id)return;(idx[id]||(idx[id]=[])).push(r)})
   });
   Object.keys(idx).forEach(function(k){idx[k].sort(function(a,b){return cmpPeriod(a.period,b.period)||String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||''))})});
@@ -361,7 +371,7 @@ function renderFiles(type){
   if(!list.length){box.innerHTML='<div class="cdf-empty" style="min-height:150px"><div>📚</div><b>No challans saved</b><span>1–2 years ke challans ek saath upload kar sakte ho.</span></div>';return}
   box.innerHTML=list.map(function(r){
     var confirmed=!!r.cloudConfirmedAt,cloud=confirmed?'<span class="cdf-good">Saved ✓ backend</span>':'<span class="cdf-bad">Save Failed — Retry</span>',hash=r.fileHash?(' · SHA '+r.fileHash.slice(0,10)):'';
-    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+hash+' · '+cloud+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button class="cdf-viewBtn" data-cdf-view="'+esc(r.id)+'">👁 View</button><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button></div>'
+    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+hash+' · '+cloud+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button class="cdf-viewBtn" data-cdf-view="'+esc(r.id)+'">👁 View</button><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button><button class="cdf-deleteBtn" data-cdf-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
   }).join('');
 }
 async function uploadFiles(type,files){
@@ -412,9 +422,9 @@ async function uploadFiles(type,files){
 }
 
 function containsId(rec,type,id){
-  if(type==='esic')return (rec.digitIds||[]).indexOf(id)>=0;
-  if(/^\d{12}$/.test(id))return (rec.digitIds||[]).indexOf(id)>=0||(rec.alnumIds||[]).indexOf(id)>=0;
-  return (rec.alnumIds||[]).indexOf(id)>=0;
+  var all=[].concat(rec&&rec.digitIds||[],rec&&rec.alnumIds||[]);
+  for(var i=0;i<all.length;i++)if(normalizeQuery(type,all[i])===id)return true;
+  return false
 }
 function parseInputs(type){
   var ids=pageIds(type),raw=searchMode[type]==='single'?(q(ids.input).value||''):(q(ids.multi).value||''),parts=searchMode[type]==='single'?[raw]:raw.split(/[\n,;]+/),out=[],seen={};
