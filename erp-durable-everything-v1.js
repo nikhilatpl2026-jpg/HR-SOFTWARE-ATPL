@@ -67,7 +67,7 @@
     if(!root.indexedDB)return false;
     var kind='compliance_dol_v1',metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind===kind}),local=await dolRows(),by={},rm={},changed=0,i;
     local.forEach(function(r){if(r&&r.id)by[String(r.id)]=r});metas.forEach(function(m){rm[String(m.key_text||'')]=m});
-    for(i=0;i<metas.length;i++){var m=metas[i],id=String(m.key_text||''),old=by[id];if(!id)continue;if(old&&ms(old.updatedAt||old.uploadedAt)>=ms(m.saved_at))continue;try{var p=await loadObject(records,m);if(!p||!p.id)continue;p.buffer=null;await putDol(p);by[id]=p;changed++}catch(e){console.warn('Durable DOL pull failed',id,e)}}
+    for(i=0;i<metas.length;i++){var m=metas[i],id=String(m.key_text||''),old=by[id];if(!id)continue;if(old&&ms(old.updatedAt||old.uploadedAt)>=ms(m.saved_at))continue;try{var p=await loadObject(records,m);if(!p||!p.id)continue;p.buffer=old&&old.buffer?old.buffer:null;p.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;await putDol(p);by[id]=p;changed++}catch(e){console.warn('Durable DOL pull failed',id,e)}}
     local=await dolRows();
     for(i=0;i<local.length;i++){var r=local[i];if(!r||!r.id||!r.cloudConfirmedAt)continue;var m0=rm[String(r.id)],ts=r.updatedAt||r.uploadedAt||'',push=!m0||ms(ts)>ms(m0.saved_at),lk=kind+':'+r.id;if(!push||lastDolPush[lk])continue;lastDolPush[lk]=1;try{var p=dolPayload(r);await saveObject(kind,r.id,p,{name:(r.type||'')+' · '+(r.name||r.id),saved_at:ts||new Date().toISOString()});delete lastDolPush[lk]}catch(e){delete lastDolPush[lk];console.warn('Durable DOL save failed',r&&r.name,e)}}
     if(changed){try{root.document.dispatchEvent(new CustomEvent('atpl-compliance-dol-synced',{detail:{count:changed}}))}catch(_){}}
