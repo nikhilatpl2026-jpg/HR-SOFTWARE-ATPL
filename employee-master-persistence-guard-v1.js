@@ -43,7 +43,7 @@ function hydrate(){
 }
 function wrapSave(){
   var fn=g.emSaveModal;
-  if(typeof fn!=='function'||fn.__atplPersistWrapped)return;
+  if(typeof fn!=='function'||fn.__atplPersistWrapped||fn.__atplConfirmed||g.ATPLEmployeeMasterConfirmedSaveV1)return;
   function w(){
     var r=fn.apply(this,arguments);
     setTimeout(function(){persist();try{if(g.ATPLCloudSyncV1&&typeof g.ATPLCloudSyncV1.wake==='function')g.ATPLCloudSyncV1.wake()}catch(_){}},0);
