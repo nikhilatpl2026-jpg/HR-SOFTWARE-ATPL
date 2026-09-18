@@ -47,7 +47,7 @@ async function hashText(s){
   return hashFallback(String(s))
 }
 async function hashBuffer(buf){
-  try{if(g.crypto&&g.crypto.subtle){var ab=await g.crypto.subtle.digest('SHA-256',buf.slice(0));return Array.from(new Uint8Array(ab)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')}}catch(_){}
+  try{if(g.crypto&&g.crypto.subtle){var ab=await g.crypto.subtle.digest('SHA-256',buf);return Array.from(new Uint8Array(ab)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')}}catch(_){}
   var a=new Uint8Array(buf),h1=2166136261,h2=5381;for(var i=0;i<a.length;i++){h1^=a[i];h1=Math.imul(h1,16777619);h2=((h2<<5)+h2)^a[i]}return('00000000'+(h1>>>0).toString(16)).slice(-8)+('00000000'+(h2>>>0).toString(16)).slice(-8)
 }
 async function fingerprintFor(type,digits,alnums){
@@ -325,8 +325,12 @@ async function collapseExactDuplicates(type){
     for(var i=1;i<arr.length;i++){var d=arr[i];d.duplicateOf=keep.id;d.archived=true;d.archivedAt=d.archivedAt||new Date().toISOString();d.updatedAt=new Date().toISOString();updates.push(d);collapsed++}
   });
   if(updates.length){
-    try{await withTimeout(api.saveComplianceDolBatchConfirmed(updates),120000,'Duplicate cleanup timeout');for(var j=0;j<updates.length;j++)await dbPut(updates[j])}
-    catch(e){console.warn('Exact duplicate cleanup backend update skipped',e);return 0}
+    try{
+      var res=await withTimeout(api.saveComplianceDolBatchConfirmed(updates.map(function(r){return Object.assign({},r,{buffer:null,viewerSheets:null})})),120000,'Duplicate cleanup timeout');
+      var okIds={};(res.results||[]).forEach(function(x){if(x.ok&&x.record&&x.record.id)okIds[String(x.record.id)]=1});
+      for(var j=0;j<updates.length;j++)if(okIds[String(updates[j].id)])await dbPut(updates[j]);
+      collapsed=updates.filter(function(r){return r.duplicateOf&&okIds[String(r.id)]}).length
+    }catch(e){console.warn('Exact duplicate cleanup backend update skipped',e);return 0}
   }
   if(collapsed)await refresh(type);return collapsed
 }
@@ -386,7 +390,7 @@ async function uploadFiles(type,files){
     try{
       var p=await parseBuffer(x.buffer,x.file.name||'',type,function(stage,pct){setStatus(type,'Parsing',(j+1)+' / '+prepared.length+' · '+stage,basePct+Math.round((Number(pct)||0)/100*(45/Math.max(1,prepared.length))))});
       var now=new Date().toISOString(),rec={id:uid(type),type:type,name:x.file.name,size:x.file.size,lastModified:x.file.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fileHash:x.fileHash,fingerprint:p.fingerprint,parseVersion:'3',archived:false,buffer:x.buffer,viewerSheets:p.viewerSheets||null};
-      await dbPut(rec);records.push(rec)
+      await dbPut(rec);records.push(Object.assign({},rec,{buffer:null,viewerSheets:null}));x.buffer=null;p.viewerSheets=null
     }catch(e1){var em=String(e1&&e1.message||e1),kind=/parse|not found|unreadable|pdf engine|unsupported file/i.test(em)?'Parse Failed':'Upload Failed';errors.push(kind+' — '+x.file.name+': '+em)}
     await sleep(0)
   }
