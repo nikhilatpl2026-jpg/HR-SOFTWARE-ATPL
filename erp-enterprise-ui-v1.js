@@ -19,7 +19,9 @@ var PAGE_NAMES={
   ff:'Employee / F&F Settlement',
   empmaster:'Employee / Employee Master',
   hrdocs:'Employee / HR Documents',
-  esic:'Tools / ESIC DOL Filler'
+  esic:'Tools / ESIC DOL Filler',
+  esictodol:'Compliance / ESIC → DOL',
+  pftodol:'Compliance / PF → DOL'
 };
 
 function addCss(){
@@ -34,7 +36,7 @@ function addCss(){
     '.header-right #dsBtn{background:#f5f3ff!important;border:1px solid #ddd6fe!important;color:#5b21b6!important;box-shadow:none!important;}',
     '.storage-badge{background:#f0fdf4!important;border:1px solid #bbf7d0!important;color:#15803d!important;box-shadow:none!important;}',
     '.storage-badge .dot{background:#22c55e!important;box-shadow:none!important;}',
-    '#vnav{width:224px!important;background:#fbfbfc!important;border-right:1px solid #e5e7eb!important;box-shadow:none!important;color:#334155!important;}',
+    '#vnav{width:228px!important;background:#fbfbfc!important;border-right:1px solid #e5e7eb!important;box-shadow:4px 0 18px rgba(15,23,42,.025)!important;color:#334155!important;}',
     '#vnav>div:first-child{padding:17px 14px 10px!important;border-bottom:1px solid #eef0f3!important;background:#fff!important;}',
     '#vnav>div:first-child>div{color:#9ca3af!important;font-size:8px!important;letter-spacing:1.5px!important;}',
     '.vnav-group{border-bottom:1px solid #f0f1f4!important;padding:5px 0!important;}',
@@ -43,7 +45,7 @@ function addCss(){
     '.vnav-arrow{color:#94a3b8!important;}',
     '.vitem{margin:2px 8px!important;padding:8px 10px 8px 12px!important;border-left:0!important;border-radius:7px!important;color:#475569!important;font-size:11px!important;font-weight:600!important;gap:8px!important;}',
     '.vitem:hover{color:#312e81!important;background:#f5f3ff!important;border-left:0!important;}',
-    '.vitem.active{color:#312e81!important;background:#ede9fe!important;border-left:0!important;box-shadow:inset 3px 0 0 #4f46e5!important;font-weight:800!important;}',
+    '.vitem.active{color:#312e81!important;background:linear-gradient(90deg,#ede9fe,#f5f3ff)!important;border-left:0!important;box-shadow:inset 3px 0 0 #4f46e5!important;font-weight:800!important;}',
     '.vi{width:17px!important;font-size:12px!important;opacity:.9!important;}',
     '.vbadge{font-size:8px!important;padding:1px 5px!important;animation:none!important;}',
     '#sidebarToggle{color:#94a3b8!important;border-top:1px solid #eef0f3!important;background:#fff!important;}',
@@ -111,8 +113,8 @@ function cleanNav(){
 }
 function boot(){
   addCss();installHeader();patchGoPage();cleanNav();
-  setTimeout(function(){installHeader();patchGoPage();cleanNav();setCrumb(activeName())},1200);
-  setInterval(function(){patchGoPage();cleanNav()},5000);
+  setTimeout(function(){installHeader();patchGoPage();cleanNav();setCrumb(activeName())},700);
+  setTimeout(function(){patchGoPage();cleanNav()},2200);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
