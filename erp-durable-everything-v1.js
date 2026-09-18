@@ -12,7 +12,7 @@
   var BANK_DB='ATPL_BANK_VERIFIER_PRIVATE_V3',BANK_VER=2,BANK_STORE='previousSheets',BANK_WORK_STORE='workingFiles';
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
-  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={};
+  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false;
 
   function text(v){return v==null?'':String(v).trim()}
   function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
@@ -77,8 +77,51 @@
   function displayCell(cell){if(!cell)return'';if(cell.w!=null)return String(cell.w);if(cell.v==null)return'';if(cell.v instanceof Date)return cell.v.toISOString();return String(cell.v)}
   function writeCellValue(ws,R,C,val){var addr=root.XLSX.utils.encode_cell({r:R,c:C}),cell=ws[addr]||{},s=String(val==null?'':val),cur=displayCell(cell);if(cur===s)return false;if(s===''){if(cell&&cell.f)delete cell.f;cell.t='s';cell.v='';cell.w='';ws[addr]=cell;return true}if(cell&&cell.f)delete cell.f;var num=Number(String(s).replace(/,/g,''));if(s!==''&&isFinite(num)&&/^[-+]?\d+(?:\.\d+)?$/.test(s)&&!(s.length>1&&s[0]==='0')){cell.t='n';cell.v=num;delete cell.w}else{cell.t='s';cell.v=s;cell.w=s}ws[addr]=cell;return true}
   function syncSheetsIntoWorkbook(f){if(!f||!f.wb||!f.sheets||!root.XLSX)return 0;var changes=0;f.wb.SheetNames.forEach(function(sn){var ws=f.wb.Sheets[sn],rows=f.sheets[sn]||[];if(!ws)return;for(var R=0;R<rows.length;R++){var row=rows[R]||[];for(var C=0;C<row.length;C++)if(writeCellValue(ws,R,C,row[C]))changes++}});return changes}
-  function persistAllFiles(){try{if(!Array.isArray(root.FILES)||!root.XLSX||typeof root.saveFileToDB!=='function')return Promise.resolve(false);var jobs=[];root.FILES.forEach(function(f){try{syncSheetsIntoWorkbook(f);var buf=root.XLSX.write(f.wb,{bookType:'xlsx',type:'array',compression:true});f.buf=buf;f.savedAt=new Date().toISOString();jobs.push(new Promise(function(resolve){root.saveFileToDB(f.name,buf,function(){resolve(true)})}))}catch(e){console.warn('Durable file autosave skipped',f&&f.name,e)}});return Promise.all(jobs).then(function(){return true})}catch(_){return Promise.resolve(false)}}
-  function wrapMutation(name){try{var fn=root[name];if(typeof fn!=='function'||fn.__atplDurableWrapped)return;function w(){var r=fn.apply(this,arguments);setTimeout(function(){persistAllFiles()},250);return r}w.__atplDurableWrapped=true;w.__original=fn;root[name]=w}catch(_){}}
+  function idle(){return new Promise(function(resolve){try{if(typeof root.requestIdleCallback==='function')root.requestIdleCallback(function(){resolve()},{timeout:700});else root.setTimeout(resolve,30)}catch(_){root.setTimeout(resolve,30)}})}
+  async function persistFileIndex(fi){
+    try{
+      if(!Array.isArray(root.FILES)||!root.XLSX||typeof root.saveFileToDB!=='function')return false;
+      fi=Number(fi);var f=root.FILES[fi];if(!f||!f.wb)return false;
+      await idle();
+      syncSheetsIntoWorkbook(f);
+      var buf=root.XLSX.write(f.wb,{bookType:'xlsx',type:'array',compression:true});
+      f.buf=buf;f.savedAt=new Date().toISOString();
+      return await new Promise(function(resolve){root.saveFileToDB(f.name,buf,function(){resolve(true)})});
+    }catch(e){console.warn('Durable changed-file autosave skipped',fi,e);return false}
+  }
+  function queueFileIndices(indices){
+    (indices||[]).forEach(function(i){i=Number(i);if(isFinite(i)&&i>=0)fileSaveQueue[i]=1});
+    if(fileSaveTimer)root.clearTimeout(fileSaveTimer);
+    fileSaveTimer=root.setTimeout(flushFileQueue,1800);
+  }
+  async function flushFileQueue(){
+    if(fileSaveRunning)return;
+    fileSaveRunning=true;fileSaveTimer=0;
+    try{
+      var ids=Object.keys(fileSaveQueue).map(Number).sort(function(a,b){return a-b});fileSaveQueue={};
+      for(var i=0;i<ids.length;i++){await persistFileIndex(ids[i]);await idle()}
+    }finally{
+      fileSaveRunning=false;
+      if(Object.keys(fileSaveQueue).length)fileSaveTimer=root.setTimeout(flushFileQueue,1200);
+    }
+  }
+  async function persistAllFiles(){
+    if(!Array.isArray(root.FILES))return false;
+    queueFileIndices(root.FILES.map(function(_,i){return i}));
+    return true;
+  }
+  function wrapMutation(name){
+    try{
+      var fn=root[name];if(typeof fn!=='function'||fn.__atplDurableWrapped)return;
+      function w(){
+        var args=Array.prototype.slice.call(arguments),r=fn.apply(this,args);
+        if(name==='saveInlineEdits'&&isFinite(Number(args[0])))queueFileIndices([Number(args[0])]);
+        else if((name==='cmdFillTime'||name==='cmdFillCol')&&Array.isArray(root.FILES))queueFileIndices(root.FILES.map(function(_,i){return i}));
+        return r;
+      }
+      w.__atplDurableWrapped=true;w.__original=fn;root[name]=w;
+    }catch(_){}
+  }
   function hookMutations(){['saveInlineEdits','cmdFillTime','cmdFillCol'].forEach(wrapMutation)}
 
   function badge(msg,bad){try{var id='atplDurableEverythingBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:9px;padding:4px 7px;border-radius:999px;font-weight:800;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}b.textContent=msg||'☁ Auto-Save ON';if(bad){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
@@ -87,6 +130,6 @@
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');setTimeout(function(){run(true)},2200);root.addEventListener('online',function(){setTimeout(function(){run(true)},200)});root.addEventListener('focus',function(){run(false)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)run(false)});root.document.addEventListener('atpl-compliance-dol-local-change',function(){setTimeout(function(){run(true)},300)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#uaLoginBtn,#vn-empmaster,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true);setInterval(function(){if(!root.document.hidden)run(false)},90000);setInterval(hookMutations,5000)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
