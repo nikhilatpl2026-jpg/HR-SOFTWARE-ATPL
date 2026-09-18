@@ -52,14 +52,14 @@ async function saveReferenceFiles(files){
 async function toggleRef(id,on){
   var r=refs.find(function(x){return x.id===id});if(!r)return;
   if(on&&selectedRefs().filter(function(x){return x.id!==id}).length>=3){setStatus('Maximum 3 previous sheets select kar sakte ho.',true);renderLibrary();return}
-  r.selected=!!on;r.archived=false;await put(REF_STORE,r);await loadRefs();await applySelected();notifyCloud();
+  r.selected=!!on;r.archived=false;r.savedAt=new Date().toISOString();await put(REF_STORE,r);await loadRefs();await applySelected();notifyCloud();
 }
 async function archiveRef(id){
   var r=refs.find(function(x){return x.id===id});if(!r)return;
   if(!confirm('Is sheet ko Saved Library se hata kar Recycle Bin me move karein? Data permanently delete nahi hoga.'))return;
-  r.archived=true;r.selected=false;r.archivedAt=new Date().toISOString();await put(REF_STORE,r);await loadRefs();await applySelected();notifyCloud();setStatus('Sheet Recycle Bin me move ho gayi. Restore kabhi bhi kar sakte ho.',false);
+  r.archived=true;r.selected=false;r.archivedAt=new Date().toISOString();r.savedAt=new Date().toISOString();await put(REF_STORE,r);await loadRefs();await applySelected();notifyCloud();setStatus('Sheet Recycle Bin me move ho gayi. Restore kabhi bhi kar sakte ho.',false);
 }
-async function restoreRef(id){var r=refs.find(function(x){return x.id===id});if(!r)return;r.archived=false;r.archivedAt='';await put(REF_STORE,r);await loadRefs();notifyCloud();setStatus('Sheet restored.',false)}
+async function restoreRef(id){var r=refs.find(function(x){return x.id===id});if(!r)return;r.archived=false;r.archivedAt='';r.savedAt=new Date().toISOString();await put(REF_STORE,r);await loadRefs();notifyCloud();setStatus('Sheet restored.',false)}
 async function applySelected(){
   var s=state();if(!s)return;
   s.histories=[null,null,null];['h0','h1','h2'].forEach(function(id){var el=q('bavInput-'+id);if(el)el.value=''});
