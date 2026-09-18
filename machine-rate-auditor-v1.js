@@ -9,7 +9,7 @@
 if(!g||g.__ATPL_MACHINE_RATE_AUDITOR_V2__)return;
 g.__ATPL_MACHINE_RATE_AUDITOR_V2__='2026.09.18-2';
 
-var state={file:null,groups:[],issues:[],filter:'all',mode:'monthly',scannedSheets:0,scannedEmployees:0,sheetCount:0,scanning:false,viewLimit:25};
+var state={file:null,groups:[],issues:[],filter:'all',mode:'monthly',scannedSheets:0,scannedEmployees:0,sheetCount:0,scanning:false,viewLimit:10};
 var scanWorker=null,scanJob=0;
 function q(id){return document.getElementById(id)}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -96,7 +96,7 @@ function analyzeWorkbook(wb){
 }
 function setMode(next){
   if(next!=='monthly'&&next!=='kg')return;
-  state.mode=next;state.viewLimit=25;
+  state.mode=next;state.viewLimit=10;
   ['monthly','kg'].forEach(function(x){var b=q('mraMode-'+x);if(b)b.classList.toggle('active',x===next)});
   var t=q('mraModeHint');if(t)t.textContent=next==='kg'?'Rate/KG mode: 1.80 / 2.25 / 3.25 type values compare honge. Embedded suffix (C1R1.80) → machine C1R.':'Rate mode: ₹14,500 / ₹15,500 type monthly rates compare honge.';
   if(state.file)scanFile(state.file);
@@ -114,7 +114,7 @@ function makePage(){
     '<div class="mra-body" id="mraResults"><div class="mra-empty"><div>⚙️</div><b>Machine Rate Audit Ready</b><span>Workbook upload karo, phir ₹ Rate ya Rate/KG choose karo.</span></div></div></div>';
   content.appendChild(page);
   q('mraFile').addEventListener('change',onFile);
-  q('mraFilter').addEventListener('change',function(){state.filter=this.value;state.viewLimit=25;render()});
+  q('mraFilter').addEventListener('change',function(){state.filter=this.value;state.viewLimit=10;render()});
   q('mraDownload').addEventListener('click',download);
   q('mraMode-monthly').addEventListener('click',function(){setMode('monthly')});
   q('mraMode-kg').addEventListener('click',function(){setMode('kg')});
@@ -136,7 +136,7 @@ function stopWorker(){
 }
 async function scanFile(file){
   if(!file)return;
-  stopWorker();state.file=file;state.scanning=true;state.filter='all';
+  stopWorker();state.file=file;state.scanning=true;state.filter='all';state.viewLimit=10;
   if(q('mraFilter'))q('mraFilter').value='all';
   if(q('mraDownload'))q('mraDownload').disabled=true;
   setScanUi('Reading workbook in background…',3);
@@ -184,9 +184,9 @@ function render(){
     var rates=gp.rateList.map(function(r){return'<span class="mra-rate '+(gp.mismatch?'bad':'')+'">'+rateText(r)+' <small>×'+gp.rates[String(r)]+'</small></span>'}).join('');
     html+='<div class="mra-group '+(gp.mismatch?'bad':'')+'"><div class="mra-gh"><div><div class="mra-machine">'+esc(gp.machine)+'</div><div class="mra-sheet">'+esc(gp.sheet)+'</div></div><div class="mra-rates">'+rates+'</div><div style="font-size:9px;color:#64748b">'+(gp.rowCount||gp.rows.length)+' employee row(s) · '+(gp.mismatch?'Spread '+rateText(gp.delta):'Same '+(state.mode==='kg'?'rate/kg':'rate'))+'</div><div class="mra-status"><span class="mra-pill '+(gp.mismatch?'bad':'ok')+'">'+(gp.mismatch?'RATE MISMATCH':'CONSISTENT')+'</span></div></div>';
     html+='<table class="mra-table"><thead><tr><th>EMP CODE</th><th>EMPLOYEE</th><th>MACHINE</th><th>'+(state.mode==='kg'?'RATE/KG':'RATE')+'</th><th>COMMON</th><th>DIFFERENCE</th><th>ROW</th></tr></thead><tbody>';
-    gp.rows.slice(0,80).forEach(function(r){var out=gp.mismatch&&gp.common!=null&&r.rate!==gp.common,diff=gp.common==null?0:r.rate-gp.common;html+='<tr class="'+(out?'outlier':'')+'"><td>'+esc(r.code||'—')+'</td><td><b>'+esc(r.name||'—')+'</b></td><td>'+esc(r.machine)+(r.rawMachine!==r.machine?'<div class="mra-muted">raw: '+esc(r.rawMachine)+'</div>':'')+'</td><td><b>'+rateText(r.rate)+'</b></td><td>'+(!gp.tie&&gp.common!=null?rateText(gp.common):'<span class="mra-muted">No clear standard</span>')+'</td><td class="'+(out?'mra-diff':'mra-muted')+'">'+(out?(diff>0?'+':'')+(state.mode==='kg'?kg(diff):money(diff)):'—')+'</td><td>'+r.row+'</td></tr>'});if((gp.rowCount||gp.rows.length)>80)html+='<tr><td colspan="7" class="mra-muted" style="text-align:center">Showing 80 of '+(gp.rowCount||gp.rows.length)+' rows — export contains all rows</td></tr>';
+    gp.rows.slice(0,40).forEach(function(r){var out=gp.mismatch&&gp.common!=null&&r.rate!==gp.common,diff=gp.common==null?0:r.rate-gp.common;html+='<tr class="'+(out?'outlier':'')+'"><td>'+esc(r.code||'—')+'</td><td><b>'+esc(r.name||'—')+'</b></td><td>'+esc(r.machine)+(r.rawMachine!==r.machine?'<div class="mra-muted">raw: '+esc(r.rawMachine)+'</div>':'')+'</td><td><b>'+rateText(r.rate)+'</b></td><td>'+(!gp.tie&&gp.common!=null?rateText(gp.common):'<span class="mra-muted">No clear standard</span>')+'</td><td class="'+(out?'mra-diff':'mra-muted')+'">'+(out?(diff>0?'+':'')+(state.mode==='kg'?kg(diff):money(diff)):'—')+'</td><td>'+r.row+'</td></tr>'});if((gp.rowCount||gp.rows.length)>40)html+='<tr><td colspan="7" class="mra-muted" style="text-align:center">Showing 40 of '+(gp.rowCount||gp.rows.length)+' rows — export contains all rows</td></tr>';
     html+='</tbody></table>';if(gp.mismatch)html+='<div class="mra-note">Rule: <b>'+esc(gp.sheet)+' + '+esc(gp.machine)+'</b> ke andar '+(state.mode==='kg'?'rate/kg':'monthly rate')+' same expected hai. '+(gp.tie?'Dominant rate clear nahi hai; group review karo.':'Most-used reference '+rateText(gp.common)+' hai. Software automatic salary/rate change nahi karta.')+'</div>';html+='</div>';
-  });if(allGroups.length>groups.length)html+='<div style="display:flex;justify-content:center;padding:10px"><button id="mraLoadMore" style="border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:8px;padding:8px 14px;font-size:9px;font-weight:850;cursor:pointer">Load More ('+(allGroups.length-groups.length)+' remaining)</button></div>';box.innerHTML=html;var more=q('mraLoadMore');if(more)more.onclick=function(){state.viewLimit+=25;render()};
+  });if(allGroups.length>groups.length)html+='<div style="display:flex;justify-content:center;padding:10px"><button id="mraLoadMore" style="border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:8px;padding:8px 14px;font-size:9px;font-weight:850;cursor:pointer">Load More ('+(allGroups.length-groups.length)+' remaining)</button></div>';box.innerHTML=html;var more=q('mraLoadMore');if(more)more.onclick=function(){state.viewLimit+=10;render()};
 }
 function download(){
   if(!state.file||!state.groups.length||!scanWorker)return;
