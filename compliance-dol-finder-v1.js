@@ -204,6 +204,68 @@ function addCss(){
   s.textContent='#page-esictodol,#page-pftodol{background:#f6f7fb!important;overflow:auto!important}.cdf-shell{padding:18px;min-height:100%}.cdf-head{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:19px 20px;background:linear-gradient(135deg,#fff,#fbfdff);border:1px solid #e5e7eb;border-radius:14px;box-shadow:0 1px 3px rgba(15,23,42,.04)}.cdf-eye{font-size:8px;letter-spacing:1.2px;font-weight:900;color:#2563eb}.cdf-title{font-size:21px;font-weight:850;color:#111827;margin-top:3px}.cdf-sub{font-size:10px;color:#64748b;line-height:1.65;max-width:760px;margin-top:5px}.cdf-upload{position:relative;padding:10px 14px;background:#1e3a8a;color:#fff;border-radius:9px;font-size:10px;font-weight:850;cursor:pointer;white-space:nowrap}.cdf-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}.cdf-guard{margin-top:9px;display:flex;gap:9px;align-items:center;padding:8px 11px;border-radius:9px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:8px}.cdf-guard b{font-size:8px;white-space:nowrap}.cdf-grid{display:grid;grid-template-columns:minmax(360px,.9fr) minmax(440px,1.1fr);gap:10px;margin-top:10px}.cdf-library,.cdf-search{background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px}.cdf-secHead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:9px}.cdf-secHead>div{display:flex;flex-direction:column;gap:2px}.cdf-secHead b{font-size:11px;color:#334155}.cdf-secHead span{font-size:8px;color:#94a3b8}.cdf-local{font-size:8px!important;color:#15803d!important;background:#f0fdf4;border:1px solid #bbf7d0;padding:4px 6px;border-radius:999px}.cdf-filelist{max-height:310px;overflow:auto;display:flex;flex-direction:column;gap:6px}.cdf-file{display:grid;grid-template-columns:1fr 118px auto;gap:7px;align-items:center;border:1px solid #e5e7eb;background:#fafafa;border-radius:8px;padding:8px}.cdf-file.warn{border-color:#fde68a;background:#fffbeb}.cdf-fileName{font-size:9px;font-weight:800;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.cdf-fileMeta{font-size:7.5px;color:#94a3b8;margin-top:2px}.cdf-file input[type=month]{width:118px;border:1px solid #d1d5db;border-radius:6px;padding:5px;font-size:8px;background:#fff}.cdf-file button{border:1px solid #fed7aa;background:#fff7ed;color:#c2410c;border-radius:6px;padding:5px 7px;font-size:8px;font-weight:800;cursor:pointer}.cdf-file.archived{opacity:.55}.cdf-tabs{display:flex;background:#f3f4f6;border-radius:8px;padding:3px;width:max-content;margin-bottom:10px}.cdf-tabs button{border:0;background:transparent;border-radius:6px;padding:6px 11px;font-size:8px;font-weight:850;color:#64748b;cursor:pointer}.cdf-tabs button.active{background:#1e3a8a;color:#fff}.cdf-pane{display:none}.cdf-pane.active{display:block}.cdf-pane label{display:block;font-size:8px;font-weight:850;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}.cdf-searchrow{display:flex;gap:6px}.cdf-search input,.cdf-search textarea{width:100%;border:1px solid #d1d5db;border-radius:8px;padding:9px 10px;font:inherit;font-size:10px;outline:none}.cdf-search textarea{min-height:88px;resize:vertical}.cdf-search input:focus,.cdf-search textarea:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #dbeafe}.cdf-search button[data-cdf-search]{border:0;background:#1e3a8a;color:#fff;border-radius:8px;padding:0 12px;font-size:9px;font-weight:850;cursor:pointer;white-space:nowrap}.cdf-paneMultiple button{margin-top:6px}.cdf-status{min-height:16px;margin-top:8px;font-size:8px;font-weight:700;color:#64748b}.cdf-resultHead{margin-top:10px;display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#fff;border:1px solid #e5e7eb;border-radius:10px 10px 0 0}.cdf-resultHead>div{display:flex;flex-direction:column;gap:2px}.cdf-resultHead b{font-size:11px;color:#334155}.cdf-resultHead span{font-size:8px;color:#94a3b8}.cdf-resultHead button{border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:7px;padding:6px 9px;font-size:8px;font-weight:850;cursor:pointer}.cdf-resultHead button:disabled{opacity:.35;cursor:not-allowed}.cdf-results{background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;min-height:220px;padding:10px}.cdf-empty{min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#94a3b8}.cdf-empty>div{font-size:34px}.cdf-empty b{font-size:12px;color:#475569}.cdf-empty span{font-size:8px}.cdf-table{width:100%;border-collapse:collapse}.cdf-table th{position:static!important;background:#f8fafc!important;color:#64748b!important;border:1px solid #eef2f7!important;padding:7px 8px!important;font-size:8px!important}.cdf-table td{border:1px solid #eef2f7!important;padding:7px 8px!important;font-size:9px!important;vertical-align:top}.cdf-last{font-size:11px;font-weight:900;color:#1e3a8a}.cdf-good{color:#15803d;font-weight:850}.cdf-warn{color:#b45309;font-weight:850}.cdf-bad{color:#b91c1c;font-weight:850}.cdf-timeline{display:flex;gap:3px;flex-wrap:wrap}.cdf-month{font-size:7px;padding:3px 5px;border-radius:999px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}.cdf-sources{font-size:7.5px;color:#64748b;line-height:1.5;max-width:290px}.cdf-progress{height:5px;background:#e5e7eb;border-radius:99px;overflow:hidden;margin-top:6px}.cdf-progress>i{display:block;height:100%;background:#2563eb;width:0;transition:width .2s}@media(max-width:1000px){.cdf-grid{grid-template-columns:1fr}.cdf-head{align-items:flex-start;flex-direction:column}.cdf-upload{width:100%;text-align:center}.cdf-file{grid-template-columns:1fr 118px}}';
   document.head.appendChild(s)
 }
+function addViewerCss(){
+  if(q('cdf-viewer-style'))return;var s=document.createElement('style');s.id='cdf-viewer-style';
+  s.textContent='.cdf-file{grid-template-columns:1fr 118px auto auto!important}.cdf-viewBtn{border-color:#bfdbfe!important;background:#eff6ff!important;color:#1d4ed8!important}#cdfViewer{position:fixed;inset:0;z-index:100000;background:#0b1220;display:none;flex-direction:column;color:#e5e7eb}#cdfViewer.show{display:flex}#cdfViewerTop{height:58px;flex:0 0 58px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#111827;border-bottom:1px solid #334155}#cdfViewerTitle{min-width:0;flex:1}#cdfViewerTitle b{display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cdfViewerTitle span{display:block;font-size:9px;color:#94a3b8;margin-top:2px}#cdfViewerTop button,#cdfViewerTop select{border:1px solid #475569;background:#1f2937;color:#e5e7eb;border-radius:7px;padding:7px 9px;font-size:10px;font-weight:750;cursor:pointer}#cdfViewerTop button:disabled{opacity:.35;cursor:not-allowed}#cdfViewerBody{flex:1;min-height:0;overflow:auto;padding:16px;display:flex;align-items:flex-start;justify-content:center;background:#111827}#cdfViewerCanvas{display:block;background:#fff;box-shadow:0 8px 28px rgba(0,0,0,.35);margin:auto}#cdfViewerExcel{width:100%;min-width:720px;background:#fff;color:#111827;border-radius:8px;overflow:auto}#cdfViewerExcel table{width:100%;border-collapse:collapse;font-size:10px}#cdfViewerExcel th,#cdfViewerExcel td{border:1px solid #e5e7eb;padding:6px 8px;white-space:nowrap}#cdfViewerExcel th{position:sticky!important;top:0;background:#f8fafc!important;z-index:1}#cdfViewerError{max-width:700px;margin:auto;padding:24px;border:1px solid #7f1d1d;background:#450a0a;color:#fecaca;border-radius:12px;text-align:center;line-height:1.6}@media(max-width:900px){#cdfViewerTop{height:auto;min-height:58px;flex-wrap:wrap;padding:8px}#cdfViewerTitle{flex-basis:100%}#cdfViewerBody{padding:8px}}';
+  document.head.appendChild(s)
+}
+function ensureViewer(){
+  if(q('cdfViewer'))return;var d=document.createElement('div');d.id='cdfViewer';
+  d.innerHTML='<div id="cdfViewerTop"><div id="cdfViewerTitle"><b>Challan Viewer</b><span></span></div><select id="cdfViewerSheet" style="display:none"></select><button id="cdfViewPrev">← Previous</button><span id="cdfViewPage" style="font-size:10px;min-width:74px;text-align:center;color:#cbd5e1">—</span><button id="cdfViewNext">Next →</button><button id="cdfViewZoomOut">− Zoom</button><button id="cdfViewZoomIn">+ Zoom</button><button id="cdfViewFull">⛶ Full Screen</button><button id="cdfViewClose">✕ Close</button></div><div id="cdfViewerBody"><canvas id="cdfViewerCanvas" style="display:none"></canvas><div id="cdfViewerExcel" style="display:none"></div><div id="cdfViewerError" style="display:none"></div></div>';
+  document.body.appendChild(d);
+  q('cdfViewClose').onclick=closeViewer;q('cdfViewPrev').onclick=function(){viewerMove(-1)};q('cdfViewNext').onclick=function(){viewerMove(1)};
+  q('cdfViewZoomOut').onclick=function(){viewerZoom(-.15)};q('cdfViewZoomIn').onclick=function(){viewerZoom(.15)};
+  q('cdfViewFull').onclick=function(){var el=q('cdfViewer');try{if(!document.fullscreenElement&&el.requestFullscreen)el.requestFullscreen();else if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen()}catch(_){}};
+  q('cdfViewerSheet').onchange=function(){viewer.sheet=Number(this.value)||0;viewer.page=1;renderViewerExcel()};
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&viewer.open)closeViewer()})
+}
+function viewerError(msg){
+  q('cdfViewerCanvas').style.display='none';q('cdfViewerExcel').style.display='none';var e=q('cdfViewerError');e.style.display='block';e.innerHTML='<b>Challan cannot be opened</b><div style="margin-top:7px">'+esc(msg||'Unknown viewer error')+'</div>'
+}
+async function openViewer(type,id){
+  ensureViewer();var rec=await dbGet(id);if(!rec)rec=cache[type].find(function(r){return r.id===id});
+  viewer.open=true;viewer.type=type;viewer.id=id;viewer.rec=rec||null;viewer.pdf=null;viewer.page=1;viewer.pages=1;viewer.sheet=0;viewer.zoom=1.15;
+  var pg=q('page-'+type+'todol');viewer.scrollTop=pg?pg.scrollTop:0;
+  q('cdfViewer').classList.add('show');q('cdfViewerError').style.display='none';q('cdfViewerCanvas').style.display='none';q('cdfViewerExcel').style.display='none';q('cdfViewerSheet').style.display='none';
+  if(!rec){viewerError('Saved challan record not found.');return}
+  q('cdfViewerTitle').querySelector('b').textContent=rec.name||'Challan';
+  q('cdfViewerTitle').querySelector('span').textContent=(rec.period?periodLabel(rec.period):'Month not set')+' · '+(rec.fileHash?'SHA-256 '+rec.fileHash.slice(0,16)+'…':'legacy record');
+  if(!rec.buffer){viewerError('Original file bytes are not cached on this device. Search/index data is safe, but this legacy/backend-only copy cannot be rendered here. Re-upload the exact file once; SHA-256 duplicate check will attach no second logical contribution.');return}
+  var ext=((rec.name||'').split('.').pop()||'').toLowerCase();
+  if(ext==='pdf'){
+    if(!g.pdfjsLib){viewerError('PDF viewer engine unavailable.');return}
+    try{
+      if(g.pdfjsLib.GlobalWorkerOptions)g.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      viewer.mode='pdf';viewer.pdf=await g.pdfjsLib.getDocument({data:new Uint8Array(rec.buffer.slice(0))}).promise;viewer.pages=viewer.pdf.numPages||1;q('cdfViewerCanvas').style.display='block';await renderViewerPdf()
+    }catch(e){viewerError(e&&e.message?e.message:'PDF could not be rendered.')}
+    return
+  }
+  if(['xlsx','xls','csv'].indexOf(ext)>=0){
+    viewer.mode='excel';if(!Array.isArray(rec.viewerSheets)||!rec.viewerSheets.length){viewerError('This is a legacy Excel challan without cached viewer sheets. Re-upload the exact file once to create the viewer cache; the SHA-256 guard prevents duplicate logical storage.');return}
+    var sel=q('cdfViewerSheet');sel.innerHTML=rec.viewerSheets.map(function(s,i){return'<option value="'+i+'">'+esc(s.name||('Sheet '+(i+1)))+'</option>'}).join('');sel.style.display=rec.viewerSheets.length>1?'inline-block':'none';q('cdfViewerExcel').style.display='block';renderViewerExcel();return
+  }
+  viewerError('Unsupported viewer file type: '+ext)
+}
+async function renderViewerPdf(){
+  if(!viewer.pdf||viewer.mode!=='pdf')return;
+  viewer.page=Math.max(1,Math.min(viewer.pages,viewer.page));var pg=await viewer.pdf.getPage(viewer.page),vp=pg.getViewport({scale:viewer.zoom}),cv=q('cdfViewerCanvas'),ctx=cv.getContext('2d');
+  cv.width=Math.ceil(vp.width);cv.height=Math.ceil(vp.height);await pg.render({canvasContext:ctx,viewport:vp}).promise;
+  q('cdfViewPage').textContent=viewer.page+' / '+viewer.pages;q('cdfViewPrev').disabled=viewer.page<=1;q('cdfViewNext').disabled=viewer.page>=viewer.pages
+}
+function renderViewerExcel(){
+  var rec=viewer.rec,sheets=rec&&rec.viewerSheets||[],sh=sheets[viewer.sheet];if(!sh){viewerError('Sheet data unavailable.');return}
+  var rows=sh.rows||[],pageSize=100;viewer.pages=Math.max(1,Math.ceil(rows.length/pageSize));viewer.page=Math.max(1,Math.min(viewer.pages,viewer.page));
+  var from=(viewer.page-1)*pageSize,to=Math.min(rows.length,from+pageSize),max=0;rows.slice(from,to).forEach(function(r){max=Math.max(max,(r||[]).length)});
+  var h='<div style="padding:9px 11px;background:#f8fafc;border-bottom:1px solid #e5e7eb;font-size:'+(10*viewer.zoom)+'px;font-weight:800">'+esc(sh.name||'Sheet')+' · rows '+(from+1)+'–'+to+' of '+rows.length+'</div><table style="font-size:'+(10*viewer.zoom)+'px"><tbody>';
+  for(var r=from;r<to;r++){h+='<tr><td style="color:#64748b">'+(r+1)+'</td>';for(var cc=0;cc<max;cc++)h+='<td>'+esc((rows[r]||[])[cc]||'')+'</td>';h+='</tr>'}h+='</tbody></table>';q('cdfViewerExcel').innerHTML=h;
+  q('cdfViewPage').textContent=viewer.page+' / '+viewer.pages;q('cdfViewPrev').disabled=viewer.page<=1;q('cdfViewNext').disabled=viewer.page>=viewer.pages
+}
+function viewerMove(dir){if(!viewer.open)return;viewer.page+=Number(dir)||0;if(viewer.mode==='pdf')renderViewerPdf();else if(viewer.mode==='excel')renderViewerExcel()}
+function viewerZoom(delta){if(!viewer.open)return;viewer.zoom=Math.max(.5,Math.min(2.5,viewer.zoom+(Number(delta)||0)));if(viewer.mode==='pdf')renderViewerPdf();else if(viewer.mode==='excel')renderViewerExcel()}
+function closeViewer(){
+  if(!viewer.open)return;viewer.open=false;try{if(document.fullscreenElement===q('cdfViewer')&&document.exitFullscreen)document.exitFullscreen()}catch(_){}
+  q('cdfViewer').classList.remove('show');viewer.pdf=null;var pg=q('page-'+viewer.type+'todol');if(pg)pg.scrollTop=viewer.scrollTop||0
+}
 async function pullCloud(type){
   var api=cloudApi();if(!api)throw new Error('Shared backend service unavailable');
   var remote=await api.getComplianceDolRecords(type),local=await dbAll(),by={};local.forEach(function(r){if(r&&r.id)by[String(r.id)]=r});
@@ -408,21 +470,27 @@ function wire(type){
   document.querySelectorAll('[data-cdf-search="'+type+'"]').forEach(function(b){b.addEventListener('click',function(){search(type)})});
   q(type+'DolExport').addEventListener('click',function(){exportResults(type)});
   q(type+'DolFiles').addEventListener('change',function(e){var id=e.target.getAttribute('data-cdf-period');if(id)setPeriod(type,id,e.target.value)});
-  q(type+'DolFiles').addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-cdf-archive]');if(b)archive(type,b.getAttribute('data-cdf-archive'))});
+  q(type+'DolFiles').addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cdf-view]');if(v){openViewer(type,v.getAttribute('data-cdf-view'));return}var b=e.target.closest&&e.target.closest('[data-cdf-archive]');if(b)archive(type,b.getAttribute('data-cdf-archive'))});
 }
 function patchGo(){
-  if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)'}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
+  if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)';var t=name==='esictodol'?'esic':'pf';if(!cloudReady[t])setTimeout(function(){pullCloud(t).then(function(){return refresh(t)}).catch(function(e){console.warn('Challan index sync skipped',e)})},80)}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
-g.ATPLComplianceDolV1={version:'2026.09.18-5',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
+g.ATPLComplianceDolV1={version:'2026.09.18-perf-view2',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,parseBuffer:parseBuffer,hashBuffer:hashBuffer,fingerprintFor:fingerprintFor,pullCloud:pullCloud,rebuildIndex:rebuildIndex,openViewer:openViewer};
 async function boot(){
-  addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
+  addCss();addViewerCss();ensureViewer();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
   await Promise.all([refresh('esic'),refresh('pf')]);
   setTimeout(async function(){
-    for(var i=0;i<2;i++){var t=i?'pf':'esic';try{await pullCloud(t);var m=await migratePending(t);if(m.migrated)await pullCloud(t);await refresh(t)}catch(e){console.warn('Challan cloud boot sync skipped',t,e)}}
-  },1800);
+    for(var i=0;i<2;i++){
+      var t=i?'pf':'esic';
+      try{await pullCloud(t);await refresh(t);await backfillHashes(t);await collapseExactDuplicates(t);await refresh(t)}
+      catch(e){console.warn('Challan cloud/index boot sync skipped',t,e)}
+    }
+  },1200);
+  setTimeout(async function(){
+    for(var i=0;i<2;i++){var t=i?'pf':'esic';try{var m=await migratePending(t);if(m.migrated)await pullCloud(t);await collapseExactDuplicates(t);await refresh(t)}catch(e){console.warn('Legacy challan idle migration skipped',t,e)}}
+  },6500);
   document.addEventListener('atpl-compliance-dol-synced',function(){refresh('esic');refresh('pf')});
   setTimeout(function(){ensureNav('esic');ensureNav('pf');patchGo()},800);
 }
-
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
