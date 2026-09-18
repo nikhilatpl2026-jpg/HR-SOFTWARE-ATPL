@@ -111,7 +111,7 @@
     if(!token()||!session())throw new Error('Valid login required for challan save');
     list=Array.isArray(list)?list.filter(function(r){return r&&r.id&&r.type}):[];
     if(!list.length)return{ok:true,saved:0,failed:0,results:[]};
-    var kind='compliance_dol_v1',prepared=list.map(function(rec){var p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;return{rec:rec,p:p,now:now,error:''}}),at=0;
+    var kind='compliance_dol_v1',localExisting=await dolRows(),localById={};localExisting.forEach(function(r){if(r&&r.id)localById[String(r.id)]=r});var prepared=list.map(function(rec){var p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;return{rec:rec,p:p,now:now,error:''}}),at=0;
     async function worker(){
       while(true){
         var i=at++;if(i>=prepared.length)return;var x=prepared[i];
@@ -130,7 +130,7 @@
         var meta=metas[String(x.p.id||'')];if(!meta)throw new Error('Backend save not found during read-back');
         var back=await loadObject(remote,meta);if(!sameDolPayload(x.p,back))throw new Error('Backend read-back mismatch for challan');
         back.buffer=null;back.cloudConfirmedAt=back.cloudConfirmedAt||x.now;back._cloudVerified=true;
-        await putDol(Object.assign({},x.rec,back,{buffer:x.rec.buffer||null,viewerSheets:x.rec.viewerSheets||null}));
+        var oldLocal=localById[String(x.rec.id)]||{};await putDol(Object.assign({},oldLocal,x.rec,back,{buffer:x.rec.buffer||oldLocal.buffer||null,viewerSheets:x.rec.viewerSheets||oldLocal.viewerSheets||null}));
         out.push({ok:true,record:back})
       }catch(e2){out.push({ok:false,error:e2&&e2.message?e2.message:String(e2),record:x.rec})}
     }
