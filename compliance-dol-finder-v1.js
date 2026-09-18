@@ -135,6 +135,14 @@ async function parseFile(file,type){
   if(type==='pf'&&!parsed.digits.length&&!parsed.alnums.length)throw new Error('Parse Failed — valid UAN/PF IDs not found.');
   return{buffer:buf,digits:parsed.digits,alnums:parsed.alnums,sample:parsed.sample,detail:parsed.detail,period:per.period,periodSource:per.source,fingerprint:fp};
 }
+async function reindexStored(r,type){
+  if(!r||!r.buffer)return r;
+  var name=r.name||'',ext=(name.split('.').pop()||'').toLowerCase(),parsed;
+  if(ext==='pdf')parsed=await parsePdf(r.buffer);else if(['xlsx','xls','csv'].indexOf(ext)>=0)parsed=await parseExcel(r.buffer,type);else return r;
+  var per=inferPeriod(name,parsed.sample);r.digitIds=parsed.digits;r.alnumIds=parsed.alnums;r.detail=parsed.detail;r.fingerprint=await fingerprintFor(type,parsed.digits,parsed.alnums);r.parseVersion='2';
+  if(!r.period&&per.period){r.period=per.period;r.periodSource=per.source}
+  r.updatedAt=new Date().toISOString();return r
+}
 
 function pageIds(type){return{page:'page-'+type+'todol',nav:'vn-'+type+'todol',file:type+'DolFiles',result:type+'DolResults',input:type+'DolSingle',multi:type+'DolMulti',status:type+'DolStatus',mode:type+'DolMode'}}
 function typeLabel(t){return t==='esic'?'ESIC → DOL':'PF → DOL'}
@@ -175,17 +183,22 @@ async function pullCloud(type){
   return true
 }
 async function migratePending(type){
-  var api=cloudApi();if(!api)return{ok:false,migrated:0,failed:0};
-  var all=await dbAll(),list=all.filter(function(r){return r.type===type&&!r.cloudConfirmedAt}),migrated=0,failed=0;
+  var api=cloudApi();if(!api)return{ok:false,migrated:0,failed:0,duplicates:0};
+  var all=await dbAll(),confirmed={},list=all.filter(function(r){return r.type===type&&!r.cloudConfirmedAt}),migrated=0,failed=0,duplicates=0;
+  all.filter(function(r){return r.type===type&&r.cloudConfirmedAt&&r.fingerprint}).forEach(function(r){confirmed[duplicateKey(r)]=r});
   for(var i=0;i<list.length;i++){
     var r=list[i];
     try{
+      if(r.buffer&&r.parseVersion!=='2')r=await reindexStored(r,type);
       if(!r.fingerprint)r.fingerprint=await fingerprintFor(type,r.digitIds||[],r.alnumIds||[]);
-      r.parseVersion=r.parseVersion||'2';var back=await api.saveComplianceDolConfirmed(r);r.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(r);migrated++;
+      r.parseVersion='2';
+      var dk=duplicateKey(r),dup=confirmed[dk];
+      if(dup){r.archived=true;r.archivedAt=r.archivedAt||new Date().toISOString();r.duplicateOf=dup.id;r.cloudConfirmedAt=dup.cloudConfirmedAt;await dbPut(r);duplicates++;continue}
+      var back=await api.saveComplianceDolConfirmed(r);r.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(r);confirmed[dk]=r;migrated++;
     }catch(e){failed++;console.warn('Legacy challan backend migration failed',r&&r.name,e)}
     await sleep(0)
   }
-  return{ok:failed===0,migrated:migrated,failed:failed}
+  return{ok:failed===0,migrated:migrated,failed:failed,duplicates:duplicates}
 }
 async function refresh(type){
   var all=await dbAll();cache[type]=all.filter(function(r){return r.type===type});renderFiles(type);renderCoverage(type);
@@ -297,7 +310,7 @@ function wire(type){
 function patchGo(){
   if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)'}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
-g.ATPLComplianceDolV1={version:'2026.09.18-2',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
+g.ATPLComplianceDolV1={version:'2026.09.18-3',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
 async function boot(){
   addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
   await Promise.all([refresh('esic'),refresh('pf')]);
