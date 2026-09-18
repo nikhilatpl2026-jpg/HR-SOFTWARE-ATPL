@@ -98,7 +98,7 @@ async function parseExcel(buf,type){
         if(sample.length<20000)sample+=' '+String(display);cells++;
         addTokens(raw,fallbackDigits,fallbackAlnums);
         if(cols.has(C)){
-          var before=digits.size+(alnums.size);addTokens(raw,digits,alnums);if(display!==raw)addTokens(display,digits,alnums);if(digits.size+alnums.size>before)specific++;
+          var before=digits.size+(alnums.size);addTokens(raw,digits,alnums);if(typeof raw!=='number'&&display!==raw)addTokens(display,digits,alnums);if(digits.size+alnums.size>before)specific++;
         }
       }
       if(R%120===0)await sleep(0);
@@ -310,7 +310,7 @@ function wire(type){
 function patchGo(){
   if(typeof g.goPage!=='function'||g.goPage.__cdfWrapped)return;var old=g.goPage;function w(name){var r=old.apply(this,arguments);if(name==='esictodol'||name==='pftodol'){var sub=q('cat-tools');if(sub)sub.classList.remove('collapsed');var arr=q('arr-tools');if(arr)arr.style.transform='rotate(0deg)'}return r}w.__cdfWrapped=true;w.__original=old;g.goPage=w;
 }
-g.ATPLComplianceDolV1={version:'2026.09.18-3',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
+g.ATPLComplianceDolV1={version:'2026.09.18-4',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel,parseFile:parseFile,fingerprintFor:fingerprintFor,pullCloud:pullCloud};
 async function boot(){
   addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();
   await Promise.all([refresh('esic'),refresh('pf')]);
