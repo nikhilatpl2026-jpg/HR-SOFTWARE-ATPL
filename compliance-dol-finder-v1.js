@@ -6,10 +6,12 @@
 */
 (function(g){'use strict';
 if(!g||g.__ATPL_COMPLIANCE_DOL_V1__)return;
-g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.18-2';
+g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.18-perf-view1';
 
 var DB='ATPL_COMPLIANCE_DOL_V1',VER=1,STORE='files';
-var cache={esic:[],pf:[]},lastResults={esic:[],pf:[]},searchMode={esic:'single',pf:'single'};
+var cache={esic:[],pf:[]},lastResults={esic:[],pf:[]},searchMode={esic:'single',pf:'single'},searchIndex={esic:{},pf:{}},coveragePeriods={esic:[],pf:[]},cloudReady={esic:false,pf:false};
+var excelWorker=null,excelJob=0,excelPending={};
+var viewer={open:false,type:'',id:'',mode:'',pdf:null,page:1,pages:1,zoom:1.15,sheet:0,scrollTop:0};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
 function q(id){return document.getElementById(id)}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -41,18 +43,29 @@ function validPf(v){var a=canonAlpha(v),d=canonDigits(v);if(d.length===12)return
 function normalizeQuery(type,v){return type==='esic'?validEsic(v):validPf(v)}
 function hashFallback(s){var h1=2166136261,h2=5381;for(var i=0;i<s.length;i++){h1^=s.charCodeAt(i);h1=Math.imul(h1,16777619);h2=((h2<<5)+h2)^s.charCodeAt(i)}return('00000000'+(h1>>>0).toString(16)).slice(-8)+('00000000'+(h2>>>0).toString(16)).slice(-8)}
 async function hashText(s){
-  try{if(g.crypto&&g.crypto.subtle&&g.TextEncoder){var ab=await g.crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(s)));return Array.from(new Uint8Array(ab)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')}}catch(_){}
+  try{if(g.crypto&&g.crypto.subtle){var TE=g.TextEncoder||TextEncoder,ab=await g.crypto.subtle.digest('SHA-256',new TE().encode(String(s)));return Array.from(new Uint8Array(ab)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')}}catch(_){}
   return hashFallback(String(s))
+}
+async function hashBuffer(buf){
+  try{if(g.crypto&&g.crypto.subtle){var ab=await g.crypto.subtle.digest('SHA-256',buf.slice(0));return Array.from(new Uint8Array(ab)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')}}catch(_){}
+  var a=new Uint8Array(buf),h1=2166136261,h2=5381;for(var i=0;i<a.length;i++){h1^=a[i];h1=Math.imul(h1,16777619);h2=((h2<<5)+h2)^a[i]}return('00000000'+(h1>>>0).toString(16)).slice(-8)+('00000000'+(h2>>>0).toString(16)).slice(-8)
 }
 async function fingerprintFor(type,digits,alnums){
   var ids=type==='esic'?(digits||[]):Array.from(new Set([].concat(digits||[],alnums||[])));
   ids=ids.map(String).filter(Boolean).sort();return hashText(type+'|'+ids.join('|'))
 }
-function duplicateKey(r){return String(r&&r.type||'')+'|'+String(r&&r.period||'')+'|'+String(r&&r.fingerprint||'')}
-function cloudApi(){var a=g.ATPLDurableEverythingV1;return a&&typeof a.saveComplianceDolConfirmed==='function'&&typeof a.getComplianceDolRecords==='function'?a:null}
+function duplicateKey(r){if(r&&r.fileHash)return String(r.type||'')+'|sha256|'+String(r.fileHash);return String(r&&r.type||'')+'|legacy|'+String(r&&r.id||'')}
+function cloudApi(){var a=g.ATPLDurableEverythingV1;return a&&typeof a.saveComplianceDolConfirmed==='function'&&typeof a.saveComplianceDolBatchConfirmed==='function'&&typeof a.getComplianceDolRecords==='function'?a:null}
+function withTimeout(p,ms,msg){return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error(msg||'Operation timeout'))},ms)})])}
+function setStatus(type,phase,msg,pct){
+  var s=q(type+'DolStatus');if(!s)return;var p=Math.max(0,Math.min(100,Number(pct)||0));
+  s.innerHTML='<div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(phase||'')+'</b><span>'+esc(msg||'')+'</span></div><div class="cdf-progress"><i style="width:'+p+'%"></i></div>'
+}
+
 function openDb(){return new Promise(function(ok,no){try{var r=indexedDB.open(DB,VER);r.onupgradeneeded=function(){var d=r.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:'id'})};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}}catch(e){no(e)}})}
 async function dbAll(){try{var d=await openDb();return await new Promise(function(ok){var r=d.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
 async function dbPut(rec){var d=await openDb();return new Promise(function(ok,no){var t=d.transaction(STORE,'readwrite');t.objectStore(STORE).put(rec);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
+async function dbGet(id){try{var d=await openDb();return await new Promise(function(ok){var r=d.transaction(STORE,'readonly').objectStore(STORE).get(id);r.onsuccess=function(){d.close();ok(r.result||null)};r.onerror=function(){d.close();ok(null)}})}catch(_){return null}}
 function parsePeriodCore(s){
   s=String(s||'').toLowerCase();
   var m=s.match(/\b(20\d{2})[\s._\/-](0?[1-9]|1[0-2])\b/);if(m)return m[1]+'-'+String(Number(m[2])).padStart(2,'0');
@@ -85,34 +98,50 @@ function headerLooksLike(type,v){
   if(type==='esic')return /^(ip|ipno|ipnumber|insuranceno|insurancenumber|esic|esicno|esicnumber|esi|esino|esinumber)$/.test(x);
   return /^(uan|uanno|uannumber|pfno|pfnumber|memberid|memberno|pfmemberid|pfmemberno)$/.test(x)
 }
-async function parseExcel(buf,type){
-  var wb=XLSX.read(buf,{type:'array',cellDates:false,cellText:true}),digits=new Set(),alnums=new Set(),sample='',cells=0,specific=0,fallbackDigits=new Set(),fallbackAlnums=new Set();
+async function parseExcelMain(buf,type){
+  var wb=XLSX.read(buf,{type:'array',cellDates:false,cellText:true}),digits=new Set(),alnums=new Set(),sample='',cells=0,specific=0,fallbackDigits=new Set(),fallbackAlnums=new Set(),viewerSheets=[];
   for(var si=0;si<wb.SheetNames.length;si++){
-    var ws=wb.Sheets[wb.SheetNames[si]];if(!ws||!ws['!ref'])continue;
-    var range=XLSX.utils.decode_range(ws['!ref']),cols=new Set();
+    var sn=wb.SheetNames[si],ws=wb.Sheets[sn];if(!ws||!ws['!ref']){viewerSheets.push({name:sn,rows:[]});continue}
+    var range=XLSX.utils.decode_range(ws['!ref']),cols=new Set(),viewRows=[];
     for(var hr=range.s.r;hr<=Math.min(range.e.r,range.s.r+19);hr++)for(var hc=range.s.c;hc<=range.e.c;hc++){var hcell=ws[XLSX.utils.encode_cell({r:hr,c:hc})];if(hcell&&headerLooksLike(type,hcell.v!=null?hcell.v:hcell.w))cols.add(hc)}
     for(var R=range.s.r;R<=range.e.r;R++){
+      var viewRow=[];
       for(var C=range.s.c;C<=range.e.c;C++){
-        var cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(!cell)continue;
-        var raw=cell.v!=null?cell.v:cell.w,display=cell.w!=null?cell.w:raw;if(raw==null||raw==='')continue;
+        var cell=ws[XLSX.utils.encode_cell({r:R,c:C})];if(!cell){viewRow.push('');continue}
+        var raw=cell.v!=null?cell.v:cell.w,display=cell.w!=null?cell.w:raw;viewRow.push(display==null?'':String(display));if(raw==null||raw==='')continue;
         if(sample.length<20000)sample+=' '+String(display);cells++;
         addTokens(raw,fallbackDigits,fallbackAlnums);
         if(cols.has(C)){
           var before=digits.size+(alnums.size);addTokens(raw,digits,alnums);if(typeof raw!=='number'&&display!==raw)addTokens(display,digits,alnums);if(digits.size+alnums.size>before)specific++;
         }
       }
-      if(R%120===0)await sleep(0);
+      viewRows.push(viewRow);if(R%120===0)await sleep(0);
     }
-    await sleep(0);
+    viewerSheets.push({name:sn,rows:viewRows});await sleep(0);
   }
   if(!specific){digits=fallbackDigits;alnums=fallbackAlnums}
-  return{digits:Array.from(digits),alnums:Array.from(alnums),sample:sample.slice(0,20000),detail:wb.SheetNames.length+' sheets · '+cells+' cells scanned · '+(specific?'ID column indexed':'safe fallback scan')}
+  return{digits:Array.from(digits),alnums:Array.from(alnums),sample:sample.slice(0,20000),detail:wb.SheetNames.length+' sheets · '+cells+' cells scanned · '+(specific?'ID column indexed':'safe fallback scan'),viewerSheets:viewerSheets}
 }
 
+
+function excelWorkerReady(){
+  if(excelWorker)return true;if(typeof Worker!=='function')return false;
+  try{
+    excelWorker=new Worker('compliance-dol-worker-v2.js?v=20260918-1');
+    excelWorker.onmessage=function(ev){var d=ev.data||{},x=excelPending[d.jobId];if(!x)return;if(d.type==='progress'){if(x.progress)x.progress(d.stage,d.percent);return}delete excelPending[d.jobId];if(d.type==='done')x.resolve(d.result||{});else x.reject(new Error(d.message||'Excel parse failed'))};
+    excelWorker.onerror=function(e){Object.keys(excelPending).forEach(function(k){excelPending[k].reject(new Error('Excel parser worker failed'));delete excelPending[k]});try{excelWorker.terminate()}catch(_){}excelWorker=null};
+    return true
+  }catch(_){excelWorker=null;return false}
+}
+function parseExcelWorker(buf,type,onProgress){
+  if(!excelWorkerReady())return parseExcelMain(buf,type);
+  return new Promise(function(resolve,reject){var id=++excelJob,copy=buf.slice(0);excelPending[id]={resolve:resolve,reject:reject,progress:onProgress};excelWorker.postMessage({jobId:id,type:type,buffer:copy},[copy])})
+}
+async function parseExcel(buf,type,onProgress){return parseExcelWorker(buf,type,onProgress)}
 async function parsePdf(buf){
   if(!g.pdfjsLib)throw new Error('PDF engine unavailable');
   try{if(g.pdfjsLib.GlobalWorkerOptions)g.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(_){}
-  var doc=await g.pdfjsLib.getDocument({data:buf}).promise,digits=new Set(),alnums=new Set(),sample='',items=0;
+  var doc=await g.pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise,digits=new Set(),alnums=new Set(),sample='',items=0;
   for(var p=1;p<=doc.numPages;p++){
     var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt=arr.map(function(x){return x.str||''}).join(' ');
     for(var i=0;i<arr.length;i++){
@@ -127,20 +156,22 @@ async function parsePdf(buf){
   if(items<5||(digits.size===0&&alnums.size===0))throw new Error('Scanned/image PDF ya unreadable challan. Accuracy ke liye Excel/CSV ya selectable-text PDF upload karo.');
   return{digits:Array.from(digits),alnums:Array.from(alnums),sample:sample.slice(0,12000),detail:doc.numPages+' PDF pages · '+items+' text items scanned'};
 }
-async function parseFile(file,type){
-  var buf=await file.arrayBuffer(),name=file.name||'',ext=(name.split('.').pop()||'').toLowerCase(),parsed;
-  if(ext==='pdf')parsed=await parsePdf(buf);else if(['xlsx','xls','csv'].indexOf(ext)>=0)parsed=await parseExcel(buf,type);else throw new Error('Unsupported file: '+name);
+async function parseBuffer(buf,name,type,onProgress){
+  name=name||'';var ext=(name.split('.').pop()||'').toLowerCase(),parsed;
+  if(ext==='pdf')parsed=await parsePdf(buf);else if(['xlsx','xls','csv'].indexOf(ext)>=0)parsed=await parseExcel(buf,type,onProgress);else throw new Error('Unsupported file: '+name);
   var per=inferPeriod(name,parsed.sample),fp=await fingerprintFor(type,parsed.digits,parsed.alnums);
   if(type==='esic'&&!parsed.digits.length)throw new Error('Parse Failed — valid ESIC/IP numbers not found.');
   if(type==='pf'&&!parsed.digits.length&&!parsed.alnums.length)throw new Error('Parse Failed — valid UAN/PF IDs not found.');
-  return{buffer:buf,digits:parsed.digits,alnums:parsed.alnums,sample:parsed.sample,detail:parsed.detail,period:per.period,periodSource:per.source,fingerprint:fp};
+  return{buffer:buf,digits:parsed.digits,alnums:parsed.alnums,sample:parsed.sample,detail:parsed.detail,period:per.period,periodSource:per.source,fingerprint:fp,viewerSheets:parsed.viewerSheets||null}
+}
+async function parseFile(file,type,onProgress){
+  var buf=await file.arrayBuffer(),fileHash=await hashBuffer(buf),p=await parseBuffer(buf,file.name||'',type,onProgress);p.fileHash=fileHash;return p
 }
 async function reindexStored(r,type){
   if(!r||!r.buffer)return r;
-  var name=r.name||'',ext=(name.split('.').pop()||'').toLowerCase(),parsed;
-  if(ext==='pdf')parsed=await parsePdf(r.buffer);else if(['xlsx','xls','csv'].indexOf(ext)>=0)parsed=await parseExcel(r.buffer,type);else return r;
-  var per=inferPeriod(name,parsed.sample);r.digitIds=parsed.digits;r.alnumIds=parsed.alnums;r.detail=parsed.detail;r.fingerprint=await fingerprintFor(type,parsed.digits,parsed.alnums);r.parseVersion='2';
-  if(!r.period&&per.period){r.period=per.period;r.periodSource=per.source}
+  if(!r.fileHash)r.fileHash=await hashBuffer(r.buffer);
+  var p=await parseBuffer(r.buffer,r.name||'',type);r.digitIds=p.digits;r.alnumIds=p.alnums;r.detail=p.detail;r.fingerprint=p.fingerprint;r.viewerSheets=p.viewerSheets||r.viewerSheets||null;r.parseVersion='3';
+  if(!r.period&&p.period){r.period=p.period;r.periodSource=p.periodSource}
   r.updatedAt=new Date().toISOString();return r
 }
 
