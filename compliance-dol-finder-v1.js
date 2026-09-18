@@ -15,6 +15,7 @@ function q(id){return document.getElementById(id)}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms||0)})}
 function uid(t){return t+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)}
+function notifyChange(){try{document.dispatchEvent(new CustomEvent('atpl-compliance-dol-local-change'))}catch(_){}}
 function periodLabel(p){if(!p)return'Period required';var a=p.split('-'),d=new Date(Number(a[0]),Number(a[1])-1,1);return d.toLocaleString('en-IN',{month:'short',year:'numeric'})}
 function cmpPeriod(a,b){return String(a||'').localeCompare(String(b||''))}
 function canonDigits(v){return String(v==null?'':v).replace(/\D/g,'')}
@@ -134,7 +135,7 @@ async function uploadFiles(type,files){
     try{var p=await parseFile(f);await dbPut({id:uid(type),type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,archived:false,buffer:p.buffer});seen[sig]=1}catch(e){console.error(e);if(status)status.textContent='⚠ '+f.name+': '+(e.message||e)}
     await sleep(0);
   }
-  if(status)status.textContent='✅ Upload/index complete. Yellow files ka month manually set karo before relying on their matched result.';await refresh(type);
+  if(status)status.textContent='✅ Upload/index complete. Yellow files ka month manually set karo before relying on their matched result.';await refresh(type);notifyChange();
 }
 function containsId(rec,type,id){
   if(type==='esic')return (rec.digitIds||[]).indexOf(id)>=0;
@@ -170,10 +171,10 @@ function setMode(type,mode){
   searchMode[type]=mode;document.querySelectorAll('[data-cdf-mode^="'+type+'-"]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-cdf-mode')===type+'-'+mode)});q(type+'DolPaneSingle').classList.toggle('active',mode==='single');q(type+'DolPaneMultiple').classList.toggle('active',mode==='multiple');
 }
 async function setPeriod(type,id,p){
-  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.period=p||'';r.periodSource=p?'manual':'manual-required';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.period=p||'';r.periodSource=p?'manual':'manual-required';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);notifyChange();
 }
 async function archive(type,id){
-  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.archived=!r.archived;r.archivedAt=r.archived?new Date().toISOString():'';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.archived=!r.archived;r.archivedAt=r.archived?new Date().toISOString():'';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);notifyChange();
 }
 function exportResults(type){
   var res=lastResults[type]||[];if(!res.length)return;
