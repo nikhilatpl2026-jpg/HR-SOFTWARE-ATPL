@@ -268,7 +268,7 @@ function setMode(type,mode){
   searchMode[type]=mode;document.querySelectorAll('[data-cdf-mode^="'+type+'-"]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-cdf-mode')===type+'-'+mode)});q(type+'DolPaneSingle').classList.toggle('active',mode==='single');q(type+'DolPaneMultiple').classList.toggle('active',mode==='multiple');
 }
 async function setPeriod(type,id,p){
-  var r=cache[type].find(function(x){return x.id===id});if(!r)return,oldPeriod=r.period,oldSource=r.periodSource,oldUpdated=r.updatedAt;
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;var oldPeriod=r.period,oldSource=r.periodSource,oldUpdated=r.updatedAt;
   var api=cloudApi(),status=q(type+'DolStatus');r.period=p||'';r.periodSource=p?'manual':'manual-required';r.updatedAt=new Date().toISOString();
   try{if(!api)throw new Error('shared backend unavailable');var back=await api.saveComplianceDolConfirmed(r);r.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(r);if(status)status.textContent='Saved ✓ — challan month backend confirmed.';await refresh(type);notifyChange()}
   catch(e){r.period=oldPeriod;r.periodSource=oldSource;r.updatedAt=oldUpdated;if(status)status.textContent='Save Failed — month update not stored: '+(e.message||e);await refresh(type)}
