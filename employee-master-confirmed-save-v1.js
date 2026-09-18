@@ -67,8 +67,12 @@ async function confirmedSingleSave(){
   if(!c||typeof c.saveMaster!=='function'){paint('failed','Save Failed — Retry',confirmedSingleSave);info('Shared backend save service unavailable. Data ko Saved mark nahi kiya gaya.',true);return}
   busy=true;setButtonBusy(true);paint('saving','Saving...',null);info('Saving to shared backend…',false);
   try{
-    var res=await c.saveMaster(candidate,{baseRecord:original});
-    if(!(res&&res.ok&&res.verified)){var why=res&&res.error||'Backend did not confirm the save';paint('failed','Save Failed — Retry',confirmedSingleSave);info((res&&res.conflict?'Conflict: ':'')+why+' Data local Saved mark nahi hui.',true);return}
+    var res=await c.saveMaster(candidate,{baseRecord:original,isNew:edit<0});
+    if(!(res&&res.ok&&res.verified)){
+      var why=res&&res.error||'Backend did not confirm the save';
+      if(res&&res.duplicate){paint('failed','Employee Already Exists',null);info(why+' Existing record ko refresh karke Edit karo; overwrite nahi kiya gaya.',true);return}
+      paint('failed','Save Failed — Retry',confirmedSingleSave);info((res&&res.conflict?'Conflict: ':'')+why+' Data local Saved mark nahi hui.',true);return
+    }
     var confirmed=res.record||candidate;
     if(edit>=0&&g.EM.data[edit])g.EM.data[edit]=confirmed;else g.EM.data.push(confirmed);
     persistConfirmed();refreshMasterUi();paint('saved','Saved ✓',null);info('Saved ✓ — backend read-back confirmed.',false);
