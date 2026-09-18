@@ -158,6 +158,7 @@ function download(){
   var summary=[['MACHINE '+label+' SUMMARY'],[],['Sheet','Machine Code','Employees','Rates Found','Most Used Rate','Spread','Status']];state.groups.forEach(function(gp){summary.push([gp.sheet,gp.machine,gp.rows.length,gp.rateList.map(function(x){return x+' x'+gp.rates[String(x)]}).join(' | '),gp.tie?'':gp.common,gp.delta,gp.mismatch?'MISMATCH':'OK'])});
   var out=XLSX.utils.book_new();XLSX.utils.book_append_sheet(out,XLSX.utils.aoa_to_sheet(summary),'SUMMARY');XLSX.utils.book_append_sheet(out,XLSX.utils.aoa_to_sheet(rows),'DETAIL');XLSX.writeFile(out,'Machine_'+(state.mode==='kg'?'RateKG':'MonthlyRate')+'_Audit_'+state.file.name.replace(/\.(xlsx|xls|csv)$/i,'')+'.xlsx');
 }
+g.ATPLMachineRateAuditorV2={version:'2026.09.18-2',stripKgSuffix:stripKgSuffix,rawMachine:rawMachine};
 function boot(){addCss();makePage();ensureNav();patchGo();setTimeout(function(){ensureNav();patchGo()},800)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
