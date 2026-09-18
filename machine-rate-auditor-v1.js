@@ -143,7 +143,7 @@ async function scanFile(file){
   try{
     if(typeof Worker!=='function')throw new Error('Browser Web Worker support unavailable');
     var job=++scanJob;
-    scanWorker=new Worker('machine-rate-audit-worker-v1.js?v=20260918-perf3');
+    scanWorker=new Worker('machine-rate-audit-worker-v1.js?v=20260918-perf4');
     scanWorker.onmessage=function(ev){
       var d=ev.data||{};if(job!==scanJob)return;
       if(d.type==='progress'){if(state.scanning)setScanUi(d.stage||'Scanning sheets…',d.percent||10);return}
@@ -194,7 +194,7 @@ function download(){
   try{scanWorker.postMessage({type:'export',jobId:scanJob,mode:state.mode,fileName:state.file.name})}
   catch(err){if(btn){btn.disabled=false;btn.textContent='⬇ Export Audit'}console.error(err);alert('Audit export start nahi ho paya. Dobara try karo.')}
 }
-g.ATPLMachineRateAuditorV2={version:'2026.09.18-perf3',stripKgSuffix:stripKgSuffix,rawMachine:rawMachine,scanFile:scanFile,status:function(){return{scanning:state.scanning,groups:state.groups.length,mode:state.mode}}};
+g.ATPLMachineRateAuditorV2={version:'2026.09.18-perf4',stripKgSuffix:stripKgSuffix,rawMachine:rawMachine,scanFile:scanFile,status:function(){return{scanning:state.scanning,groups:state.groups.length,mode:state.mode}}};
 function boot(){addCss();makePage();ensureNav();patchGo();setTimeout(function(){ensureNav();patchGo()},800)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
