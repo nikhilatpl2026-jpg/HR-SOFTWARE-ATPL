@@ -75,9 +75,17 @@ async function parsePdf(buf){
   try{if(g.pdfjsLib.GlobalWorkerOptions)g.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'}catch(_){}
   var doc=await g.pdfjsLib.getDocument({data:buf}).promise,digits=new Set(),alnums=new Set(),sample='',items=0;
   for(var p=1;p<=doc.numPages;p++){
-    var page=await doc.getPage(p),tc=await page.getTextContent(),txt=tc.items.map(function(x){return x.str||''}).join(' ');
-    addTokens(txt,digits,alnums);if(sample.length<12000)sample+=' '+txt;items+=tc.items.length;await sleep(0);
+    var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt=arr.map(function(x){return x.str||''}).join(' ');
+    for(var i=0;i<arr.length;i++){
+      var cur=arr[i],s=cur.str||'';addTokens(s,digits,alnums);
+      if(i<arr.length-1){
+        var nx=arr[i+1],a=canonDigits(s),b=canonDigits(nx.str||''),y1=cur.transform&&cur.transform[5],y2=nx.transform&&nx.transform[5],x1=cur.transform&&cur.transform[4],x2=nx.transform&&nx.transform[4],gap=(x1!=null&&x2!=null)?x2-(x1+(cur.width||0)):999;
+        if(a&&b&&a.length<12&&b.length<12&&a.length+b.length>=8&&a.length+b.length<=20&&y1!=null&&y2!=null&&Math.abs(y1-y2)<1.5&&gap>-2&&gap<10)addTokens(s+(nx.str||''),digits,alnums);
+      }
+    }
+    if(sample.length<12000)sample+=' '+txt;items+=arr.length;await sleep(0);
   }
+  if(items<5||(digits.size===0&&alnums.size===0))throw new Error('Scanned/image PDF ya unreadable challan. Accuracy ke liye Excel/CSV ya selectable-text PDF upload karo.');
   return{digits:Array.from(digits),alnums:Array.from(alnums),sample:sample.slice(0,12000),detail:doc.numPages+' PDF pages · '+items+' text items scanned'};
 }
 async function parseFile(file){
