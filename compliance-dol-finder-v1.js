@@ -205,70 +205,143 @@ function addCss(){
   document.head.appendChild(s)
 }
 async function pullCloud(type){
-  var api=cloudApi();if(!api)return false;
+  var api=cloudApi();if(!api)throw new Error('Shared backend service unavailable');
   var remote=await api.getComplianceDolRecords(type),local=await dbAll(),by={};local.forEach(function(r){if(r&&r.id)by[String(r.id)]=r});
   for(var i=0;i<remote.length;i++){
     var rr=remote[i],old=by[String(rr.id)];
-    if(!old||String(rr.updatedAt||rr.uploadedAt||'')>=String(old.updatedAt||old.uploadedAt||'')){rr.buffer=old&&old.buffer?old.buffer:null;rr.cloudConfirmedAt=rr.cloudConfirmedAt||new Date().toISOString();await dbPut(rr)}
+    if(!old||String(rr.updatedAt||rr.uploadedAt||'')>=String(old.updatedAt||old.uploadedAt||'')){
+      rr.buffer=old&&old.buffer?old.buffer:null;rr.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;rr.cloudConfirmedAt=rr.cloudConfirmedAt||new Date().toISOString();await dbPut(rr)
+    }
   }
-  return true
+  cloudReady[type]=true;return remote
 }
+
 async function migratePending(type){
   var api=cloudApi();if(!api)return{ok:false,migrated:0,failed:0,duplicates:0};
-  var all=await dbAll(),confirmed={},list=all.filter(function(r){return r.type===type&&!r.cloudConfirmedAt}),migrated=0,failed=0,duplicates=0;
-  all.filter(function(r){return r.type===type&&r.cloudConfirmedAt&&r.fingerprint}).forEach(function(r){confirmed[duplicateKey(r)]=r});
+  var all=await dbAll(),confirmedByHash={},list=all.filter(function(r){return r.type===type&&!r.cloudConfirmedAt&&!r.duplicateOf}),toSave=[],duplicates=0,failed=0;
+  all.filter(function(r){return r.type===type&&r.cloudConfirmedAt&&r.fileHash&&!r.duplicateOf}).forEach(function(r){confirmedByHash[r.fileHash]=r});
   for(var i=0;i<list.length;i++){
     var r=list[i];
     try{
-      if(r.buffer&&r.parseVersion!=='2')r=await reindexStored(r,type);
-      if(!r.fingerprint)r.fingerprint=await fingerprintFor(type,r.digitIds||[],r.alnumIds||[]);
-      r.parseVersion='2';
-      var dk=duplicateKey(r),dup=confirmed[dk];
-      if(dup){r.archived=true;r.archivedAt=r.archivedAt||new Date().toISOString();r.duplicateOf=dup.id;r.cloudConfirmedAt=dup.cloudConfirmedAt;await dbPut(r);duplicates++;continue}
-      var back=await api.saveComplianceDolConfirmed(r);r.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(r);confirmed[dk]=r;migrated++;
-    }catch(e){failed++;console.warn('Legacy challan backend migration failed',r&&r.name,e)}
+      if(!r.buffer){failed++;continue}
+      if(!r.fileHash)r.fileHash=await hashBuffer(r.buffer);
+      var dup=confirmedByHash[r.fileHash];
+      if(dup){r.duplicateOf=dup.id;r.archived=true;r.archivedAt=r.archivedAt||new Date().toISOString();await dbPut(r);duplicates++;continue}
+      if(r.parseVersion!=='3'||!r.fingerprint)r=await reindexStored(r,type);
+      r.parseVersion='3';await dbPut(r);toSave.push(r);confirmedByHash[r.fileHash]=r
+    }catch(e){failed++;console.warn('Legacy challan migration prepare failed',r&&r.name,e)}
     await sleep(0)
   }
-  return{ok:failed===0,migrated:migrated,failed:failed,duplicates:duplicates}
+  var migrated=0;
+  if(toSave.length){
+    try{var res=await withTimeout(api.saveComplianceDolBatchConfirmed(toSave),120000,'Save Failed — Retry');migrated=res.saved||0;failed+=res.failed||0}
+    catch(e){failed+=toSave.length;console.warn('Legacy challan batch migration failed',e)}
+  }
+  await refresh(type);return{ok:failed===0,migrated:migrated,failed:failed,duplicates:duplicates}
+}
+async function backfillHashes(type){
+  var api=cloudApi();if(!api)return 0;var all=await dbAll(),changed=[];
+  for(var i=0;i<all.length;i++){
+    var r=all[i];if(!r||r.type!==type||!r.cloudConfirmedAt||r.fileHash||!r.buffer)continue;
+    try{r.fileHash=await hashBuffer(r.buffer);r.updatedAt=new Date().toISOString();await dbPut(r);changed.push(r)}catch(e){console.warn('Challan hash backfill skipped',r&&r.name,e)}
+    await sleep(0)
+  }
+  if(changed.length)try{await withTimeout(api.saveComplianceDolBatchConfirmed(changed),120000,'Hash backfill timeout')}catch(e){console.warn('Challan hash backend update skipped',e)}
+  return changed.length
+}
+async function collapseExactDuplicates(type){
+  var api=cloudApi();if(!api)return 0;await refresh(type);
+  var groups={},updates=[],collapsed=0;
+  cache[type].filter(function(r){return r.cloudConfirmedAt&&r.fileHash&&!r.duplicateOf}).forEach(function(r){(groups[r.fileHash]||(groups[r.fileHash]=[])).push(r)});
+  Object.keys(groups).forEach(function(h){
+    var arr=groups[h];if(arr.length<2)return;
+    var periods=Array.from(new Set(arr.map(function(r){return r.period}).filter(Boolean)));
+    if(periods.length>1)return;
+    arr.sort(function(a,b){return (b.buffer?1:0)-(a.buffer?1:0)||(b.viewerSheets?1:0)-(a.viewerSheets?1:0)||(b.period?1:0)-(a.period?1:0)||String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||''))});
+    var keep=arr[0],p=periods[0]||'';
+    if(!keep.period&&p){keep.period=p;keep.periodSource='dedupe-merge';keep.updatedAt=new Date().toISOString();updates.push(keep)}
+    for(var i=1;i<arr.length;i++){var d=arr[i];d.duplicateOf=keep.id;d.archived=true;d.archivedAt=d.archivedAt||new Date().toISOString();d.updatedAt=new Date().toISOString();updates.push(d);collapsed++}
+  });
+  if(updates.length){
+    try{await withTimeout(api.saveComplianceDolBatchConfirmed(updates),120000,'Duplicate cleanup timeout');for(var j=0;j<updates.length;j++)await dbPut(updates[j])}
+    catch(e){console.warn('Exact duplicate cleanup backend update skipped',e);return 0}
+  }
+  if(collapsed)await refresh(type);return collapsed
+}
+function logicalRecords(type){
+  var seen={},out=[];
+  cache[type].filter(function(r){return!r.archived&&!r.duplicateOf&&!!r.cloudConfirmedAt}).forEach(function(r){var k=r.fileHash?'sha:'+r.fileHash:'id:'+r.id;if(seen[k])return;seen[k]=1;out.push(r)});
+  return out
+}
+function rebuildIndex(type){
+  var idx={},files=logicalRecords(type),periods=Array.from(new Set(files.map(function(r){return r.period}).filter(Boolean))).sort();
+  files.forEach(function(r){
+    var ids=type==='esic'?(r.digitIds||[]):Array.from(new Set([].concat(r.digitIds||[],r.alnumIds||[])));
+    ids.forEach(function(id){id=normalizeQuery(type,id);if(!id)return;(idx[id]||(idx[id]=[])).push(r)})
+  });
+  Object.keys(idx).forEach(function(k){idx[k].sort(function(a,b){return cmpPeriod(a.period,b.period)||String(a.uploadedAt||'').localeCompare(String(b.uploadedAt||''))})});
+  searchIndex[type]=idx;coveragePeriods[type]=periods
 }
 async function refresh(type){
-  var all=await dbAll();cache[type]=all.filter(function(r){return r.type===type});renderFiles(type);renderCoverage(type);
+  var all=await dbAll();cache[type]=all.filter(function(r){return r.type===type});rebuildIndex(type);renderFiles(type);renderCoverage(type);
 }
-
 function renderCoverage(type){
-  var active=cache[type].filter(function(r){return!r.archived}),known=Array.from(new Set(active.map(function(r){return r.period}).filter(Boolean))).sort(),u=active.filter(function(r){return!r.period}).length,txt=active.length+' files';
+  var active=logicalRecords(type),known=coveragePeriods[type]||[],u=active.filter(function(r){return!r.period}).length,txt=active.length+' logical files';
   if(known.length)txt+=' · '+periodLabel(known[0])+' → '+periodLabel(known[known.length-1]);if(u)txt+=' · '+u+' need month';var x=q(type+'DolCoverage');if(x)x.textContent=txt;
 }
 function renderFiles(type){
-  var box=q(type+'DolFiles');if(!box)return;var list=cache[type].slice().sort(function(a,b){return cmpPeriod(b.period,a.period)||String(b.uploadedAt).localeCompare(String(a.uploadedAt))});
+  var box=q(type+'DolFiles');if(!box)return;
+  var list=cache[type].filter(function(r){return!r.duplicateOf}).slice().sort(function(a,b){return cmpPeriod(b.period,a.period)||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
   if(!list.length){box.innerHTML='<div class="cdf-empty" style="min-height:150px"><div>📚</div><b>No challans saved</b><span>1–2 years ke challans ek saath upload kar sakte ho.</span></div>';return}
   box.innerHTML=list.map(function(r){
-    var confirmed=!!r.cloudConfirmedAt,cloud=confirmed?'<span class="cdf-good">Saved ✓ backend</span>':'<span class="cdf-bad">Save Failed / pending retry</span>';
-    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+' · '+cloud+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button></div>'
+    var confirmed=!!r.cloudConfirmedAt,cloud=confirmed?'<span class="cdf-good">Saved ✓ backend</span>':'<span class="cdf-bad">Save Failed — Retry</span>',hash=r.fileHash?(' · SHA '+r.fileHash.slice(0,10)):'';
+    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+hash+' · '+cloud+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button class="cdf-viewBtn" data-cdf-view="'+esc(r.id)+'">👁 View</button><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button></div>'
   }).join('');
 }
-
 async function uploadFiles(type,files){
-  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),ok=0,failed=0,dupes=0,errors=[];
+  files=Array.from(files||[]);if(!files.length)return;var status=q(type+'DolStatus'),api=cloudApi(),errors=[],duplicates=[],prepared=[],selectedHashes={};
   if(!api){if(status)status.textContent='Save Failed — shared backend service unavailable.';return}
-  try{await pullCloud(type)}catch(e){if(status)status.textContent='Save Failed — backend could not be loaded: '+(e.message||e);return}
-  var existing=await dbAll();
+  setStatus(type,'Checking','Loading backend fingerprints…',2);
+  try{await withTimeout(pullCloud(type),45000,'Backend check timeout');await refresh(type)}catch(e){if(status)status.textContent='Save Failed — Retry: '+(e.message||e);return}
+  var existing={},all=cache[type];all.forEach(function(r){if(r.fileHash&&r.cloudConfirmedAt&&!r.duplicateOf)existing[r.fileHash]=r});
   for(var i=0;i<files.length;i++){
-    var f=files[i];
-    if(status)status.innerHTML='Reading '+(i+1)+' / '+files.length+': <b>'+esc(f.name)+'</b><div class="cdf-progress"><i style="width:'+Math.round((i/files.length)*100)+'%"></i></div>';
+    var f=files[i];setStatus(type,'Checking',(i+1)+' / '+files.length+' · '+f.name,5+Math.round(((i+1)/files.length)*20));
     try{
-      var p=await parseFile(f,type),dk=type+'|'+(p.period||'')+'|'+p.fingerprint,dup=existing.find(function(r){return duplicateKey(r)===dk&&r.cloudConfirmedAt});
-      if(dup){dupes++;if(status)status.textContent='Duplicate skipped: '+f.name+' — '+(p.period?periodLabel(p.period):'month unresolved');continue}
-      var now=new Date().toISOString(),rec={id:uid(type),type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fingerprint:p.fingerprint,parseVersion:'2',archived:false,buffer:p.buffer};
-      if(status)status.textContent='Saving to backend: '+f.name+'…';
-      var back=await api.saveComplianceDolConfirmed(rec);rec.cloudConfirmedAt=back.cloudConfirmedAt||new Date().toISOString();await dbPut(rec);existing.push(rec);ok++;notifyChange()
-    }catch(e){failed++;console.error(e);var em=String(e&&e.message||e),kind=/parse|not found|unreadable|pdf engine|unsupported file/i.test(em)?'Parse Failed':/backend|cloud|read-back|login|save/i.test(em)?'Save Failed':'Upload Failed';errors.push(kind+' — '+f.name+': '+em);if(status)status.textContent=errors[errors.length-1]}
+      var buf=await f.arrayBuffer(),sha=await hashBuffer(buf),dup=existing[sha]||selectedHashes[sha];
+      if(dup){duplicates.push({file:f,existing:dup});continue}
+      var item={file:f,buffer:buf,fileHash:sha};prepared.push(item);selectedHashes[sha]=item
+    }catch(e0){errors.push('Upload Failed — '+f.name+': '+(e0.message||e0))}
     await sleep(0)
   }
-  await refresh(type);
+  if(!prepared.length){
+    await refresh(type);
+    if(status)status.textContent=duplicates.length?'Already Uploaded ✓ — '+duplicates.map(function(x){var r=x.existing;return x.file.name+' → '+(r.name||'existing challan')+(r.period?' ('+periodLabel(r.period)+')':'')}).slice(0,3).join(' | ')+(duplicates.length>3?' | +'+(duplicates.length-3)+' more':''):errors.join(' | ');
+    return
+  }
+  var records=[];
+  for(var j=0;j<prepared.length;j++){
+    var x=prepared[j],basePct=25+Math.round((j/prepared.length)*45);setStatus(type,'Parsing',(j+1)+' / '+prepared.length+' · '+x.file.name,basePct);
+    try{
+      var p=await parseBuffer(x.buffer,x.file.name||'',type,function(stage,pct){setStatus(type,'Parsing',(j+1)+' / '+prepared.length+' · '+stage,basePct+Math.round((Number(pct)||0)/100*(45/Math.max(1,prepared.length))))});
+      var now=new Date().toISOString(),rec={id:uid(type),type:type,name:x.file.name,size:x.file.size,lastModified:x.file.lastModified||0,uploadedAt:now,updatedAt:now,period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,fileHash:x.fileHash,fingerprint:p.fingerprint,parseVersion:'3',archived:false,buffer:x.buffer,viewerSheets:p.viewerSheets||null};
+      await dbPut(rec);records.push(rec)
+    }catch(e1){var em=String(e1&&e1.message||e1),kind=/parse|not found|unreadable|pdf engine|unsupported file/i.test(em)?'Parse Failed':'Upload Failed';errors.push(kind+' — '+x.file.name+': '+em)}
+    await sleep(0)
+  }
+  if(records.length){
+    setStatus(type,'Saving',records.length+' new challan(s) · one batch confirmation',75);
+    try{
+      var res=await withTimeout(api.saveComplianceDolBatchConfirmed(records),120000,'Save Failed — Retry');
+      (res.results||[]).forEach(function(rr){if(!rr.ok)errors.push('Save Failed — '+((rr.record&&rr.record.name)||'challan')+': '+(rr.error||'backend confirmation failed'))});
+      setStatus(type,'Saving','Backend read-back confirmed '+(res.saved||0)+' / '+records.length,96)
+    }catch(e2){errors.push('Save Failed — Retry: '+(e2.message||e2))}
+  }
+  cloudReady[type]=true;await refresh(type);notifyChange();
+  var saved=records.filter(function(r){var z=cache[type].find(function(x){return x.id===r.id});return z&&z.cloudConfirmedAt}).length;
   if(status){
-    if(failed)status.textContent=(ok?ok+' Saved ✓ · ':'')+errors.slice(0,3).join(' | ')+(errors.length>3?' | +'+(errors.length-3)+' more':'')+(dupes?' · '+dupes+' duplicate skipped':'');
-    else status.textContent='Saved ✓ — '+ok+' challan(s) backend confirmed'+(dupes?' · '+dupes+' duplicate skipped':'')+'.'+(cache[type].some(function(r){return!r.period&&r.cloudConfirmedAt})?' Yellow files ka month set karo.':'')
+    var dupMsg=duplicates.length?(duplicates.length===1?'Already Uploaded ✓ — '+duplicates[0].file.name+' → '+(duplicates[0].existing.name||'existing challan'):duplicates.length+' already uploaded skipped'):'';
+    if(errors.length)status.textContent=(saved?saved+' Saved ✓ · ':'')+(dupMsg?dupMsg+' · ':'')+errors.slice(0,3).join(' | ')+(errors.length>3?' | +'+(errors.length-3)+' more':'');
+    else status.textContent=(saved?saved+' Saved ✓':'')+(saved&&dupMsg?' · ':'')+dupMsg+(cache[type].some(function(r){return!r.period&&r.cloudConfirmedAt&&!r.duplicateOf})?' · Yellow files ka month set karo.':'')
   }
 }
 
@@ -283,18 +356,17 @@ function parseInputs(type){
 }
 async function search(type){
   var queries=parseInputs(type),status=q(type+'DolStatus');if(!queries.length){status.textContent='Valid '+idLabel(type)+' enter karo.';return}
-  status.textContent='Loading all backend-confirmed challans…';
-  try{await pullCloud(type);var mig=await migratePending(type);if(mig.migrated)await pullCloud(type);await refresh(type)}catch(e){status.textContent='Search Failed — backend challans load nahi hue: '+(e.message||e);return}
-  var files=cache[type].filter(function(r){return!r.archived&&!!r.cloudConfirmedAt}),unique={},confirmed=[];
-  files.forEach(function(r){var k=duplicateKey(r)||r.id;if(!unique[k]){unique[k]=1;confirmed.push(r)}});
-  files=confirmed;
-  var knownPeriods=Array.from(new Set(files.map(function(r){return r.period}).filter(Boolean))).sort(),results=[];
+  if(!cloudReady[type]){
+    setStatus(type,'Checking','Syncing saved challan index…',20);
+    try{await withTimeout(pullCloud(type),45000,'Search sync timeout');await refresh(type)}catch(e){status.textContent='Search Failed — '+(e.message||e);return}
+  }
+  var knownPeriods=coveragePeriods[type]||[],results=[];
   queries.forEach(function(id){
-    var matches=files.filter(function(r){return containsId(r,type,id)}),unresolved=matches.filter(function(r){return!r.period}),known=matches.filter(function(r){return!!r.period}).sort(function(a,b){return cmpPeriod(a.period,b.period)});
+    var matches=(searchIndex[type][id]||[]).slice(),unresolved=matches.filter(function(r){return!r.period}),known=matches.filter(function(r){return!!r.period}).sort(function(a,b){return cmpPeriod(a.period,b.period)});
     var last=known.length?known[known.length-1].period:'',later=last?knownPeriods.filter(function(p){return p>last}).length:0,months=Array.from(new Set(known.map(function(r){return r.period}))).sort();
-    results.push({id:id,matches:matches,unresolved:unresolved,known:known,last:last,laterChecked:later,months:months});
+    results.push({id:id,matches:matches,unresolved:unresolved,known:known,last:last,laterChecked:later,months:months})
   });
-  lastResults[type]=results;renderResults(type);q(type+'DolExport').disabled=false;status.textContent='✅ '+queries.length+' ID(s) ko '+files.length+' backend-confirmed challan files me complete scan kiya gaya.';
+  lastResults[type]=results;renderResults(type);q(type+'DolExport').disabled=false;status.textContent='✅ Indexed search · '+queries.length+' ID(s) · '+logicalRecords(type).length+' backend-confirmed challans · no PDF re-parse.';
 }
 
 function renderResults(type){
