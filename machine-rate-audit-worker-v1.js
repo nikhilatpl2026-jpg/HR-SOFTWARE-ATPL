@@ -52,7 +52,7 @@ function mostCommon(counter){
 function analyze(buffer,mode){
   postMessage({type:'progress',stage:'Reading workbook',percent:8});
   var wb=XLSX.read(buffer,{type:'array',cellDates:false,cellText:true});
-  var groups={},allRows=[],scannedSheets=0,employeeKeys={},names=wb.SheetNames||[],total=Math.max(1,names.length);
+  var groups={},scannedSheets=0,employeeKeys={},names=wb.SheetNames||[],total=Math.max(1,names.length);
   for(var si=0;si<names.length;si++){
     var sn=names[si],ws=wb.Sheets[sn];
     if(ws&&ws['!ref']){
@@ -69,7 +69,7 @@ function analyze(buffer,mode){
           sheetHad=true;
           var empCode=codeText(row[hdr.code]),name=String(row[hdr.name]==null?'':row[hdr.name]).trim(),machineCard=cardFromMachine(mc);
           var rec={sheet:sn,row:r+1,card:sheetCard,machine:mc,rawMachine:raw,code:empCode,name:name,rate:rate,crossCard:!!(sheetCard&&machineCard&&sheetCard!==machineCard)};
-          allRows.push(rec);if(empCode||name)employeeKeys[(empCode||'')+'|'+name.toLowerCase()]=1;
+          if(empCode||name)employeeKeys[(empCode||'')+'|'+name.toLowerCase()]=1;
           var key=sn+'||'+mc;
           if(!groups[key])groups[key]={key:key,sheet:sn,card:sheetCard,machine:mc,rows:[],rates:{}};
           groups[key].rows.push(rec);var rk=String(rate);groups[key].rates[rk]=(groups[key].rates[rk]||0)+1;
@@ -84,9 +84,9 @@ function analyze(buffer,mode){
     var x=groups[k],rates=Object.keys(x.rates).map(Number).sort(function(a,b){return a-b}),common=mostCommon(x.rates);
     x.rateList=rates;x.common=common.rate;x.commonCount=common.count;x.tie=common.tie;x.mismatch=rates.length>1;
     x.min=rates.length?rates[0]:null;x.max=rates.length?rates[rates.length-1]:null;x.delta=rates.length?x.max-x.min:0;
-    x.outliers=x.rows.filter(function(r){return common.rate!=null&&r.rate!==common.rate});return x;
+    return x;
   }).sort(function(a,b){if(a.mismatch!==b.mismatch)return a.mismatch?-1:1;return a.sheet.localeCompare(b.sheet)||a.machine.localeCompare(b.machine)});
-  return{groups:list,issues:list.filter(function(x){return x.mismatch}),rows:allRows,scannedSheets:scannedSheets,scannedEmployees:Object.keys(employeeKeys).length,sheetCount:names.length};
+  return{groups:list,issues:list.filter(function(x){return x.mismatch}),scannedSheets:scannedSheets,scannedEmployees:Object.keys(employeeKeys).length,sheetCount:names.length};
 }
 self.onmessage=function(e){
   var d=e.data||{};
