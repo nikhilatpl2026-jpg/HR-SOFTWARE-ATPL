@@ -135,32 +135,37 @@ function stopWorker(){
   try{if(scanWorker){scanWorker.terminate();scanWorker=null}}catch(_){}
 }
 async function scanFile(file){
-  if(!file||state.scanning&&file!==state.file)return;
+  if(!file)return;
   stopWorker();state.file=file;state.scanning=true;state.filter='all';
   if(q('mraFilter'))q('mraFilter').value='all';
   if(q('mraDownload'))q('mraDownload').disabled=true;
   setScanUi('Reading workbook in background…',3);
   try{
     if(typeof Worker!=='function')throw new Error('Browser Web Worker support unavailable');
-    var buf=await file.arrayBuffer(),job=++scanJob;
-    scanWorker=new Worker('machine-rate-audit-worker-v1.js?v=20260918-2');
+    var job=++scanJob;
+    scanWorker=new Worker('machine-rate-audit-worker-v1.js?v=20260918-perf3');
     scanWorker.onmessage=function(ev){
       var d=ev.data||{};if(job!==scanJob)return;
-      if(d.type==='progress'){setScanUi(d.stage||'Scanning sheets…',d.percent||10);return}
+      if(d.type==='progress'){if(state.scanning)setScanUi(d.stage||'Scanning sheets…',d.percent||10);return}
       if(d.type==='error'){
         state.scanning=false;stopWorker();setScanUi('Audit failed',0);
         alert('Machine Rate Audit file read nahi kar paya: '+(d.message||'Unknown error'));return
       }
       if(d.type==='done'){
-        var r=d.result||{};state.groups=r.groups||[];state.issues=r.issues||[];state.scannedSheets=r.scannedSheets||0;state.scannedEmployees=r.scannedEmployees||0;state.sheetCount=r.sheetCount||0;state.scanning=false;stopWorker();render();
+        var r=d.result||{};state.groups=r.groups||[];state.issues=new Array(Math.max(0,Number(r.issuesCount)||0));state.scannedSheets=r.scannedSheets||0;state.scannedEmployees=r.scannedEmployees||0;state.sheetCount=r.sheetCount||0;state.scanning=false;render();
         var fb=q('mraFileBar');if(fb)fb.innerHTML='<span class="mra-fileicon">📊</span><div><b>'+esc(file.name)+'</b><small>'+state.sheetCount+' workbook sheets · '+state.scannedSheets+' '+(state.mode==='kg'?'KG-rate':'monthly-rate')+' sheets scanned · background worker</small></div><span class="mra-ready">AUDITED</span>';
         if(q('mraDownload'))q('mraDownload').disabled=false;
+      }
+      if(d.type==='exportDone'){
+        var btn=q('mraDownload');if(btn){btn.disabled=false;btn.textContent='⬇ Export Audit'}
+        try{var blob=new Blob([d.buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=d.filename||'Machine_Rate_Audit.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},1500)}catch(ex){console.error(ex);alert('Audit export download nahi ho paya. Dobara try karo.')}
+        return
       }
     };
     scanWorker.onerror=function(err){
       if(job!==scanJob)return;state.scanning=false;stopWorker();console.error(err);setScanUi('Audit worker failed',0);alert('Machine Rate Audit worker error. Page refresh karke dobara try karo.');
     };
-    scanWorker.postMessage({type:'scan',jobId:job,mode:state.mode,buffer:buf},[buf]);
+    scanWorker.postMessage({type:'scan',jobId:job,mode:state.mode,file:file});
   }catch(err){state.scanning=false;stopWorker();console.error(err);alert('Machine Rate Audit file read nahi kar paya: '+(err&&err.message?err.message:err))}
 }
 async function onFile(e){
@@ -177,20 +182,19 @@ function render(){
   var html='';if(state.issues.length)html+='<div class="mra-summarybad">⚠ '+state.issues.length+' exact machine group(s) me different '+(state.mode==='kg'?'rate/kg':'monthly rates')+' mili hain.</div>';
   groups.forEach(function(gp){
     var rates=gp.rateList.map(function(r){return'<span class="mra-rate '+(gp.mismatch?'bad':'')+'">'+rateText(r)+' <small>×'+gp.rates[String(r)]+'</small></span>'}).join('');
-    html+='<div class="mra-group '+(gp.mismatch?'bad':'')+'"><div class="mra-gh"><div><div class="mra-machine">'+esc(gp.machine)+'</div><div class="mra-sheet">'+esc(gp.sheet)+'</div></div><div class="mra-rates">'+rates+'</div><div style="font-size:9px;color:#64748b">'+gp.rows.length+' employee row(s) · '+(gp.mismatch?'Spread '+rateText(gp.delta):'Same '+(state.mode==='kg'?'rate/kg':'rate'))+'</div><div class="mra-status"><span class="mra-pill '+(gp.mismatch?'bad':'ok')+'">'+(gp.mismatch?'RATE MISMATCH':'CONSISTENT')+'</span></div></div>';
+    html+='<div class="mra-group '+(gp.mismatch?'bad':'')+'"><div class="mra-gh"><div><div class="mra-machine">'+esc(gp.machine)+'</div><div class="mra-sheet">'+esc(gp.sheet)+'</div></div><div class="mra-rates">'+rates+'</div><div style="font-size:9px;color:#64748b">'+(gp.rowCount||gp.rows.length)+' employee row(s) · '+(gp.mismatch?'Spread '+rateText(gp.delta):'Same '+(state.mode==='kg'?'rate/kg':'rate'))+'</div><div class="mra-status"><span class="mra-pill '+(gp.mismatch?'bad':'ok')+'">'+(gp.mismatch?'RATE MISMATCH':'CONSISTENT')+'</span></div></div>';
     html+='<table class="mra-table"><thead><tr><th>EMP CODE</th><th>EMPLOYEE</th><th>MACHINE</th><th>'+(state.mode==='kg'?'RATE/KG':'RATE')+'</th><th>COMMON</th><th>DIFFERENCE</th><th>ROW</th></tr></thead><tbody>';
-    gp.rows.slice(0,80).forEach(function(r){var out=gp.mismatch&&gp.common!=null&&r.rate!==gp.common,diff=gp.common==null?0:r.rate-gp.common;html+='<tr class="'+(out?'outlier':'')+'"><td>'+esc(r.code||'—')+'</td><td><b>'+esc(r.name||'—')+'</b></td><td>'+esc(r.machine)+(r.rawMachine!==r.machine?'<div class="mra-muted">raw: '+esc(r.rawMachine)+'</div>':'')+'</td><td><b>'+rateText(r.rate)+'</b></td><td>'+(!gp.tie&&gp.common!=null?rateText(gp.common):'<span class="mra-muted">No clear standard</span>')+'</td><td class="'+(out?'mra-diff':'mra-muted')+'">'+(out?(diff>0?'+':'')+(state.mode==='kg'?kg(diff):money(diff)):'—')+'</td><td>'+r.row+'</td></tr>'});if(gp.rows.length>80)html+='<tr><td colspan="7" class="mra-muted" style="text-align:center">Showing 80 of '+gp.rows.length+' rows — export contains all rows</td></tr>';
+    gp.rows.slice(0,80).forEach(function(r){var out=gp.mismatch&&gp.common!=null&&r.rate!==gp.common,diff=gp.common==null?0:r.rate-gp.common;html+='<tr class="'+(out?'outlier':'')+'"><td>'+esc(r.code||'—')+'</td><td><b>'+esc(r.name||'—')+'</b></td><td>'+esc(r.machine)+(r.rawMachine!==r.machine?'<div class="mra-muted">raw: '+esc(r.rawMachine)+'</div>':'')+'</td><td><b>'+rateText(r.rate)+'</b></td><td>'+(!gp.tie&&gp.common!=null?rateText(gp.common):'<span class="mra-muted">No clear standard</span>')+'</td><td class="'+(out?'mra-diff':'mra-muted')+'">'+(out?(diff>0?'+':'')+(state.mode==='kg'?kg(diff):money(diff)):'—')+'</td><td>'+r.row+'</td></tr>'});if((gp.rowCount||gp.rows.length)>80)html+='<tr><td colspan="7" class="mra-muted" style="text-align:center">Showing 80 of '+(gp.rowCount||gp.rows.length)+' rows — export contains all rows</td></tr>';
     html+='</tbody></table>';if(gp.mismatch)html+='<div class="mra-note">Rule: <b>'+esc(gp.sheet)+' + '+esc(gp.machine)+'</b> ke andar '+(state.mode==='kg'?'rate/kg':'monthly rate')+' same expected hai. '+(gp.tie?'Dominant rate clear nahi hai; group review karo.':'Most-used reference '+rateText(gp.common)+' hai. Software automatic salary/rate change nahi karta.')+'</div>';html+='</div>';
   });if(allGroups.length>groups.length)html+='<div style="display:flex;justify-content:center;padding:10px"><button id="mraLoadMore" style="border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:8px;padding:8px 14px;font-size:9px;font-weight:850;cursor:pointer">Load More ('+(allGroups.length-groups.length)+' remaining)</button></div>';box.innerHTML=html;var more=q('mraLoadMore');if(more)more.onclick=function(){state.viewLimit+=25;render()};
 }
 function download(){
-  if(!state.file||!state.groups.length)return;
-  var label=state.mode==='kg'?'RATE/KG':'MONTHLY RATE',rows=[['MACHINE '+label+' AUDIT'],['Source File',state.file.name],['Mode',label],['Generated',new Date().toLocaleString()],[],['Sheet','Machine Code','Raw Location','Emp Code','Employee','Rate','Most Used Rate','Difference','Status','Source Row']];
-  state.groups.forEach(function(gp){gp.rows.forEach(function(r){var diff=gp.common==null?'':r.rate-gp.common;rows.push([gp.sheet,gp.machine,r.rawMachine,r.code,r.name,r.rate,gp.tie?'':gp.common,gp.tie?'':diff,gp.mismatch?'MISMATCH':'OK',r.row])})});
-  var summary=[['MACHINE '+label+' SUMMARY'],[],['Sheet','Machine Code','Employees','Rates Found','Most Used Rate','Spread','Status']];state.groups.forEach(function(gp){summary.push([gp.sheet,gp.machine,gp.rows.length,gp.rateList.map(function(x){return x+' x'+gp.rates[String(x)]}).join(' | '),gp.tie?'':gp.common,gp.delta,gp.mismatch?'MISMATCH':'OK'])});
-  var out=XLSX.utils.book_new();XLSX.utils.book_append_sheet(out,XLSX.utils.aoa_to_sheet(summary),'SUMMARY');XLSX.utils.book_append_sheet(out,XLSX.utils.aoa_to_sheet(rows),'DETAIL');XLSX.writeFile(out,'Machine_'+(state.mode==='kg'?'RateKG':'MonthlyRate')+'_Audit_'+state.file.name.replace(/\.(xlsx|xls|csv)$/i,'')+'.xlsx');
+  if(!state.file||!state.groups.length||!scanWorker)return;
+  var btn=q('mraDownload');if(btn){btn.disabled=true;btn.textContent='Preparing…'}
+  try{scanWorker.postMessage({type:'export',jobId:scanJob,mode:state.mode,fileName:state.file.name})}
+  catch(err){if(btn){btn.disabled=false;btn.textContent='⬇ Export Audit'}console.error(err);alert('Audit export start nahi ho paya. Dobara try karo.')}
 }
-g.ATPLMachineRateAuditorV2={version:'2026.09.18-worker1',stripKgSuffix:stripKgSuffix,rawMachine:rawMachine,scanFile:scanFile,status:function(){return{scanning:state.scanning,groups:state.groups.length,mode:state.mode}}};
+g.ATPLMachineRateAuditorV2={version:'2026.09.18-perf3',stripKgSuffix:stripKgSuffix,rawMachine:rawMachine,scanFile:scanFile,status:function(){return{scanning:state.scanning,groups:state.groups.length,mode:state.mode}}};
 function boot(){addCss();makePage();ensureNav();patchGo();setTimeout(function(){ensureNav();patchGo()},800)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
