@@ -131,7 +131,7 @@ async function uploadFiles(type,files){
   for(var i=0;i<files.length;i++){
     var f=files[i],sig=f.name+'|'+f.size+'|'+(f.lastModified||0);if(seen[sig])continue;
     if(status)status.innerHTML='Reading '+(i+1)+' / '+files.length+': <b>'+esc(f.name)+'</b><div class="cdf-progress"><i style="width:'+Math.round((i/files.length)*100)+'%"></i></div>';
-    try{var p=await parseFile(f);await dbPut({id:uid(type),type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,uploadedAt:new Date().toISOString(),period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,archived:false,buffer:p.buffer});seen[sig]=1}catch(e){console.error(e);if(status)status.textContent='⚠ '+f.name+': '+(e.message||e)}
+    try{var p=await parseFile(f);await dbPut({id:uid(type),type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),period:p.period,periodSource:p.periodSource,detail:p.detail,digitIds:p.digits,alnumIds:p.alnums,archived:false,buffer:p.buffer});seen[sig]=1}catch(e){console.error(e);if(status)status.textContent='⚠ '+f.name+': '+(e.message||e)}
     await sleep(0);
   }
   if(status)status.textContent='✅ Upload/index complete. Yellow files ka month manually set karo before relying on their matched result.';await refresh(type);
@@ -170,10 +170,10 @@ function setMode(type,mode){
   searchMode[type]=mode;document.querySelectorAll('[data-cdf-mode^="'+type+'-"]').forEach(function(b){b.classList.toggle('active',b.getAttribute('data-cdf-mode')===type+'-'+mode)});q(type+'DolPaneSingle').classList.toggle('active',mode==='single');q(type+'DolPaneMultiple').classList.toggle('active',mode==='multiple');
 }
 async function setPeriod(type,id,p){
-  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.period=p||'';r.periodSource=p?'manual':'manual-required';await dbPut(r);await refresh(type);
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.period=p||'';r.periodSource=p?'manual':'manual-required';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);
 }
 async function archive(type,id){
-  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.archived=!r.archived;r.archivedAt=r.archived?new Date().toISOString():'';await dbPut(r);await refresh(type);
+  var r=cache[type].find(function(x){return x.id===id});if(!r)return;r.archived=!r.archived;r.archivedAt=r.archived?new Date().toISOString():'';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);
 }
 function exportResults(type){
   var res=lastResults[type]||[];if(!res.length)return;
@@ -194,7 +194,9 @@ function patchGo(){
 }
 g.ATPLComplianceDolV1={version:'2026.09.18-1',parsePeriod:parsePeriodCore,normalizeQuery:normalizeQuery,containsId:containsId,periodLabel:periodLabel};
 async function boot(){
-  addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();await Promise.all([refresh('esic'),refresh('pf')]);setTimeout(function(){ensureNav('esic');ensureNav('pf');patchGo()},800);
+  addCss();['esic','pf'].forEach(function(t){ensureNav(t);makePage(t);wire(t)});patchGo();await Promise.all([refresh('esic'),refresh('pf')]);
+  document.addEventListener('atpl-compliance-dol-synced',function(){refresh('esic');refresh('pf')});
+  setTimeout(function(){ensureNav('esic');ensureNav('pf');patchGo()},800);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
