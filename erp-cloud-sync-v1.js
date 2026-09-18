@@ -83,7 +83,12 @@
     opts=opts||{};var k=keyOf(record);if(!k)return Promise.resolve({ok:false,error:'Employee code required'});
     return serialize(k,async function(){
       try{
-        var remote=remoteMap(await fetchCloud())[k]||null,conf=conflictCheck(record,opts.baseRecord||null,remote);
+        var remote=remoteMap(await fetchCloud())[k]||null;
+        if(opts.isNew&&remote&&!samePayload(record,remote)){
+          var exists={conflict:true,error:'Employee code already exists in shared backend. Refresh Employee Master and edit the existing employee instead.',remote:cloudRecord(remote)};
+          conflicts[k]=exists;return{ok:false,conflict:true,duplicate:true,error:exists.error,remote:exists.remote}
+        }
+        var conf=conflictCheck(record,opts.baseRecord||null,remote);
         if(conf){conflicts[k]=conf;return{ok:false,conflict:true,error:conf.error,remote:conf.remote}}
         if(remote&&samePayload(record,remote)){
           var already=cloudRecord(remote);clearDirty(k);if(opts.commitLocal)commitConfirmed(already);return{ok:true,record:already,verified:true,noChange:true}
