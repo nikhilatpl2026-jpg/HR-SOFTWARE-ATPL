@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-isolated-dol-final7';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-authoritative-dol-final8';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -13,7 +13,7 @@
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
   var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
-  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false;
+  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false,dolLegacyMigrationPromise=null;
 
   function text(v){return v==null?'':String(v).trim()}
   function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
@@ -88,22 +88,51 @@
   async function putDol(rec){var d=await openDolDb();return new Promise(function(ok,no){var t=d.transaction(DOL_STORE,'readwrite');t.objectStore(DOL_STORE).put(rec);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
   async function deleteDolLocal(id){try{var d=await openDolDb();return await new Promise(function(ok,no){var t=d.transaction(DOL_STORE,'readwrite');t.objectStore(DOL_STORE).delete(id);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}catch(e){return false}}
   function dolPayload(r){return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:r.detail||'',digitIds:Array.isArray(r.digitIds)?r.digitIds:[],alnumIds:Array.isArray(r.alnumIds)?r.alnumIds:[],fileHash:r.fileHash||'',fingerprint:r.fingerprint||'',parseVersion:r.parseVersion||'',cloudConfirmedAt:r.cloudConfirmedAt||'',duplicateOf:r.duplicateOf||'',archived:!!r.archived,archivedAt:r.archivedAt||''}}
+  function dolStrongPfText(v){
+    return /\b(?:ECR|ECR\s+STATEMENT|ECR\s+CHALLAN|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN|GROSS\s+EPF\s+WAGES|MEMBER\s+ID)\b/.test(String(v||'').toUpperCase())
+  }
   function dolLooksLikePfInEsic(r){
     if(!r||String(r.type||'')!=='esic')return false;
-    var ids=[].concat(Array.isArray(r.ids)?r.ids:[],Array.isArray(r.digitIds)?r.digitIds:[],Array.isArray(r.alnumIds)?r.alnumIds:[]).map(String),twelve=ids.filter(function(x){return /^\d{12}$/.test(x.replace(/\D/g,''))}).length,establishment=ids.some(function(x){return /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(x.toUpperCase().replace(/[^A-Z0-9]/g,''))}),name=String(r.name||'').toUpperCase();
-    return establishment||twelve>=3||/\b(?:UAN|EPFO|PROVIDENT\s+FUND|GROSS\s+EPF\s+WAGES|MEMBER\s+ID|TRRN)\b/.test(name)
+    var ids=[].concat(Array.isArray(r.ids)?r.ids:[],Array.isArray(r.digitIds)?r.digitIds:[],Array.isArray(r.alnumIds)?r.alnumIds:[]).map(String),twelve=ids.filter(function(x){return /^\d{12}$/.test(x.replace(/\D/g,''))}).length,establishment=ids.some(function(x){return /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(x.toUpperCase().replace(/[^A-Z0-9]/g,''))}),sample=[r.name,r.detail,r.parseVersion].join(' ');
+    return establishment||twelve>=3||dolStrongPfText(sample)
   }
   function dolKind(type){return String(type||'').toLowerCase()==='pf'?DOL_KIND_PF:DOL_KIND_ESIC}
   function dolAllowedKind(kind){return kind===DOL_KIND_LEGACY||kind===DOL_KIND_ESIC||kind===DOL_KIND_PF}
   function dolFingerprint(r){return text(r&& (r.fileHash||r.fingerprint||r.hash)).toLowerCase()}
   function dolLogicalName(name){return text(name).toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
   function dolLogicalKey(r){var h=dolFingerprint(r);if(h)return'h:'+h;var n=dolLogicalName(r&&r.name),p=text(r&&r.period);return n&&p?'np:'+n+'|'+p:''}
+  function dolCanonicalId(type,p){var h=dolFingerprint(p);return h?'v2_'+type+'_'+h.slice(0,24):String(p&&p.id||'')}
   function dolRemoteType(p,kind){
     if(kind===DOL_KIND_PF)return'pf';
-    if(kind===DOL_KIND_ESIC)return'esic';
-    var t=text(p&&p.type).toLowerCase();
-    if(t==='esic'&&dolLooksLikePfInEsic(p))return'pf';
-    return t==='pf'?'pf':'esic'
+    if(kind===DOL_KIND_ESIC){
+      var q=Object.assign({},p,{type:'esic'});
+      return dolLooksLikePfInEsic(q)?'pf':'esic'
+    }
+    var t=text(p&&p.type).toLowerCase(),q2=Object.assign({},p,{type:'esic'});
+    if(t==='pf'||dolLooksLikePfInEsic(q2))return'pf';
+    return'esic'
+  }
+  async function migrateLegacyDolCloud(records,candidates){
+    if(dolLegacyMigrationPromise)return dolLegacyMigrationPromise;
+    dolLegacyMigrationPromise=(async function(){
+      var typed={};
+      (candidates||[]).forEach(function(p){if(!p||p._dolKind===DOL_KIND_LEGACY)return;var k=dolLogicalKey(p);if(k)typed[p._dolKind+'|'+k]=1});
+      var moved=0;
+      for(var i=0;i<(candidates||[]).length;i++){
+        var p=candidates[i];if(!p||p._dolKind!==DOL_KIND_LEGACY)continue;
+        var type=dolRemoteType(p,DOL_KIND_LEGACY),target=dolKind(type),lk=dolLogicalKey(p);if(!lk||typed[target+'|'+lk])continue;
+        var cp=Object.assign({},p,{type:type});delete cp._dolKind;delete cp._dolSavedAt;delete cp._cloudVerified;
+        cp.id=dolCanonicalId(type,cp)||String(cp.id||'');
+        var payload=dolPayload(cp),now=new Date().toISOString();payload.type=type;payload.id=cp.id;payload.cloudConfirmedAt=payload.cloudConfirmedAt||now;
+        try{
+          await saveObject(target,payload.id,payload,{name:type+' · '+(payload.name||payload.id),saved_at:payload.updatedAt||payload.uploadedAt||now});
+          typed[target+'|'+lk]=1;moved++
+        }catch(e){console.warn('Legacy DOL typed migration failed',payload&&payload.name,e)}
+        if(i%3===2)await new Promise(function(r){setTimeout(r,0)})
+      }
+      return moved
+    })().finally(function(){dolLegacyMigrationPromise=null});
+    return dolLegacyMigrationPromise
   }
   async function syncDol(records){
     // V1 local DOL cache is compatibility-only now. The V2 module owns cloud sync.
@@ -131,6 +160,7 @@
         candidates.push(p)
       }catch(e){console.warn('Compliance challan cloud read failed',m&&m.key_text,e)}
     }
+    await migrateLegacyDolCloud(records,candidates);
     var pfKeys={};
     candidates.forEach(function(p){if(p&&p.type==='pf'){var k=dolLogicalKey(p);if(k)pfKeys[k]=1}});
     var best={};
