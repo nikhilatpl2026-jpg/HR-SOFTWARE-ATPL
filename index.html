@@ -6493,7 +6493,7 @@ function emInit() {
   emBuildDeptFilter();
   emUpdateStats();
   emRenderTable();
-  document.getElementById('emMasterBadge').textContent = EM.data.length;
+  var emMasterBadge=document.getElementById('emMasterBadge');if(emMasterBadge)emMasterBadge.textContent=EM.data.length;
 }
 
 // ── Stats ──
@@ -6510,7 +6510,7 @@ function emUpdateStats() {
   document.getElementById('emStatDup').textContent   = dups;
   document.getElementById('emStatDepts').textContent = depts;
   document.getElementById('emTotalBadge').textContent= EM.data.length + ' Employees';
-  document.getElementById('emMasterBadge').textContent = EM.data.length;
+  var emMasterBadge=document.getElementById('emMasterBadge');if(emMasterBadge)emMasterBadge.textContent=EM.data.length;
 }
 
 // ── Dept filter options ──
