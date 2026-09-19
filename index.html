@@ -9136,8 +9136,8 @@ function aroraRemoveHistory(){
   });
   var m=document.getElementById('hrEmployeeHistory');if(m)m.remove();
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',aroraRemoveHistory);else aroraRemoveHistory();
-setInterval(aroraRemoveHistory,15000);
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',aroraRemoveHistory,{once:true});else aroraRemoveHistory();
+setTimeout(aroraRemoveHistory,1800);
 
 })();
 </script>
