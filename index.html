@@ -6,13 +6,13 @@
 <title>Arora Textiles — Excel AI Commander v2</title>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-<script src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script defer src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 // ── CRITICAL EARLY FUNCTIONS — must load before HTML renders ──
@@ -1555,42 +1555,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       </div>
     </div>
 
-    <!-- ══ PAGE: ESIC DOL FILLER ══ -->
-    <div class="page" id="page-esic">
-      <div class="page-top" style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border-bottom:2px solid #86efac">
-        <div class="page-title" style="color:#15803d">🏥 ESIC DOL Filler</div>
-        <div class="page-sub" style="color:#166534">ESIC Statement upload karo + Salary files → IP Number se match karke Date of Leaving auto fill hoga</div>
-      </div>
-      <div style="display:flex;gap:14px;padding:14px;height:calc(100% - 80px);overflow:hidden">
-        <div style="width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;overflow-y:auto">
-          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">
-            <div style="font-size:9px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px">Step 1: ESIC Statement Upload karo</div>
-            <div class="dropzone" style="border-color:#86efac;background:#f0fdf4;padding:12px">
-              <input type="file" accept=".xlsx,.xls" onchange="esicLoadStatement(this)">
-              <div class="dz-icon">🏥</div>
-              <div class="dz-text"><strong style="color:#15803d">ESIC Statement</strong> drop karo</div>
-              <div class="dz-hint">IP Number wali file (.xlsx/.xls)</div>
-            </div>
-            <div id="esicStmtStatus" style="margin-top:6px;font-size:10px;color:#64748b"></div>
-          </div>
-          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px">
-            <div style="font-size:9px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px">Step 2: Salary Files (saved honi chahiye sidebar mein)</div>
-            <div id="esicFilesInfo" style="font-size:10px;color:#64748b;padding:8px;background:#f0fdf4;border-radius:6px">Sidebar mein jo salary files saved hain unse IP Number match hoga automatically</div>
-          </div>
-          <button onclick="runESICDOL()" style="padding:12px;background:linear-gradient(135deg,#15803d,#16a34a);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">DOL Nikalo &amp; Fill Karo</button>
-          <button id="esicDlBtn" onclick="esicDownload()" disabled style="padding:10px;background:#15803d;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;opacity:0.5">Download Filled ESIC Excel</button>
-          <div id="esicDlInfo" style="font-size:10px;color:#64748b;text-align:center"></div>
-        </div>
-        <div style="flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:auto">
-          <div id="esicResults" style="padding:20px;text-align:center;color:#94a3b8">
-            <div style="font-size:40px;margin-bottom:8px">🏥</div>
-            <div style="font-size:13px;font-weight:600">ESIC Statement upload karo</div>
-            <div style="font-size:11px;margin-top:4px">IP Number salary files ke ESIC NO column se match hoga DOL auto fill</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- ══ PAGE: FORMULA DETECTOR ══ -->
     <div class="page" id="page-formula">
       <div class="page-top" style="background:linear-gradient(135deg,#FFF7ED,#FFEDD5);border-bottom:2px solid #FED7AA">
@@ -2247,23 +2211,48 @@ var MONTH_DAYS = {'1':31,'2':28,'2L':29,'3':31,'4':30,'5':31,'6':30,'7':31,'8':3
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
-window.onload = function() {
+function restoreSavedFilesIncremental() {
   initDB(function() {
     loadAllFromDB(function(saved) {
-      if (saved.length) {
-        saved.forEach(function(f) {
-          try {
-            var wb = parseWB(f.buf);
-            FILES.push({ name: f.name, wb: wb, sheets: wbToSheets(wb), buf: f.buf, fromDB: true, savedAt: f.saved });
-          } catch(e) { console.warn('Could not parse saved file:', f.name); }
-        });
+      saved = Array.isArray(saved) ? saved.slice() : [];
+      if (!saved.length) return;
+      var at = 0, loaded = 0, failed = 0;
+      var lbl = document.getElementById('storageLbl');
+      if (lbl) lbl.textContent = 'Restoring '+saved.length+' saved files…';
+      function finishRestore() {
         renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-        document.getElementById('storageLbl').textContent = FILES.length + ' files saved';
-        lg('info', '💾 ' + FILES.length + ' saved file(s) load hue: ' + FILES.map(function(f){return f.name;}).join(', '));
+        if (lbl) lbl.textContent = FILES.length + ' files saved';
+        lg('info', '💾 ' + loaded + ' saved file(s) restored in background' + (failed ? ' · '+failed+' skipped' : ''));
+        try { document.dispatchEvent(new CustomEvent('atpl-local-files-restored',{detail:{loaded:loaded,failed:failed}})); } catch(_) {}
       }
+      function step(deadline) {
+        var processed = 0;
+        while (at < saved.length && processed < 1) {
+          var f = saved[at++]; processed++;
+          try {
+            // If user already loaded a newer copy while restore was running, never overwrite it.
+            var live = FILES.find(function(x){return x && x.name === f.name && !x.fromDB;});
+            if (!live) {
+              var wb = parseWB(f.buf);
+              FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
+              FILES.push({ name: f.name, wb: wb, sheets: wbToSheets(wb), buf: f.buf, fromDB: true, savedAt: f.saved });
+              loaded++;
+            }
+          } catch(e) { failed++; console.warn('Could not parse saved file:', f && f.name, e); }
+        }
+        if (lbl) lbl.textContent = 'Restoring saved files '+at+' / '+saved.length+'…';
+        if (at >= saved.length) { finishRestore(); return; }
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:500});
+        else setTimeout(step,16);
+      }
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:800});
+      else setTimeout(step,50);
     });
   });
-};
+}
+function startLocalFileRestore(){ setTimeout(restoreSavedFilesIncremental,250); }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',startLocalFileRestore,{once:true});
+else startLocalFileRestore();
 
 // ═══════════════════════════════════════════════════════════════
 // FILE UPLOAD
@@ -10468,7 +10457,7 @@ function aroraRemoveHistory(){
   var m=document.getElementById('hrEmployeeHistory');if(m)m.remove();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',aroraRemoveHistory);else aroraRemoveHistory();
-setInterval(aroraRemoveHistory,1800);
+setInterval(aroraRemoveHistory,15000);
 
 })();
 </script>
@@ -10741,21 +10730,21 @@ else AInit();
 </script>
 
 <script src="erp-cloud-api-broker-v1.js?v=20260919-broker4-dol-lock"></script>
-<script src="erp-mobile-shared-hardfix-v1.js?v=20260919-instant-shared3"></script>
+<script src="erp-mobile-shared-hardfix-v1.js?v=20260919-stability1"></script>
 <script src="hr-workplace.js?v=20260919-broker2"></script>
 <script src="hr-docs-activity-v1.js?v=20260919-broker2"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
-<script src="erp-cloud-sync-v1.js?v=20260919-broker3"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20260919-shared-files3"></script>
-<script src="erp-durable-everything-v1.js?v=20260919-cloud-master-final15-list-restore"></script>
+<script src="erp-cloud-sync-v1.js?v=20260919-stability1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260919-stability1"></script>
+<script src="erp-durable-everything-v1.js?v=20260919-stability1"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260918-stable2"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260918-2"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5"></script>
-<script src="compliance-dol-rebuild-v2.js?v=20260919-cloud-only-final14-hard-delete"></script>
-<script src="erp-account-cloud-restore-v1.js?v=20260919-shared-orchestrator2"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20260919-stability1"></script>
+<script src="erp-account-cloud-restore-v1.js?v=20260919-stability1"></script>
 <script src="erp-enterprise-ui-v1.js?v=20260918-2"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20260918-2"></script>
 <script>
