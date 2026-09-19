@@ -7,7 +7,7 @@
 var DOL_SHEET = 'DOLRecords';
 var DOL_PARTS_SHEET = 'DOLUploadParts';
 var DOL_FOLDER_NAME = 'Arora ERP DOL Challans';
-var DOL_FILE_CHUNK = 45000; // base64 chars returned per read chunk
+var DOL_FILE_CHUNK = 500000; // larger read chunks: fewer round-trips for cross-device Open/Download
 var DOL_UPLOAD_PART_MAX = 40000; // safely below the Google Sheets 50k-character cell limit
 
 // 2) Add these routes inside doGet(e):
@@ -199,8 +199,22 @@ function checkDOLDuplicate_(p) {
   return {ok:true,duplicate:!!r,record:r?publicDol_(r):null};
 }
 
+function cleanupStaleDolParts_() {
+  var props=PropertiesService.getScriptProperties(),now=Date.now(),key='ATPL_DOL_PART_CLEANUP_TS';
+  var last=Number(props.getProperty(key)||0);if(now-last<3600000)return;
+  var lock=LockService.getScriptLock();if(!lock.tryLock(1500))return;
+  try{
+    var ph=ensureDolSheets_().parts,n=ph.getLastRow();if(n<2){props.setProperty(key,String(now));return}
+    var rows=ph.getRange(2,1,n-1,5).getValues(),cut=now-(8*60*60*1000),keep=[],removed=0;
+    rows.forEach(function(r){var ts=Date.parse(String(r[4]||''))||0;if(ts&&ts>=cut)keep.push(r);else removed++});
+    if(removed){ph.getRange(2,1,n-1,5).clearContent();if(keep.length)ph.getRange(2,1,keep.length,5).setValues(keep)}
+    props.setProperty(key,String(now));
+  }finally{lock.releaseLock();}
+}
+
 function beginDOLUpload_(p) {
   var u = requireUser_(p.token);
+  cleanupStaleDolParts_();
   var type = String(p.type||'').toLowerCase(), hash = String(p.file_hash||'').toLowerCase();
   if (type!=='pf' && type!=='esic') return {ok:false,error:'Invalid DOL type'};
   if (!hash) return {ok:false,error:'file_hash required'};
@@ -238,7 +252,7 @@ function appendDOLChunk_(p) {
 
 function commitDOLUpload_(p) {
   var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId);
-  if(!raw)return {ok:false,error:'Upload session expired'};
+  if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}
   var meta=JSON.parse(raw);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
   var ph=ensureDolSheets_().parts,n=ph.getLastRow(),partMap={};
   if(n>=2){
