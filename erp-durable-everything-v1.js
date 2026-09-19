@@ -11,7 +11,7 @@
   var STAMP='ATPL_DurableStateStamp_V1',STATE_KEY='global_ui_state_v1';
   var BANK_DB='ATPL_BANK_VERIFIER_PRIVATE_V3',BANK_VER=2,BANK_STORE='previousSheets',BANK_WORK_STORE='workingFiles';
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
-  var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2';
+  var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2',DOL_KIND_PF_ARCHIVE='pf_dol_duplicate_archive_v1',DOL_KIND_ESIC_ARCHIVE='esic_dol_duplicate_archive_v1';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
   var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false,dolLegacyMigrationPromise=null;
 
@@ -97,7 +97,7 @@
     return establishment||twelve>=3||dolStrongPfText(sample)
   }
   function dolKind(type){return String(type||'').toLowerCase()==='pf'?DOL_KIND_PF:DOL_KIND_ESIC}
-  function dolAllowedKind(kind){return kind===DOL_KIND_LEGACY||kind===DOL_KIND_ESIC||kind===DOL_KIND_PF}
+  function dolAllowedKind(kind){return kind===DOL_KIND_LEGACY||kind===DOL_KIND_ESIC||kind===DOL_KIND_PF||kind===DOL_KIND_PF_ARCHIVE||kind===DOL_KIND_ESIC_ARCHIVE}
   function dolFingerprint(r){return text(r&& (r.fileHash||r.fingerprint||r.hash)).toLowerCase()}
   function dolLogicalName(name){return text(name).toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
   function dolLogicalKey(r){var h=dolFingerprint(r);if(h)return'h:'+h;var n=dolLogicalName(r&&r.name),p=text(r&&r.period);return n&&p?'np:'+n+'|'+p:''}
@@ -238,43 +238,64 @@
     return{ok:saved===out.length,saved:saved,failed:out.length-saved,results:out}
   }
 
-  async function deleteComplianceDolBatchConfirmed(ids){
+  async function deleteComplianceDolBatchConfirmed(items){
     if(!token()||!session())throw new Error('Valid login required for challan delete');
-    ids=Array.from(new Set((ids||[]).map(String).filter(Boolean)));if(!ids.length)return{ok:true,deleted:0,failed:0,results:[]};
-    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),targets={};
-    ids.forEach(function(id){targets[id]={id:id,objectKeys:{}}});
-    function matchTarget(id,m,p){
-      var routed=dolRemoteType(p||{},m.object_kind),canonical=p?dolCanonicalId(routed,p):'',keys=[String(m.key_text||''),String(p&&p.id||''),String(canonical||'')];
-      if(keys.indexOf(String(id))>=0)targets[id].objectKeys[String(m.object_key||'')]=1
+    items=(Array.isArray(items)?items:[]).map(function(x){
+      if(x&&typeof x==='object')return{
+        id:text(x.id),type:text(x.type).toLowerCase(),hash:text(x.fileHash||x.fingerprint||x.hash).toLowerCase(),
+        name:text(x.name),period:text(x.period)
+      };
+      return{id:text(x),type:'',hash:'',name:'',period:''}
+    }).filter(function(x){return!!x.id||!!x.hash});
+    var uniq={},targets=[];
+    items.forEach(function(x){var k=[x.id,x.type,x.hash,x.name,x.period].join('|');if(!uniq[k]){uniq[k]=1;targets.push(x)}});
+    if(!targets.length)return{ok:true,deleted:0,failed:0,results:[]};
+
+    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),plans=targets.map(function(t){return{target:t,objectKeys:{}}});
+    function normName(v){return text(v).toLowerCase().replace(/^\[(?:archived duplicate)\]\s*/,'').replace(/^(?:pf|esic)\s*·\s*/,'').replace(/\(\s*\d+\s*\)/g,'').replace(/[^a-z0-9]+/g,'')}
+    function targetMatch(t,m,p){
+      var pid=text(p&&p.id),ph=dolFingerprint(p),pt=text(p&&p.type).toLowerCase(),pn=text(p&&p.name),pp=text(p&&p.period);
+      var routed=dolRemoteType(p||{},m.object_kind),canonical=p?dolCanonicalId(routed,p):'';
+      if(t.id&&(text(m.key_text)===t.id||pid===t.id||canonical===t.id))return true;
+      if(t.hash&&ph&&t.hash===ph)return !t.type||!routed||t.type===routed;
+      if(t.name&&pn&&normName(t.name)===normName(pn)&&(!t.period||!pp||t.period===pp))return !t.type||!pt||t.type===pt||t.type===routed;
+      return false
     }
     for(var mi=0;mi<metas.length;mi++){
-      var m=metas[mi],direct=ids.some(function(id){return String(m.key_text||'')===String(id)}),p=null;
-      try{p=await loadObject(records,m)}catch(e){if(!direct){console.warn('DOL delete lookup skipped unreadable object',m&&m.key_text,e);continue}}
-      for(var ii=0;ii<ids.length;ii++)matchTarget(ids[ii],m,p)
+      var m=metas[mi],payload=null;
+      try{payload=await loadObject(records,m)}catch(e){payload=null}
+      for(var pi=0;pi<plans.length;pi++){
+        var plan=plans[pi],t=plan.target,direct=t.id&&text(m.key_text)===t.id;
+        if(direct||targetMatch(t,m,payload))plan.objectKeys[text(m.object_key)]=1
+      }
     }
+
     var removedRemote={},results=[];
-    for(var i=0;i<ids.length;i++){
-      var id=ids[i],t=targets[id],objectKeys=Object.keys(t.objectKeys).filter(Boolean),err='';
+    for(var i=0;i<plans.length;i++){
+      var plan=plans[i],t=plan.target,objectKeys=Object.keys(plan.objectKeys).filter(Boolean),err='';
       try{
+        if(!objectKeys.length)throw new Error('No matching cloud challan object found');
         var remoteIds=[];
-        objectKeys.forEach(function(okey){records.forEach(function(r){if(r&&String(r.object_key||'')===String(okey)&&r.emp_id)remoteIds.push(String(r.emp_id))})});
+        objectKeys.forEach(function(okey){records.forEach(function(r){if(r&&text(r.object_key)===okey&&r.emp_id)remoteIds.push(text(r.emp_id))})});
         remoteIds=Array.from(new Set(remoteIds)).sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});
         for(var j=0;j<remoteIds.length;j++){var rid=remoteIds[j];if(removedRemote[rid])continue;await removeRemote(rid);removedRemote[rid]=1}
-        await deleteDolLocal(id)
+        if(t.id)await deleteDolLocal(t.id)
       }catch(e){err=e&&e.message?e.message:String(e)}
-      results.push({id:id,ok:!err,error:err,matchedObjects:objectKeys.length})
+      results.push({id:t.id||t.hash,ok:!err,error:err,matchedObjects:objectKeys.length})
     }
+
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     var verify=await fetchRemote(),leftKeys={};
-    verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&r.object_key)leftKeys[String(r.object_key)]=1});
-    results.forEach(function(x){
+    verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&r.object_key)leftKeys[text(r.object_key)]=1});
+    results.forEach(function(x,idx){
       if(!x.ok)return;
-      var keys=Object.keys(targets[x.id].objectKeys);
-      if(keys.some(function(k){return !!leftKeys[k]})){x.ok=false;x.error='Backend delete verification failed'}
+      var keys=Object.keys(plans[idx].objectKeys);
+      if(keys.some(function(k){return!!leftKeys[k]})){x.ok=false;x.error='Backend delete verification failed'}
     });
     var deleted=results.filter(function(x){return x.ok}).length;
     return{ok:deleted===results.length,deleted:deleted,failed:results.length-deleted,results:results}
   }
-  async function deleteComplianceDolConfirmed(id){var r=await deleteComplianceDolBatchConfirmed([id]);if(!r.ok)throw new Error(r.results&&r.results[0]&&r.results[0].error||'Challan delete failed');return true}
+  async function deleteComplianceDolConfirmed(target){var r=await deleteComplianceDolBatchConfirmed([target]);if(!r.ok)throw new Error(r.results&&r.results[0]&&r.results[0].error||'Challan delete failed');return r}
 
   function displayCell(cell){if(!cell)return'';if(cell.w!=null)return String(cell.w);if(cell.v==null)return'';if(cell.v instanceof Date)return cell.v.toISOString();return String(cell.v)}
   function writeCellValue(ws,R,C,val){var addr=root.XLSX.utils.encode_cell({r:R,c:C}),cell=ws[addr]||{},s=String(val==null?'':val),cur=displayCell(cell);if(cur===s)return false;if(s===''){if(cell&&cell.f)delete cell.f;cell.t='s';cell.v='';cell.w='';ws[addr]=cell;return true}if(cell&&cell.f)delete cell.f;var num=Number(String(s).replace(/,/g,''));if(s!==''&&isFinite(num)&&/^[-+]?\d+(?:\.\d+)?$/.test(s)&&!(s.length>1&&s[0]==='0')){cell.t='n';cell.v=num;delete cell.w}else{cell.t='s';cell.v=s;cell.w=s}ws[addr]=cell;return true}
