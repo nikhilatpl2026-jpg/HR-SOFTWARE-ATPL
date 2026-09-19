@@ -4,13 +4,14 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-type-safe-final6';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-isolated-dol-final7';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
   var STAMP='ATPL_DurableStateStamp_V1',STATE_KEY='global_ui_state_v1';
   var BANK_DB='ATPL_BANK_VERIFIER_PRIVATE_V3',BANK_VER=2,BANK_STORE='previousSheets',BANK_WORK_STORE='workingFiles';
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
+  var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
   var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false;
 
@@ -92,14 +93,21 @@
     var ids=[].concat(Array.isArray(r.ids)?r.ids:[],Array.isArray(r.digitIds)?r.digitIds:[],Array.isArray(r.alnumIds)?r.alnumIds:[]).map(String),twelve=ids.filter(function(x){return /^\d{12}$/.test(x.replace(/\D/g,''))}).length,establishment=ids.some(function(x){return /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(x.toUpperCase().replace(/[^A-Z0-9]/g,''))}),name=String(r.name||'').toUpperCase();
     return establishment||twelve>=3||/\b(?:UAN|EPFO|PROVIDENT\s+FUND|GROSS\s+EPF\s+WAGES|MEMBER\s+ID|TRRN)\b/.test(name)
   }
+  function dolKind(type){return String(type||'').toLowerCase()==='pf'?DOL_KIND_PF:DOL_KIND_ESIC}
+  function dolAllowedKind(kind){return kind===DOL_KIND_LEGACY||kind===DOL_KIND_ESIC||kind===DOL_KIND_PF}
+  function dolFingerprint(r){return text(r&& (r.fileHash||r.fingerprint||r.hash)).toLowerCase()}
+  function dolLogicalName(name){return text(name).toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
+  function dolLogicalKey(r){var h=dolFingerprint(r);if(h)return'h:'+h;var n=dolLogicalName(r&&r.name),p=text(r&&r.period);return n&&p?'np:'+n+'|'+p:''}
+  function dolRemoteType(p,kind){
+    if(kind===DOL_KIND_PF)return'pf';
+    if(kind===DOL_KIND_ESIC)return'esic';
+    var t=text(p&&p.type).toLowerCase();
+    if(t==='esic'&&dolLooksLikePfInEsic(p))return'pf';
+    return t==='pf'?'pf':'esic'
+  }
   async function syncDol(records){
-    if(!root.indexedDB)return false;
-    var kind='compliance_dol_v1',metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind===kind}),local=await dolRows(),by={},rm={},changed=0,i;
-    local.forEach(function(r){if(r&&r.id)by[String(r.id)]=r});metas.forEach(function(m){rm[String(m.key_text||'')]=m});
-    for(i=0;i<metas.length;i++){var m=metas[i],id=String(m.key_text||''),old=by[id];if(!id)continue;if(old&&ms(old.updatedAt||old.uploadedAt)>=ms(m.saved_at))continue;try{var p=await loadObject(records,m);if(!p||!p.id||dolLooksLikePfInEsic(p))continue;p.buffer=old&&old.buffer?old.buffer:null;p.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;await putDol(p);by[id]=p;changed++}catch(e){console.warn('Durable DOL pull failed',id,e)}}
-    local=await dolRows();
-    for(i=0;i<local.length;i++){var r=local[i];if(!r||!r.id||!r.cloudConfirmedAt||dolLooksLikePfInEsic(r))continue;var m0=rm[String(r.id)],ts=r.updatedAt||r.uploadedAt||'',push=!m0||ms(ts)>ms(m0.saved_at),lk=kind+':'+r.id;if(!push||lastDolPush[lk])continue;lastDolPush[lk]=1;try{var p=dolPayload(r);await saveObject(kind,r.id,p,{name:(r.type||'')+' · '+(r.name||r.id),saved_at:ts||new Date().toISOString()});delete lastDolPush[lk]}catch(e){delete lastDolPush[lk];console.warn('Durable DOL save failed',r&&r.name,e)}}
-    if(changed){try{root.document.dispatchEvent(new CustomEvent('atpl-compliance-dol-synced',{detail:{count:changed}}))}catch(_){}}
+    // V1 local DOL cache is compatibility-only now. The V2 module owns cloud sync.
+    // Never auto-push legacy local rows: that was able to resurrect old PF-as-ESIC records.
     return true
   }
 
@@ -112,21 +120,36 @@
   }
   async function getComplianceDolRecords(type){
     if(!token()||!session())throw new Error('Valid login required for challan cloud access');
-    var kind='compliance_dol_v1',records=await fetchRemote(),metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind===kind}),out=[];
+    type=String(type||'').toLowerCase();if(type!=='esic'&&type!=='pf')throw new Error('Invalid challan type');
+    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),candidates=[];
     for(var i=0;i<metas.length;i++){
       var m=metas[i];
       try{
-        var p=await loadObject(records,m);if(!p||!p.id||dolLooksLikePfInEsic(p))continue;if(type&&String(p.type||'')!==String(type))continue;
-        p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;out.push(p);
+        var p=await loadObject(records,m);if(!p||!p.id)continue;
+        p.type=dolRemoteType(p,m.object_kind);
+        p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;p._dolKind=m.object_kind;p._dolSavedAt=m.saved_at||m.uploaded_at||'';
+        candidates.push(p)
       }catch(e){console.warn('Compliance challan cloud read failed',m&&m.key_text,e)}
     }
-    return out
+    var pfKeys={};
+    candidates.forEach(function(p){if(p&&p.type==='pf'){var k=dolLogicalKey(p);if(k)pfKeys[k]=1}});
+    var best={};
+    candidates.forEach(function(p){
+      if(!p||p.type!==type)return;
+      var key=dolLogicalKey(p)||('id:'+String(p.id||''));
+      if(type==='esic'&&key&&pfKeys[key])return;
+      var score=p._dolKind===dolKind(type)?3:(p._dolKind===DOL_KIND_LEGACY?1:0),old=best[key],oldScore=old?(old._dolKind===dolKind(type)?3:(old._dolKind===DOL_KIND_LEGACY?1:0)):-1;
+      if(!old||score>oldScore||(score===oldScore&&ms(p._dolSavedAt)>ms(old._dolSavedAt)))best[key]=p
+    });
+    return Object.keys(best).map(function(k){var p=best[k];delete p._dolKind;delete p._dolSavedAt;return p})
   }
+
   async function saveComplianceDolConfirmed(rec){
     if(!token()||!session())throw new Error('Valid login required for challan save');
     if(!rec||!rec.id||!rec.type)throw new Error('Invalid challan record');
     if(dolLooksLikePfInEsic(rec))throw new Error('PF challan cannot be saved inside ESIC');
-    var kind='compliance_dol_v1',p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;
+    rec.type=String(rec.type||'').toLowerCase();if(rec.type!=='esic'&&rec.type!=='pf')throw new Error('Invalid challan type');
+    var kind=dolKind(rec.type),p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;
     await saveObject(kind,p.id,p,{name:(p.type||'')+' · '+(p.name||p.id),saved_at:p.updatedAt||p.uploadedAt||now});
     var records=await fetchRemote(),meta=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind&&String(r.key_text||'')===String(p.id)}).sort(function(a,b){return ms(b.saved_at||b.uploaded_at)-ms(a.saved_at||a.uploaded_at)})[0];
     if(!meta)throw new Error('Backend save not found during read-back');
@@ -139,26 +162,27 @@
 
   async function saveComplianceDolBatchConfirmed(list){
     if(!token()||!session())throw new Error('Valid login required for challan save');
-    list=Array.isArray(list)?list.filter(function(r){return r&&r.id&&r.type}):[];
+    list=Array.isArray(list)?list.filter(function(r){return r&&r.id&&['esic','pf'].indexOf(String(r.type||'').toLowerCase())>=0}):[];
     if(!list.length)return{ok:true,saved:0,failed:0,results:[]};
     if(list.some(dolLooksLikePfInEsic))throw new Error('PF challan cannot be saved inside ESIC');
-    var kind='compliance_dol_v1',localExisting=await dolRows(),localById={};localExisting.forEach(function(r){if(r&&r.id)localById[String(r.id)]=r});var prepared=list.map(function(rec){var p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;return{rec:rec,p:p,now:now,error:''}}),at=0;
+    var localExisting=await dolRows(),localById={};localExisting.forEach(function(r){if(r&&r.id)localById[String(r.id)]=r});
+    var prepared=list.map(function(rec){rec=Object.assign({},rec,{type:String(rec.type||'').toLowerCase()});var p=dolPayload(rec),now=new Date().toISOString(),kind=dolKind(rec.type);p.cloudConfirmedAt=now;return{rec:rec,p:p,kind:kind,now:now,error:''}}),at=0;
     async function worker(){
       while(true){
         var i=at++;if(i>=prepared.length)return;var x=prepared[i];
-        try{await saveObject(kind,x.p.id,x.p,{name:(x.p.type||'')+' · '+(x.p.name||x.p.id),saved_at:x.p.updatedAt||x.p.uploadedAt||x.now})}
+        try{await saveObject(x.kind,x.p.id,x.p,{name:(x.p.type||'')+' · '+(x.p.name||x.p.id),saved_at:x.p.updatedAt||x.p.uploadedAt||x.now})}
         catch(e){x.error=e&&e.message?e.message:String(e)}
       }
     }
     var ws=[];for(var w=0;w<Math.min(2,prepared.length);w++)ws.push(worker());await Promise.all(ws);
     var remote;try{remote=await fetchRemote()}catch(e){remote=[];prepared.forEach(function(x){if(!x.error)x.error='Backend read-back failed: '+(e&&e.message?e.message:e)})}
-    var metas={};remote.forEach(function(r){if(r&&r._atpl_kind==='meta'&&r.object_kind===kind)metas[String(r.key_text||'')]=r});
+    var metas={};remote.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind))metas[String(r.object_kind)+'|'+String(r.key_text||'')]=r});
     var out=[];
     for(var j=0;j<prepared.length;j++){
       var x=prepared[j];
       if(x.error){out.push({ok:false,error:x.error,record:x.rec});continue}
       try{
-        var meta=metas[String(x.p.id||'')];if(!meta)throw new Error('Backend save not found during read-back');
+        var meta=metas[x.kind+'|'+String(x.p.id||'')];if(!meta)throw new Error('Backend save not found during read-back');
         var back=await loadObject(remote,meta);if(!sameDolPayload(x.p,back))throw new Error('Backend read-back mismatch for challan');
         back.buffer=null;back.cloudConfirmedAt=back.cloudConfirmedAt||x.now;back._cloudVerified=true;
         var oldLocal=localById[String(x.rec.id)]||{};await putDol(Object.assign({},oldLocal,x.rec,back,{buffer:x.rec.buffer||oldLocal.buffer||null,viewerSheets:x.rec.viewerSheets||oldLocal.viewerSheets||null}));
@@ -172,9 +196,13 @@
   async function deleteComplianceDolBatchConfirmed(ids){
     if(!token()||!session())throw new Error('Valid login required for challan delete');
     ids=Array.from(new Set((ids||[]).map(String).filter(Boolean)));if(!ids.length)return{ok:true,deleted:0,failed:0,results:[]};
-    var kind='compliance_dol_v1',records=await fetchRemote(),metas={},targets=[];
-    records.forEach(function(r){if(r&&r._atpl_kind==='meta'&&r.object_kind===kind&&ids.indexOf(String(r.key_text||''))>=0)metas[String(r.key_text||'')]=r});
-    ids.forEach(function(id){var m=metas[id];if(!m){targets.push({id:id,remoteIds:[]});return}var rr=records.filter(function(r){return r&&r.object_key===m.object_key&&r.emp_id}).map(function(r){return String(r.emp_id)});rr.sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});targets.push({id:id,remoteIds:rr})});
+    var records=await fetchRemote(),targets=[];
+    ids.forEach(function(id){
+      var metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&String(r.key_text||'')===id}),remoteIds=[];
+      metas.forEach(function(m){records.forEach(function(r){if(r&&r.object_key===m.object_key&&r.emp_id)remoteIds.push(String(r.emp_id))})});
+      remoteIds=Array.from(new Set(remoteIds)).sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});
+      targets.push({id:id,remoteIds:remoteIds})
+    });
     var results=[];
     for(var i=0;i<targets.length;i++){
       var t=targets[i],err='';
@@ -182,7 +210,7 @@
       catch(e){err=e&&e.message?e.message:String(e)}
       results.push({id:t.id,ok:!err,error:err})
     }
-    var verify=await fetchRemote(),left={};verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&r.object_kind===kind)left[String(r.key_text||'')]=1});
+    var verify=await fetchRemote(),left={};verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&ids.indexOf(String(r.key_text||''))>=0)left[String(r.key_text||'')]=1});
     results.forEach(function(x){if(x.ok&&left[x.id]){x.ok=false;x.error='Backend delete verification failed'}});
     var deleted=results.filter(function(x){return x.ok}).length;return{ok:deleted===results.length,deleted:deleted,failed:results.length-deleted,results:results}
   }
