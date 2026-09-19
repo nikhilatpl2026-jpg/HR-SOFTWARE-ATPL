@@ -134,5 +134,6 @@ function boot(){
   if(tok()&&sess()){unlockApp(current()||sess(),false);setTimeout(function(){hydrateAfterLogin(current()||sess())},900)}
 }
 root.ATPLMobileSharedHardFix={login:hardLogin,pullMaster:function(){return pullMaster(true)},syncAll:async function(){var n=await pullMaster(true);await backgroundShared();return n},version:function(){return BUILD}};
+root.ATPLMobileSharedHardfixV1=root.ATPLMobileSharedHardFix;
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
