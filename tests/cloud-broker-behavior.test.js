@@ -26,3 +26,26 @@ test('late read cannot refill cache or satisfy read after successful write',asyn
  assert.deepEqual((await h.api.request({action:'getEmployeeMaster',token:'t'})).records,['new']);
  }finally{h.close()}
 });
+test('rapid identical employee saves share one write',async()=>{
+ const h=harness();try{
+ const p={action:'upsertEmployeeMaster',token:'t',emp_id:'A',record_json:'{}'};
+ const a=h.api.request(p),b=h.api.request({...p});h.reply(0,{ok:true});await a;await tick();
+ assert.equal(h.pending.length,1);assert.equal((await b).ok,true);
+ }finally{h.close()}
+});
+test('distinct write between equal payloads preserves user operation order',async()=>{
+ const h=harness();try{
+ const p={action:'upsertEmployeeMaster',token:'t',emp_id:'A',record_json:'{"name":"A"}'};
+ const a=h.api.request(p),b=h.api.request({...p,record_json:'{"name":"B"}'}),c=h.api.request(p);
+ h.reply(0,{ok:true});await a;await tick();h.reply(1,{ok:true});await b;await tick();
+ assert.equal(h.pending.length,3);h.reply(2,{ok:true});await c;
+ }finally{h.close()}
+});
+test('queued request expires explicitly and is never sent later',async()=>{
+ const h=harness();try{
+ const a=h.api.request({action:'getEmployeeMaster',token:'A'}),b=h.api.request({action:'getEmployeeMaster',token:'B'});await tick();
+ const queued=h.api.request({action:'deleteEmployeeMaster',token:'A',emp_id:'C'},{queueTimeout:60});
+ const outcome=await Promise.race([queued.then(()=> 'sent',e=>e.message),new Promise(r=>setTimeout(()=>r('still waiting'),120))]);
+ assert.equal(outcome,'CLOUD_QUEUE_TIMEOUT');h.reply(0,{ok:true});h.reply(1,{ok:true});await Promise.all([a,b]);await tick();assert.equal(h.pending.length,2);
+ }finally{h.close()}
+});

@@ -9,10 +9,11 @@ if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var revisions={},generation=0,inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
+var pumpTimer=0,lastWriteKey='',revisions={},generation=0,inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
 var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,activeWrites:0,queued:0};
 
 var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1,getDOLRecords:1,checkDOLDuplicate:1,getDOLFileInfo:1,getDOLFileChunk:1};
+var WRITE_DEDUPE={upsertEmployeeMaster:1,deleteEmployeeMaster:1,saveUser:1,deleteUser:1,commitDOLUpload:1,updateDOLRecord:1,deleteDOLRecord:1};
 var CACHE_MS={ping:30000,listUsers:12000,getEmployeeMaster:7000,getSystemRecords:7000,listActivity:5000,getDOLRecords:2500,checkDOLDuplicate:0,getDOLFileInfo:3000,getDOLFileChunk:15000};
 var INVALIDATE={
   saveUser:['listUsers'],deleteUser:['listUsers'],
@@ -98,26 +99,34 @@ async function transport(params,opts){
   }
   var err=new Error('CLOUD_UNREACHABLE');err.cause=last;err.action=action;throw err
 }
+function schedulePump(ms){if(pumpTimer)return;pumpTimer=root.setTimeout(function(){pumpTimer=0;pump()},ms)}
 function pump(){
   health.active=active;health.activeWrites=activeWrites;health.queued=queue.length;
   if(active>=MAX_ACTIVE||!queue.length)return;
   var wait=Math.max(0,MIN_GAP-(now()-lastStart));
-  if(wait){root.setTimeout(pump,wait);return}
+  if(wait){schedulePump(wait);return}
   queue.sort(function(a,b){return a.priority-b.priority||a.at-b.at});
   var idx=-1;
   for(var i=0;i<queue.length;i++){if(queue[i].isRead||activeWrites<MAX_WRITES){idx=i;break}}
   if(idx<0)return;
-  var job=queue.splice(idx,1)[0];active++;if(!job.isRead)activeWrites++;lastStart=now();
+  var job=queue.splice(idx,1)[0];root.clearTimeout(job.queueTimer);active++;if(!job.isRead)activeWrites++;lastStart=now();
   health.active=active;health.activeWrites=activeWrites;health.queued=queue.length;
   transport(job.params,job.opts).then(job.resolve,job.reject).finally(function(){
     active--;if(!job.isRead)activeWrites--;health.active=active;health.activeWrites=activeWrites;pump()
   });
-  if(active<MAX_ACTIVE&&queue.length)root.setTimeout(pump,MIN_GAP)
+  if(active<MAX_ACTIVE&&queue.length)schedulePump(MIN_GAP)
 }
 function enqueue(params,opts){
   var action=String(params&&params.action||'ping'),isRead=!!READ_ACTIONS[action],priority=action==='login'?0:(isRead?1:2);
   return new Promise(function(resolve,reject){
-    queue.push({params:params,opts:opts,resolve:resolve,reject:reject,isRead:isRead,priority:priority,at:now()});
+    if(queue.length>=200){reject(new Error('CLOUD_QUEUE_FULL'));return}
+    var job={params:params,opts:opts,resolve:resolve,reject:reject,isRead:isRead,priority:priority,at:now()};
+    var limit=Math.max(50,Math.min(12000,Number(opts.queueTimeout)||10000));
+    job.queueTimer=root.setTimeout(function(){
+      var i=queue.indexOf(job);if(i<0)return;queue.splice(i,1);health.queued=queue.length;
+      var err=new Error('CLOUD_QUEUE_TIMEOUT');err.action=action;err.notSent=true;reject(err);pump();
+    },limit);
+    queue.push(job);
     health.queued=queue.length;pump()
   })
 }
@@ -140,18 +149,20 @@ async function request(params,opts){
   }
   var k=key(params),isRead=!!READ_ACTIONS[action],ttl=opts.cacheMs!=null?Number(opts.cacheMs):(CACHE_MS[action]||0);
   if(isRead&&ttl>0&&cache[k]&&now()-cache[k].at<ttl)return cache[k].data;
-  if(isRead&&inflight[k])return inflight[k];
+  var dedupe=isRead||!!WRITE_DEDUPE[action]||(action==='appendActivity'&&!!params.event_id);
+  var reuse=isRead||lastWriteKey===k;if(!isRead)lastWriteKey=k;
+  if(dedupe&&reuse&&inflight[k])return inflight[k];
   var revision=revisions[action]||0,epoch=generation;
   var p=enqueue(params,opts).then(function(data){
     if(isRead&&ttl>0&&data&&data.ok!==false&&revision===(revisions[action]||0)&&epoch===generation)cache[k]={at:now(),data:data};
     if(!isRead&&data&&data.ok!==false)invalidate(action);
     return data
   }).finally(function(){if(inflight[k]===p)delete inflight[k]});
-  if(isRead)inflight[k]=p;
+  if(dedupe)inflight[k]=p;
   return p
 }
 async function ping(){return request({action:'ping'},{cacheMs:15000,attempts:2,timeout:12000})}
-function clear(){generation++;cache={};inflight={}}
+function clear(){generation++;lastWriteKey='';cache={};inflight={}}
 function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
 root.ATPLCloudAPI={request:request,ping:ping,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}
