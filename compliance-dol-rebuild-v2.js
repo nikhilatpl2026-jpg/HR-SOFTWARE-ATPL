@@ -810,7 +810,8 @@ function patchNavigation(){
 }
 
 async function boot(){
-  addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');await requestPersistentStorage();
+  addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');
+  setTimeout(function(){requestPersistentStorage().catch(function(e){console.warn('Persistent storage setup deferred',e)})},1800);
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
