@@ -13,7 +13,7 @@
 (function(root){
 'use strict';
 if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-upload-first4';
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-library-folders1';
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
@@ -212,10 +212,13 @@ function pageHtml(type){
   return '<div class="cd2-shell" data-type="'+type+'">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLEAN V2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Challan pehle save hoga, phir index hoga. <b>Latest matched contribution month = DOL month</b>; beech ke missing months ignore honge.</div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
-    '<div class="cd2-strip"><span>💾 File first saved</span><span>👁 In-app viewer</span><span>🗑 Permanent delete</span><span>⚡ Search index — no re-parse</span><span>🧠 SHA-256 duplicate guard</span></div>'+
+    '<div class="cd2-strip"><span>💾 File first saved</span><span>🔎 Challan search</span><span>📁 Year folders</span><span>⬇ Download</span><span>📅 Missing month tracker</span><span>🧠 SHA-256 duplicate guard</span></div>'+
     '<div id="cd2-'+type+'-status" class="cd2-status">Ready.</div>'+
     '<div class="cd2-grid">'+
-      '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div><div id="cd2-'+type+'-files" class="cd2-files"></div></section>'+
+      '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div>'+
+        '<div class="cd2-libtools"><input id="cd2-'+type+'-libsearch" placeholder="Search challan name / month / year..."><select id="cd2-'+type+'-yearfilter"><option value="">All years</option></select></div>'+
+        '<div id="cd2-'+type+'-missing" class="cd2-missing"></div>'+
+        '<div id="cd2-'+type+'-files" class="cd2-files"></div></section>'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Find DOL Month</b><small>Exact ID search across successfully indexed challans</small></div></div>'+
         '<div class="cd2-search"><label>'+label+'</label><textarea id="cd2-'+type+'-query" placeholder="One or multiple IDs — space / comma / new line"></textarea><button data-cd2-search="'+type+'">Find DOL Month</button></div>'+
         '<div id="cd2-'+type+'-results" class="cd2-results"><div class="cd2-empty">Search an ID to see its contribution timeline.</div></div>'+
@@ -277,15 +280,69 @@ function rebuildIndex(type){
 async function refresh(type){
   var all=await dbAll();state[type].rows=all.filter(function(r){return r&&r.type===type}).sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});rebuildIndex(type);renderFiles(type)
 }
+function addLibraryCss(){
+  if($('cd2-library-style'))return;
+  var s=document.createElement('style');s.id='cd2-library-style';s.textContent=
+  '.cd2-libtools{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:7px;margin-bottom:8px}.cd2-libtools input,.cd2-libtools select{border:1px solid #cbd5e1;border-radius:8px;padding:8px 9px;font-size:9px;background:#fff;color:#0f172a}.cd2-missing{margin-bottom:9px}.cd2-missbox{border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:9px}.cd2-misshead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}.cd2-misshead b{font-size:10px;color:#0f172a}.cd2-misshead span{font-size:8px;color:#64748b}.cd2-monthgrid{display:flex;flex-wrap:wrap;gap:4px}.cd2-monthchip{padding:4px 6px;border-radius:999px;font-size:8px;font-weight:800;border:1px solid #e2e8f0;background:#fff;color:#475569}.cd2-monthchip.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}.cd2-monthchip.miss{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.cd2-yearfolder{border:1px solid #e2e8f0;border-radius:11px;background:#fff;overflow:hidden}.cd2-yearfolder+ .cd2-yearfolder{margin-top:7px}.cd2-yearfolder summary{cursor:pointer;list-style:none;padding:9px 10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;color:#1e293b}.cd2-yearfolder summary::-webkit-details-marker{display:none}.cd2-foldercount{font-size:8px;color:#64748b;font-weight:750}.cd2-yearbody{display:flex;flex-direction:column;gap:6px;padding:7px}.cd2-file{grid-template-columns:minmax(0,1fr) 112px auto auto auto!important}.cd2-dl{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}@media(max-width:1100px){.cd2-file{grid-template-columns:minmax(0,1fr) 105px auto auto!important}.cd2-file .cd2-dl{grid-column:auto}.cd2-libtools{grid-template-columns:1fr}}';
+  document.head.appendChild(s)
+}
+function libraryYearRows(type){
+  var rows=state[type].rows||[],map={};
+  rows.forEach(function(r){var y=r.period?String(r.period).slice(0,4):'Unknown';(map[y]||(map[y]=[])).push(r)});
+  return map
+}
+function syncYearFilter(type){
+  var sel=$('cd2-'+type+'-yearfilter');if(!sel)return;
+  var current=sel.value,years=Object.keys(libraryYearRows(type)).filter(function(y){return y!=='Unknown'}).sort().reverse();
+  sel.innerHTML='<option value="">All years</option>'+years.map(function(y){return'<option value="'+y+'">'+y+'</option>'}).join('')+(libraryYearRows(type).Unknown?'<option value="Unknown">Month not set</option>':'');
+  if(Array.from(sel.options).some(function(o){return o.value===current}))sel.value=current
+}
+function renderMissingMonths(type){
+  var box=$('cd2-'+type+'-missing');if(!box)return;
+  var rows=state[type].rows||[],sel=$('cd2-'+type+'-yearfilter'),chosen=sel&&sel.value&&sel.value!=='Unknown'?sel.value:'';
+  var years=Array.from(new Set(rows.map(function(r){return r.period?String(r.period).slice(0,4):''}).filter(Boolean))).sort().reverse();
+  var year=chosen||(years[0]||String(new Date().getFullYear()));
+  var now=new Date(),currentYear=String(now.getFullYear()),limit=year===currentYear?(now.getMonth()+1):12;
+  var uploaded=new Set(rows.filter(function(r){return r.period&&String(r.period).slice(0,4)===year}).map(function(r){return Number(String(r.period).slice(5,7))}));
+  var names=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],chips=[],missing=[];
+  for(var m=1;m<=limit;m++){var ok=uploaded.has(m);if(!ok)missing.push(names[m-1]);chips.push('<span class="cd2-monthchip '+(ok?'ok':'miss')+'">'+names[m-1]+' '+(ok?'✓':'Missing')+'</span>')}
+  box.innerHTML='<div class="cd2-missbox"><div class="cd2-misshead"><b>📅 '+esc(year)+' Challan Coverage</b><span>'+(missing.length?missing.length+' missing month'+(missing.length===1?'':'s'):'All expected months uploaded ✓')+'</span></div><div class="cd2-monthgrid">'+chips.join('')+'</div></div>'
+}
+async function downloadChallan(type,id){
+  var rec=await dbGet(id);if(!rec){setStatus(type,'Download failed — saved file not found',true);return}
+  try{
+    var blob=rec.blob instanceof Blob?rec.blob:new Blob([rec.buffer||new ArrayBuffer(0)],{type:fileMime(rec.name)}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);
+    setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
+  }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
+}
+
 function renderFiles(type){
   var rows=state[type].rows||[],box=$('cd2-'+type+'-files'),cov=$('cd2-'+type+'-coverage');if(!box)return;
+  syncYearFilter(type);
+  var search=$('cd2-'+type+'-libsearch'),yearSel=$('cd2-'+type+'-yearfilter'),qv=String(search&&search.value||'').toLowerCase().trim(),yf=String(yearSel&&yearSel.value||'');
   var periods=state[type].periods||[],bad=rows.filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).length;
   cov.textContent=rows.length+' saved file'+(rows.length===1?'':'s')+(periods.length?' · '+periodLabel(periods[0])+' → '+periodLabel(periods[periods.length-1]):'')+(bad?' · '+bad+' need indexing':'');
-  if(!rows.length){box.innerHTML='<div class="cd2-empty">No V2 challans yet. Upload all ESIC/PF challans here.</div>';return}
-  box.innerHTML=rows.map(function(r){
-    var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' indexed IDs'):'⚠ Needs indexing';
-    if(r.parseStatus==='processing')meta='⏳ Indexing…';
-    return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+Math.round((r.size||0)/1024)+' KB · '+meta+' · SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+  renderMissingMonths(type);
+  var filtered=rows.filter(function(r){
+    var y=r.period?String(r.period).slice(0,4):'Unknown';
+    if(yf&&y!==yf)return false;
+    if(!qv)return true;
+    var hay=[r.name,r.period,periodLabel(r.period||''),y].join(' ').toLowerCase();
+    return hay.indexOf(qv)>=0
+  });
+  if(!filtered.length){box.innerHTML='<div class="cd2-empty">'+(rows.length?'No challan matches this search/filter.':'No V2 challans yet. Upload all ESIC/PF challans here.')+'</div>';return}
+  var groups={};
+  filtered.forEach(function(r){var y=r.period?String(r.period).slice(0,4):'Unknown';(groups[y]||(groups[y]=[])).push(r)});
+  var years=Object.keys(groups).sort(function(a,b){if(a==='Unknown')return 1;if(b==='Unknown')return-1;return b.localeCompare(a)});
+  box.innerHTML=years.map(function(y){
+    var items=groups[y].sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
+    var body=items.map(function(r){
+      var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' indexed IDs'):'⚠ Needs indexing';
+      if(r.parseStatus==='processing')meta='⏳ Indexing…';
+      return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+' · SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+    }).join('');
+    return'<details class="cd2-yearfolder" open><summary><span>📁 '+esc(y==='Unknown'?'Month Not Set':y)+'</span><span class="cd2-foldercount">'+items.length+' challan'+(items.length===1?'':'s')+'</span></summary><div class="cd2-yearbody">'+body+'</div></details>'
   }).join('')
 }
 async function updatePeriod(type,id,period){
@@ -362,21 +419,27 @@ async function migrateLegacy(){
   }catch(e){console.warn('V2 legacy migration unavailable',e)}
 }
 function wire(type){
-  var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]');
+  var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]'),libSearch=$('cd2-'+type+'-libsearch'),yearFilter=$('cd2-'+type+'-yearfilter');
   pick.onclick=function(){inp.click()};
   inp.addEventListener('change',function(){var fs=Array.from(this.files||[]);this.value='';if(fs.length)upload(type,fs);else setStatus(type,'No file selected',true)});
   document.querySelector('[data-cd2-search="'+type+'"]').onclick=function(){search(type)};
   document.querySelector('[data-cd2-refresh="'+type+'"]').onclick=function(){refresh(type)};
+  if(libSearch)libSearch.addEventListener('input',function(){renderFiles(type)});
+  if(yearFilter)yearFilter.addEventListener('change',function(){renderFiles(type)});
   $('cd2-'+type+'-files').addEventListener('change',function(e){var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
-  $('cd2-'+type+'-files').addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))})
+  $('cd2-'+type+'-files').addEventListener('click',function(e){
+    var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}
+    var dl=e.target.closest&&e.target.closest('[data-cd2-download]');if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}
+    var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))
+  })
 }
 async function boot(){
-  addCss();ensureViewer();ensureNav('esic');ensureNav('pf');
+  addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');
   await migrateLegacy();await Promise.all([refresh('esic'),refresh('pf')]);
-  setStatus('esic','V2 ready ✓ — original files stay saved on this browser/device. Upload all ESIC challans.');
-  setStatus('pf','V2 ready ✓ — original files stay saved on this browser/device. Upload all PF challans.');
+  setStatus('esic','V2 ready ✓ — search, year folders, download and missing-month tracker active.');
+  setStatus('pf','V2 ready ✓ — search, year folders, download and missing-month tracker active.');
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
