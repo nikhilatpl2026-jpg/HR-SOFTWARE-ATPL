@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-cloud-master-final11';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-cloud-master-final12';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -148,22 +148,47 @@
     if(String(a.fingerprint||'')&&String(b.fingerprint||''))return String(a.fingerprint)===String(b.fingerprint);
     return JSON.stringify(Array.isArray(a.digitIds)?a.digitIds:[])===JSON.stringify(Array.isArray(b.digitIds)?b.digitIds:[])&&JSON.stringify(Array.isArray(a.alnumIds)?a.alnumIds:[])===JSON.stringify(Array.isArray(b.alnumIds)?b.alnumIds:[]);
   }
+  function dolCanonicalName(name){
+    return text(name).toLowerCase()
+      .replace(/^(?:pf|esic)\s*·\s*/,'')
+      .replace(/\(\s*\d+\s*\)/g,'')
+      .replace(/\bstatement\s+of\b/g,'statement')
+      .replace(/\bsept(?:ember)?\b/g,'sep')
+      .replace(/\baugust\b/g,'aug').replace(/\bjanuary\b/g,'jan').replace(/\bfebruary\b/g,'feb')
+      .replace(/\bmarch\b/g,'mar').replace(/\bapril\b/g,'apr').replace(/\bjune\b/g,'jun')
+      .replace(/\bjuly\b/g,'jul').replace(/\boctober\b/g,'oct').replace(/\bnovember\b/g,'nov')
+      .replace(/\bdecember\b/g,'dec').replace(/\.[^.]+$/,'').replace(/[^a-z0-9]+/g,'')
+  }
+  function dolDisplayKey(p){
+    var n=dolCanonicalName(p&&p.name),per=text(p&&p.period);
+    if(n&&per)return'nameperiod:'+n+'|'+per;
+    var h=dolFingerprint(p);if(h)return'h:'+h;
+    return'id:'+text(p&&p.id)
+  }
+  function dolRoutedType(p,kind){
+    var q=Object.assign({},p,{type:'esic'}),sample=[p&&p.name,p&&p.detail,p&&p.parseVersion].join(' ');
+    if(dolLooksLikePfInEsic(q)||dolStrongPfText(sample))return'pf';
+    return kind===DOL_KIND_PF?'pf':'esic'
+  }
   async function getComplianceDolRecords(type){
     if(!token()||!session())throw new Error('Valid login required for challan cloud access');
     type=String(type||'').toLowerCase();if(type!=='esic'&&type!=='pf')throw new Error('Invalid challan type');
-    var kind=dolKind(type),records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind}),best={};
+    var records=await fetchRemote(),metas=records.filter(function(r){
+      return r&&r._atpl_kind==='meta'&&(r.object_kind===DOL_KIND_ESIC||r.object_kind===DOL_KIND_PF)
+    }),best={};
     for(var i=0;i<metas.length;i++){
       var m=metas[i];
       try{
         var p=await loadObject(records,m);if(!p||!p.id)continue;
-        p.type=type;p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;
-        var key=dolLogicalKey(p)||('id:'+String(p.id||'')),old=best[key],oldTs=old?ms(old.cloudConfirmedAt||old.updatedAt||old.uploadedAt):0,newTs=ms(m.saved_at||m.uploaded_at||p.updatedAt||p.uploadedAt);
-        if(!old||newTs>=oldTs)best[key]=p
+        var routed=dolRoutedType(p,m.object_kind);if(routed!==type)continue;
+        p.type=routed;p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;
+        var key=dolDisplayKey(p),old=best[key],oldTs=old?ms(old.cloudConfirmedAt||old.updatedAt||old.uploadedAt):0,newTs=ms(m.saved_at||m.uploaded_at||p.updatedAt||p.uploadedAt);
+        var newScore=(m.object_kind===dolKind(routed)?10:0)+(dolFingerprint(p)?2:0),oldScore=old&&old.__score||0;
+        if(!old||newScore>oldScore||(newScore===oldScore&&newTs>=oldTs)){p.__score=newScore;best[key]=p}
       }catch(e){console.warn('Compliance challan cloud read failed',m&&m.key_text,e)}
     }
-    return Object.keys(best).map(function(k){return best[k]})
+    return Object.keys(best).map(function(k){var p=best[k];delete p.__score;return p})
   }
-
   async function saveComplianceDolConfirmed(rec){
     if(!token()||!session())throw new Error('Valid login required for challan save');
     if(!rec||!rec.id||!rec.type)throw new Error('Invalid challan record');
@@ -292,6 +317,6 @@
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');setTimeout(function(){run(true)},2200);root.addEventListener('online',function(){setTimeout(function(){run(true)},200)});root.addEventListener('focus',function(){run(false)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)run(false)});root.document.addEventListener('atpl-compliance-dol-local-change',function(){setTimeout(function(){run(true)},300)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#uaLoginBtn,#vn-empmaster,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true);setInterval(function(){if(!root.document.hidden)run(false)},90000);setInterval(hookMutations,5000)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3'}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final12'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
