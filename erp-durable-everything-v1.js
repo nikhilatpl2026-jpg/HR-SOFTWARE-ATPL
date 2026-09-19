@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-mobile-gzip1';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-backend-v3split1';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -45,7 +45,17 @@
   function recordsFor(records,key){var meta=null,chunks={};(records||[]).forEach(function(r){if(r&&r.object_key===key&&r._atpl_kind==='meta')meta=r;else if(r&&r.object_key===key&&r._atpl_kind==='chunk')chunks[Number(r.index)]=String(r.data||'')});return{meta:meta,chunks:chunks}}
   async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Durable cloud copy too large ('+parts.length+' chunks)');var k=safeKey(kind,key),u=session()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});return true}
   async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records,meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete durable object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
-  async function fetchRemote(){if(!token())return[];var d=await api({action:'getEmployeeMaster',token:token()},22000);if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})}
+  async function fetchRemote(){
+  if(!token())return[];
+  var d;
+  try{
+    d=await api({action:'getSystemRecords',token:token()},14000);
+    if(d&&d.ok&&Array.isArray(d.records))return d.records;
+  }catch(_){}
+  d=await api({action:'getEmployeeMaster',token:token()},22000);
+  if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');
+  return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})
+}
 
   function allowedLocalKey(k){k=String(k||'');if(!k||k===STAMP)return false;if(/token|session|password|credential|secret/i.test(k))return false;if(k==='ATPL_UserAccess_V1'||k==='AroraTextilesEmployeeMasterV3')return false;if(/^hrdoc_/i.test(k))return false;return /^ATPL_MamCompliance_/i.test(k)||/^ATPL_BankVerifier_/i.test(k)||/^ATPL_.*(?:UI|State|Profile|Rule|Setting|Preference|Auditor)/i.test(k)||/^AroraTextilesHRDocTypes/i.test(k)||/^arora_hr_doc_types$/i.test(k)}
   function collectState(){var values={};try{for(var i=0;i<root.localStorage.length;i++){var k=root.localStorage.key(i);if(allowedLocalKey(k))values[k]=root.localStorage.getItem(k)}}catch(_){}var stamp=Number(root.localStorage.getItem(STAMP)||0)||0;return{version:1,updatedAt:stamp,values:values}}
