@@ -119,15 +119,16 @@
       (candidates||[]).forEach(function(p){if(!p||p._dolKind===DOL_KIND_LEGACY)return;var k=dolLogicalKey(p);if(k)typed[p._dolKind+'|'+k]=1});
       var moved=0;
       for(var i=0;i<(candidates||[]).length;i++){
-        var p=candidates[i];if(!p||p._dolKind!==DOL_KIND_LEGACY)continue;
-        var type=dolRemoteType(p,DOL_KIND_LEGACY),target=dolKind(type),lk=dolLogicalKey(p);if(!lk||typed[target+'|'+lk])continue;
+        var p=candidates[i];if(!p)continue;
+        var type=dolRemoteType(p,p._dolKind),target=dolKind(type),lk=dolLogicalKey(p);
+        if(!lk||p._dolKind===target||typed[target+'|'+lk])continue;
         var cp=Object.assign({},p,{type:type});delete cp._dolKind;delete cp._dolSavedAt;delete cp._cloudVerified;
         cp.id=dolCanonicalId(type,cp)||String(cp.id||'');
         var payload=dolPayload(cp),now=new Date().toISOString();payload.type=type;payload.id=cp.id;payload.cloudConfirmedAt=payload.cloudConfirmedAt||now;
         try{
           await saveObject(target,payload.id,payload,{name:type+' · '+(payload.name||payload.id),saved_at:payload.updatedAt||payload.uploadedAt||now});
           typed[target+'|'+lk]=1;moved++
-        }catch(e){console.warn('Legacy DOL typed migration failed',payload&&payload.name,e)}
+        }catch(e){console.warn('DOL typed repair migration failed',payload&&payload.name,e)}
         if(i%3===2)await new Promise(function(r){setTimeout(r,0)})
       }
       return moved
