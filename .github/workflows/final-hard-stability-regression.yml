@@ -14,6 +14,27 @@ jobs:
           node-version: 22
       - name: Run stability regression
         run: node --test tests/final-hard-stability-regression.test.js tests/shared-cross-device-final.test.js tests/ui-control-data-safety-audit.test.js
+      - name: Verify live Backend V4 deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec'
+          ok=0
+          last=''
+          for attempt in 1 2 3; do
+            last="$(curl -fsSL --connect-timeout 8 --max-time 20 --retry 1 --retry-delay 1 "$URL?action=ping&_ts=$(date +%s)" || true)"
+            if printf '%s' "$last" | grep -Fq '"version":"4.0-final-stability"'; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::Live Apps Script backend is not Backend V4 (4.0-final-stability)."
+            printf 'Live ping response: %s\n' "$last"
+            exit 1
+          fi
+          printf 'Live Backend V4 verified: %s\n' "$last"
       - name: Install browser smoke dependency
         run: npm install --no-save puppeteer-core@24
       - name: Run browser runtime smoke
