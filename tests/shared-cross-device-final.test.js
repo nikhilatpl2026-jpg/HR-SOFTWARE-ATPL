@@ -22,6 +22,10 @@ assert(dol.includes('cloudWriteTail'),'DOL cloud writes must be serialized');
 assert(dol.includes('pending.slice(0,CLOUD_BATCH_SIZE)'),'legacy migration must upload in bounded batches');
 assert(dol.indexOf("await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')])")<dol.indexOf('pending.slice(0,CLOUD_BATCH_SIZE)'),'cloud records must reconcile before pending local migration');
 assert(!/migrateDbFilesToVault\(\);await syncCloudIndexes\(\)/.test(dol),'DOL boot must not block local UI on cloud migration');
+assert(dol.includes("if(type==='esic')return d&&d.length===10?d:''"),'ESIC search/index IDs must be exactly 10 digits');
+assert(dol.includes('sanitizeLocalTypeMixups'),'legacy PF records must be removed from the ESIC library');
+assert(dol.includes('parsed.detectedType!==type'),'wrong-type uploads must be blocked before cloud sync');
+assert(dol.includes("pfRemaining?'PF cloud sync running"),'PF and ESIC pending counts must be shown separately');
 
 const account=read('erp-account-cloud-restore-v1.js');
 assert(account.includes('root.ATPLAccountCloudRestoreV1='),'account orchestration must have its own public API');
@@ -33,9 +37,13 @@ assert(files.indexOf("action:'getSystemRecords'")<files.indexOf("action:'getEmpl
 assert(files.includes('root.ATPLCloudAPI.request'),'file sync must use the shared request broker');
 assert(files.includes('root.pako.ungzip'),'mobile browsers need a gzip decoding fallback');
 
+const durable=read('erp-durable-everything-v1.js');
+assert(durable.includes('dolLooksLikePfInEsic'),'old devices must not re-upload misclassified PF records as ESIC');
+assert(durable.includes('PF challan cannot be saved inside ESIC'),'durable cloud writes must enforce PF/ESIC separation');
+
 const html=read('index.html');
 const sharedAt=html.indexOf('erp-cloud-shared-storage-v1.js?v=20260919-shared-files2');
-const durableAt=html.indexOf('erp-durable-everything-v1.js?v=20260919-broker2');
+const durableAt=html.indexOf('erp-durable-everything-v1.js?v=20260919-type-safe-final6');
 assert(sharedAt>0&&sharedAt<durableAt,'shared-file storage must load before the durable orchestrator');
 assert(!html.includes('</script>\\n<script src="employee-master-confirmed-save-v1.js'),'script tags must not contain a literal escaped newline');
 

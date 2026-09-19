@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-backend-v3split1';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-type-safe-final6';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -87,13 +87,18 @@
   async function putDol(rec){var d=await openDolDb();return new Promise(function(ok,no){var t=d.transaction(DOL_STORE,'readwrite');t.objectStore(DOL_STORE).put(rec);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
   async function deleteDolLocal(id){try{var d=await openDolDb();return await new Promise(function(ok,no){var t=d.transaction(DOL_STORE,'readwrite');t.objectStore(DOL_STORE).delete(id);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}catch(e){return false}}
   function dolPayload(r){return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:r.detail||'',digitIds:Array.isArray(r.digitIds)?r.digitIds:[],alnumIds:Array.isArray(r.alnumIds)?r.alnumIds:[],fileHash:r.fileHash||'',fingerprint:r.fingerprint||'',parseVersion:r.parseVersion||'',cloudConfirmedAt:r.cloudConfirmedAt||'',duplicateOf:r.duplicateOf||'',archived:!!r.archived,archivedAt:r.archivedAt||''}}
+  function dolLooksLikePfInEsic(r){
+    if(!r||String(r.type||'')!=='esic')return false;
+    var ids=[].concat(Array.isArray(r.ids)?r.ids:[],Array.isArray(r.digitIds)?r.digitIds:[],Array.isArray(r.alnumIds)?r.alnumIds:[]).map(String),twelve=ids.filter(function(x){return /^\d{12}$/.test(x.replace(/\D/g,''))}).length,establishment=ids.some(function(x){return /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(x.toUpperCase().replace(/[^A-Z0-9]/g,''))}),name=String(r.name||'').toUpperCase();
+    return establishment||twelve>=3||/\b(?:UAN|EPFO|PROVIDENT\s+FUND|GROSS\s+EPF\s+WAGES|MEMBER\s+ID|TRRN)\b/.test(name)
+  }
   async function syncDol(records){
     if(!root.indexedDB)return false;
     var kind='compliance_dol_v1',metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind===kind}),local=await dolRows(),by={},rm={},changed=0,i;
     local.forEach(function(r){if(r&&r.id)by[String(r.id)]=r});metas.forEach(function(m){rm[String(m.key_text||'')]=m});
-    for(i=0;i<metas.length;i++){var m=metas[i],id=String(m.key_text||''),old=by[id];if(!id)continue;if(old&&ms(old.updatedAt||old.uploadedAt)>=ms(m.saved_at))continue;try{var p=await loadObject(records,m);if(!p||!p.id)continue;p.buffer=old&&old.buffer?old.buffer:null;p.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;await putDol(p);by[id]=p;changed++}catch(e){console.warn('Durable DOL pull failed',id,e)}}
+    for(i=0;i<metas.length;i++){var m=metas[i],id=String(m.key_text||''),old=by[id];if(!id)continue;if(old&&ms(old.updatedAt||old.uploadedAt)>=ms(m.saved_at))continue;try{var p=await loadObject(records,m);if(!p||!p.id||dolLooksLikePfInEsic(p))continue;p.buffer=old&&old.buffer?old.buffer:null;p.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;await putDol(p);by[id]=p;changed++}catch(e){console.warn('Durable DOL pull failed',id,e)}}
     local=await dolRows();
-    for(i=0;i<local.length;i++){var r=local[i];if(!r||!r.id||!r.cloudConfirmedAt)continue;var m0=rm[String(r.id)],ts=r.updatedAt||r.uploadedAt||'',push=!m0||ms(ts)>ms(m0.saved_at),lk=kind+':'+r.id;if(!push||lastDolPush[lk])continue;lastDolPush[lk]=1;try{var p=dolPayload(r);await saveObject(kind,r.id,p,{name:(r.type||'')+' · '+(r.name||r.id),saved_at:ts||new Date().toISOString()});delete lastDolPush[lk]}catch(e){delete lastDolPush[lk];console.warn('Durable DOL save failed',r&&r.name,e)}}
+    for(i=0;i<local.length;i++){var r=local[i];if(!r||!r.id||!r.cloudConfirmedAt||dolLooksLikePfInEsic(r))continue;var m0=rm[String(r.id)],ts=r.updatedAt||r.uploadedAt||'',push=!m0||ms(ts)>ms(m0.saved_at),lk=kind+':'+r.id;if(!push||lastDolPush[lk])continue;lastDolPush[lk]=1;try{var p=dolPayload(r);await saveObject(kind,r.id,p,{name:(r.type||'')+' · '+(r.name||r.id),saved_at:ts||new Date().toISOString()});delete lastDolPush[lk]}catch(e){delete lastDolPush[lk];console.warn('Durable DOL save failed',r&&r.name,e)}}
     if(changed){try{root.document.dispatchEvent(new CustomEvent('atpl-compliance-dol-synced',{detail:{count:changed}}))}catch(_){}}
     return true
   }
@@ -111,7 +116,7 @@
     for(var i=0;i<metas.length;i++){
       var m=metas[i];
       try{
-        var p=await loadObject(records,m);if(!p||!p.id)continue;if(type&&String(p.type||'')!==String(type))continue;
+        var p=await loadObject(records,m);if(!p||!p.id||dolLooksLikePfInEsic(p))continue;if(type&&String(p.type||'')!==String(type))continue;
         p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;out.push(p);
       }catch(e){console.warn('Compliance challan cloud read failed',m&&m.key_text,e)}
     }
@@ -120,6 +125,7 @@
   async function saveComplianceDolConfirmed(rec){
     if(!token()||!session())throw new Error('Valid login required for challan save');
     if(!rec||!rec.id||!rec.type)throw new Error('Invalid challan record');
+    if(dolLooksLikePfInEsic(rec))throw new Error('PF challan cannot be saved inside ESIC');
     var kind='compliance_dol_v1',p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;
     await saveObject(kind,p.id,p,{name:(p.type||'')+' · '+(p.name||p.id),saved_at:p.updatedAt||p.uploadedAt||now});
     var records=await fetchRemote(),meta=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind&&String(r.key_text||'')===String(p.id)}).sort(function(a,b){return ms(b.saved_at||b.uploaded_at)-ms(a.saved_at||a.uploaded_at)})[0];
@@ -135,6 +141,7 @@
     if(!token()||!session())throw new Error('Valid login required for challan save');
     list=Array.isArray(list)?list.filter(function(r){return r&&r.id&&r.type}):[];
     if(!list.length)return{ok:true,saved:0,failed:0,results:[]};
+    if(list.some(dolLooksLikePfInEsic))throw new Error('PF challan cannot be saved inside ESIC');
     var kind='compliance_dol_v1',localExisting=await dolRows(),localById={};localExisting.forEach(function(r){if(r&&r.id)localById[String(r.id)]=r});var prepared=list.map(function(rec){var p=dolPayload(rec),now=new Date().toISOString();p.cloudConfirmedAt=now;return{rec:rec,p:p,now:now,error:''}}),at=0;
     async function worker(){
       while(true){

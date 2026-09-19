@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-shared-final5';
+var BUILD='2026.09.19-type-safe-final6';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -20,7 +20,7 @@ root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
-var cloudSyncPromise=null,cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=8;
+var cloudSyncPromise=null,cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
 var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
@@ -40,9 +40,22 @@ function normalizeDigits(v){
   return''
 }
 function normalizeAlpha(v){var s=String(v==null?'':v).toUpperCase().replace(/[^A-Z0-9]/g,'');return s.length>=8&&s.length<=32&&/\d/.test(s)?s:''}
-function validId(type,v){if(type==='esic')return normalizeDigits(v);var d=normalizeDigits(v);if(d&&d.length===12)return d;return normalizeAlpha(v)}
+function validId(type,v){var d=normalizeDigits(v);if(type==='esic')return d&&d.length===10?d:'';if(d&&d.length===12)return d;return normalizeAlpha(v)}
 function fileMime(name){var e=String(name||'').split('.').pop().toLowerCase();if(e==='pdf')return'application/pdf';if(e==='csv')return'text/csv';return'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
 function uid(type,hash){return'v2_'+type+'_'+String(hash||'').slice(0,24)}
+function recordIds(r){return Array.from(new Set([].concat(Array.isArray(r&&r.ids)?r.ids:[],Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean)))}
+function pfEvidence(ids,text){
+  ids=Array.isArray(ids)?ids.map(String):[];text=String(text||'').toUpperCase();
+  var twelve=ids.filter(function(x){return /^\d{12}$/.test(normalizeDigits(x))}).length;
+  var establishment=ids.some(function(x){return /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(normalizeAlpha(x))});
+  return establishment||twelve>=3||/\b(?:UAN|EPFO|PROVIDENT\s+FUND|GROSS\s+EPF\s+WAGES|MEMBER\s+ID|TRRN)\b/.test(text)||/[A-Z]{2,6}[\s\/_-]*[A-Z]{2,5}[\s\/_-]*\d{7}/.test(text)
+}
+function detectedDocumentType(name,ids,text){
+  var sample=String(name||'')+' '+String(text||'');if(pfEvidence(ids,sample))return'pf';
+  return /\b(?:ESIC|E\.?S\.?I\.?C|EMPLOYEES?\s+STATE\s+INSURANCE|INSURANCE\s+(?:NO|NUMBER)|IP\s+(?:NO|NUMBER))\b/i.test(sample)?'esic':''
+}
+function looksLikePfRecord(r){return !!(r&&r.type==='esic'&&pfEvidence(recordIds(r),r.name||''))}
+function logicalName(name){return String(name||'').toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
 
 function openDb(){
   return new Promise(function(resolve,reject){
@@ -233,9 +246,9 @@ function collectToken(type,value,set){
   var s=String(value==null?'':value).trim();if(!s)return;
   var d=normalizeDigits(value),a=normalizeAlpha(s);
   if(type==='esic'){
-    if(d.length>=8&&d.length<=20)set.add(d);
+    if(d.length===10)set.add(d);
     var dm=s.match(/\d(?:[\d\s/_.-]{6,24}\d)/g)||[];
-    dm.forEach(function(x){var y=normalizeDigits(x);if(y.length>=8&&y.length<=20)set.add(y)})
+    dm.forEach(function(x){var y=normalizeDigits(x);if(y.length===10)set.add(y)})
   }else{
     if(d.length===12)set.add(d);
     if(a.length>=8&&a.length<=32&&/\d/.test(a))set.add(a);
@@ -250,7 +263,7 @@ function ensureExcelWorker(){
       "self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');",
       "function digs(v){var s=String(v==null?'':v).trim().replace(/^['\\\"]|['\\\"]$/g,'').replace(/\\.0+$/,'');return /^\\d{8,20}$/.test(s)?s:''}",
       "function alp(v){var s=String(v==null?'':v).toUpperCase().replace(/[^A-Z0-9]/g,'');return s.length>=8&&s.length<=32&&/\\d/.test(s)?s:''}",
-      "function add(type,v,set){var s=String(v==null?'':v).trim();if(!s)return;if(type==='esic'){(s.match(/\\b\\d{8,20}\\b/g)||[]).forEach(function(x){var z=digs(x);if(z)set[z]=1})}else{s.split(/[\\s,;|]+/).forEach(function(x){var d=digs(x),a=alp(x),z=d&&d.length===12?d:a;if(z)set[z]=1});(s.match(/\\b\\d{12}\\b/g)||[]).forEach(function(x){set[x]=1})}}",
+      "function add(type,v,set){var s=String(v==null?'':v).trim();if(!s)return;if(type==='esic'){(s.match(/\\b\\d{10}\\b/g)||[]).forEach(function(x){var z=digs(x);if(z&&z.length===10)set[z]=1})}else{s.split(/[\\s,;|]+/).forEach(function(x){var d=digs(x),a=alp(x),z=d&&d.length===12?d:a;if(z)set[z]=1});(s.match(/\\b\\d{12}\\b/g)||[]).forEach(function(x){set[x]=1})}}",
       "self.onmessage=function(e){var d=e.data||{},id=d.id;try{var wb=XLSX.read(d.buffer,{type:'array',cellDates:false,cellText:true}),set={},sample='',sheets=[];wb.SheetNames.forEach(function(sn,si){var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});for(var r=0;r<rows.length;r++){var row=rows[r]||[];for(var c=0;c<row.length;c++){add(d.type,row[c],set);if(sample.length<12000)sample+=' '+String(row[c]||'')}}sheets.push({name:sn,rows:rows});self.postMessage({id:id,progress:true,pct:Math.round((si+1)/wb.SheetNames.length*100)})});self.postMessage({id:id,ok:true,ids:Object.keys(set),sample:sample.slice(0,12000),sheets:sheets},[])}catch(err){self.postMessage({id:id,ok:false,error:String(err&&err.message||err)})}}"
     ].join('\n');
     excelWorker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
@@ -308,7 +321,7 @@ async function parseBuffer(buf,name,type,progress){
   else if(['xlsx','xls','csv'].indexOf(ext)>=0)x=await parseExcel(buf,type,progress);
   else throw new Error('Unsupported file type: '+name);
   var per=inferPeriod(name,x.sample);
-  return{ids:x.ids||[],period:per.period,periodSource:per.source,sheets:x.sheets||null}
+  return{ids:x.ids||[],period:per.period,periodSource:per.source,sheets:x.sheets||null,detectedType:detectedDocumentType(name,x.ids||[],x.sample||'')}
 }
 
 function ensurePage(type){
@@ -324,7 +337,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="shared-final5">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="type-safe-final6">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · V2.2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Original challan file vault me save hota hai, phir index hota hai. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -478,20 +491,35 @@ function durableApi(){return root.ATPLDurableEverythingV1||null}
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
-  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.3-shared-final5',cloudConfirmedAt:r.cloudConfirmedAt||''}
+  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.4-type-safe-final6',cloudConfirmedAt:r.cloudConfirmedAt||''}
 }
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||'');
   return{id:String(r&&r.id||uid(String(r&&r.type||'esic'),hash)),version:2,type:String(r&&r.type||''),name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||''),cloudOnly:true}
 }
+async function sanitizeLocalTypeMixups(){
+  var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),bad=all.filter(looksLikePfRecord),fixed=0;
+  for(var i=0;i<bad.length;i++){
+    var r=bad[i],match=pf.find(function(p){return r.hash&&p.hash===r.hash})||pf.find(function(p){return r.period&&p.period===r.period&&logicalName(p.name)===logicalName(r.name)});
+    if(!match&&r.hash){
+      var ids=recordIds(r).map(function(x){return validId('pf',x)}).filter(Boolean),nr=Object.assign({},r,{id:uid('pf',r.hash),type:'pf',ids:Array.from(new Set(ids)),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'No valid PF/UAN number detected',updatedAt:new Date().toISOString(),cloudSynced:false,cloudConfirmedAt:'',cloudOnly:false,opfsPath:null,storage:'cloud-index',blob:null});
+      var stored=await getStoredBlob(r),moved=false;
+      if(stored){try{moved=await opfsSave(nr,stored)}catch(_){moved=false}if(!moved){nr.blob=stored;nr.storage='indexeddb'}}
+      await dbPut(nr);pf.push(nr);if(moved)await opfsDelete(r)
+    }
+    await dbDelete(r.id);fixed++;if(i%5===0)await tick()
+  }
+  if(fixed)await writeVaultManifest();return fixed
+}
 async function pushCloudIndex(rec){
   var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')return false;
+  if(looksLikePfRecord(rec))return false;
   try{
     var back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(rec));rec.cloudSynced=true;rec.cloudOnly=false;rec.cloudConfirmedAt=String(back&&back.cloudConfirmedAt||new Date().toISOString());await dbPut(rec);return true
   }catch(e){console.warn('DOL V2 cloud index save failed',rec&&rec.name,e);return false}
 }
 async function pushCloudBatchNow(list){
-  list=(list||[]).filter(Boolean);if(!list.length)return{saved:0,failed:0};
+  list=(list||[]).filter(function(r){return r&&!looksLikePfRecord(r)});if(!list.length)return{saved:0,failed:0};
   var api=durableApi();if(!api)return{saved:0,failed:list.length};
   try{
     if(typeof api.saveComplianceDolBatchConfirmed==='function'){
@@ -516,6 +544,7 @@ async function pullCloudIndex(type){
     sameType.forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash)]=r});
     for(var i=0;i<remote.length;i++){
       var rr=localRecordFromCloud(remote[i]);if(!rr.type||rr.type!==type)continue;
+      if(looksLikePfRecord(rr)){await dbDelete(rr.id);continue}
       var old=byId[rr.id]||(rr.hash&&byHash[rr.hash])||null;
       if(old){
         var preserve={blob:old.blob||null,viewerSheets:old.viewerSheets||null,storage:old.storage||rr.storage,opfsPath:old.opfsPath||null,cloudOnly:!old.blob&&!old.opfsPath};
@@ -531,19 +560,21 @@ async function pullCloudIndex(type){
 function cloudLoginReady(){try{return !!(root.sessionStorage.getItem('ATPL_RemoteToken_V1')||root.sessionStorage.getItem('ATPL_SharedToken_V1'))}catch(_){return false}}
 function scheduleCloudRetry(){
   if(cloudRetryTimer||!cloudLoginReady())return;
-  cloudRetryTimer=setTimeout(function(){cloudRetryTimer=0;syncCloudIndexes()},1500)
+  cloudRetryTimer=setTimeout(function(){cloudRetryTimer=0;syncCloudIndexes()},700)
 }
 function syncCloudIndexes(){
   if(!cloudLoginReady())return Promise.resolve(false);
   if(cloudSyncPromise)return cloudSyncPromise;
   cloudSyncPromise=(async function(){
+    await sanitizeLocalTypeMixups();
     await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
-    var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),batch=pending.slice(0,CLOUD_BATCH_SIZE),saved={saved:0,failed:0};
+    await sanitizeLocalTypeMixups();
+    var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),batch=pending.slice(0,CLOUD_BATCH_SIZE),saved={saved:0,failed:0};
     if(batch.length)saved=await pushCloudBatch(batch);
     await Promise.all([refresh('esic'),refresh('pf')]);
-    var after=await dbAll(),remaining=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}).length;
-    if(remaining){setStatus('esic','Shared cloud sync running · '+remaining+' challan(s) remaining…');setStatus('pf','Shared cloud sync running · '+remaining+' challan(s) remaining…');scheduleCloudRetry()}
-    else if(batch.length||saved.saved){setStatus('esic','Shared challan data ready ✓');setStatus('pf','Shared challan data ready ✓')}
+    var after=await dbAll(),remainingRows=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),remaining=remainingRows.length,esicRemaining=remainingRows.filter(function(r){return r.type==='esic'}).length,pfRemaining=remainingRows.filter(function(r){return r.type==='pf'}).length;
+    if(remaining){setStatus('esic',esicRemaining?'ESIC cloud sync running · '+esicRemaining+' remaining…':'ESIC shared data ready ✓');setStatus('pf',pfRemaining?'PF cloud sync running · '+pfRemaining+' remaining…':'PF shared data ready ✓');scheduleCloudRetry()}
+    else if(batch.length||saved.saved){setStatus('esic','ESIC shared data ready ✓');setStatus('pf','PF shared data ready ✓')}
     return{ok:saved.failed===0,uploaded:saved.saved,remaining:remaining}
   })().catch(function(e){console.warn('DOL V2 shared sync failed',e);scheduleCloudRetry();return false}).finally(function(){cloudSyncPromise=null});
   return cloudSyncPromise
@@ -551,7 +582,7 @@ function syncCloudIndexes(){
 
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
-  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
+  await requestPersistentStorage();await sanitizeLocalTypeMixups();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
   var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
   var saved=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[];
   for(var i=0;i<files.length;i++){
@@ -575,6 +606,9 @@ async function upload(type,fileList){
       await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved locally ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
       try{
         var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
+        if(parsed.detectedType&&parsed.detectedType!==type){
+          await opfsDelete(rec);await dbDelete(rec.id);delete byHash[hash];saved--;warns.push(f.name+': '+(parsed.detectedType==='pf'?'PF challan detected — upload only in PF → DOL':'ESIC challan detected — upload only in ESIC → DOL'));buf=null;blob=null;await refresh(type);continue
+        }
         rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
         rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
       }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
@@ -615,8 +649,9 @@ async function migrateLegacy(){
       try{
         var buf=r.buffer instanceof ArrayBuffer?r.buffer:(r.buffer.buffer||null);if(!buf)continue;
         var hash=r.fileHash||await sha256(buf);if(hashes[hash])continue;
-        var ids=Array.from(new Set([].concat(r.digitIds||[],r.alnumIds||[]).map(function(x){return validId(r.type,x)}).filter(Boolean)));if(!ids.length)continue;
-        var nr={id:uid(r.type,hash),version:2,type:r.type,name:r.name||'Legacy challan',size:r.size||buf.byteLength,lastModified:r.lastModified||0,hash:hash,period:r.period||'',periodSource:r.periodSource||'legacy',ids:ids,uploadedAt:r.uploadedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(r.name)}),viewerSheets:r.viewerSheets||null,migrated:true};
+        var rawIds=[].concat(r.digitIds||[],r.alnumIds||[]),targetType=looksLikePfRecord({type:r.type,name:r.name,ids:rawIds})?'pf':r.type;
+        var ids=Array.from(new Set(rawIds.map(function(x){return validId(targetType,x)}).filter(Boolean)));if(!ids.length)continue;
+        var nr={id:uid(targetType,hash),version:2,type:targetType,name:r.name||'Legacy challan',size:r.size||buf.byteLength,lastModified:r.lastModified||0,hash:hash,period:r.period||'',periodSource:r.periodSource||'legacy',ids:ids,uploadedAt:r.uploadedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(r.name)}),viewerSheets:r.viewerSheets||null,migrated:true,cloudSynced:false,cloudOnly:false};
         await dbPut(nr);hashes[hash]=1;moved++;await tick()
       }catch(e){console.warn('V2 legacy migration skipped',e)}
     }
@@ -639,7 +674,7 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='shared-final5'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='type-safe-final6'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
   if(ok){syncCloudIndexes();return true}
   page.innerHTML=pageHtml(type);wire(type);refresh(type).then(function(){return syncCloudIndexes()}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
@@ -660,7 +695,7 @@ async function boot(){
   addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');await requestPersistentStorage();
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
-  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
+  await restoreVaultRecords();await migrateLegacy();await sanitizeLocalTypeMixups();await migrateDbFilesToVault();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent=storageLabel()+' · ☁ shared index';if(sp)sp.textContent=storageLabel()+' · ☁ shared index';
   setStatus('esic','V2.3 local data ready ✓ · shared cloud syncing in background.');
   setStatus('pf','V2.3 local data ready ✓ · shared cloud syncing in background.');
