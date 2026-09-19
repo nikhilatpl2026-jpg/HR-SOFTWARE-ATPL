@@ -12,8 +12,10 @@
 */
 (function(root){
 'use strict';
-if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-persistent-vault2';
+var BUILD='2026.09.19-persistent-vault2';
+if(!root)return;
+if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
