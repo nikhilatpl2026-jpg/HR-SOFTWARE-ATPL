@@ -9,7 +9,7 @@ if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
+var revisions={},generation=0,inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
 var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,activeWrites:0,queued:0};
 
 var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1,getDOLRecords:1,checkDOLDuplicate:1,getDOLFileInfo:1,getDOLFileChunk:1};
@@ -29,7 +29,7 @@ function cleanParams(p){
   var o={};Object.keys(p||{}).sort().forEach(function(k){if(k==='callback'||k==='_ts')return;o[k]=p[k]});return o
 }
 function stable(p){
-  var o=cleanParams(p);return Object.keys(o).map(function(k){return k+'='+String(o[k]==null?'':o[k])}).join('&')
+  var o=cleanParams(p);return Object.keys(o).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(String(o[k]==null?'':o[k]))}).join('&')
 }
 function key(p){return stable(p)}
 function qs(p){return Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':String(p[k]))}).join('&')}
@@ -50,7 +50,7 @@ function attemptsFor(action,asked){
   return 1
 }
 function invalidate(action){
-  (INVALIDATE[action]||[]).forEach(function(a){Object.keys(cache).forEach(function(k){if(k.indexOf('action='+a+'&')===0||k==='action='+a)delete cache[k]})})
+  (INVALIDATE[action]||[]).forEach(function(a){revisions[a]=(revisions[a]||0)+1;[cache,inflight].forEach(function(store){Object.keys(store).forEach(function(k){if(k.indexOf('action='+a+'&')===0||k==='action='+a)delete store[k]})})})
 }
 function jsonp(params,timeout){
   return new Promise(function(resolve,reject){
@@ -141,8 +141,9 @@ async function request(params,opts){
   var k=key(params),isRead=!!READ_ACTIONS[action],ttl=opts.cacheMs!=null?Number(opts.cacheMs):(CACHE_MS[action]||0);
   if(isRead&&ttl>0&&cache[k]&&now()-cache[k].at<ttl)return cache[k].data;
   if(isRead&&inflight[k])return inflight[k];
+  var revision=revisions[action]||0,epoch=generation;
   var p=enqueue(params,opts).then(function(data){
-    if(isRead&&ttl>0&&data&&data.ok!==false)cache[k]={at:now(),data:data};
+    if(isRead&&ttl>0&&data&&data.ok!==false&&revision===(revisions[action]||0)&&epoch===generation)cache[k]={at:now(),data:data};
     if(!isRead&&data&&data.ok!==false)invalidate(action);
     return data
   }).finally(function(){if(inflight[k]===p)delete inflight[k]});
@@ -150,7 +151,7 @@ async function request(params,opts){
   return p
 }
 async function ping(){return request({action:'ping'},{cacheMs:15000,attempts:2,timeout:12000})}
-function clear(){cache={};inflight={}}
+function clear(){generation++;cache={};inflight={}}
 function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
 root.ATPLCloudAPI={request:request,ping:ping,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}
