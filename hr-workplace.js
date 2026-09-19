@@ -81,4 +81,4 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 (function(){var s=document.createElement('script');s.src='shared-auth.js?v=20260919-broker2';s.async=false;document.head.appendChild(s)})();
 
 /* Mam Sheet to Compliance Salary loader */
-(function(){var s=document.createElement('script');s.src='mam-salary.js?v=20260917-permanent1';s.async=false;document.head.appendChild(s)})();
+(function(){var s=document.createElement('script');s.src='mam-salary.js?v=20260919-lazy-fast10';s.async=false;document.head.appendChild(s)})();

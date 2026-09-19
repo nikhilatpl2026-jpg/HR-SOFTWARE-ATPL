@@ -1,7 +1,7 @@
 /* ATPL Bank Account Verifier V1 loader — stable visible-nav recovery build. */
 (function(g){'use strict';
 if(g.__ATPL_BANK_ACCOUNT_VERIFIER_LOADER_V1_STABLE__)return;
-g.__ATPL_BANK_ACCOUNT_VERIFIER_LOADER_V1_STABLE__='2026.09.18-stable2';
+g.__ATPL_BANK_ACCOUNT_VERIFIER_LOADER_V1_STABLE__='2026.09.19-lazy-fast10';
 var booting=false,retries=0;
 
 function ensureNav(){
@@ -82,6 +82,7 @@ async function boot(force){
     cleanupDupNav();
     var old=document.getElementById('bav-loader-status');if(old)old.remove();
     retries=0;
+    try{document.dispatchEvent(new CustomEvent('atpl-bank-core-ready'))}catch(_){}
     return true;
   }catch(e){
     console.error('ATPL Bank Account Verifier failed to load:',e);
@@ -93,6 +94,6 @@ async function boot(force){
   }finally{booting=false}
 }
 
-function start(){ensureNav();boot(false)}
+function start(){ensureNav()}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })(window);

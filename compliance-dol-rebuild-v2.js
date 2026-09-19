@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-cloud-only-final16-stability';
+var BUILD='2026.09.19-cloud-only-final17-fast10';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -21,6 +21,24 @@ var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
+function bounded(p,ms,label){
+  return new Promise(function(resolve,reject){
+    var done=false,t=setTimeout(function(){if(done)return;done=true;reject(new Error((label||'Cloud sync')+' timeout'))},ms);
+    Promise.resolve(p).then(function(v){if(done)return;done=true;clearTimeout(t);resolve(v)},function(e){if(done)return;done=true;clearTimeout(t);reject(e)})
+  })
+}
+async function localPreview(type){
+  try{
+    var rows=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.archived});
+    var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
+    if(rows.length){
+      state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
+      rebuildIndex(type);renderFiles(type);setStatus(type,'Cached challans ready ✓ · cloud refresh running…');
+      return true
+    }
+  }catch(e){console.warn('DOL local preview failed',type,e)}
+  return false
+}
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
 var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
@@ -338,7 +356,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final16-stability">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final17-fast10">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLOUD MASTER V3</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Library <b>shared backend se live load hoti hai</b>; local browser data list decide nahi karta. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -402,12 +420,13 @@ function rebuildIndex(type){
   state[type].index=idx;state[type].periods=Array.from(periods).sort()
 }
 async function refresh(type){
-  var api=durableApi();
+  var api=durableApi(),hadLocal=(state[type].rows||[]).length>0;
+  if(!hadLocal)hadLocal=await localPreview(type);
   if(!cloudLoginReady()||!api||typeof api.getComplianceDolRecords!=='function'){
-    state[type].rows=[];rebuildIndex(type);renderFiles(type);setStatus(type,'Cloud login required — local browser data is not used for this library.',true);return false
+    setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false
   }
   try{
-    var remote=await api.getComplianceDolRecords(type),local=await dbAll(),byId={},byHash={};
+    var remote=await bounded(api.getComplianceDolRecords(type),8500,'Challan cloud sync'),local=await dbAll(),byId={},byHash={};
     local.filter(function(r){return r&&r.type===type}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash)]=r});
     var rows=(remote||[]).map(function(x){
       var r=localRecordFromCloud(x),old=byId[String(r.id)]||(r.hash&&byHash[String(r.hash)])||null;
@@ -416,9 +435,10 @@ async function refresh(type){
     });
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
-    rebuildIndex(type);renderFiles(type);return true
+    rebuildIndex(type);renderFiles(type);setStatus(type,'Shared backend loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+'.');return true
   }catch(e){
-    state[type].rows=[];rebuildIndex(type);renderFiles(type);setStatus(type,'Cloud library load failed — showing no local fallback. '+(e.message||e),true);return false
+    if(!(state[type].rows||[]).length)await localPreview(type);
+    renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh timed out. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
   }
 }
 function addLibraryCss(){
@@ -793,9 +813,11 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final16-stability'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
-  if(ok){syncCloudType(type,false);return true}
-  page.innerHTML=pageHtml(type);wire(type);syncCloudType(type,true).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final17-fast10'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  if(ok){localPreview(type).then(function(){return syncCloudType(type,false)});return true}
+  page.innerHTML=pageHtml(type);wire(type);
+  localPreview(type).then(function(){return syncCloudType(type,true)}).catch(function(e){console.warn('DOL remount refresh failed',e)});
+  return true
 }
 function patchNavigation(){
   if(typeof root.goPage!=='function'||root.goPage.__cd2PersistentWrapped)return;

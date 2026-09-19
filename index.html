@@ -11,8 +11,42 @@
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-<script defer src="https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+
+<script>
+(function(){
+  var loads={};
+  function loadOnce(key,url){
+    if(loads[key])return loads[key];
+    loads[key]=new Promise(function(resolve,reject){
+      var sc=document.createElement('script'),done=false;
+      var tm=setTimeout(function(){if(done)return;done=true;if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;reject(new Error(key+' load timeout'));},7000);
+      sc.async=true;sc.src=url;
+      sc.onload=function(){if(done)return;done=true;clearTimeout(tm);resolve(true)};
+      sc.onerror=function(){if(done)return;done=true;clearTimeout(tm);if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;reject(new Error(key+' load failed'))};
+      (document.head||document.documentElement).appendChild(sc);
+    });
+    return loads[key];
+  }
+  window.ATPLLoadOptionalLib=loadOnce;
+  var tessShim={recognize:function(){
+    var args=arguments;
+    return loadOnce('OCR','https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js').then(function(){
+      if(!window.Tesseract||window.Tesseract===tessShim||typeof window.Tesseract.recognize!=='function')throw new Error('OCR engine unavailable');
+      return window.Tesseract.recognize.apply(window.Tesseract,args);
+    });
+  }};
+  if(!window.Tesseract)window.Tesseract=tessShim;
+  var mammothShim={convertToHtml:function(){
+    var args=arguments;
+    return loadOnce('DOCX','https://unpkg.com/mammoth@1.8.0/mammoth.browser.min.js').then(function(){
+      if(!window.mammoth||window.mammoth===mammothShim||typeof window.mammoth.convertToHtml!=='function')throw new Error('DOCX engine unavailable');
+      return window.mammoth.convertToHtml.apply(window.mammoth,args);
+    });
+  }};
+  if(!window.mammoth)window.mammoth=mammothShim;
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 // ── CRITICAL EARLY FUNCTIONS — must load before HTML renders ──
@@ -10729,9 +10763,9 @@ else AInit();
 })();
 </script>
 
-<script src="erp-cloud-api-broker-v1.js?v=20260919-broker4-dol-lock"></script>
+<script src="erp-cloud-api-broker-v1.js?v=20260919-fast10"></script>
 <script src="erp-mobile-shared-hardfix-v1.js?v=20260919-stability1"></script>
-<script src="hr-workplace.js?v=20260919-broker2"></script>
+<script src="hr-workplace.js?v=20260919-fast10"></script>
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
@@ -10739,41 +10773,13 @@ else AInit();
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-stability1"></script>
 <script src="erp-cloud-shared-storage-v1.js?v=20260919-stability1"></script>
-<script src="erp-durable-everything-v1.js?v=20260919-stability1"></script>
-<script src="bank-account-verifier-loader-v1.js?v=20260918-stable2"></script>
-<script src="bank-account-verifier-v4-persistence.js?v=20260918-2"></script>
+<script src="erp-durable-everything-v1.js?v=20260919-fast10"></script>
+<script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
+<script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5"></script>
-<script src="compliance-dol-rebuild-v2.js?v=20260919-stability1"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20260919-fast10"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260919-stability1"></script>
 <script src="erp-enterprise-ui-v1.js?v=20260918-2"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20260918-2"></script>
-<script>
-(function(){
-  var BUILD='2026.09.19-cloud-only-final14-hard-delete';
-  setTimeout(function(){
-    if(window.__ATPL_SHARED_GOOGLE_AUTH_FAST==='2026.09.19-broker2')return;
-    var a=document.createElement('script');
-    a.src='shared-auth.js?v=20260919-broker2&fresh='+Date.now();
-    a.async=false;
-    document.body.appendChild(a);
-  },650);
-setTimeout(function(){
-    if(window.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
-    var s=document.createElement('script');
-    s.src='compliance-dol-rebuild-v2.js?v=20260919-cloud-only-final11&fresh='+Date.now();
-    s.async=false;
-    document.body.appendChild(s);
-  },900);
-})();
-</script>
-<script>
-setTimeout(function(){
-  if(window.__ATPL_MOBILE_SHARED_HARDFIX__==='2026.09.19-instant-shared3')return;
-  var s=document.createElement('script');
-  s.src='erp-mobile-shared-hardfix-v1.js?v=20260919-instant-shared3&fresh='+Date.now();
-  s.async=false;
-  document.body.appendChild(s);
-},500);
-</script>
 </body>
 </html>

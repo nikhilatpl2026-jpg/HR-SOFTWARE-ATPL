@@ -48,30 +48,16 @@
   async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records,meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete durable object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
   async function fetchRemote(){
   if(!token())return[];
-  var d;
-  try{
-    d=await api({action:'getSystemRecords',token:token()},14000);
-    if(d&&d.ok&&Array.isArray(d.records))return d.records;
-  }catch(_){}
-  d=await api({action:'getEmployeeMaster',token:token()},22000);
+  // Live Backend V2 does not expose getSystemRecords. Calling it first caused
+  // repeated timeout/fallback chains. Pull EmployeeMaster once; broker de-dupes
+  // the request, then keep only namespaced system records client-side.
+  var d=await api({action:'getEmployeeMaster',token:token()},8000);
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');
   return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})
 }
 async function fetchRemoteKinds(kinds){
   kinds=Array.from(new Set((kinds||[]).map(text).filter(Boolean)));
   if(!token()||!kinds.length)return[];
-  var out=[],seen={},supported=true;
-  for(var i=0;i<kinds.length;i++){
-    try{
-      var d=await api({action:'getSystemRecords',token:token(),kind:kinds[i]},16000);
-      if(!(d&&d.ok&&Array.isArray(d.records))){supported=false;break}
-      d.records.forEach(function(r){
-        var k=text(r&&r.emp_id)||[text(r&&r.object_kind),text(r&&r.object_key),text(r&&r._atpl_kind),text(r&&r.index)].join('|');
-        if(k&&!seen[k]){seen[k]=1;out.push(r)}
-      })
-    }catch(e){supported=false;break}
-  }
-  if(supported)return out;
   var all=await fetchRemote(),allow={};kinds.forEach(function(k){allow[k]=1});
   return all.filter(function(r){return r&&allow[text(r.object_kind)]})
 }

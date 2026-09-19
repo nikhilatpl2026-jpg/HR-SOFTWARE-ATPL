@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-broker4-dol-lock';
+var BUILD='2026.09.19-fast10';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
@@ -38,15 +38,13 @@ function parseText(t){
   throw new Error('INVALID_RESPONSE')
 }
 function timeoutFor(action,asked){
-  if(asked&&asked>0)return Math.max(8000,Math.min(45000,asked));
-  if(action==='login')return 18000;
-  if(READ_ACTIONS[action])return 20000;
-  return 25000
+  if(asked&&asked>0)return Math.max(3000,Math.min(12000,asked));
+  if(action==='login')return 9000;
+  if(READ_ACTIONS[action])return 8000;
+  return 12000
 }
 function attemptsFor(action,asked){
-  if(asked!=null)return Math.max(1,Math.min(4,Number(asked)||1));
-  if(action==='login')return 3;
-  if(READ_ACTIONS[action])return 3;
+  if(asked!=null)return Math.max(1,Math.min(2,Number(asked)||1));
   return 1
 }
 function invalidate(action){
@@ -88,9 +86,11 @@ async function transport(params,opts){
       if(i+1<tries)await sleep(500+(i*900));
     }
   }
-  if(opts.fetchFallback!==false&&READ_ACTIONS[action]){
+  // JSONP is the canonical Apps Script transport. Do not start a second long
+  // CORS/fetch request after a read timeout unless a caller explicitly asks for it.
+  if(opts.fetchFallback===true&&READ_ACTIONS[action]){
     try{
-      var d=await fetchFallback(params,Math.max(timeout,18000));
+      var d=await fetchFallback(params,Math.max(3000,Math.min(timeout,7000)));
       health.ok++;health.lastOk=now();health.lastError='';return d
     }catch(e){last=e;health.fail++;health.lastFail=now();health.lastError=String(e&&e.message||e)}
   }

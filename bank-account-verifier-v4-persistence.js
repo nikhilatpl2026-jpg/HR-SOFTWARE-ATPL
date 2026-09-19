@@ -13,7 +13,7 @@ g.__ATPL_BANK_VERIFIER_V4__='2026.09.18-v4';
 
 var DB_NAME='ATPL_BANK_VERIFIER_PRIVATE_V3',DB_VER=2,REF_STORE='previousSheets',WORK_STORE='workingFiles';
 var MODE_KEY='ATPL_BankVerifier_Mode_V4';
-var mode='compliance',refs=[],switching=false,observer=null;
+var mode='compliance',refs=[],switching=false,observer=null,booted=false,booting=false;
 try{var m=localStorage.getItem(MODE_KEY);if(m==='diff'||m==='compliance')mode=m}catch(_){}
 
 function q(id){return document.getElementById(id)}
@@ -137,10 +137,15 @@ async function restoreMode(){
   setModeButtons();enhanceIssues();
 }
 async function boot(){
-  for(var i=0;i<80&&!base();i++)await wait(100);if(!base()){console.error('Bank Verifier V1 core unavailable');return}
-  addCss();for(i=0;i<50&&!installUi();i++)await wait(100);moveNav();watchResults();patchCorrectionAutosave();await restoreMode();
-  document.addEventListener('atpl-bank-library-synced',function(){reloadLibrary()});
-  g.ATPLBankAccountVerifierV4={version:'2026.09.18-v4',reloadLibrary:reloadLibrary,mode:function(){return mode},exactOps:exactOps};
+  if(booted||booting||!base())return false;booting=true;
+  try{
+    addCss();for(var i=0;i<20&&!installUi();i++)await wait(50);if(!installUi())return false;
+    moveNav();watchResults();patchCorrectionAutosave();await restoreMode();
+    if(!document.__atplBankLibraryHook){document.__atplBankLibraryHook=1;document.addEventListener('atpl-bank-library-synced',function(){reloadLibrary()})}
+    g.ATPLBankAccountVerifierV4={version:'2026.09.19-lazy-fast10',reloadLibrary:reloadLibrary,mode:function(){return mode},exactOps:exactOps};
+    booted=true;return true
+  }finally{booting=false}
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){boot()},{once:true});else boot();
+function start(){if(base())boot();document.addEventListener('atpl-bank-core-ready',function(){boot()})}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })(window);
