@@ -7,9 +7,9 @@
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+
+
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
 
 
@@ -45,6 +45,15 @@
     });
   }};
   if(!window.mammoth)window.mammoth=mammothShim;
+  var pdfShim={GlobalWorkerOptions:{workerSrc:''},getDocument:function(arg){
+    return {promise:loadOnce('PDFJS','https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(function(){
+      var real=window.pdfjsLib;
+      if(!real||real===pdfShim||typeof real.getDocument!=='function')throw new Error('PDF engine unavailable');
+      if(real.GlobalWorkerOptions&&pdfShim.GlobalWorkerOptions.workerSrc)real.GlobalWorkerOptions.workerSrc=pdfShim.GlobalWorkerOptions.workerSrc;
+      return real.getDocument(arg).promise;
+    })};
+  }};
+  if(!window.pdfjsLib)window.pdfjsLib=pdfShim;
 })();
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -4149,8 +4158,13 @@ function buildFF_WB_v3(results) {
 }
 
 // ── PDF — exact Arora Textiles template ──
-function dlFFPdf() {
+async function dlFFPdf() {
   if(!FF_DATA_CACHE||!FF_DATA_CACHE.length){alert('Pehle F&F generate karo!');return;}
+  try{
+    if(!window.jspdf||!window.jspdf.jsPDF)await window.ATPLLoadOptionalLib('JSPDF','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('PDF generator unavailable');
+    if(!window.jspdf.jsPDF.API||typeof window.jspdf.jsPDF.API.autoTable!=='function')await window.ATPLLoadOptionalLib('JSPDF_TABLE','https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js');
+  }catch(e){alert('PDF engine load nahi hua: '+(e&&e.message?e.message:e));return;}
   var jsPDF=window.jspdf.jsPDF;
   var doc=new jsPDF('p','mm','a4');
 
