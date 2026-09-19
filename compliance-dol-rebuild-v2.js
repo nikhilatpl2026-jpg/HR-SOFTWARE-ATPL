@@ -13,12 +13,13 @@
 (function(root){
 'use strict';
 if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-library-folders1';
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-persistent-vault2';
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
+var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
 
 function $(id){return document.getElementById(id)}
@@ -89,6 +90,117 @@ async function dbDelete(id){
     tx.oncomplete=function(){db.close();resolve(true)};
     tx.onerror=function(){var e=tx.error;db.close();reject(e)}
   })
+}
+
+
+async function requestPersistentStorage(){
+  if(storageState.checked)return storageState;
+  storageState.checked=true;
+  try{
+    storageState.opfs=!!(root.navigator&&root.navigator.storage&&root.navigator.storage.getDirectory);
+    if(root.navigator&&root.navigator.storage){
+      if(typeof root.navigator.storage.persisted==='function')storageState.persisted=await root.navigator.storage.persisted();
+      if(!storageState.persisted&&typeof root.navigator.storage.persist==='function')storageState.persisted=await root.navigator.storage.persist();
+    }
+  }catch(e){console.warn('Persistent storage request failed',e)}
+  return storageState
+}
+function fsSafeName(name){
+  return String(name||'challan').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim().slice(0,120)||'challan'
+}
+async function opfsRoot(){
+  await requestPersistentStorage();
+  if(!storageState.opfs)return null;
+  try{
+    var rootDir=await root.navigator.storage.getDirectory();
+    return await rootDir.getDirectoryHandle(storageState.rootName,{create:true})
+  }catch(e){console.warn('OPFS unavailable',e);storageState.opfs=false;return null}
+}
+async function opfsDirFor(rec,create){
+  var base=await opfsRoot();if(!base)return null;
+  var t=await base.getDirectoryHandle(String(rec.type||'misc'),{create:create!==false});
+  var y=rec.period?String(rec.period).slice(0,4):'Unknown';
+  return await t.getDirectoryHandle(y,{create:create!==false})
+}
+async function opfsSave(rec,blob){
+  if(!(blob instanceof Blob))return false;
+  var dir=await opfsDirFor(rec,true);if(!dir)return false;
+  var fname=String(rec.hash||rec.id||Date.now()).slice(0,24)+'__'+fsSafeName(rec.name),fh=await dir.getFileHandle(fname,{create:true}),w=await fh.createWritable();
+  await w.write(blob);await w.close();rec.opfsPath=[String(rec.type||'misc'),rec.period?String(rec.period).slice(0,4):'Unknown',fname];rec.storage='opfs';return true
+}
+async function opfsRead(rec){
+  if(!rec||!Array.isArray(rec.opfsPath)||rec.opfsPath.length!==3)return null;
+  try{
+    var base=await opfsRoot();if(!base)return null;
+    var t=await base.getDirectoryHandle(rec.opfsPath[0],{create:false}),y=await t.getDirectoryHandle(rec.opfsPath[1],{create:false}),fh=await y.getFileHandle(rec.opfsPath[2],{create:false});
+    return await fh.getFile()
+  }catch(_){return null}
+}
+async function opfsDelete(rec){
+  if(!rec||!Array.isArray(rec.opfsPath)||rec.opfsPath.length!==3)return false;
+  try{
+    var base=await opfsRoot();if(!base)return false;
+    var t=await base.getDirectoryHandle(rec.opfsPath[0],{create:false}),y=await t.getDirectoryHandle(rec.opfsPath[1],{create:false});
+    await y.removeEntry(rec.opfsPath[2]);return true
+  }catch(_){return false}
+}
+function manifestRow(r){
+  return{id:r.id,version:r.version||2,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,hash:r.hash||'',period:r.period||'',periodSource:r.periodSource||'',ids:r.ids||[],parseStatus:r.parseStatus||'',parseError:r.parseError||'',uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||'',opfsPath:r.opfsPath||null,storage:r.storage||'',migrated:!!r.migrated}
+}
+async function writeVaultManifest(){
+  var base=await opfsRoot();if(!base)return false;
+  try{
+    var rows=(await dbAll()).map(manifestRow),fh=await base.getFileHandle('manifest.json',{create:true}),w=await fh.createWritable();
+    await w.write(JSON.stringify({version:2,updatedAt:new Date().toISOString(),rows:rows}));await w.close();return true
+  }catch(e){console.warn('Vault manifest write failed',e);return false}
+}
+async function readVaultManifest(){
+  var base=await opfsRoot();if(!base)return[];
+  try{
+    var fh=await base.getFileHandle('manifest.json',{create:false}),file=await fh.getFile(),j=JSON.parse(await file.text());
+    return Array.isArray(j&&j.rows)?j.rows:[]
+  }catch(_){return[]}
+}
+async function restoreVaultRecords(){
+  var rows=await readVaultManifest();if(!rows.length)return 0;
+  var current=await dbAll(),have={};current.forEach(function(r){have[String(r.id)]=1});var restored=0;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];if(!r||!r.id||have[String(r.id)])continue;
+    var file=await opfsRead(r);if(!file)continue;
+    await dbPut(Object.assign({},r,{blob:null,viewerSheets:null,storage:'opfs'}));restored++;if(restored%10===0)await tick()
+  }
+  return restored
+}
+async function migrateDbFilesToVault(){
+  var all=await dbAll(),changed=0;
+  for(var i=0;i<all.length;i++){
+    var r=all[i];if(!r||r.storage==='opfs'&&r.opfsPath)continue;
+    var blob=r.blob instanceof Blob?r.blob:null;
+    if(!blob&&r.buffer)blob=new Blob([r.buffer],{type:fileMime(r.name)});
+    if(!blob)continue;
+    try{
+      if(await opfsSave(r,blob)){r.blob=null;r.buffer=null;r.viewerSheets=null;await dbPut(r);changed++}
+    }catch(e){console.warn('Vault migration skipped',r&&r.name,e)}
+    if(i%5===0)await tick()
+  }
+  if(changed)await writeVaultManifest();
+  return changed
+}
+async function getStoredBlob(rec){
+  if(rec&&rec.blob instanceof Blob)return rec.blob;
+  var f=await opfsRead(rec);if(f)return f;
+  if(rec&&rec.buffer)return new Blob([rec.buffer],{type:fileMime(rec.name)});
+  return null
+}
+async function moveVaultFileForPeriod(rec,newPeriod){
+  var blob=await getStoredBlob(rec),old=rec.opfsPath?rec.opfsPath.slice():null;if(!blob)return false;
+  rec.period=newPeriod||'';if(await opfsSave(rec,blob)){if(old){try{await opfsDelete({opfsPath:old})}catch(_){}}return true}
+  return false
+}
+function storageLabel(){
+  if(storageState.opfs&&storageState.persisted)return'🔒 Persistent File Vault ON';
+  if(storageState.opfs)return'💾 File Vault ON · browser may clear site data';
+  return'💾 IndexedDB storage';
 }
 
 async function sha256(buf){
@@ -209,10 +321,10 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'">'+
-    '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLEAN V2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Challan pehle save hoga, phir index hoga. <b>Latest matched contribution month = DOL month</b>; beech ke missing months ignore honge.</div></div>'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="persistent-vault2">'+
+    '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · V2.2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Original challan file vault me save hota hai, phir index hota hai. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
-    '<div class="cd2-strip"><span>💾 File first saved</span><span>🔎 Challan search</span><span>📁 Year folders</span><span>⬇ Download</span><span>📅 Missing month tracker</span><span>🧠 SHA-256 duplicate guard</span></div>'+
+    '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
     '<div id="cd2-'+type+'-status" class="cd2-status">Ready.</div>'+
     '<div class="cd2-grid">'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div>'+
@@ -248,17 +360,12 @@ async function openViewer(type,id){
   ensureViewer();var rec=await dbGet(id);if(!rec){setStatus(type,'Open failed — saved record not found',true);return}
   $('cd2-vname').textContent=rec.name||'Challan';$('cd2-vmeta').textContent=(rec.period?periodLabel(rec.period):'Month required')+' · SHA-256 '+String(rec.hash||'').slice(0,16)+'…';
   $('cd2-viewer').classList.add('show');$('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
+  var blob=await getStoredBlob(rec);if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file missing from local vault.</div>';return}
   var ext=String(rec.name||'').split('.').pop().toLowerCase();
-  if(ext==='pdf'){
-    var blob=rec.blob instanceof Blob?rec.blob:new Blob([rec.buffer||new ArrayBuffer(0)],{type:'application/pdf'});
-    viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return
-  }
+  if(ext==='pdf'){viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return}
   try{
-    var buf=rec.blob instanceof Blob?await rec.blob.arrayBuffer():rec.buffer;
-    var parsed=rec.viewerSheets&&rec.viewerSheets.length?{sheets:rec.viewerSheets}:await parseExcel(buf,type,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Preparing Excel viewer… '+p+'%</div>'});
-    if(!rec.viewerSheets&&parsed.sheets){rec.viewerSheets=parsed.sheets;try{await dbPut(rec)}catch(_){}}
-    viewer.sheets=parsed.sheets||[];viewer.sheet=0;viewer.page=1;
-    if(!viewer.sheets.length)throw new Error('No sheets found');
+    var buf=await blob.arrayBuffer(),parsed=rec.viewerSheets&&rec.viewerSheets.length?{sheets:rec.viewerSheets}:await parseExcel(buf,type,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Preparing Excel viewer… '+p+'%</div>'});
+    viewer.sheets=parsed.sheets||[];viewer.sheet=0;viewer.page=1;if(!viewer.sheets.length)throw new Error('No sheets found');
     var sel=$('cd2-vsheet');sel.innerHTML=viewer.sheets.map(function(s,i){return'<option value="'+i+'">'+esc(s.name||('Sheet '+(i+1)))+'</option>'}).join('');sel.style.display=viewer.sheets.length>1?'inline-block':'none';$('cd2-vfoot').style.display='flex';renderExcelPage()
   }catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Could not open Excel challan: '+esc(e.message||e)+'</div>'}
 }
@@ -311,9 +418,9 @@ function renderMissingMonths(type){
 async function downloadChallan(type,id){
   var rec=await dbGet(id);if(!rec){setStatus(type,'Download failed — saved file not found',true);return}
   try{
-    var blob=rec.blob instanceof Blob?rec.blob:new Blob([rec.buffer||new ArrayBuffer(0)],{type:fileMime(rec.name)}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);
-    setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
+    var blob=await getStoredBlob(rec);if(!blob)throw new Error('Original file missing from local vault');
+    var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
   }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
 }
 
@@ -346,15 +453,20 @@ function renderFiles(type){
   }).join('')
 }
 async function updatePeriod(type,id,period){
-  var r=await dbGet(id);if(!r)return;r.period=period||'';r.periodSource='manual';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);setStatus(type,'Month saved ✓ — '+(r.period?periodLabel(r.period):'month cleared'))
+  var r=await dbGet(id);if(!r)return;var oldPeriod=r.period||'';
+  try{
+    if(r.storage==='opfs'&&String(oldPeriod).slice(0,4)!==String(period||'').slice(0,4))await moveVaultFileForPeriod(r,period||'');else r.period=period||'';
+    r.periodSource='manual';r.updatedAt=new Date().toISOString();await dbPut(r);await writeVaultManifest();await refresh(type);setStatus(type,'Month saved ✓ — '+(r.period?periodLabel(r.period):'month cleared'))
+  }catch(e){setStatus(type,'Month update failed — '+(e.message||e),true)}
 }
 async function deleteOne(type,id){
   var r=await dbGet(id);if(!r)return;
-  if(!confirm('Permanently delete this challan from V2 library?\\n\\n'+(r.name||id)+(r.period?'\\n'+periodLabel(r.period):'')))return;
-  try{await dbDelete(id);await refresh(type);setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))}catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
+  if(!confirm('Permanently delete this challan?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis is the only action that removes it from the V2 file vault.'))return;
+  try{await opfsDelete(r);await dbDelete(id);await writeVaultManifest();await refresh(type);setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))}catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
+  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
   var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
   var saved=0,indexed=0,dups=0,warns=[];
   for(var i=0;i<files.length;i++){
@@ -363,21 +475,19 @@ async function upload(type,fileList){
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
       var buf=await f.arrayBuffer(),hash=await sha256(buf);
       if(byHash[hash]){dups++;setStatus(type,'Already saved ✓ — '+f.name);continue}
-      var quick=inferPeriod(f.name,''),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(f.name)}),viewerSheets:null};
-      await dbPut(rec);byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
+      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb'};
+      var vaulted=false;try{vaulted=await opfsSave(rec,blob)}catch(_){}
+      if(!vaulted)rec.blob=blob;
+      await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved in '+(vaulted?'persistent vault':'browser storage')+' ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
       try{
         var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
         rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
-        rec.viewerSheets=parsed.sheets||null;rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';
-        if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
-      }catch(pe){
-        rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)
-      }
-      rec.updatedAt=new Date().toISOString();await dbPut(rec);buf=null;await refresh(type);await tick()
+        rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
+      }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
+      rec.updatedAt=new Date().toISOString();await dbPut(rec);await writeVaultManifest();buf=null;blob=null;await refresh(type);await tick()
     }catch(e){warns.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
   }
-  await refresh(type);
-  var msg=[];if(saved)msg.push(saved+' file saved ✓');if(indexed)msg.push(indexed+' indexed ✓');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  await refresh(type);var msg=[];if(saved)msg.push(saved+' file saved ✓');if(indexed)msg.push(indexed+' indexed ✓');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
   setStatus(type,msg.join(' · ')||'No files saved',!saved&&!!warns.length)
 }
 function parseQueries(type){
@@ -420,26 +530,46 @@ async function migrateLegacy(){
 }
 function wire(type){
   var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]'),libSearch=$('cd2-'+type+'-libsearch'),yearFilter=$('cd2-'+type+'-yearfilter');
-  pick.onclick=function(){inp.click()};
+  if(!inp||!pick)return;
+  pick.onclick=async function(){await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();inp.click()};
   inp.addEventListener('change',function(){var fs=Array.from(this.files||[]);this.value='';if(fs.length)upload(type,fs);else setStatus(type,'No file selected',true)});
-  document.querySelector('[data-cd2-search="'+type+'"]').onclick=function(){search(type)};
-  document.querySelector('[data-cd2-refresh="'+type+'"]').onclick=function(){refresh(type)};
+  var sb=document.querySelector('[data-cd2-search="'+type+'"]');if(sb)sb.onclick=function(){search(type)};
+  var rb=document.querySelector('[data-cd2-refresh="'+type+'"]');if(rb)rb.onclick=function(){refresh(type)};
   if(libSearch)libSearch.addEventListener('input',function(){renderFiles(type)});
   if(yearFilter)yearFilter.addEventListener('change',function(){renderFiles(type)});
-  $('cd2-'+type+'-files').addEventListener('change',function(e){var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
-  $('cd2-'+type+'-files').addEventListener('click',function(e){
-    var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}
-    var dl=e.target.closest&&e.target.closest('[data-cd2-download]');if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}
-    var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))
-  })
+  var files=$('cd2-'+type+'-files');if(!files)return;
+  files.addEventListener('change',function(e){var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
+  files.addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}var dl=e.target.closest&&e.target.closest('[data-cd2-download]');if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))})
 }
+
+function mountLatest(type){
+  var page=ensurePage(type);if(!page)return false;
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='persistent-vault2'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  if(ok)return true;
+  page.innerHTML=pageHtml(type);wire(type);refresh(type).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
+}
+function patchNavigation(){
+  if(typeof root.goPage!=='function'||root.goPage.__cd2PersistentWrapped)return;
+  var old=root.goPage;
+  function wrapped(name){
+    if(name==='esictodol')mountLatest('esic');
+    if(name==='pftodol')mountLatest('pf');
+    var r=old.apply(this,arguments);
+    if(name==='esictodol'||name==='pftodol')setTimeout(function(){mountLatest(name==='esictodol'?'esic':'pf')},80);
+    return r
+  }
+  wrapped.__cd2PersistentWrapped=true;wrapped.__original=old;root.goPage=wrapped
+}
+
 async function boot(){
-  addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');
+  addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');await requestPersistentStorage();
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
-  ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');
-  await migrateLegacy();await Promise.all([refresh('esic'),refresh('pf')]);
-  setStatus('esic','V2 ready ✓ — search, year folders, download and missing-month tracker active.');
-  setStatus('pf','V2 ready ✓ — search, year folders, download and missing-month tracker active.');
+  ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
+  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
+  var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent=storageLabel();if(sp)sp.textContent=storageLabel();
+  setStatus('esic','V2.2 ready ✓ — challan search, year folders, download, missing-month tracker and persistent file vault active.');
+  setStatus('pf','V2.2 ready ✓ — challan search, year folders, download, missing-month tracker and persistent file vault active.');
+  setTimeout(function(){mountLatest('esic');mountLatest('pf')},1200)
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
