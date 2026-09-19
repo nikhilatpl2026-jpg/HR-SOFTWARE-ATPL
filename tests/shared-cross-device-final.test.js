@@ -1,50 +1,52 @@
 'use strict';
-
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-
 function read(name){return fs.readFileSync(path.join(__dirname,'..',name),'utf8')}
 
 const mobile=read('erp-mobile-shared-hardfix-v1.js');
 const login=mobile.slice(mobile.indexOf('async function hardLogin'),mobile.indexOf('function captureClick'));
 const unlockAt=login.indexOf('unlockApp(lr.user,true)');
-assert(unlockAt>0,'successful cloud login must unlock the app');
-assert(!login.slice(0,unlockAt).includes('await pullMaster'),'login must not wait for Employee Master hydration');
-assert(!login.slice(0,unlockAt).includes('await pullUsers'),'login must not wait for the user-list refresh');
-assert(login.indexOf('hydrateAfterLogin(lr.user)')>unlockAt,'shared hydration must start after the UI unlocks');
-assert(mobile.includes("ATPLCloudAPI.ping()"),'login endpoint should be pre-warmed');
+assert(unlockAt>0,'successful backend login must unlock the app');
+assert(!login.slice(0,unlockAt).includes('await pullMaster'),'login must not block on Employee Master hydration');
+assert(!login.slice(0,unlockAt).includes('await pullUsers'),'login must not block on admin user-list hydration');
+assert(login.indexOf('hydrateAfterLogin(lr.user)')>unlockAt,'shared hydration starts only after UI unlock');
+assert(mobile.includes("action:'getEmployeeMaster'"),'Employee Master must hydrate from shared backend');
+assert(mobile.includes('7000'),'critical Employee Master pull must be bounded');
+assert(!mobile.includes('ATPLCloudAPI.ping()'),'startup must not add an eager duplicate ping');
+
+const master=read('erp-cloud-sync-v1.js');
+assert(master.includes('backend-confirmed Employee Master persistence'),'Employee Master sync contract must be backend confirmed');
+assert(master.includes('fetchCloud()'),'save path must support cloud read-back');
+assert(master.includes('conflictCheck'),'cross-device conflicting edits must be detected');
+assert(master.includes('visibilitychange'),'foreground refresh must be event-driven');
+assert(!master.includes('setInterval('),'Employee Master must not poll forever');
 
 const dol=read('compliance-dol-rebuild-v2.js');
-assert(dol.includes("x.record&&x.record.id"),'batch acknowledgement must use the durable API record id');
-assert(dol.includes('if(cloudSyncPromise)return cloudSyncPromise'),'DOL sync must be single-flight');
-assert(dol.includes('cloudWriteTail'),'DOL cloud writes must be serialized');
-assert(dol.includes('pending.slice(0,CLOUD_BATCH_SIZE)'),'legacy migration must upload in bounded batches');
-assert(dol.indexOf("await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')])")<dol.indexOf('pending.slice(0,CLOUD_BATCH_SIZE)'),'cloud records must reconcile before pending local migration');
-assert(!/migrateDbFilesToVault\(\);await syncCloudIndexes\(\)/.test(dol),'DOL boot must not block local UI on cloud migration');
-assert(dol.includes("if(type==='esic')return d&&d.length===10?d:''"),'ESIC search/index IDs must be exactly 10 digits');
-assert(dol.includes('sanitizeLocalTypeMixups'),'legacy PF records must be removed from the ESIC library');
-assert(dol.includes('parsed.detectedType!==type'),'wrong-type uploads must be blocked before cloud sync');
-assert(dol.includes("pfRemaining?'PF cloud sync running"),'PF and ESIC pending counts must be shown separately');
+const v4=read('compliance-dol-cloud-v4.js');
+assert(dol.includes("function durableApi(){return root.ATPLDurableEverythingV1||null}"),'DOL dependency resolver must exist');
+assert(dol.includes("if(type==='esic')return d&&d.length===10?d:''"),'ESIC IDs must be exactly 10 digits');
+assert(dol.includes('sanitizeLocalTypeMixups'),'legacy PF-in-ESIC rows must be sanitized');
+assert(dol.includes('parsed.detectedType&&parsed.detectedType!==type'),'wrong-type uploads must be rejected');
+assert(dol.includes('v.fileBlob(rec,progress)'),'second-device Open/Download must be able to fetch original bytes');
+assert(v4.includes("action:'checkDOLDuplicate'"),'DOL upload must check SHA duplicate in backend');
+assert(v4.includes("action:'commitDOLUpload'"),'DOL save must require explicit backend commit');
+assert(v4.includes("form.method='POST'"),'large original-file upload must avoid oversized GET URLs');
 
 const account=read('erp-account-cloud-restore-v1.js');
-assert(account.includes('root.ATPLAccountCloudRestoreV1='),'account orchestration must have its own public API');
-assert(!account.includes('root.ATPLCloudSharedStorageV1={'),'account orchestration must not overwrite the file-sharing API');
-assert(account.includes('Promise.allSettled'),'independent shared-data pulls should run in parallel');
-
-const files=read('erp-cloud-shared-storage-v1.js');
-assert(files.indexOf("action:'getSystemRecords'")<files.indexOf("action:'getEmployeeMaster'"),'file sync should use the split system-record endpoint first');
-assert(files.includes('root.ATPLCloudAPI.request'),'file sync must use the shared request broker');
-assert(files.includes('root.pako.ungzip'),'mobile browsers need a gzip decoding fallback');
+assert(account.includes('root.ATPLAccountCloudRestoreV1='),'account orchestration must keep its own API');
+assert(!account.includes('root.ATPLCloudSharedStorageV1={'),'account orchestration must not overwrite shared-file storage API');
 
 const durable=read('erp-durable-everything-v1.js');
-assert(durable.includes('dolLooksLikePfInEsic'),'old devices must not re-upload misclassified PF records as ESIC');
-assert(durable.includes('PF challan cannot be saved inside ESIC'),'durable cloud writes must enforce PF/ESIC separation');
+assert(durable.includes('dolLooksLikePfInEsic'),'compatibility writes must enforce PF/ESIC separation');
+assert(durable.includes('PF challan cannot be saved inside ESIC'),'compatibility DOL guard must remain');
+assert(!durable.includes('setInterval('),'durable sync must be event-driven rather than polling');
 
 const html=read('index.html');
-const sharedAt=html.indexOf('erp-cloud-shared-storage-v1.js?v=20260919-shared-files2');
-const durableAt=html.indexOf('erp-durable-everything-v1.js?v=20260919-type-safe-final6');
-assert(sharedAt>0&&sharedAt<durableAt,'shared-file storage must load before the durable orchestrator');
-assert(!html.includes('</script>\\n<script src="employee-master-confirmed-save-v1.js'),'script tags must not contain a literal escaped newline');
+const brokerAt=html.indexOf('erp-cloud-api-broker-v1.js');
+const v4At=html.indexOf('compliance-dol-cloud-v4.js');
+const dolAt=html.indexOf('compliance-dol-rebuild-v2.js');
+assert(brokerAt>0&&v4At>brokerAt&&dolAt>v4At,'broker -> DOL V4 client -> DOL UI load order must be deterministic');
+assert(!html.includes('Salary Sync')&&!html.includes('Salary Lookup')&&!html.includes('ESIC DOL Filler'),'retired features must stay removed');
 
 console.log('shared-cross-device-final.test.js: all assertions passed');
