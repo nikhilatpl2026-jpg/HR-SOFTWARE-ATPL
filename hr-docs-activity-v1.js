@@ -78,11 +78,10 @@ function exportCsv(){if(!exportRows.length){alert('No activity to export.');retu
 function wrapGo(){if(typeof window.goPage!=='function'||window.goPage.__hrAct)return;var g=window.goPage;function w(name){if(page&&page!==name)exitPage('navigate');if(name==='hrdocs'&&!admin()){var r=typeof window.hrDocGetDocs==='function'?window.hrDocGetDocs():null;if(Array.isArray(r)){r.splice(0,r.length);if(typeof window.hrDocRender==='function')window.hrDocRender()}}var out=g.apply(this,arguments);enterPage(name,'navigate');if(name==='hrdocs')syncDocs();setTimeout(injectActBtn,0);return out}w.__hrAct=true;window.goPage=w}
 function install(){
   ensureAssign();patchDocs();wrapGo();trackClicks();var p=activePage();if(p)enterPage(p,'initial');
-  document.addEventListener('visibilitychange',function(){if(document.hidden)exitPage('hidden');else{var p2=activePage()||page;if(p2)enterPage(p2,'visible');syncCloudActivity()}});
-  window.addEventListener('focus',function(){syncCloudActivity()});
+  document.addEventListener('visibilitychange',function(){if(document.hidden)exitPage('hidden');else{var p2=activePage()||page;if(p2)enterPage(p2,'visible')}});
   window.addEventListener('beforeunload',function(){exitPage('unload')});
   document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#vn-useraccess'))setTimeout(injectActBtn,80)},true);
-  setTimeout(injectActBtn,120);setTimeout(syncDocs,180);setTimeout(syncCloudActivity,600)
+  setTimeout(injectActBtn,180);if(p==='hrdocs')setTimeout(syncDocs,500);setTimeout(syncCloudActivity,2600)
 }
 window.ATPLSharedActivityV2={syncCloud:syncCloudActivity,activities:activities,version:function(){return ACT_BUILD}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
