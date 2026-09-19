@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-type-safe-final6';
+var BUILD='2026.09.19-isolated-cloud-final7';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -491,23 +491,32 @@ function durableApi(){return root.ATPLDurableEverythingV1||null}
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
-  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.4-type-safe-final6',cloudConfirmedAt:r.cloudConfirmedAt||''}
+  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.5-isolated-cloud-final7',cloudConfirmedAt:r.cloudConfirmedAt||''}
 }
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||'');
   return{id:String(r&&r.id||uid(String(r&&r.type||'esic'),hash)),version:2,type:String(r&&r.type||''),name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||''),cloudOnly:true}
 }
 async function sanitizeLocalTypeMixups(){
-  var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),bad=all.filter(looksLikePfRecord),fixed=0;
+  var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),fixed=0;
+  function exactPfTwin(r){
+    if(!r||r.type!=='esic')return null;
+    return pf.find(function(p){
+      if(!p)return false;
+      if(r.hash&&p.hash&&String(r.hash)===String(p.hash))return true;
+      return !!(r.period&&p.period&&r.period===p.period&&logicalName(r.name)&&logicalName(r.name)===logicalName(p.name))
+    })||null
+  }
+  var bad=all.filter(function(r){return looksLikePfRecord(r)||!!exactPfTwin(r)});
   for(var i=0;i<bad.length;i++){
-    var r=bad[i],match=pf.find(function(p){return r.hash&&p.hash===r.hash})||pf.find(function(p){return r.period&&p.period===r.period&&logicalName(p.name)===logicalName(r.name)});
-    if(!match&&r.hash){
+    var r=bad[i],match=exactPfTwin(r);
+    if(!match&&looksLikePfRecord(r)&&r.hash){
       var ids=recordIds(r).map(function(x){return validId('pf',x)}).filter(Boolean),nr=Object.assign({},r,{id:uid('pf',r.hash),type:'pf',ids:Array.from(new Set(ids)),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'No valid PF/UAN number detected',updatedAt:new Date().toISOString(),cloudSynced:false,cloudConfirmedAt:'',cloudOnly:false,opfsPath:null,storage:'cloud-index',blob:null});
       var stored=await getStoredBlob(r),moved=false;
       if(stored){try{moved=await opfsSave(nr,stored)}catch(_){moved=false}if(!moved){nr.blob=stored;nr.storage='indexeddb'}}
       await dbPut(nr);pf.push(nr);if(moved)await opfsDelete(r)
     }
-    await dbDelete(r.id);fixed++;if(i%5===0)await tick()
+    await opfsDelete(r);await dbDelete(r.id);fixed++;if(i%5===0)await tick()
   }
   if(fixed)await writeVaultManifest();return fixed
 }
@@ -569,13 +578,23 @@ function syncCloudIndexes(){
     await sanitizeLocalTypeMixups();
     await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
     await sanitizeLocalTypeMixups();
-    var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),batch=pending.slice(0,CLOUD_BATCH_SIZE),saved={saved:0,failed:0};
-    if(batch.length)saved=await pushCloudBatch(batch);
+    var totalSaved=0,totalFailed=0,rounds=0,hadPending=false;
+    while(rounds<8){
+      var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly});
+      if(!pending.length)break;
+      hadPending=true;
+      var batch=pending.slice(0,CLOUD_BATCH_SIZE),saved=await pushCloudBatch(batch);
+      totalSaved+=Number(saved&&saved.saved||0);totalFailed+=Number(saved&&saved.failed||0);rounds++;
+      if(!saved||!saved.saved)break;
+      await tick()
+    }
+    await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
+    await sanitizeLocalTypeMixups();
     await Promise.all([refresh('esic'),refresh('pf')]);
-    var after=await dbAll(),remainingRows=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),remaining=remainingRows.length,esicRemaining=remainingRows.filter(function(r){return r.type==='esic'}).length,pfRemaining=remainingRows.filter(function(r){return r.type==='pf'}).length;
+    var after=await dbAll(),remainingRows=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!looksLikePfRecord(r)&&!r.cloudSynced&&!r.cloudOnly}),remaining=remainingRows.length,esicRemaining=remainingRows.filter(function(r){return r.type==='esic'}).length,pfRemaining=remainingRows.filter(function(r){return r.type==='pf'}).length;
     if(remaining){setStatus('esic',esicRemaining?'ESIC cloud sync running · '+esicRemaining+' remaining…':'ESIC shared data ready ✓');setStatus('pf',pfRemaining?'PF cloud sync running · '+pfRemaining+' remaining…':'PF shared data ready ✓');scheduleCloudRetry()}
-    else if(batch.length||saved.saved){setStatus('esic','ESIC shared data ready ✓');setStatus('pf','PF shared data ready ✓')}
-    return{ok:saved.failed===0,uploaded:saved.saved,remaining:remaining}
+    else if(hadPending||totalSaved){setStatus('esic','ESIC shared data ready ✓');setStatus('pf','PF shared data ready ✓')}
+    return{ok:remaining===0&&totalFailed===0,uploaded:totalSaved,failed:totalFailed,remaining:remaining}
   })().catch(function(e){console.warn('DOL V2 shared sync failed',e);scheduleCloudRetry();return false}).finally(function(){cloudSyncPromise=null});
   return cloudSyncPromise
 }
@@ -583,13 +602,16 @@ function syncCloudIndexes(){
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   await requestPersistentStorage();await sanitizeLocalTypeMixups();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
-  var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
+  var all=await dbAll(),byHash={},otherByHash={};all.forEach(function(r){if(!r||!r.hash)return;if(r.type===type)byHash[r.hash]=r;else if(['esic','pf'].indexOf(r.type)>=0)otherByHash[r.hash]=r});
   var saved=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[];
   for(var i=0;i<files.length;i++){
     var f=files[i];setStatus(type,'Saving '+(i+1)+' / '+files.length+' · '+f.name);
     try{
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
-      var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null;
+      var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null,cross=otherByHash[hash]||null;
+      if(cross){
+        dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue
+      }
       if(existing){
         var existingBlob=await getStoredBlob(existing);
         if(existingBlob){dups++;setStatus(type,'Already saved ✓ — '+f.name);continue}
