@@ -4,13 +4,13 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-account-restore1';
+var BUILD='2026.09.19-shared-orchestrator2';
 if(!root||root.__ATPL_ACCOUNT_CLOUD_RESTORE_V1__===BUILD)return;
 root.__ATPL_ACCOUNT_CLOUD_RESTORE_V1__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',USERS='ATPL_UserAccess_V1';
-var running=false,lastRun=0,timer=0;
+var running=null,lastRun=0,timer=0;
 
 function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function text(v){return v==null?'':String(v).trim()}
@@ -61,20 +61,26 @@ function badge(msg,bad){
     b.style.display=token()?'inline-flex':'none';b.textContent=msg||'☁ Account Sync';b.style.borderColor=bad?'#fecaca':'#a7f3d0';b.style.background=bad?'#fef2f2':'#ecfdf5';b.style.color=bad?'#b91c1c':'#047857'
   }catch(_){}
 }
-async function syncNow(force){
-  if(running||!token()||!session())return false;
-  if(!force&&Date.now()-lastRun<7000)return false;
-  running=true;lastRun=Date.now();badge('☁ Restoring shared data…');
-  try{
-    await syncUsers();
-    if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')await root.ATPLCloudSyncV1.pullMaster();
-    if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')await root.ATPLSharedActivityV2.syncCloud();
-    if(root.ATPLComplianceDOLV2&&typeof root.ATPLComplianceDOLV2.syncCloud==='function')await root.ATPLComplianceDOLV2.syncCloud();
+function syncNow(force){
+  if(!token()||!session())return Promise.resolve(false);
+  if(running)return running;
+  if(!force&&Date.now()-lastRun<7000)return Promise.resolve(false);
+  lastRun=Date.now();badge('☁ Restoring shared data…');
+  running=(async function(){
+    var jobs=[syncUsers()];
+    if(root.ATPLMobileSharedHardFix&&typeof root.ATPLMobileSharedHardFix.pullMaster==='function')jobs.push(root.ATPLMobileSharedHardFix.pullMaster());
+    else if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
+    if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
+    if(root.ATPLComplianceDOLV2&&typeof root.ATPLComplianceDOLV2.syncCloud==='function')jobs.push(root.ATPLComplianceDOLV2.syncCloud());
+    if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow());
+    if(root.ATPLDurableEverythingV1&&typeof root.ATPLDurableEverythingV1.sync==='function')jobs.push(root.ATPLDurableEverythingV1.sync());
+    var results=await Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)}));
+    results.forEach(function(x){if(x.status==='rejected')console.warn('Account shared-data job failed',x.reason)});
     applyAccess();badge('☁ Shared Data Ready');
     try{root.document.dispatchEvent(new CustomEvent('atpl-account-cloud-restored',{detail:{at:new Date().toISOString()}}))}catch(_){}
     return true
-  }catch(e){console.warn('Account cloud restore issue',e);badge('☁ Sync Retry',true);return false}
-  finally{running=false}
+  })().catch(function(e){console.warn('Account cloud restore issue',e);badge('☁ Sync Retry',true);return false}).finally(function(){running=null});
+  return running
 }
 function schedule(ms){clearTimeout(timer);timer=setTimeout(function(){syncNow(true)},ms==null?150:ms)}
 function patchTokenWrites(){
@@ -86,11 +92,12 @@ function patchTokenWrites(){
 }
 function boot(){
   patchTokenWrites();badge('☁ Account Sync');schedule(900);
+  root.document.addEventListener('atpl-authenticated',function(){schedule(0)});
   root.addEventListener('focus',function(){syncNow(false)});
   root.addEventListener('online',function(){syncNow(true)});
   root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncNow(false)});
   root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},120000)
 }
-root.ATPLCloudSharedStorageV1={syncNow:function(){return syncNow(true)},syncUsers:syncUsers,status:function(){return{build:BUILD,token:!!token(),session:!!session(),running:running,lastRun:lastRun}}};
+root.ATPLAccountCloudRestoreV1={syncNow:function(force){return syncNow(force!==false)},syncUsers:syncUsers,status:function(){return{build:BUILD,token:!!token(),session:!!session(),running:!!running,lastRun:lastRun}}};
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

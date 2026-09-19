@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-account-cloud4';
+var BUILD='2026.09.19-shared-final5';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -20,6 +20,7 @@ root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
+var cloudSyncPromise=null,cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=8;
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
 var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
@@ -323,7 +324,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="account-cloud4">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="shared-final5">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · V2.2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Original challan file vault me save hota hai, phir index hota hai. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -477,7 +478,7 @@ function durableApi(){return root.ATPLDurableEverythingV1||null}
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
-  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.2-account-cloud4',cloudConfirmedAt:r.cloudConfirmedAt||''}
+  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.3-shared-final5',cloudConfirmedAt:r.cloudConfirmedAt||''}
 }
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||'');
@@ -489,18 +490,24 @@ async function pushCloudIndex(rec){
     var back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(rec));rec.cloudSynced=true;rec.cloudOnly=false;rec.cloudConfirmedAt=String(back&&back.cloudConfirmedAt||new Date().toISOString());await dbPut(rec);return true
   }catch(e){console.warn('DOL V2 cloud index save failed',rec&&rec.name,e);return false}
 }
-async function pushCloudBatch(list){
+async function pushCloudBatchNow(list){
   list=(list||[]).filter(Boolean);if(!list.length)return{saved:0,failed:0};
   var api=durableApi();if(!api)return{saved:0,failed:list.length};
   try{
     if(typeof api.saveComplianceDolBatchConfirmed==='function'){
       var res=await api.saveComplianceDolBatchConfirmed(list.map(cloudRecordFromLocal)),ok={};
-      (res&&res.results||[]).forEach(function(x){if(x&&x.ok)ok[String(x.id)]=1});
+      (res&&res.results||[]).forEach(function(x){var id=x&&(x.id||(x.record&&x.record.id));if(x&&x.ok&&id)ok[String(id)]=1});
       for(var i=0;i<list.length;i++){if(ok[String(list[i].id)]){list[i].cloudSynced=true;list[i].cloudOnly=false;list[i].cloudConfirmedAt=new Date().toISOString();await dbPut(list[i])}}
       return{saved:Number(res&&res.saved||0),failed:Number(res&&res.failed||0)}
     }
     var saved=0;for(var j=0;j<list.length;j++)if(await pushCloudIndex(list[j]))saved++;return{saved:saved,failed:list.length-saved}
   }catch(e){console.warn('DOL V2 cloud batch failed',e);return{saved:0,failed:list.length}}
+}
+function pushCloudBatch(list){
+  list=(list||[]).filter(Boolean).slice();
+  var run=cloudWriteTail.catch(function(){}).then(function(){return pushCloudBatchNow(list)});
+  cloudWriteTail=run.catch(function(){});
+  return run
 }
 async function pullCloudIndex(type){
   var api=durableApi();if(!api||typeof api.getComplianceDolRecords!=='function')return false;
@@ -521,12 +528,25 @@ async function pullCloudIndex(type){
     await refresh(type);return true
   }catch(e){console.warn('DOL V2 cloud pull failed',type,e);return false}
 }
-async function syncCloudIndexes(){
-  var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length});
-  if(pending.length)await pushCloudBatch(pending);
-  await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
-  await Promise.all([refresh('esic'),refresh('pf')]);
-  return true
+function cloudLoginReady(){try{return !!(root.sessionStorage.getItem('ATPL_RemoteToken_V1')||root.sessionStorage.getItem('ATPL_SharedToken_V1'))}catch(_){return false}}
+function scheduleCloudRetry(){
+  if(cloudRetryTimer||!cloudLoginReady())return;
+  cloudRetryTimer=setTimeout(function(){cloudRetryTimer=0;syncCloudIndexes()},1500)
+}
+function syncCloudIndexes(){
+  if(!cloudLoginReady())return Promise.resolve(false);
+  if(cloudSyncPromise)return cloudSyncPromise;
+  cloudSyncPromise=(async function(){
+    var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),batch=pending.slice(0,CLOUD_BATCH_SIZE),saved={saved:0,failed:0};
+    if(batch.length)saved=await pushCloudBatch(batch);
+    await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
+    await Promise.all([refresh('esic'),refresh('pf')]);
+    var after=await dbAll(),remaining=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}).length;
+    if(remaining){setStatus('esic','Shared cloud sync running · '+remaining+' challan(s) remaining…');setStatus('pf','Shared cloud sync running · '+remaining+' challan(s) remaining…');scheduleCloudRetry()}
+    else if(batch.length||saved.saved){setStatus('esic','Shared challan data ready ✓');setStatus('pf','Shared challan data ready ✓')}
+    return{ok:saved.failed===0,uploaded:saved.saved,remaining:remaining}
+  })().catch(function(e){console.warn('DOL V2 shared sync failed',e);scheduleCloudRetry();return false}).finally(function(){cloudSyncPromise=null});
+  return cloudSyncPromise
 }
 
 async function upload(type,fileList){
@@ -619,9 +639,9 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='account-cloud4'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
-  if(ok){pullCloudIndex(type);return true}
-  page.innerHTML=pageHtml(type);wire(type);pullCloudIndex(type).then(function(){return refresh(type)}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='shared-final5'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  if(ok){syncCloudIndexes();return true}
+  page.innerHTML=pageHtml(type);wire(type);refresh(type).then(function(){return syncCloudIndexes()}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
 function patchNavigation(){
   if(typeof root.goPage!=='function'||root.goPage.__cd2PersistentWrapped)return;
@@ -640,10 +660,12 @@ async function boot(){
   addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');await requestPersistentStorage();
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
-  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await syncCloudIndexes();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
+  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent=storageLabel()+' · ☁ shared index';if(sp)sp.textContent=storageLabel()+' · ☁ shared index';
-  setStatus('esic','V2.3 ready ✓ — same login on another device pulls saved challan index/search data from cloud.');
-  setStatus('pf','V2.3 ready ✓ — same login on another device pulls saved challan index/search data from cloud.');
+  setStatus('esic','V2.3 local data ready ✓ · shared cloud syncing in background.');
+  setStatus('pf','V2.3 local data ready ✓ · shared cloud syncing in background.');
+  setTimeout(function(){syncCloudIndexes()},0);
+  root.document.addEventListener('atpl-authenticated',function(){setTimeout(function(){syncCloudIndexes()},0)});
   root.addEventListener('focus',function(){syncCloudIndexes()});root.addEventListener('online',function(){syncCloudIndexes()});
   root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncCloudIndexes()});
   setTimeout(function(){mountLatest('esic');mountLatest('pf')},1200)
