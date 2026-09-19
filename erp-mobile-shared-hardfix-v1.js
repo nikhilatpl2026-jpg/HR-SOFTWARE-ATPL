@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-mobile-shared-hardfix1';
+var BUILD='2026.09.19-login-authority2';
 if(!root||root.__ATPL_MOBILE_SHARED_HARDFIX__===BUILD)return;
 root.__ATPL_MOBILE_SHARED_HARDFIX__=BUILD;
 
@@ -18,7 +18,7 @@ function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function sess(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
 function current(){var s=sess();if(!s)return null;var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase();return (Array.isArray(a)?a:[]).find(function(u){return text(u&&u.id).toLowerCase()===id})||null}
-function api(p,timeout){return new Promise(function(ok,no){
+function api(p,timeout){/* broker-routed-login-authority */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(p,{timeout:timeout,source:'login-authority'});return new Promise(function(ok,no){
   var cb='__atpl_mobile_'+Date.now()+'_'+Math.random().toString(36).slice(2),sc=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();no(new Error('Cloud connection timeout'))},timeout||18000);
   function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(sc.parentNode)sc.parentNode.removeChild(sc)}
   root[cb]=function(x){finish();ok(x||{})};p=Object.assign({},p||{},{callback:cb,_ts:Date.now()});
@@ -110,9 +110,7 @@ function hookNav(){
 }
 function boot(){
   root.document.addEventListener('click',captureClick,true);root.document.addEventListener('keydown',captureEnter,true);hookNav();
-  root.addEventListener('focus',function(){if(tok())pullMaster(false).then(function(){backgroundShared()}).catch(function(){})});
   root.addEventListener('online',function(){if(tok())pullMaster(true).then(function(){backgroundShared()}).catch(function(){})});
-  root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&tok())pullMaster(false).then(function(){backgroundShared()}).catch(function(){})});
   if(tok()&&sess())pullMaster(true).then(function(){applyAccess();backgroundShared()}).catch(function(){})
 }
 root.ATPLMobileSharedHardFix={login:hardLogin,pullMaster:function(){return pullMaster(true)},syncAll:async function(){var n=await pullMaster(true);await backgroundShared();return n},version:function(){return BUILD}};
