@@ -4,13 +4,13 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-broker1';
+var BUILD='2026.09.19-broker2';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var inflight={},cache={},queue=[],active=0,MAX_ACTIVE=2,lastStart=0,MIN_GAP=140,seq=0;
-var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,queued:0};
+var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
+var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,activeWrites:0,queued:0};
 
 var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1};
 var CACHE_MS={ping:30000,listUsers:12000,getEmployeeMaster:7000,getSystemRecords:7000,listActivity:5000};
@@ -97,16 +97,27 @@ async function transport(params,opts){
   var err=new Error('CLOUD_UNREACHABLE');err.cause=last;err.action=action;throw err
 }
 function pump(){
-  health.active=active;health.queued=queue.length;
+  health.active=active;health.activeWrites=activeWrites;health.queued=queue.length;
   if(active>=MAX_ACTIVE||!queue.length)return;
   var wait=Math.max(0,MIN_GAP-(now()-lastStart));
   if(wait){root.setTimeout(pump,wait);return}
-  var job=queue.shift();active++;lastStart=now();health.active=active;health.queued=queue.length;
-  transport(job.params,job.opts).then(job.resolve,job.reject).finally(function(){active--;health.active=active;pump()});
+  queue.sort(function(a,b){return a.priority-b.priority||a.at-b.at});
+  var idx=-1;
+  for(var i=0;i<queue.length;i++){if(queue[i].isRead||activeWrites<MAX_WRITES){idx=i;break}}
+  if(idx<0)return;
+  var job=queue.splice(idx,1)[0];active++;if(!job.isRead)activeWrites++;lastStart=now();
+  health.active=active;health.activeWrites=activeWrites;health.queued=queue.length;
+  transport(job.params,job.opts).then(job.resolve,job.reject).finally(function(){
+    active--;if(!job.isRead)activeWrites--;health.active=active;health.activeWrites=activeWrites;pump()
+  });
   if(active<MAX_ACTIVE&&queue.length)root.setTimeout(pump,MIN_GAP)
 }
 function enqueue(params,opts){
-  return new Promise(function(resolve,reject){queue.push({params:params,opts:opts,resolve:resolve,reject:reject});health.queued=queue.length;pump()})
+  var action=String(params&&params.action||'ping'),isRead=!!READ_ACTIONS[action],priority=action==='login'?0:(isRead?1:2);
+  return new Promise(function(resolve,reject){
+    queue.push({params:params,opts:opts,resolve:resolve,reject:reject,isRead:isRead,priority:priority,at:now()});
+    health.queued=queue.length;pump()
+  })
 }
 async function request(params,opts){
   params=cleanParams(params||{});opts=opts||{};
