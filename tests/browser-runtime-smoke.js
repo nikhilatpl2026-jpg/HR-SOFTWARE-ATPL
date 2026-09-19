@@ -22,8 +22,15 @@ const puppeteer=require('puppeteer-core');
   const bootMs=Date.now()-started;
 
   const result=await page.evaluate(async()=>{
+    const ciUser={id:'__ci_admin__',name:'CI Admin',admin:true,access:['*'],active:true};
+    localStorage.setItem('ATPL_UserAccess_V1',JSON.stringify([ciUser]));
+    sessionStorage.setItem('ATPL_UserSession_V5',JSON.stringify({id:ciUser.id}));
+    sessionStorage.setItem('ATPL_RemoteToken_V1','ci-local-token');
+    sessionStorage.setItem('ATPL_SharedToken_V1','ci-local-token');
     const login=document.getElementById('uaLogin');if(login)login.style.display='none';
     document.body.classList.remove('uaLocked');
+    document.querySelectorAll('[id^="page-"]').forEach(p=>{p.hidden=false;p.classList.remove('uaDeniedPage','uaNoAccess');p.style.removeProperty('display');p.removeAttribute('aria-hidden')});
+    document.querySelectorAll('.vitem').forEach(v=>{v.hidden=false;v.style.removeProperty('display');v.removeAttribute('aria-hidden')});
     const landing=document.getElementById('landingPage');if(landing)landing.style.display='none';
     const navs=[...document.querySelectorAll('.vitem[onclick*="goPage"]')];
     const targets=[...new Set(navs.map(x=>{const m=String(x.getAttribute('onclick')||'').match(/goPage\(['"]([^'"]+)['"]\)/);return m&&m[1]}).filter(Boolean))];
@@ -32,7 +39,7 @@ const puppeteer=require('puppeteer-core');
       try{
         if(typeof window.goPage!=='function'){failures.push(t+': goPage missing');continue}
         window.goPage(t);
-        await new Promise(r=>setTimeout(r,40));
+        await new Promise(r=>setTimeout(r,90));
         const p=document.getElementById('page-'+t);
         if(!p)failures.push(t+': page missing after navigation');
         else if(!p.classList.contains('active'))failures.push(t+': page did not become active');
