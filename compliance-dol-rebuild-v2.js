@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-cloud-only-final17-fast10b';
+var BUILD='2026.09.19-final-stability-v4';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -21,7 +21,7 @@ var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
-var localPreviewPrepared=false;
+var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
 function bounded(p,ms,label){
   return new Promise(function(resolve,reject){
     var done=false,t=setTimeout(function(){if(done)return;done=true;reject(new Error((label||'Cloud sync')+' timeout'))},ms);
@@ -52,6 +52,44 @@ var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,j
 function $(id){return document.getElementById(id)}
 function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]})}
 function tick(){return new Promise(function(r){setTimeout(r,0)})}
+function durableApi(){return root.ATPLDurableEverythingV1||null}
+function vaultApi(){return root.ATPLDOLCloudV4||null}
+async function cloudRecords(type){
+  var v=vaultApi();
+  if(v&&typeof v.list==='function'&&(!v.supportState||v.supportState()!==false)){
+    try{
+      var rows=await bounded(v.list(type),8500,'Dedicated challan backend');
+      cloudMode[type]='v4';return{mode:'v4',records:Array.isArray(rows)?rows:[]}
+    }catch(e){
+      if(v.supportState&&v.supportState()===true)throw e;
+      if(!/DOL_V4_UNAVAILABLE|unknown action/i.test(String(e&&e.message||e)))console.warn('DOL V4 unavailable; using compatibility index',e)
+    }
+  }
+  var d=durableApi();
+  if(!d||typeof d.getComplianceDolRecords!=='function')throw new Error('Challan cloud backend unavailable');
+  var legacy=await bounded(d.getComplianceDolRecords(type),8500,'Challan compatibility sync');
+  cloudMode[type]='legacy';return{mode:'legacy',records:Array.isArray(legacy)?legacy:[]}
+}
+function upsertStateRow(type,rec){
+  var rows=(state[type].rows||[]).slice(),key=String(rec&&rec.id||''),at=rows.findIndex(function(x){return String(x&&x.id||'')===key||(rec&&rec.hash&&x&&x.hash===rec.hash)});
+  if(at>=0)rows[at]=rec;else rows.unshift(rec);
+  state[type].rows=rows;rebuildIndex(type);renderFiles(type)
+}
+async function recordBlob(type,rec,progress){
+  var blob=await getStoredBlob(rec);if(blob)return blob;
+  var v=vaultApi();
+  if(v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||cloudMode[type]==='v4'||(v.supported&&v.supported()))){
+    blob=await bounded(v.fileBlob(rec,progress),30000,'Original challan download');
+    if(blob){
+      var local=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false});
+      var vaulted=false;try{vaulted=await opfsSave(local,blob)}catch(_){}
+      if(!vaulted)local.blob=blob;local.storage=vaulted?'opfs':'indexeddb';
+      try{await dbPut(local);await writeVaultManifest()}catch(_){}
+      return blob
+    }
+  }
+  return null
+}
 function periodLabel(p){if(!p)return'Month required';var a=String(p).split('-'),d=new Date(Number(a[0]),Number(a[1])-1,1);return d.toLocaleString('en-IN',{month:'short',year:'numeric'})}
 function cleanName(s){return String(s||'').toLowerCase().replace(/\(\d+\)(?=\.[^.]+$)/,'').replace(/\s+/g,' ').trim()}
 function normalizeDigits(v){
@@ -398,16 +436,19 @@ function closeViewer(){
   viewer.sheets=null;$('cd2-viewer').classList.remove('show');$('cd2-vbody').innerHTML='';$('cd2-vfoot').style.display='none';$('cd2-vsheet').style.display='none'
 }
 async function openViewer(type,id){
-  ensureViewer();var rec=await dbGet(id);if(!rec){setStatus(type,'Open failed — saved record not found',true);return}
+  ensureViewer();var rec=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);
+  if(!rec){setStatus(type,'Open failed — saved record not found',true);return}
   $('cd2-vname').textContent=rec.name||'Challan';$('cd2-vmeta').textContent=(rec.period?periodLabel(rec.period):'Month required')+' · SHA-256 '+String(rec.hash||'').slice(0,16)+'…';
   $('cd2-viewer').classList.add('show');$('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
-  var blob=await getStoredBlob(rec);if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file missing from local vault.</div>';return}
+  var blob;
+  try{blob=await recordBlob(type,rec,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Downloading original… '+p+'%</div>'})}catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Open failed: '+esc(e.message||e)+'</div>';return}
+  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not available in the shared file vault. Backend V4 deployment is required for cross-device Open/Download.</div>';return}
   var ext=String(rec.name||'').split('.').pop().toLowerCase();
   if(ext==='pdf'){viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return}
   try{
     var buf=await blob.arrayBuffer(),parsed=rec.viewerSheets&&rec.viewerSheets.length?{sheets:rec.viewerSheets}:await parseExcel(buf,type,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Preparing Excel viewer… '+p+'%</div>'});
     viewer.sheets=parsed.sheets||[];viewer.sheet=0;viewer.page=1;if(!viewer.sheets.length)throw new Error('No sheets found');
-    var sel=$('cd2-vsheet');sel.innerHTML=viewer.sheets.map(function(s,i){return'<option value="'+i+'">'+esc(s.name||('Sheet '+(i+1)))+'</option>'}).join('');sel.style.display=viewer.sheets.length>1?'inline-block':'none';$('cd2-vfoot').style.display='flex';renderExcelPage()
+    var sel=$('cd2-vsheet');sel.innerHTML=viewer.sheets.map(function(sh,i){return'<option value="'+i+'">'+esc(sh.name||('Sheet '+(i+1)))+'</option>'}).join('');sel.style.display=viewer.sheets.length>1?'inline-block':'none';$('cd2-vfoot').style.display='flex';renderExcelPage()
   }catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Could not open Excel challan: '+esc(e.message||e)+'</div>'}
 }
 function renderExcelPage(){
@@ -426,25 +467,28 @@ function rebuildIndex(type){
   state[type].index=idx;state[type].periods=Array.from(periods).sort()
 }
 async function refresh(type){
-  var api=durableApi(),hadLocal=(state[type].rows||[]).length>0;
+  var hadLocal=(state[type].rows||[]).length>0;
   if(!hadLocal)hadLocal=await localPreview(type);
-  if(!cloudLoginReady()||!api||typeof api.getComplianceDolRecords!=='function'){
-    setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false
-  }
+  if(!cloudLoginReady()){setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false}
   try{
-    var remote=await bounded(api.getComplianceDolRecords(type),8500,'Challan cloud sync'),local=await dbAll(),byId={},byHash={};
+    var pack=await cloudRecords(type),remote=pack.records,local=await dbAll(),byId={},byHash={};
     local.filter(function(r){return r&&r.type===type}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash)]=r});
     var rows=(remote||[]).map(function(x){
       var r=localRecordFromCloud(x),old=byId[String(r.id)]||(r.hash&&byHash[String(r.hash)])||null;
-      if(old){r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';r.cloudOnly=!(r.blob||r.opfsPath)}
+      if(old){
+        r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';
+        r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile)
+      }
       return r
-    });
+    }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)});
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
-    rebuildIndex(type);renderFiles(type);setStatus(type,'Shared backend loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+'.');return true
+    rebuildIndex(type);renderFiles(type);
+    setStatus(type,(pack.mode==='v4'?'Shared backend + original-file vault loaded ✓':'Shared compatibility index loaded ✓')+' · '+rows.length+' challan'+(rows.length===1?'':'s')+'.');
+    return true
   }catch(e){
     if(!(state[type].rows||[]).length)await localPreview(type);
-    renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh timed out. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
+    renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh failed. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
   }
 }
 function addLibraryCss(){
@@ -476,9 +520,11 @@ function renderMissingMonths(type){
   box.innerHTML='<div class="cd2-missbox"><div class="cd2-misshead"><b>📅 '+esc(year)+' Challan Coverage</b><span>'+(missing.length?missing.length+' missing month'+(missing.length===1?'':'s'):'All expected months uploaded ✓')+'</span></div><div class="cd2-monthgrid">'+chips.join('')+'</div></div>'
 }
 async function downloadChallan(type,id){
-  var rec=await dbGet(id);if(!rec){setStatus(type,'Download failed — saved file not found',true);return}
+  var rec=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!rec){setStatus(type,'Download failed — saved file not found',true);return}
   try{
-    var blob=await getStoredBlob(rec);if(!blob)throw new Error('Original file missing from local vault');
+    setStatus(type,'Preparing original file…');
+    var blob=await recordBlob(type,rec,function(p){setStatus(type,'Downloading original from shared vault… '+p+'%')});
+    if(!blob)throw new Error('Original file unavailable; Backend V4 file vault is required for another device');
     var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();
     setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
   }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
@@ -516,49 +562,39 @@ async function updatePeriod(type,id,period){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
   try{
     r=Object.assign({},r,{period:period||'',periodSource:'manual',updatedAt:new Date().toISOString()});
-    var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
-    await api.saveComplianceDolConfirmed(cloudRecordFromLocal(r));
+    var v=vaultApi(),back;
+    if(cloudMode[type]==='v4'&&v&&typeof v.update==='function')back=await v.update(r);
+    else{
+      var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
+      back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(r))
+    }
     var local=await dbGet(id);if(local){local.period=r.period;local.periodSource='manual';local.updatedAt=r.updatedAt;local.cloudSynced=true;await dbPut(local)}
     await refresh(type);setStatus(type,'Month saved in shared backend ✓ — '+(r.period?periodLabel(r.period):'month cleared'))
-  }catch(e){setStatus(type,'Month update failed — '+(e.message||e),true)}
+  }catch(e){await refresh(type);setStatus(type,'Month update failed — '+(e.message||e),true)}
 }
 async function deleteOne(type,id){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
-  if(!confirm('Permanently delete this challan and every duplicate copy from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
+  if(!confirm('Permanently delete this selected challan from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
   setStatus(type,'Deleting permanently…');
   try{
-    var api=durableApi();if(!api||typeof api.deleteComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
-    var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';
-    await api.deleteComplianceDolConfirmed(target);
-
-    var all=await dbAll(),sameName=logicalName(r.name),samePeriod=String(r.period||''),purged=0;
+    var v=vaultApi();
+    if(cloudMode[type]==='v4'&&v&&typeof v.deleteRecord==='function')await v.deleteRecord(r);
+    else{
+      var api=durableApi();if(!api||typeof api.deleteComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
+      var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';await api.deleteComplianceDolConfirmed(target)
+    }
+    var all=await dbAll(),purged=0;
     for(var i=0;i<all.length;i++){
       var x=all[i];if(!x||x.type!==type)continue;
-      var same=String(x.id)===String(r.id)||
-        (r.hash&&x.hash&&String(x.hash)===String(r.hash))||
-        (r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))||
-        (!r.hash&&sameName&&logicalName(x.name)===sameName&&(!samePeriod||String(x.period||'')===samePeriod));
-      if(!same)continue;
-      try{await opfsDelete(x)}catch(_){}
-      await dbDelete(x.id);purged++
+      var same=String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId));
+      if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
-    await writeVaultManifest();
-    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    await writeVaultManifest();try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     await refresh(type);
-
-    var still=(state[type].rows||[]).some(function(x){
-      return String(x.id)===String(r.id)||
-        (r.hash&&x.hash&&String(x.hash)===String(r.hash))||
-        (r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))||
-        (!r.hash&&sameName&&logicalName(x.name)===sameName&&(!samePeriod||String(x.period||'')===samePeriod))
-    });
-    if(still)throw new Error('Delete verification failed — same challan still exists in cloud');
-    setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan')+(purged>1?' · '+purged+' local copies cleared':''))
-  }catch(e){
-    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    await refresh(type);
-    setStatus(type,'Delete failed — '+(e.message||e),true)
-  }
+    var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
+    if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
+    setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''))
+  }catch(e){try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}await refresh(type);setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
 
 function cloudRecordFromLocal(r){
@@ -569,7 +605,7 @@ function cloudRecordFromLocal(r){
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||''),type=String(r&&r.type||'');
   var id=hash&&type?uid(type,hash):String(r&&r.id||'');
-  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||''),cloudOnly:true}
+  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name))}
 }
 async function sanitizeLocalTypeMixups(){
   var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),fixed=0;
@@ -721,47 +757,57 @@ function syncCloudIndexes(type){
 
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
-  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend master · local cache only for Open/Download';
-  var api=durableApi();if(!cloudLoginReady()||!api||typeof api.getComplianceDolRecords!=='function'){setStatus(type,'Login/cloud backend required before upload.',true);return}
-  var remoteBoth=await Promise.all([api.getComplianceDolRecords('esic'),api.getComplianceDolRecords('pf')]),byHash={},otherByHash={};
-  (remoteBoth[type==='esic'?0:1]||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
-  (remoteBoth[type==='esic'?1:0]||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)otherByHash[h]=localRecordFromCloud(x)});
-  var saved=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[];
+  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend · local viewer cache';
+  if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
+  var packs;
+  try{packs=await Promise.all([cloudRecords('esic'),cloudRecords('pf')])}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
+  var mode=(packs[0].mode==='v4'&&packs[1].mode==='v4')?'v4':'legacy',byHash={},otherByHash={};
+  (packs[type==='esic'?0:1].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
+  (packs[type==='esic'?1:0].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)otherByHash[h]=localRecordFromCloud(x)});
+  var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0};
   for(var i=0;i<files.length;i++){
-    var f=files[i];setStatus(type,'Saving '+(i+1)+' / '+files.length+' · '+f.name);
+    var f=files[i];setStatus(type,'Checking '+(i+1)+' / '+files.length+' · '+f.name);
     try{
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
       var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null,cross=otherByHash[hash]||null;
-      if(cross){
-        dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue
-      }
+      if(cross){dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue}
       if(existing){
-        // Backend already owns this hash. Keep a local copy only for Open/Download on this device.
         var localExisting=await dbGet(existing.id);
         if(!localExisting){
           var attachBlob=new Blob([buf],{type:fileMime(f.name)}),cacheRec=Object.assign({},existing,{blob:null,storage:'indexeddb',cloudOnly:false});
           var vaultedAttach=false;try{vaultedAttach=await opfsSave(cacheRec,attachBlob)}catch(_){}
           if(!vaultedAttach)cacheRec.blob=attachBlob;cacheRec.storage=vaultedAttach?'opfs':'indexeddb';await dbPut(cacheRec);await writeVaultManifest();attached++
         }
-        dups++;setStatus(type,'Already exists in shared backend ✓ — '+f.name);continue
+        dups++;setStatus(type,'Already exists in shared backend ✓ — '+f.name);buf=null;continue
       }
-      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false};
+      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false,hasOriginalFile:false,mime:fileMime(f.name)};
       var vaulted=false;try{vaulted=await opfsSave(rec,blob)}catch(_){}
-      if(!vaulted)rec.blob=blob;
-      await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved locally ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
+      if(!vaulted)rec.blob=blob;await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;staged++;upsertStateRow(type,rec);
+      setStatus(type,'Staged safely · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
       try{
-        var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
+        var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
         if(parsed.detectedType&&parsed.detectedType!==type){
-          await opfsDelete(rec);await dbDelete(rec.id);delete byHash[hash];saved--;warns.push(f.name+': '+(parsed.detectedType==='pf'?'PF challan detected — upload only in PF → DOL':'ESIC challan detected — upload only in ESIC → DOL'));buf=null;blob=null;await refresh(type);continue
+          await opfsDelete(rec);await dbDelete(rec.id);delete byHash[hash];staged--;state[type].rows=(state[type].rows||[]).filter(function(x){return x.id!==rec.id});rebuildIndex(type);renderFiles(type);
+          warns.push(f.name+': '+(parsed.detectedType==='pf'?'PF challan detected — upload only in PF → DOL':'ESIC challan detected — upload only in ESIC → DOL'));buf=null;blob=null;continue
         }
         rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
-        rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
+        rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected')
       }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
-      rec.updatedAt=new Date().toISOString();await dbPut(rec);await writeVaultManifest();cloudQueue.push(rec);buf=null;blob=null;await refresh(type);await tick()
+      rec.updatedAt=new Date().toISOString();await dbPut(rec);upsertStateRow(type,rec);
+      if(mode==='v4'){
+        try{
+          setStatus(type,'Uploading original to shared backend · '+f.name+' · 0%');
+          var out=await vaultApi().upload(rec,buf,function(p){setStatus(type,'Uploading original to shared backend · '+f.name+' · '+p+'%')});
+          var sr=localRecordFromCloud(out.record||{});rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.cloudSynced=true;rec.cloudConfirmedAt=sr.cloudConfirmedAt||new Date().toISOString();rec.hasOriginalFile=!!sr.hasOriginalFile;rec.cloudOnly=false;await dbPut(rec);upsertStateRow(type,rec);
+          byHash[hash]=rec;if(out.duplicate)dups++;else cloud.saved++
+        }catch(ce){cloud.failed++;warns.push(f.name+': backend save failed — '+(ce.message||ce))}
+      }else cloudQueue.push(rec);
+      buf=null;blob=null;await tick()
     }catch(e){warns.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
   }
-  var cloud={saved:0,failed:0};if(cloudQueue.length){setStatus(type,'Uploading to shared backend…');cloud=await pushCloudBatch(cloudQueue);await writeVaultManifest()}
-  await refresh(type);var msg=[];if(cloud.saved)msg.push(cloud.saved+' saved in shared backend ✓');if(attached)msg.push(attached+' local viewer cache attached ✓');if(indexed)msg.push(indexed+' indexed ✓');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  if(mode!=='v4'&&cloudQueue.length){setStatus(type,'Uploading indexed record to compatibility backend…');var legacy=await pushCloudBatch(cloudQueue);cloud.saved+=legacy.saved;cloud.failed+=legacy.failed}
+  await writeVaultManifest();await refresh(type);
+  var msg=[];if(cloud.saved)msg.push(cloud.saved+' backend-confirmed ✓');if(attached)msg.push(attached+' local cache attached ✓');if(indexed)msg.push(indexed+' indexed ✓');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(mode!=='v4'&&staged)msg.push('Original-file cross-device vault pending Backend V4 deployment');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
   setStatus(type,msg.join(' · ')||'No files saved',!!cloud.failed||(!cloud.saved&&!attached&&!!warns.length))
 }
 function parseQueries(type){
