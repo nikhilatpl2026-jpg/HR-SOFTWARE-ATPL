@@ -6,7 +6,7 @@
 */
 (function(g){'use strict';
 if(!g||g.__ATPL_COMPLIANCE_DOL_V1__)return;
-g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.18-perf-view1';
+g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.19-viewer-gap-safe1';
 
 var DB='ATPL_COMPLIANCE_DOL_V1',VER=1,STORE='files';
 var cache={esic:[],pf:[]},lastResults={esic:[],pf:[]},searchMode={esic:'single',pf:'single'},searchIndex={esic:{},pf:{}},coveragePeriods={esic:[],pf:[]},cloudReady={esic:false,pf:false};
@@ -165,8 +165,11 @@ async function parsePdf(buf){
         if(a&&b&&a.length<12&&b.length<12&&a.length+b.length>=8&&a.length+b.length<=20&&y1!=null&&y2!=null&&Math.abs(y1-y2)<1.5&&gap>-2&&gap<10)addTokens(s+(nx.str||''),digits,alnums);
       }
     }
-    if(sample.length<12000)sample+=' '+txt;items+=arr.length;await sleep(0);
+    if(sample.length<12000)sample+=' '+txt;items+=arr.length;
+    try{if(page&&typeof page.cleanup==='function')page.cleanup()}catch(_){}
+    await sleep(0);
   }
+  try{if(doc&&typeof doc.cleanup==='function')doc.cleanup()}catch(_){}
   if(items<5||(digits.size===0&&alnums.size===0))throw new Error('Scanned/image PDF ya unreadable challan. Accuracy ke liye Excel/CSV ya selectable-text PDF upload karo.');
   return{digits:Array.from(digits),alnums:Array.from(alnums),sample:sample.slice(0,12000),detail:doc.numPages+' PDF pages · '+items+' text items scanned'};
 }
@@ -244,7 +247,7 @@ async function openViewer(type,id){
   if(!rec){viewerError('Saved challan record not found.');return}
   q('cdfViewerTitle').querySelector('b').textContent=rec.name||'Challan';
   q('cdfViewerTitle').querySelector('span').textContent=(rec.period?periodLabel(rec.period):'Month not set')+' · '+(rec.fileHash?'SHA-256 '+rec.fileHash.slice(0,16)+'…':'legacy record');
-  if(!rec.buffer){viewerError('Original file bytes are not cached on this device. Search/index data is safe, but this legacy/backend-only copy cannot be rendered here. Re-upload the exact file once; SHA-256 duplicate check will attach no second logical contribution.');return}
+  if(!rec.buffer){viewerError('Original file bytes are not cached on this device. Re-upload the exact challan once. The SHA-256 duplicate guard will attach the viewer copy to the existing record — no second logical contribution will be created.');return}
   var ext=((rec.name||'').split('.').pop()||'').toLowerCase();
   if(ext==='pdf'){
     if(!g.pdfjsLib){viewerError('PDF viewer engine unavailable.');return}
@@ -255,7 +258,17 @@ async function openViewer(type,id){
     return
   }
   if(['xlsx','xls','csv'].indexOf(ext)>=0){
-    viewer.mode='excel';if(!Array.isArray(rec.viewerSheets)||!rec.viewerSheets.length){viewerError('This is a legacy Excel challan without cached viewer sheets. Re-upload the exact file once to create the viewer cache; the SHA-256 guard prevents duplicate logical storage.');return}
+    viewer.mode='excel';
+    if(!Array.isArray(rec.viewerSheets)||!rec.viewerSheets.length){
+      try{
+        q('cdfViewerExcel').style.display='block';
+        q('cdfViewerExcel').innerHTML='<div style="padding:26px;text-align:center;color:#64748b;font-size:11px;font-weight:700">Preparing challan viewer…</div>';
+        var parsed=await parseExcel(rec.buffer,type,function(){});
+        rec.viewerSheets=parsed&&parsed.viewerSheets||[];
+        if(rec.viewerSheets.length){await dbPut(rec);viewer.rec=rec;var hit=cache[type].find(function(x){return x.id===rec.id});if(hit)hit.viewerSheets=rec.viewerSheets}
+      }catch(e0){viewerError('Excel viewer prepare failed: '+(e0&&e0.message?e0.message:e0));return}
+    }
+    if(!Array.isArray(rec.viewerSheets)||!rec.viewerSheets.length){viewerError('Excel challan viewer data unavailable. Re-upload the exact file once.');return}
     var sel=q('cdfViewerSheet');sel.innerHTML=rec.viewerSheets.map(function(s,i){return'<option value="'+i+'">'+esc(s.name||('Sheet '+(i+1)))+'</option>'}).join('');sel.style.display=rec.viewerSheets.length>1?'inline-block':'none';q('cdfViewerExcel').style.display='block';renderViewerExcel();return
   }
   viewerError('Unsupported viewer file type: '+ext)
@@ -371,7 +384,8 @@ function renderFiles(type){
   if(!list.length){box.innerHTML='<div class="cdf-empty" style="min-height:150px"><div>📚</div><b>No challans saved</b><span>1–2 years ke challans ek saath upload kar sakte ho.</span></div>';return}
   box.innerHTML=list.map(function(r){
     var confirmed=!!r.cloudConfirmedAt,cloud=confirmed?'<span class="cdf-good">Saved ✓ backend</span>':'<span class="cdf-bad">Save Failed — Retry</span>',hash=r.fileHash?(' · SHA '+r.fileHash.slice(0,10)):'';
-    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+hash+' · '+cloud+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button class="cdf-viewBtn" data-cdf-view="'+esc(r.id)+'">👁 View</button><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button><button class="cdf-deleteBtn" data-cdf-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+    var viewState=r.buffer?'<span class="cdf-good"> · View ready</span>':'<span class="cdf-warn"> · Re-upload once to open</span>';
+    return'<div class="cdf-file '+(!r.period?'warn ':'')+(r.archived?'archived':'')+'" data-id="'+esc(r.id)+'"><div><div class="cdf-fileName">'+esc(r.name)+'</div><div class="cdf-fileMeta">'+esc(r.detail||'')+' · '+Math.round((r.size||0)/1024)+' KB · '+(r.periodSource==='manual'?'manual month':r.periodSource||'')+hash+' · '+cloud+viewState+'</div></div><input type="month" data-cdf-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'" '+(r.archived?'disabled':'')+'><button class="cdf-viewBtn" data-cdf-view="'+esc(r.id)+'">👁 View</button><button data-cdf-archive="'+esc(r.id)+'">'+(r.archived?'Restore':'Archive')+'</button><button class="cdf-deleteBtn" data-cdf-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
   }).join('');
 }
 async function uploadFiles(type,files){
@@ -455,17 +469,17 @@ async function search(type){
     var last=known.length?known[known.length-1].period:'',later=last?knownPeriods.filter(function(p){return p>last}).length:0,months=Array.from(new Set(known.map(function(r){return r.period}))).sort();
     results.push({id:id,matches:matches,unresolved:unresolved,known:known,last:last,laterChecked:later,months:months})
   });
-  lastResults[type]=results;renderResults(type);q(type+'DolExport').disabled=false;status.textContent='✅ Indexed search · '+queries.length+' ID(s) · '+logicalRecords(type).length+' backend-confirmed challans · no PDF re-parse.';
+  lastResults[type]=results;renderResults(type);q(type+'DolExport').disabled=false;status.textContent='✅ Indexed search · '+queries.length+' ID(s) · '+logicalRecords(type).length+' backend-confirmed challans · gaps ignored · latest matched contribution month = DOL month · no PDF re-parse.';
 }
 
 function renderResults(type){
   var box=q(type+'DolResults'),res=lastResults[type]||[];if(!res.length){box.innerHTML='<div class="cdf-empty"><div>🔎</div><b>No search yet</b></div>';return}
-  var h='<table class="cdf-table"><thead><tr><th>'+idLabel(type)+'</th><th>LAST CONTRIBUTION MONTH</th><th>MATCHED MONTHS</th><th>AFTER LAST</th><th>SOURCES / STATUS</th></tr></thead><tbody>';
+  var h='<table class="cdf-table"><thead><tr><th>'+idLabel(type)+'</th><th>LAST CONTRIBUTION / DOL MONTH</th><th>MATCHED MONTHS</th><th>AFTER LAST</th><th>SOURCES / STATUS</th></tr></thead><tbody>';
   res.forEach(function(r){
     var lastCell,status,src=r.matches.map(function(x){return (x.period?periodLabel(x.period):'MONTH REQUIRED')+' — '+x.name}).join('<br>');
     if(!r.matches.length){lastCell='<span class="cdf-bad">Not found</span>';status='<span class="cdf-bad">No exact match in uploaded challans</span>'}
     else if(r.unresolved.length){lastCell='<span class="cdf-warn">Blocked: set month</span>';status='<span class="cdf-warn">'+r.unresolved.length+' matched file(s) have unresolved month. No DOL guess made.</span>'}
-    else{lastCell='<span class="cdf-last">'+periodLabel(r.last)+'</span><div class="cdf-good">Suggested DOL month / last contribution</div>';status='<span class="cdf-good">All matched periods resolved</span>'}
+    else{lastCell='<span class="cdf-last">'+periodLabel(r.last)+'</span><div class="cdf-good">DOL month = latest contribution month</div>';status='<span class="cdf-good">Gaps ignored · all matched periods resolved</span>'}
     h+='<tr><td><b>'+esc(r.id)+'</b></td><td>'+lastCell+'</td><td><div class="cdf-timeline">'+(r.months.length?r.months.map(function(p){return'<span class="cdf-month">'+periodLabel(p)+'</span>'}).join(''):'—')+'</div></td><td>'+(r.last?'<b>'+r.laterChecked+'</b> later uploaded period(s) checked with no match':'—')+'</td><td><div class="cdf-sources">'+src+'</div><div style="margin-top:4px">'+status+'</div></td></tr>';
   });h+='</tbody></table>';box.innerHTML=h;
 }
