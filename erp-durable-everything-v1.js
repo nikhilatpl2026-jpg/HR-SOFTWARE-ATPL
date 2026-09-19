@@ -241,23 +241,38 @@
   async function deleteComplianceDolBatchConfirmed(ids){
     if(!token()||!session())throw new Error('Valid login required for challan delete');
     ids=Array.from(new Set((ids||[]).map(String).filter(Boolean)));if(!ids.length)return{ok:true,deleted:0,failed:0,results:[]};
-    var records=await fetchRemote(),targets=[];
-    ids.forEach(function(id){
-      var metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&String(r.key_text||'')===id}),remoteIds=[];
-      metas.forEach(function(m){records.forEach(function(r){if(r&&r.object_key===m.object_key&&r.emp_id)remoteIds.push(String(r.emp_id))})});
-      remoteIds=Array.from(new Set(remoteIds)).sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});
-      targets.push({id:id,remoteIds:remoteIds})
-    });
-    var results=[];
-    for(var i=0;i<targets.length;i++){
-      var t=targets[i],err='';
-      try{for(var j=0;j<t.remoteIds.length;j++)await removeRemote(t.remoteIds[j]);await deleteDolLocal(t.id)}
-      catch(e){err=e&&e.message?e.message:String(e)}
-      results.push({id:t.id,ok:!err,error:err})
+    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),targets={};
+    ids.forEach(function(id){targets[id]={id:id,objectKeys:{}}});
+    function matchTarget(id,m,p){
+      var routed=dolRemoteType(p||{},m.object_kind),canonical=p?dolCanonicalId(routed,p):'',keys=[String(m.key_text||''),String(p&&p.id||''),String(canonical||'')];
+      if(keys.indexOf(String(id))>=0)targets[id].objectKeys[String(m.object_key||'')]=1
     }
-    var verify=await fetchRemote(),left={};verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&ids.indexOf(String(r.key_text||''))>=0)left[String(r.key_text||'')]=1});
-    results.forEach(function(x){if(x.ok&&left[x.id]){x.ok=false;x.error='Backend delete verification failed'}});
-    var deleted=results.filter(function(x){return x.ok}).length;return{ok:deleted===results.length,deleted:deleted,failed:results.length-deleted,results:results}
+    for(var mi=0;mi<metas.length;mi++){
+      var m=metas[mi],direct=ids.some(function(id){return String(m.key_text||'')===String(id)}),p=null;
+      try{p=await loadObject(records,m)}catch(e){if(!direct){console.warn('DOL delete lookup skipped unreadable object',m&&m.key_text,e);continue}}
+      for(var ii=0;ii<ids.length;ii++)matchTarget(ids[ii],m,p)
+    }
+    var removedRemote={},results=[];
+    for(var i=0;i<ids.length;i++){
+      var id=ids[i],t=targets[id],objectKeys=Object.keys(t.objectKeys).filter(Boolean),err='';
+      try{
+        var remoteIds=[];
+        objectKeys.forEach(function(okey){records.forEach(function(r){if(r&&String(r.object_key||'')===String(okey)&&r.emp_id)remoteIds.push(String(r.emp_id))})});
+        remoteIds=Array.from(new Set(remoteIds)).sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});
+        for(var j=0;j<remoteIds.length;j++){var rid=remoteIds[j];if(removedRemote[rid])continue;await removeRemote(rid);removedRemote[rid]=1}
+        await deleteDolLocal(id)
+      }catch(e){err=e&&e.message?e.message:String(e)}
+      results.push({id:id,ok:!err,error:err,matchedObjects:objectKeys.length})
+    }
+    var verify=await fetchRemote(),leftKeys={};
+    verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&r.object_key)leftKeys[String(r.object_key)]=1});
+    results.forEach(function(x){
+      if(!x.ok)return;
+      var keys=Object.keys(targets[x.id].objectKeys);
+      if(keys.some(function(k){return !!leftKeys[k]})){x.ok=false;x.error='Backend delete verification failed'}
+    });
+    var deleted=results.filter(function(x){return x.ok}).length;
+    return{ok:deleted===results.length,deleted:deleted,failed:results.length-deleted,results:results}
   }
   async function deleteComplianceDolConfirmed(id){var r=await deleteComplianceDolBatchConfirmed([id]);if(!r.ok)throw new Error(r.results&&r.results[0]&&r.results[0].error||'Challan delete failed');return true}
 
