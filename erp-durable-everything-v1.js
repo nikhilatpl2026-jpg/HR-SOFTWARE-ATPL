@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-authoritative-dol-final9';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-cloud-master-final11';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -151,28 +151,17 @@
   async function getComplianceDolRecords(type){
     if(!token()||!session())throw new Error('Valid login required for challan cloud access');
     type=String(type||'').toLowerCase();if(type!=='esic'&&type!=='pf')throw new Error('Invalid challan type');
-    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),candidates=[];
+    var kind=dolKind(type),records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind}),best={};
     for(var i=0;i<metas.length;i++){
       var m=metas[i];
       try{
         var p=await loadObject(records,m);if(!p||!p.id)continue;
-        p.type=dolRemoteType(p,m.object_kind);
-        p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;p._dolKind=m.object_kind;p._dolSavedAt=m.saved_at||m.uploaded_at||'';
-        candidates.push(p)
+        p.type=type;p.buffer=null;p.cloudConfirmedAt=p.cloudConfirmedAt||m.saved_at||m.uploaded_at||new Date().toISOString();p._cloudVerified=true;
+        var key=dolLogicalKey(p)||('id:'+String(p.id||'')),old=best[key],oldTs=old?ms(old.cloudConfirmedAt||old.updatedAt||old.uploadedAt):0,newTs=ms(m.saved_at||m.uploaded_at||p.updatedAt||p.uploadedAt);
+        if(!old||newTs>=oldTs)best[key]=p
       }catch(e){console.warn('Compliance challan cloud read failed',m&&m.key_text,e)}
     }
-    await migrateLegacyDolCloud(records,candidates);
-    var pfKeys={};
-    candidates.forEach(function(p){if(p&&p.type==='pf'){var k=dolLogicalKey(p);if(k)pfKeys[k]=1}});
-    var best={};
-    candidates.forEach(function(p){
-      if(!p||p.type!==type)return;
-      var key=dolLogicalKey(p)||('id:'+String(p.id||''));
-      if(type==='esic'&&key&&pfKeys[key])return;
-      var score=p._dolKind===dolKind(type)?3:(p._dolKind===DOL_KIND_LEGACY?1:0),old=best[key],oldScore=old?(old._dolKind===dolKind(type)?3:(old._dolKind===DOL_KIND_LEGACY?1:0)):-1;
-      if(!old||score>oldScore||(score===oldScore&&ms(p._dolSavedAt)>ms(old._dolSavedAt)))best[key]=p
-    });
-    return Object.keys(best).map(function(k){var p=best[k];delete p._dolKind;delete p._dolSavedAt;return p})
+    return Object.keys(best).map(function(k){return best[k]})
   }
 
   async function saveComplianceDolConfirmed(rec){
@@ -207,7 +196,7 @@
     }
     var ws=[];for(var w=0;w<Math.min(2,prepared.length);w++)ws.push(worker());await Promise.all(ws);
     var remote;try{remote=await fetchRemote()}catch(e){remote=[];prepared.forEach(function(x){if(!x.error)x.error='Backend read-back failed: '+(e&&e.message?e.message:e)})}
-    var metas={};remote.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind))metas[String(r.object_kind)+'|'+String(r.key_text||'')]=r});
+    var metas={};remote.forEach(function(r){if(r&&r._atpl_kind==='meta'&&(r.object_kind===DOL_KIND_ESIC||r.object_kind===DOL_KIND_PF))metas[String(r.object_kind)+'|'+String(r.key_text||'')]=r});
     var out=[];
     for(var j=0;j<prepared.length;j++){
       var x=prepared[j];
@@ -303,6 +292,6 @@
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');setTimeout(function(){run(true)},2200);root.addEventListener('online',function(){setTimeout(function(){run(true)},200)});root.addEventListener('focus',function(){run(false)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)run(false)});root.document.addEventListener('atpl-compliance-dol-local-change',function(){setTimeout(function(){run(true)},300)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#uaLoginBtn,#vn-empmaster,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true);setInterval(function(){if(!root.document.hidden)run(false)},90000);setInterval(hookMutations,5000)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
