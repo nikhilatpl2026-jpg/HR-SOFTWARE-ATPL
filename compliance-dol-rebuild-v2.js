@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-account-cloud3';
+var BUILD='2026.09.19-account-cloud4';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -323,7 +323,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="account-cloud3">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="account-cloud4">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · V2.2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Original challan file vault me save hota hai, phir index hota hai. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -477,7 +477,7 @@ function durableApi(){return root.ATPLDurableEverythingV1||null}
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
-  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.2-account-cloud3',cloudConfirmedAt:r.cloudConfirmedAt||''}
+  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.2-account-cloud4',cloudConfirmedAt:r.cloudConfirmedAt||''}
 }
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||'');
@@ -522,7 +522,11 @@ async function pullCloudIndex(type){
   }catch(e){console.warn('DOL V2 cloud pull failed',type,e);return false}
 }
 async function syncCloudIndexes(){
-  await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);return true
+  var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length});
+  if(pending.length)await pushCloudBatch(pending);
+  await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
+  await Promise.all([refresh('esic'),refresh('pf')]);
+  return true
 }
 
 async function upload(type,fileList){
@@ -615,7 +619,7 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='account-cloud3'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='account-cloud4'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
   if(ok){pullCloudIndex(type);return true}
   page.innerHTML=pageHtml(type);wire(type);pullCloudIndex(type).then(function(){return refresh(type)}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
