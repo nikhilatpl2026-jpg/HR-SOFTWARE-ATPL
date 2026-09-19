@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-instant-shared3';
+var BUILD='2026.09.19-final-stability1';
 if(!root||root.__ATPL_MOBILE_SHARED_HARDFIX__===BUILD)return;
 root.__ATPL_MOBILE_SHARED_HARDFIX__=BUILD;
 
@@ -64,13 +64,13 @@ function injectMaster(records){
 }
 async function pullMaster(force){
   var t=tok();if(!t)return 0;if(!force&&Date.now()-lastMasterPull<8000)return cleanMaster(J(root.localStorage.getItem(MASTER)||'[]',[])).length;
-  lastMasterPull=Date.now();var r=await api({action:'getEmployeeMaster',token:t},25000);
+  lastMasterPull=Date.now();var r=await api({action:'getEmployeeMaster',token:t},7000);
   if(!(r&&r.ok&&Array.isArray(r.records)))throw new Error(r&&r.error||'Employee Master cloud load failed');
   return injectMaster(r.records)
 }
 async function pullUsers(user){
   if(!(user&&user.admin===true))return [user];
-  try{var r=await api({action:'listUsers',token:tok()},12000);if(r&&r.ok&&Array.isArray(r.users)&&r.users.length){root.localStorage.setItem(USERS,JSON.stringify(r.users));return r.users}}catch(_){}
+  try{var r=await api({action:'listUsers',token:tok()},6000);if(r&&r.ok&&Array.isArray(r.users)&&r.users.length){root.localStorage.setItem(USERS,JSON.stringify(r.users));return r.users}}catch(_){}
   return [user]
 }
 function backgroundShared(){
@@ -110,7 +110,7 @@ async function hardLogin(ev){
   var uid=id.value.trim(),pass=pw.value;if(!uid||!pass){setStatus('User ID aur Password enter karo.',true);return}
   busy=true;setStatus('');busyBtn(true,'VERIFYING...');
   try{
-    var h=await sha256(pass),lr=await api({action:'login',user_id:uid,password_hash:h},15000);
+    var h=await sha256(pass),lr=await api({action:'login',user_id:uid,password_hash:h},9000);
     if(!(lr&&lr.ok&&lr.user&&lr.token))throw new Error(lr&&lr.error||'Wrong User ID or Password.');
     setSession(lr.user,lr.token);unlockApp(lr.user,true);setStatus('');
     try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:lr.user}}))}catch(_){}
@@ -130,7 +130,6 @@ function hookNav(){
 }
 function boot(){
   root.document.addEventListener('click',captureClick,true);root.document.addEventListener('keydown',captureEnter,true);hookNav();
-  try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.ping==='function')root.setTimeout(function(){root.ATPLCloudAPI.ping().catch(function(){})},1200)}catch(_){}
   root.addEventListener('online',function(){if(tok())root.setTimeout(function(){hydrateAfterLogin(current()||sess())},700)});
   if(tok()&&sess()){unlockApp(current()||sess(),false);setTimeout(function(){hydrateAfterLogin(current()||sess())},900)}
 }
