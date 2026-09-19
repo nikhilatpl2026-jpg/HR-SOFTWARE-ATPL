@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-cloud-only-final13-delete-fix';
+var BUILD='2026.09.19-cloud-only-final14-hard-delete';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -338,7 +338,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final11">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final14-hard-delete">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLOUD MASTER V3</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Library <b>shared backend se live load hoti hai</b>; local browser data list decide nahi karta. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -498,21 +498,43 @@ async function updatePeriod(type,id,period){
 }
 async function deleteOne(type,id){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
-  if(!confirm('Permanently delete this challan from the shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
+  if(!confirm('Permanently delete this challan and every duplicate copy from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
+  setStatus(type,'Deleting permanently…');
   try{
     var api=durableApi();if(!api||typeof api.deleteComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
-    await api.deleteComplianceDolConfirmed(id);
-    var local=await dbGet(id);if(local){await opfsDelete(local);await dbDelete(id)}
+    var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';
+    await api.deleteComplianceDolConfirmed(target);
+
+    var all=await dbAll(),sameName=logicalName(r.name),samePeriod=String(r.period||''),purged=0;
+    for(var i=0;i<all.length;i++){
+      var x=all[i];if(!x||x.type!==type)continue;
+      var same=String(x.id)===String(r.id)||
+        (r.hash&&x.hash&&String(x.hash)===String(r.hash))||
+        (r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))||
+        (!r.hash&&sameName&&logicalName(x.name)===sameName&&(!samePeriod||String(x.period||'')===samePeriod));
+      if(!same)continue;
+      try{await opfsDelete(x)}catch(_){}
+      await dbDelete(x.id);purged++
+    }
     await writeVaultManifest();
-    await pullCloudIndex(type);
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     await refresh(type);
-    var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))});
-    if(still)throw new Error('Delete verification failed — challan still exists in shared backend');
-    setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))
-  }catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
+
+    var still=(state[type].rows||[]).some(function(x){
+      return String(x.id)===String(r.id)||
+        (r.hash&&x.hash&&String(x.hash)===String(r.hash))||
+        (r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))||
+        (!r.hash&&sameName&&logicalName(x.name)===sameName&&(!samePeriod||String(x.period||'')===samePeriod))
+    });
+    if(still)throw new Error('Delete verification failed — same challan still exists in cloud');
+    setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan')+(purged>1?' · '+purged+' local copies cleared':''))
+  }catch(e){
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    await refresh(type);
+    setStatus(type,'Delete failed — '+(e.message||e),true)
+  }
 }
 
-function durableApi(){return root.ATPLDurableEverythingV1||null}
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
@@ -759,7 +781,7 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final11'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final14-hard-delete'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
   if(ok){syncCloudIndexes();return true}
   page.innerHTML=pageHtml(type);wire(type);refresh(type).then(function(){return syncCloudIndexes()}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
