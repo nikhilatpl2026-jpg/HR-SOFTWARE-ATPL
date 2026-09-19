@@ -537,9 +537,9 @@ function syncCloudIndexes(){
   if(!cloudLoginReady())return Promise.resolve(false);
   if(cloudSyncPromise)return cloudSyncPromise;
   cloudSyncPromise=(async function(){
+    await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
     var local=await dbAll(),pending=local.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}),batch=pending.slice(0,CLOUD_BATCH_SIZE),saved={saved:0,failed:0};
     if(batch.length)saved=await pushCloudBatch(batch);
-    await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);
     await Promise.all([refresh('esic'),refresh('pf')]);
     var after=await dbAll(),remaining=after.filter(function(r){return r&&['esic','pf'].indexOf(r.type)>=0&&!r.cloudSynced&&!r.cloudOnly&&(r.ids||[]).length}).length;
     if(remaining){setStatus('esic','Shared cloud sync running · '+remaining+' challan(s) remaining…');setStatus('pf','Shared cloud sync running · '+remaining+' challan(s) remaining…');scheduleCloudRetry()}

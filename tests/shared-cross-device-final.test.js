@@ -20,6 +20,7 @@ assert(dol.includes("x.record&&x.record.id"),'batch acknowledgement must use the
 assert(dol.includes('if(cloudSyncPromise)return cloudSyncPromise'),'DOL sync must be single-flight');
 assert(dol.includes('cloudWriteTail'),'DOL cloud writes must be serialized');
 assert(dol.includes('pending.slice(0,CLOUD_BATCH_SIZE)'),'legacy migration must upload in bounded batches');
+assert(dol.indexOf("await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')])")<dol.indexOf('pending.slice(0,CLOUD_BATCH_SIZE)'),'cloud records must reconcile before pending local migration');
 assert(!/migrateDbFilesToVault\(\);await syncCloudIndexes\(\)/.test(dol),'DOL boot must not block local UI on cloud migration');
 
 const account=read('erp-account-cloud-restore-v1.js');
