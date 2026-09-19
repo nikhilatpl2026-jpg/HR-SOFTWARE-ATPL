@@ -73,9 +73,9 @@
     tracked=next.finally(function(){if(chains[k]===tracked)delete chains[k]});chains[k]=tracked;
     return tracked
   }
-  async function upsertRaw(record){
+  async function upsertRaw(record,base){
     var id=codeOf(record),token=tok();if(!id||isSystemRecord(record)||!token)throw new Error('Valid employee/login required');
-    var d=await api({action:'upsertEmployeeMaster',token:token,emp_id:id,record_json:JSON.stringify(cleanRecord(record))},18000);
+    var d=await api({action:'upsertEmployeeMaster',token:token,emp_id:id,record_json:JSON.stringify(cleanRecord(record)),expected_updated_at:text(base&&base._cloud_updated_at)},18000);
     if(!markBackend(d)||!d.ok)throw new Error(d&&d.error||'Backend save failed');
     return d
   }
@@ -93,7 +93,7 @@
         if(remote&&samePayload(record,remote)){
           var already=cloudRecord(remote);clearDirty(k);if(opts.commitLocal)commitConfirmed(already);return{ok:true,record:already,verified:true,noChange:true}
         }
-        await upsertRaw(record);
+        await upsertRaw(record,remote);
         var verify=remoteMap(await fetchCloud())[k]||null;
         if(!verify||!samePayload(record,verify))throw new Error('Backend did not confirm the exact saved employee record');
         var confirmed=cloudRecord(verify);clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);
@@ -120,10 +120,10 @@
       if(!k)results.push({ok:false,error:'Employee code required',record:r});
       else if(conf){conflicts[k]=conf;results.push({ok:false,conflict:true,error:conf.error,remote:conf.remote,record:r})}
       else if(rm[k]&&samePayload(r,rm[k]))results.push({ok:true,record:cloudRecord(rm[k]),verified:true,noChange:true});
-      else safe.push({record:r,key:k});
+      else safe.push({record:r,key:k,base:rm[k]||null});
     });
     var at=0,writeErrors={};
-    async function worker(){while(true){var i=at++;if(i>=safe.length)return;var x=safe[i];try{await serialize(x.key,function(){return upsertRaw(x.record)});}catch(e){writeErrors[x.key]=e&&e.message?e.message:String(e)}}}
+    async function worker(){while(true){var i=at++;if(i>=safe.length)return;var x=safe[i];try{await serialize(x.key,function(){return upsertRaw(x.record,x.base)});}catch(e){writeErrors[x.key]=e&&e.message?e.message:String(e)}}}
     var ws=[];for(var n=0;n<Math.min(2,safe.length);n++)ws.push(worker());await Promise.all(ws);
     var verifyRecords=[];
     try{verifyRecords=await fetchCloud()}catch(e){safe.forEach(function(x){if(!writeErrors[x.key])writeErrors[x.key]='Save sent but backend read-back failed: '+e.message})}
@@ -141,7 +141,7 @@
           var conf=conflictCheck(opts.baseRecord,opts.baseRecord,remote);
           if(conf&&!samePayload(opts.baseRecord,remote)){conflicts[k]=conf;return{ok:false,conflict:true,error:conf.error,remote:conf.remote}}
         }else if(remote&&!opts.baseRecord)return{ok:false,conflict:true,error:'Refresh Employee Master before deleting this record.',remote:cloudRecord(remote)};
-        var d=await api({action:'deleteEmployeeMaster',token:tok(),emp_id:codeOf(remote||opts.baseRecord||{emp_id:id})},18000);
+        var d=await api({action:'deleteEmployeeMaster',token:tok(),emp_id:codeOf(remote||opts.baseRecord||{emp_id:id}),expected_updated_at:text(remote&&remote._cloud_updated_at)},18000);
         if(!markBackend(d)||!d.ok)throw new Error(d&&d.error||'Backend delete failed');
         var verify=remoteMap(await fetchCloud())[k];if(verify)throw new Error('Backend delete was not confirmed');
         clearDirty(k);return{ok:true,verified:true}

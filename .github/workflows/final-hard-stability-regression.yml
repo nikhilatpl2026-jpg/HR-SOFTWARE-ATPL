@@ -2,6 +2,8 @@ name: Final Hard Stability Regression
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 jobs:
   regression:
@@ -13,7 +15,7 @@ jobs:
         with:
           node-version: 22
       - name: Run stability regression
-        run: node --test tests/final-hard-stability-regression.test.js tests/shared-cross-device-final.test.js tests/ui-control-data-safety-audit.test.js
+        run: node --test tests/*.test.js
       - name: Install browser smoke dependency
         run: npm install --no-save puppeteer-core@24
       - name: Run browser runtime smoke

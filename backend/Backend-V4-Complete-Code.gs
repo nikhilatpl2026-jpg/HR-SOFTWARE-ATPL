@@ -19,8 +19,6 @@ var DOL_UPLOAD_PART_MAX = 40000;
 function doGet(e) {
   var p = (e && e.parameter) || {};
   try {
-    ensureUsersSheet_();
-    ensureDataSheets_();
     var action = String(p.action || 'ping');
     var data;
     if (action === 'ping') data = {ok:true, service:'Arora ERP Shared Backend', version:BACKEND_VERSION};
@@ -147,11 +145,29 @@ function getSystemRecords_(p){
   return {ok:true,records:out,count:out.length,kind:kind||'all',version:BACKEND_VERSION};
 }
 
-function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id),now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
-function deleteEmployeeMaster_(p){var u=requireUser_(p.token),old=findMaster_(p.emp_id);if(!old)return {ok:true};var lock=LockService.getScriptLock();lock.waitLock(10000);try{ensureDataSheets_().master.deleteRow(old.row);return {ok:true,deleted:String(p.emp_id||''),deleted_by:u.id};}finally{lock.releaseLock();}}
+function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id);if(p.expected_updated_at!=null&&String(p.expected_updated_at)!==String(old&&old.updated_at||''))return {ok:false,conflict:true,error:'Employee changed on another device. Refresh before saving.'};var now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
+function deleteEmployeeMaster_(p){var u=requireUser_(p.token),lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(p.emp_id);if(!old)return {ok:true};if(p.expected_updated_at!=null&&String(p.expected_updated_at)!==String(old.updated_at||''))return {ok:false,conflict:true,error:'Employee changed on another device. Refresh before deleting.'};ensureDataSheets_().master.deleteRow(old.row);return {ok:true,deleted:String(p.emp_id||''),deleted_by:u.id};}finally{lock.releaseLock();}}
 
 
-function appendActivity_(p){var u=requireUser_(p.token),sh=ensureDataSheets_().activity,now=new Date().toISOString(),id=Utilities.getUuid();var meta=String(p.meta_json||'{}');try{JSON.parse(meta);}catch(_){meta='{}';}var lock=LockService.getScriptLock();lock.waitLock(10000);try{sh.appendRow([id,u.id,u.name,String(p.event_type||'activity'),String(p.page||''),String(p.action_text||p.action_name||''),meta,now]);}finally{lock.releaseLock();}return {ok:true,event_id:id,created_at:now};}
+function appendActivity_(p){
+  var u=requireUser_(p.token),sh=ensureDataSheets_().activity,now=new Date().toISOString();
+  var id=String(p.event_id||Utilities.getUuid()),meta=String(p.meta_json||'{}');
+  if(id.length>160)return {ok:false,error:'Invalid event_id'};
+  try{JSON.parse(meta)}catch(_){meta='{}'}
+  var row=[id,u.id,u.name,String(p.event_type||'activity'),String(p.page||''),String(p.action_text||p.action_name||''),meta,now];
+  var lock=LockService.getScriptLock();lock.waitLock(10000);
+  try{
+    var n=sh.getLastRow(),match=n>1?sh.getRange(2,1,n-1,1).createTextFinder(id).matchEntireCell(true).useRegularExpression(false).findNext():null;
+    if(match){
+      var old=sh.getRange(match.getRow(),1,1,8).getValues()[0];
+      if([1,3,4,5,6].some(function(k){return String(old[k])!==String(row[k])}))return {ok:false,error:'Activity request ID reused with different data'};
+      return {ok:true,event_id:id,created_at:String(old[7]),duplicate:true};
+    }
+    sh.appendRow(row);
+    return {ok:true,event_id:id,created_at:now};
+  }finally{lock.releaseLock()}
+}
+
 function listActivity_(p){requireAdmin_(p.token);var sh=ensureDataSheets_().activity,n=sh.getLastRow();if(n<2)return {ok:true,events:[]};var count=Math.min(2000,n-1),start=Math.max(2,n-count+1),rows=sh.getRange(start,1,count,8).getValues(),out=rows.map(function(r){var m={};try{m=JSON.parse(String(r[6]||'{}'));}catch(_){}return {id:String(r[0]||''),user_id:String(r[1]||''),user_name:String(r[2]||''),type:String(r[3]||''),page:String(r[4]||''),action:String(r[5]||''),meta:m,iso:String(r[7]||''),ts:new Date(r[7]).getTime()||0};});return {ok:true,events:out.reverse()};}
 
 function doPost(e) {
@@ -159,8 +175,6 @@ function doPost(e) {
   var requestId = String(p.request_id || '');
   var data;
   try {
-    ensureUsersSheet_();
-    ensureDataSheets_();
     var action = String(p.action || '');
     if (action === 'appendDOLChunkBatch') data = appendDOLChunkBatch_(p);
     else data = {ok:false,error:'Unknown POST action'};
@@ -168,7 +182,7 @@ function doPost(e) {
     data = {ok:false,error:String(err && err.message ? err.message : err)};
   }
   var payload = JSON.stringify({channel:'ATPL_DOL_V4_POST',request_id:requestId,data:data}).replace(/</g,'\\u003c');
-  return HtmlService.createHtmlOutput('<script>parent.postMessage('+payload+',"*");<\\/script>')
+  return HtmlService.createHtmlOutput('<script>parent.postMessage('+payload+',"*");</script>')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -216,6 +230,7 @@ function appendDOLChunkBatch_(p) {
         if(existing[k]!==x.data)throw new Error('Upload retry data mismatch at part '+x.idx);
         return;
       }
+      existing[k]=x.data;
       rows.push([uploadId,x.idx,x.data,u.id,new Date().toISOString()]);
     });
     if(rows.length)ph.getRange(ph.getLastRow()+1,1,rows.length,5).setValues(rows);
@@ -334,6 +349,7 @@ function cleanupStaleDolParts_() {
   var last=Number(props.getProperty(key)||0);if(now-last<3600000)return;
   var lock=LockService.getScriptLock();if(!lock.tryLock(1500))return;
   try{
+    var saved=props.getProperties();Object.keys(saved).forEach(function(k){if(k.indexOf('ATPL_DOL_UPLOAD_')!==0)return;try{if(now-Date.parse(JSON.parse(saved[k]).created_at)>8*60*60*1000)props.deleteProperty(k)}catch(_){}});
     var ph=ensureDolSheets_().parts,n=ph.getLastRow();if(n<2){props.setProperty(key,String(now));return}
     var rows=ph.getRange(2,1,n-1,5).getValues(),cut=now-(8*60*60*1000),keep=[],removed=0;
     rows.forEach(function(r){var ts=Date.parse(String(r[4]||''))||0;if(ts&&ts>=cut)keep.push(r);else removed++});
@@ -352,14 +368,16 @@ function beginDOLUpload_(p) {
   if (dup) return {ok:true,duplicate:true,record:publicDol_(dup)};
   var uploadId = Utilities.getUuid().replace(/-/g,'');
   var cache = CacheService.getScriptCache();
-  cache.put('ATPL_DOL_UPLOAD_'+uploadId, JSON.stringify({
+  var uploadMeta=JSON.stringify({
     user_id:u.id,type:type,file_hash:hash,name:String(p.name||'challan'),
     size:Number(p.size||0)||0,mime:String(p.mime||'application/octet-stream'),
     period:String(p.period||''),period_source:String(p.period_source||''),
     digit_ids:parseJsonArray_(p.digit_ids_json||'[]'),
     alnum_ids:parseJsonArray_(p.alnum_ids_json||'[]'),
     created_at:new Date().toISOString()
-  }), 21600);
+  });
+  PropertiesService.getScriptProperties().setProperty('ATPL_DOL_UPLOAD_'+uploadId,JSON.stringify({user_id:u.id,type:type,file_hash:hash,created_at:new Date().toISOString(),receipt_only:true}));
+  cache.put('ATPL_DOL_UPLOAD_'+uploadId,uploadMeta,21600);
   return {ok:true,duplicate:false,upload_id:uploadId};
 }
 
@@ -381,9 +399,12 @@ function appendDOLChunk_(p) {
 }
 
 function commitDOLUpload_(p) {
-  var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId);
+  var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId)||PropertiesService.getScriptProperties().getProperty('ATPL_DOL_UPLOAD_'+uploadId);
   if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}
   var meta=JSON.parse(raw);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  var completed=findDolByHash_(meta.file_hash);
+  if(completed)return {ok:true,duplicate:true,record:publicDol_(completed)};
+  if(meta.receipt_only)return {ok:false,error:'Upload session expired; retry the original file'};
   var ph=ensureDolSheets_().parts,n=ph.getLastRow(),partMap={};
   if(n>=2){
     ph.getRange(2,1,n-1,5).getValues().forEach(function(r){
@@ -401,18 +422,19 @@ function commitDOLUpload_(p) {
   var actualHash=dolBytesSha256_(bytes);
   if(actualHash!==String(meta.file_hash||'').toLowerCase())return {ok:false,error:'SHA-256 verification failed'};
   if(meta.type==='esic'&&/\b(?:ECR|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN)\b/i.test(String(meta.name||'')))return {ok:false,error:'PF file blocked from ESIC'};
-  var lock=LockService.getScriptLock();lock.waitLock(20000),file=null;
+  var lock=LockService.getScriptLock(),file=null,committed=false;lock.waitLock(20000);
   try{
     var dup=findDolByHash_(meta.file_hash);
-    if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:publicDol_(dup)};}
+    if(dup){try{cleanupDolPartsUnlocked_(uploadId)}catch(_){}return {ok:true,duplicate:true,record:publicDol_(dup)};}
     var blob=Utilities.newBlob(bytes,meta.mime||'application/octet-stream',meta.name||'challan');
     file=dolFolder_().createFile(blob);
     var now=new Date().toISOString(),id='dol_'+meta.type+'_'+String(meta.file_hash).slice(0,24),sh=ensureDolSheets_().records;
     sh.appendRow([id,meta.type,meta.name,meta.file_hash,meta.period||'',meta.period_source||'',JSON.stringify(meta.digit_ids||[]),JSON.stringify(meta.alnum_ids||[]),Number(meta.size||bytes.length)||bytes.length,meta.mime||'application/octet-stream',file.getId(),file.getUrl(),u.id,now,now]);
-    cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);
+    committed=true;
+    try{cleanupDolPartsUnlocked_(uploadId)}catch(_){}
     return {ok:true,duplicate:false,record:publicDol_(findDolById_(id))};
   }catch(e){
-    if(file){try{file.setTrashed(true);}catch(_){}}
+    if(file&&!committed){try{file.setTrashed(true);}catch(_){}}
     throw e;
   }finally{lock.releaseLock();}
 }

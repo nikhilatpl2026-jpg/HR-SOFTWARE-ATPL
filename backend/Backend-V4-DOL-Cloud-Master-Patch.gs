@@ -38,7 +38,7 @@ function doPost(e) {
     data = {ok:false,error:String(err && err.message ? err.message : err)};
   }
   var payload = JSON.stringify({channel:'ATPL_DOL_V4_POST',request_id:requestId,data:data}).replace(/</g,'\\u003c');
-  return HtmlService.createHtmlOutput('<script>parent.postMessage('+payload+',"*");<\\/script>')
+  return HtmlService.createHtmlOutput('<script>parent.postMessage('+payload+',"*");</script>')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -86,6 +86,7 @@ function appendDOLChunkBatch_(p) {
         if(existing[k]!==x.data)throw new Error('Upload retry data mismatch at part '+x.idx);
         return;
       }
+      existing[k]=x.data;
       rows.push([uploadId,x.idx,x.data,u.id,new Date().toISOString()]);
     });
     if(rows.length)ph.getRange(ph.getLastRow()+1,1,rows.length,5).setValues(rows);
@@ -204,6 +205,7 @@ function cleanupStaleDolParts_() {
   var last=Number(props.getProperty(key)||0);if(now-last<3600000)return;
   var lock=LockService.getScriptLock();if(!lock.tryLock(1500))return;
   try{
+    var saved=props.getProperties();Object.keys(saved).forEach(function(k){if(k.indexOf('ATPL_DOL_UPLOAD_')!==0)return;try{if(now-Date.parse(JSON.parse(saved[k]).created_at)>8*60*60*1000)props.deleteProperty(k)}catch(_){}});
     var ph=ensureDolSheets_().parts,n=ph.getLastRow();if(n<2){props.setProperty(key,String(now));return}
     var rows=ph.getRange(2,1,n-1,5).getValues(),cut=now-(8*60*60*1000),keep=[],removed=0;
     rows.forEach(function(r){var ts=Date.parse(String(r[4]||''))||0;if(ts&&ts>=cut)keep.push(r);else removed++});
@@ -222,14 +224,16 @@ function beginDOLUpload_(p) {
   if (dup) return {ok:true,duplicate:true,record:publicDol_(dup)};
   var uploadId = Utilities.getUuid().replace(/-/g,'');
   var cache = CacheService.getScriptCache();
-  cache.put('ATPL_DOL_UPLOAD_'+uploadId, JSON.stringify({
+  var uploadMeta=JSON.stringify({
     user_id:u.id,type:type,file_hash:hash,name:String(p.name||'challan'),
     size:Number(p.size||0)||0,mime:String(p.mime||'application/octet-stream'),
     period:String(p.period||''),period_source:String(p.period_source||''),
     digit_ids:parseJsonArray_(p.digit_ids_json||'[]'),
     alnum_ids:parseJsonArray_(p.alnum_ids_json||'[]'),
     created_at:new Date().toISOString()
-  }), 21600);
+  });
+  PropertiesService.getScriptProperties().setProperty('ATPL_DOL_UPLOAD_'+uploadId,JSON.stringify({user_id:u.id,type:type,file_hash:hash,created_at:new Date().toISOString(),receipt_only:true}));
+  cache.put('ATPL_DOL_UPLOAD_'+uploadId,uploadMeta,21600);
   return {ok:true,duplicate:false,upload_id:uploadId};
 }
 
@@ -251,9 +255,12 @@ function appendDOLChunk_(p) {
 }
 
 function commitDOLUpload_(p) {
-  var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId);
+  var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId)||PropertiesService.getScriptProperties().getProperty('ATPL_DOL_UPLOAD_'+uploadId);
   if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}
   var meta=JSON.parse(raw);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  var completed=findDolByHash_(meta.file_hash);
+  if(completed)return {ok:true,duplicate:true,record:publicDol_(completed)};
+  if(meta.receipt_only)return {ok:false,error:'Upload session expired; retry the original file'};
   var ph=ensureDolSheets_().parts,n=ph.getLastRow(),partMap={};
   if(n>=2){
     ph.getRange(2,1,n-1,5).getValues().forEach(function(r){
@@ -271,18 +278,19 @@ function commitDOLUpload_(p) {
   var actualHash=dolBytesSha256_(bytes);
   if(actualHash!==String(meta.file_hash||'').toLowerCase())return {ok:false,error:'SHA-256 verification failed'};
   if(meta.type==='esic'&&/\b(?:ECR|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN)\b/i.test(String(meta.name||'')))return {ok:false,error:'PF file blocked from ESIC'};
-  var lock=LockService.getScriptLock();lock.waitLock(20000),file=null;
+  var lock=LockService.getScriptLock(),file=null,committed=false;lock.waitLock(20000);
   try{
     var dup=findDolByHash_(meta.file_hash);
-    if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:publicDol_(dup)};}
+    if(dup){try{cleanupDolPartsUnlocked_(uploadId)}catch(_){}return {ok:true,duplicate:true,record:publicDol_(dup)};}
     var blob=Utilities.newBlob(bytes,meta.mime||'application/octet-stream',meta.name||'challan');
     file=dolFolder_().createFile(blob);
     var now=new Date().toISOString(),id='dol_'+meta.type+'_'+String(meta.file_hash).slice(0,24),sh=ensureDolSheets_().records;
     sh.appendRow([id,meta.type,meta.name,meta.file_hash,meta.period||'',meta.period_source||'',JSON.stringify(meta.digit_ids||[]),JSON.stringify(meta.alnum_ids||[]),Number(meta.size||bytes.length)||bytes.length,meta.mime||'application/octet-stream',file.getId(),file.getUrl(),u.id,now,now]);
-    cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);
+    committed=true;
+    try{cleanupDolPartsUnlocked_(uploadId)}catch(_){}
     return {ok:true,duplicate:false,record:publicDol_(findDolById_(id))};
   }catch(e){
-    if(file){try{file.setTrashed(true);}catch(_){}}
+    if(file&&!committed){try{file.setTrashed(true);}catch(_){}}
     throw e;
   }finally{lock.releaseLock();}
 }

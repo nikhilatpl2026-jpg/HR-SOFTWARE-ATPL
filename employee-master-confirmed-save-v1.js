@@ -74,7 +74,7 @@ async function confirmedSingleSave(){
       paint('failed','Save Failed — Retry',confirmedSingleSave);info((res&&res.conflict?'Conflict: ':'')+why+' Data local Saved mark nahi hui.',true);return
     }
     var confirmed=res.record||candidate;
-    if(edit>=0&&g.EM.data[edit])g.EM.data[edit]=confirmed;else g.EM.data.push(confirmed);
+    var confirmedIdx=g.EM.data.findIndex(function(r){return empKey(r)===empKey(confirmed)});if(confirmedIdx>=0)g.EM.data[confirmedIdx]=confirmed;else g.EM.data.push(confirmed);
     persistConfirmed();refreshMasterUi();paint('saved','Saved ✓',null);info('Saved ✓ — backend read-back confirmed.',false);
     if(typeof g.emCloseModal==='function')g.emCloseModal()
   }catch(e){paint('failed','Save Failed — Retry',confirmedSingleSave);info('Save failed: '+(e&&e.message?e.message:e),true)}
@@ -99,13 +99,13 @@ async function confirmedBulkSave(){
 async function confirmedDelete(idx){
   if(busy||!g.EM||!Array.isArray(g.EM.data))return;var e=g.EM.data[idx];if(!e)return;
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?'))return;
-  var c=cloud();if(!c||typeof c.deleteMaster!=='function'){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});return}
+  var c=cloud();if(!c||typeof c.deleteMaster!=='function'){paint('failed','Save Failed — Retry',function(){var retryIdx=g.EM.data.findIndex(function(r){return empKey(r)===empKey(e)});if(retryIdx>=0)confirmedDelete(retryIdx)});return}
   busy=true;paint('saving','Saving...',null);
   try{
     var res=await c.deleteMaster(e.emp_id,{baseRecord:copy(e)});
-    if(!(res&&res.ok&&res.verified)){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});info('Delete failed: '+(res&&res.error||'backend confirmation missing'),true);return}
-    g.EM.data.splice(idx,1);persistConfirmed();if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();refreshMasterUi();paint('saved','Saved ✓',null)
-  }catch(err){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});info('Delete failed: '+(err&&err.message?err.message:err),true)}
+    if(!(res&&res.ok&&res.verified)){paint('failed','Save Failed — Retry',function(){var retryIdx=g.EM.data.findIndex(function(r){return empKey(r)===empKey(e)});if(retryIdx>=0)confirmedDelete(retryIdx)});info('Delete failed: '+(res&&res.error||'backend confirmation missing'),true);return}
+    var deleteIdx=g.EM.data.findIndex(function(r){return empKey(r)===empKey(e)});if(deleteIdx>=0)g.EM.data.splice(deleteIdx,1);persistConfirmed();if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();refreshMasterUi();paint('saved','Saved ✓',null)
+  }catch(err){paint('failed','Save Failed — Retry',function(){var retryIdx=g.EM.data.findIndex(function(r){return empKey(r)===empKey(e)});if(retryIdx>=0)confirmedDelete(retryIdx)});info('Delete failed: '+(err&&err.message?err.message:err),true)}
   finally{busy=false}
 }
 function install(){
