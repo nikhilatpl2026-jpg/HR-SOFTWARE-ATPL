@@ -1,0 +1,16 @@
+name: Final Hard Stability Regression
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run stability regression
+        run: node --test tests/final-hard-stability-regression.test.js tests/shared-cross-device-final.test.js
