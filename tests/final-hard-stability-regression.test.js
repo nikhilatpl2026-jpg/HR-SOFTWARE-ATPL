@@ -100,3 +100,12 @@ test('complete Backend V4 exposes every production route',()=>{
   assert.ok(b.includes("action === 'appendDOLChunkBatch'"));
   assert.ok(b.includes("BACKEND_VERSION = '4.0-final-stability'"));
 });
+
+
+test('complete Backend V4 stays aligned with latest DOL resilience contract',()=>{
+  const b=read('backend/Backend-V4-Complete-Code.gs');
+  assert.ok(b.includes('var DOL_FILE_CHUNK = 500000'),'complete backend must use reduced-round-trip DOL reads');
+  assert.ok(b.includes('function cleanupStaleDolParts_()'),'complete backend must clean abandoned upload parts');
+  assert.ok(/function beginDOLUpload_\(p\)[\s\S]*?cleanupStaleDolParts_\(\)/.test(b),'DOL upload start must trigger bounded stale-part cleanup');
+  assert.ok(b.includes("if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}"),'expired uploads must purge orphaned chunks');
+});
