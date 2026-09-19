@@ -6,7 +6,7 @@
 */
 (function(g){'use strict';
 if(!g||g.__ATPL_COMPLIANCE_DOL_V1__)return;
-g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.19-viewer-gap-safe1';
+g.__ATPL_COMPLIANCE_DOL_V1__='2026.09.19-delete-hardfix1';
 
 var DB='ATPL_COMPLIANCE_DOL_V1',VER=1,STORE='files';
 var cache={esic:[],pf:[]},lastResults={esic:[],pf:[]},searchMode={esic:'single',pf:'single'},searchIndex={esic:{},pf:{}},coveragePeriods={esic:[],pf:[]},cloudReady={esic:false,pf:false};
@@ -502,13 +502,33 @@ async function archive(type,id){
 async function deleteChallan(type,id){
   var r=cache[type].find(function(x){return x.id===id});if(!r)return;var api=cloudApi(),status=q(type+'DolStatus');
   if(!api){status.textContent='Delete Failed — backend unavailable.';return}
-  if(!confirm('Permanently delete this challan?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis removes this saved challan/index record from shared ERP.'))return;
-  setStatus(type,'Deleting',r.name||'challan',35);
+  var legacyKey=!r.fileHash?legacySafeKey(r):'',sameName=cleanFileName(r.name),sameSize=Number(r.size||0),samePeriod=String(r.period||'');
+  var ids=cache[type].filter(function(x){
+    if(!x||x.type!==type||x.duplicateOf)return false;
+    if(String(x.id)===String(r.id))return true;
+    if(r.fileHash&&x.fileHash&&String(x.fileHash)===String(r.fileHash))return true;
+    var lk=!x.fileHash?legacySafeKey(x):'';
+    if(legacyKey&&lk&&lk===legacyKey)return true;
+    return !r.fileHash&&!x.fileHash&&samePeriod&&String(x.period||'')===samePeriod&&sameSize>0&&Number(x.size||0)===sameSize&&sameName&&cleanFileName(x.name)===sameName;
+  }).map(function(x){return String(x.id)}).filter(Boolean);
+  ids=Array.from(new Set(ids));
+  var extra=ids.length-1;
+  if(!confirm('Permanently delete this challan'+(extra>0?' and '+extra+' duplicate cop'+(extra===1?'y':'ies'):'')+'?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis removes the saved challan, search index, and matching duplicate records from shared ERP.'))return;
+  setStatus(type,'Deleting',(r.name||'challan')+(extra>0?' · '+ids.length+' copies':'')+' · backend cleanup',25);
   try{
-    await withTimeout(api.deleteComplianceDolConfirmed(id),60000,'Delete Failed — Retry');
-    await pullCloud(type);await refresh(type);status.textContent='Deleted ✓ — '+(r.name||'challan');
+    var res=await withTimeout(api.deleteComplianceDolBatchConfirmed(ids),120000,'Delete Failed — Retry');
+    if(!res||res.failed)throw new Error((res&&res.results||[]).filter(function(x){return!x.ok}).map(function(x){return x.error||x.id}).join(' | ')||'Backend delete verification failed');
+    setStatus(type,'Deleting','Backend removed · refreshing library',88);
+    try{await pullCloud(type)}catch(_){}
+    await refresh(type);notifyChange();
+    var left=cache[type].filter(function(x){return ids.indexOf(String(x.id))>=0});
+    if(left.length)throw new Error(left.length+' local record(s) still present after delete');
+    status.textContent='Deleted ✓ — '+ids.length+' challan record'+(ids.length===1?'':'s')+' removed permanently';
     var queries=parseInputs(type);if(queries.length)await search(type);else{lastResults[type]=[];renderResults(type)}
-  }catch(e){status.textContent='Delete Failed — Retry: '+(e.message||e)}
+  }catch(e){
+    await refresh(type);
+    status.textContent='Delete Failed — '+(e&&e.message?e.message:e);
+  }
 }
 
 function exportResults(type){
