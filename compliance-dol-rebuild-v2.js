@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-authoritative-final8';
+var BUILD='2026.09.19-shared-authority-final10';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -595,12 +595,26 @@ async function pullCloudIndex(type){
       if(i%8===0)await tick()
     }
     await dedupeLocalRecords();
-    var verify=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.cloudOnly});
+    var verify=(await dbAll()).filter(function(r){return r&&r.type===type});
     for(var j=0;j<verify.length;j++){
       var r=verify[j],present=(r.hash&&remoteHashes[String(r.hash)])||remoteIds[String(r.id)];
-      if(!!r.cloudSynced!==!!present){r.cloudSynced=!!present;if(!present)r.cloudConfirmedAt='';await dbPut(r)}
+      // Cloud-only rows are a cache. If backend no longer has them, remove them so every login/device converges.
+      if(!present&&r.cloudOnly){
+        await dbDelete(r.id);
+        if(j%12===0)await tick();
+        continue
+      }
+      if(!present&&r.storage==='cloud-index'&&!r.blob&&!r.opfsPath){
+        await dbDelete(r.id);
+        if(j%12===0)await tick();
+        continue
+      }
+      if(!r.cloudOnly&&!!r.cloudSynced!==!!present){
+        r.cloudSynced=!!present;if(!present)r.cloudConfirmedAt='';await dbPut(r)
+      }
       if(j%12===0)await tick()
     }
+    await dedupeLocalRecords();
     await refresh(type);return true
   }catch(e){console.warn('DOL V2 cloud pull failed',type,e);return false}
 }
