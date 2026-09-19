@@ -6504,13 +6504,18 @@ function emUpdateStats() {
   var dups  = codes.filter(function(c,i){return codes.indexOf(c)!==i;}).length;
   var depts = new Set(EM.data.map(function(e){return e.dept||''})).size;
 
-  document.getElementById('emStatTotal').textContent = EM.data.length;
-  document.getElementById('emStatPF').textContent    = pf;
-  document.getElementById('emStatESI').textContent   = esi;
-  document.getElementById('emStatDup').textContent   = dups;
-  document.getElementById('emStatDepts').textContent = depts;
-  document.getElementById('emTotalBadge').textContent= EM.data.length + ' Employees';
-  var emMasterBadge=document.getElementById('emMasterBadge');if(emMasterBadge)emMasterBadge.textContent=EM.data.length;
+  [
+    ['emStatTotal', EM.data.length],
+    ['emStatPF', pf],
+    ['emStatESI', esi],
+    ['emStatDup', dups],
+    ['emStatDepts', depts],
+    ['emTotalBadge', EM.data.length + ' Employees'],
+    ['emMasterBadge', EM.data.length]
+  ].forEach(function(item){
+    var el=document.getElementById(item[0]);
+    if(el) el.textContent=item[1];
+  });
 }
 
 // ── Dept filter options ──
