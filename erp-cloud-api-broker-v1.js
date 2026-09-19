@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-broker3-dol-lock';
+var BUILD='2026.09.19-broker4-dol-lock';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
@@ -127,6 +127,12 @@ async function request(params,opts){
       var rec=JSON.parse(String(params.record_json||''));
       if(rec&&rec._atpl_system===true&&rec.object_kind==='compliance_dol_v1'){
         return {ok:false,error:'LEGACY_DOL_CLIENT_BLOCKED_RELOAD_REQUIRED'};
+      }
+      if(rec&&rec._atpl_system===true&&rec._atpl_kind==='meta'&&rec.object_kind==='esic_dol_v2'){
+        var nm=String(rec.name||'').toUpperCase();
+        if(/\b(?:ECR|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN)\b/.test(nm)){
+          return {ok:false,error:'PF_RECORD_BLOCKED_FROM_ESIC_BUCKET'};
+        }
       }
     }catch(_){}
   }
