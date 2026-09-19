@@ -64,18 +64,16 @@ function badge(msg,bad){
 function syncNow(force){
   if(!token()||!session())return Promise.resolve(false);
   if(running)return running;
-  if(!force&&Date.now()-lastRun<7000)return Promise.resolve(false);
-  lastRun=Date.now();badge('☁ Restoring shared data…');
+  if(!force&&Date.now()-lastRun<15000)return Promise.resolve(false);
+  lastRun=Date.now();badge('☁ Syncing account…');
   running=(async function(){
+    // Critical shared state only. Module-specific heavy data loads when its page is opened.
     var jobs=[syncUsers()];
     if(root.ATPLMobileSharedHardFix&&typeof root.ATPLMobileSharedHardFix.pullMaster==='function')jobs.push(root.ATPLMobileSharedHardFix.pullMaster());
     else if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
     if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
-    if(root.ATPLComplianceDOLV2&&typeof root.ATPLComplianceDOLV2.syncCloud==='function')jobs.push(root.ATPLComplianceDOLV2.syncCloud());
-    if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow());
-    if(root.ATPLDurableEverythingV1&&typeof root.ATPLDurableEverythingV1.sync==='function')jobs.push(root.ATPLDurableEverythingV1.sync());
     var results=await Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)}));
-    results.forEach(function(x){if(x.status==='rejected')console.warn('Account shared-data job failed',x.reason)});
+    results.forEach(function(x){if(x.status==='rejected')console.warn('Account critical sync job failed',x.reason)});
     applyAccess();badge('☁ Shared Data Ready');
     try{root.document.dispatchEvent(new CustomEvent('atpl-account-cloud-restored',{detail:{at:new Date().toISOString()}}))}catch(_){}
     return true
@@ -91,12 +89,11 @@ function patchTokenWrites(){
   }catch(_){}
 }
 function boot(){
-  patchTokenWrites();badge('☁ Account Sync');schedule(900);
-  root.document.addEventListener('atpl-authenticated',function(){schedule(0)});
-  root.addEventListener('focus',function(){syncNow(false)});
-  root.addEventListener('online',function(){syncNow(true)});
-  root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncNow(false)});
-  root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},120000)
+  patchTokenWrites();badge('☁ Account Sync');
+  if(token()&&session())schedule(4200);
+  root.document.addEventListener('atpl-authenticated',function(){schedule(700)});
+  root.addEventListener('online',function(){if(token())schedule(900)});
+  root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},300000)
 }
 root.ATPLAccountCloudRestoreV1={syncNow:function(force){return syncNow(force!==false)},syncUsers:syncUsers,status:function(){return{build:BUILD,token:!!token(),session:!!session(),running:!!running,lastRun:lastRun}}};
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
