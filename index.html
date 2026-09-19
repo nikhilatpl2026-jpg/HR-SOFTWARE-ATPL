@@ -4101,9 +4101,9 @@ function goPage(name) {
   // Auto-expand the parent category of active item
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash',
-    'sync':'cat-sal','audit':'cat-sal','compliance':'cat-sal','lookup':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp',
-    'misspunch':'cat-tools','esic':'cat-tools','formula':'cat-tools'
+    'misspunch':'cat-tools','formula':'cat-tools'
   };
   if(catMap[name]){
     var sub = document.getElementById(catMap[name]);
@@ -4117,7 +4117,6 @@ function goPage(name) {
   if(name==='compliance') populateCompFileSelect();
   if(name==='files') renderAllFilesPage();
   if(name==='newjoin') populateNJSelects();
-  if(name==='sync') populateSyncSelects();
   if(name==='empmaster') {
     var ep=document.getElementById('page-empmaster');
     if(ep) ep.classList.remove('em-windowed'); document.body.classList.remove('em-master-windowed');
