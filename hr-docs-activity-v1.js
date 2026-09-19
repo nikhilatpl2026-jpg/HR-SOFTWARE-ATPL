@@ -2,7 +2,7 @@
    Additive only: does not change salary, attendance, PF/ESIC or AI logic. */
 (function(){
 'use strict';
-if(window.__ATPL_HRDOC_ACTIVITY_V1__)return;window.__ATPL_HRDOC_ACTIVITY_V1__=1;
+var ACT_BUILD='2026.09.19-shared-activity2';if(window.__ATPL_HRDOC_ACTIVITY_V1__===ACT_BUILD)return;window.__ATPL_HRDOC_ACTIVITY_V1__=ACT_BUILD;
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
 var UK='ATPL_UserAccess_V1',SK='ATPL_UserSession_V5',TK='ATPL_RemoteToken_V1';
 var ADB='ATPL_UserActivity_V1',AST='events',urls=[],page='',pageAt=0,base={};
@@ -33,8 +33,33 @@ function patchDocs(){if(typeof window.hrDocOpenForm!=='function'||typeof window.
 
 /* ---------- ACTIVITY TRACKING ---------- */
 function actDb(){return new Promise(function(ok,no){var r=indexedDB.open(ADB,1);r.onupgradeneeded=function(){var d=r.result;if(!d.objectStoreNames.contains(AST)){var s=d.createObjectStore(AST,{keyPath:'id',autoIncrement:true});s.createIndex('user_id','user_id');s.createIndex('ts','ts');s.createIndex('page','page')}};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}})}
-function activity(type,p,action,meta){var u=user();if(!u||!u.id)return;actDb().then(function(d){var t=d.transaction(AST,'readwrite');t.objectStore(AST).add({ts:Date.now(),iso:new Date().toISOString(),user_id:String(u.id),user_name:String(u.name||u.id),type:type,page:p||page||'',page_name:pageName(p||page||''),action:String(action||'').slice(0,160),meta:meta||{}});t.oncomplete=function(){d.close()};t.onerror=function(){d.close()}}).catch(function(){})}
-async function activities(){var d=await actDb();return new Promise(function(ok){var r=d.transaction(AST,'readonly').objectStore(AST).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}
+
+function eventSig(x){return[String(x&&x.user_id||''),String(x&&x.type||''),String(x&&x.page||''),String(x&&x.action||''),String(x&&x.iso||'').slice(0,19)].join('|')}
+async function putCloudActivities(events){
+  events=Array.isArray(events)?events:[];if(!events.length)return 0;
+  var d=await actDb(),t=d.transaction(AST,'readwrite'),s=t.objectStore(AST),n=0;
+  events.forEach(function(x){if(!x||!x.id)return;var ev={id:'cloud:'+String(x.id),ts:Number(x.ts||0)||Date.parse(x.iso||'')||Date.now(),iso:String(x.iso||''),user_id:String(x.user_id||''),user_name:String(x.user_name||x.user_id||''),type:String(x.type||'activity'),page:String(x.page||''),page_name:pageName(String(x.page||'')),action:String(x.action||''),meta:x.meta||{},cloud:true};try{s.put(ev);n++}catch(_){}});
+  return new Promise(function(ok){t.oncomplete=function(){d.close();ok(n)};t.onerror=function(){d.close();ok(0)}})
+}
+async function syncCloudActivity(){
+  if(!token())return false;
+  try{
+    var r=await jsonp({action:'listActivity',token:token()});if(!(r&&r.ok&&Array.isArray(r.events)))return false;
+    await putCloudActivities(r.events);return true
+  }catch(e){return false}
+}
+
+function activity(type,p,action,meta){
+  var u=user();if(!u||!u.id)return;
+  var ev={id:'local:'+Date.now()+':'+Math.random().toString(36).slice(2,8),ts:Date.now(),iso:new Date().toISOString(),user_id:String(u.id),user_name:String(u.name||u.id),type:type,page:p||page||'',page_name:pageName(p||page||''),action:String(action||'').slice(0,160),meta:meta||{},cloud:false};
+  actDb().then(function(d){var t=d.transaction(AST,'readwrite');t.objectStore(AST).put(ev);t.oncomplete=function(){d.close()};t.onerror=function(){d.close()}}).catch(function(){});
+  if(token())jsonp({action:'appendActivity',token:token(),event_type:ev.type,page:ev.page,action_text:ev.action,meta_json:JSON.stringify(ev.meta||{})}).then(function(r){if(r&&r.ok)ev.cloud_event_id=r.event_id||''}).catch(function(){})
+}
+async function activities(){
+  if(admin())await syncCloudActivity();
+  var d=await actDb(),all=await new Promise(function(ok){var r=d.transaction(AST,'readonly').objectStore(AST).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}});
+  var map={},out=[];all.sort(function(a,b){return Number(b.ts||0)-Number(a.ts||0)}).forEach(function(x){var k=eventSig(x);if(map[k])return;map[k]=1;out.push(x)});return out
+}
 function pageName(p){var n=document.getElementById('vn-'+p);return n?(n.textContent||p).replace(/\s+/g,' ').trim():p||'Unknown'}
 function activePage(){var x=document.querySelector('[id^="page-"].active:not([hidden])');return x?x.id.slice(5):''}
 function exitPage(why){if(!page||!pageAt)return;var ms=Date.now()-pageAt;if(ms>400)activity('page_exit',page,'Left '+pageName(page),{duration_ms:ms,reason:why||'navigate'});pageAt=0}
@@ -51,6 +76,14 @@ async function renderCenter(){var d=center(),b=d.querySelector('#acBody');if(!ad
 function exportCsv(){if(!exportRows.length){alert('No activity to export.');return}var lines=['Date,User ID,User Name,Page,Event,Action,Duration ms'];exportRows.forEach(function(x){lines.push([x.iso,x.user_id,x.user_name,x.page_name||x.page,x.type,x.action,x.meta&&x.meta.duration_ms||''].map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'}).join(','))});var bl=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'}),u=URL.createObjectURL(bl),a=document.createElement('a');a.href=u;a.download='ATPL_User_Activity_'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(function(){URL.revokeObjectURL(u)},1000)}
 
 function wrapGo(){if(typeof window.goPage!=='function'||window.goPage.__hrAct)return;var g=window.goPage;function w(name){if(page&&page!==name)exitPage('navigate');if(name==='hrdocs'&&!admin()){var r=typeof window.hrDocGetDocs==='function'?window.hrDocGetDocs():null;if(Array.isArray(r)){r.splice(0,r.length);if(typeof window.hrDocRender==='function')window.hrDocRender()}}var out=g.apply(this,arguments);enterPage(name,'navigate');if(name==='hrdocs')syncDocs();setTimeout(injectActBtn,0);return out}w.__hrAct=true;window.goPage=w}
-function install(){ensureAssign();patchDocs();wrapGo();trackClicks();var p=activePage();if(p)enterPage(p,'initial');document.addEventListener('visibilitychange',function(){if(document.hidden)exitPage('hidden');else{var p2=activePage()||page;if(p2)enterPage(p2,'visible')}});window.addEventListener('beforeunload',function(){exitPage('unload')});document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#vn-useraccess'))setTimeout(injectActBtn,80)},true);setTimeout(injectActBtn,120);setTimeout(syncDocs,180)}
+function install(){
+  ensureAssign();patchDocs();wrapGo();trackClicks();var p=activePage();if(p)enterPage(p,'initial');
+  document.addEventListener('visibilitychange',function(){if(document.hidden)exitPage('hidden');else{var p2=activePage()||page;if(p2)enterPage(p2,'visible');syncCloudActivity()}});
+  window.addEventListener('focus',function(){syncCloudActivity()});
+  window.addEventListener('beforeunload',function(){exitPage('unload')});
+  document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#vn-useraccess'))setTimeout(injectActBtn,80)},true);
+  setTimeout(injectActBtn,120);setTimeout(syncDocs,180);setTimeout(syncCloudActivity,600)
+}
+window.ATPLSharedActivityV2={syncCloud:syncCloudActivity,activities:activities,version:function(){return ACT_BUILD}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
