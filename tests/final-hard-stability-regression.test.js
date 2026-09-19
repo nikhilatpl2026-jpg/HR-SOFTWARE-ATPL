@@ -39,7 +39,7 @@ test('challan module has explicit dependency resolver and cross-device original-
 test('challan search is index-only and does not parse PDFs/Excel during search',()=>{
   const s=read('compliance-dol-rebuild-v2.js');
   const start=s.indexOf('function search(type)');
-  const end=s.indexOf('function bindEvents',start);
+  const end=s.indexOf('async function migrateLegacy',start);
   assert.ok(start>0&&end>start);
   const body=s.slice(start,end);
   assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(body),false);
