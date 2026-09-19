@@ -13,7 +13,7 @@
 (function(root){
 'use strict';
 if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-clean-rebuild1';
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-clean-rebuild2';
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
@@ -171,6 +171,17 @@ async function parseBuffer(buf,name,type,progress){
   return{ids:x.ids||[],period:per.period,periodSource:per.source,sheets:x.sheets||null}
 }
 
+function ensurePage(type){
+  var id='page-'+type+'todol',page=$(id);if(page)return page;
+  var content=document.querySelector('.content');if(!content)return null;
+  page=document.createElement('div');page.className='page';page.id=id;content.appendChild(page);return page
+}
+function ensureNav(type){
+  var id='vn-'+type+'todol',item=$(id),sub=$('cat-tools');if(item||!sub)return;
+  item=document.createElement('div');item.className='vitem';item.id=id;item.setAttribute('onclick',"goPage('"+type+"todol')");item.innerHTML='<span class="vi">'+(type==='esic'?'🩺':'🧾')+'</span>'+(type==='esic'?'ESIC → DOL':'PF → DOL');
+  var esic=$('vn-esic');if(type==='esic'&&esic&&esic.parentNode===sub)sub.insertBefore(item,esic.nextSibling);else sub.appendChild(item)
+}
+
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
   return '<div class="cd2-shell" data-type="'+type+'">'+
@@ -321,8 +332,8 @@ function wire(type){
   $('cd2-'+type+'-files').addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))})
 }
 async function boot(){
-  addCss();ensureViewer();
-  var ep=$('page-esictodol'),pp=$('page-pftodol');if(!ep||!pp)return;
+  addCss();ensureViewer();ensureNav('esic');ensureNav('pf');
+  var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');
   await migrateLegacy();await Promise.all([refresh('esic'),refresh('pf')]);
   setStatus('esic','V2 ready ✓ — original files stay saved on this browser/device. Upload all ESIC challans.');
