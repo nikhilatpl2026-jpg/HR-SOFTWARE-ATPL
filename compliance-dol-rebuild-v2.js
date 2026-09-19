@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-cloud-only-final14-hard-delete';
+var BUILD='2026.09.19-cloud-only-final16-stability';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -20,7 +20,7 @@ root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
-var cloudSyncPromise=null,cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
+var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
 var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
@@ -338,7 +338,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final14-hard-delete">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="cloud-only-final16-stability">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLOUD MASTER V3</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Library <b>shared backend se live load hoti hai</b>; local browser data list decide nahi karta. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -669,16 +669,28 @@ function scheduleCloudRetry(){
   if(cloudRetryTimer||!cloudLoginReady())return;
   cloudRetryTimer=setTimeout(function(){cloudRetryTimer=0;syncCloudIndexes()},700)
 }
-function syncCloudIndexes(){
+function activeDolType(){
+  var e=$('page-esictodol'),p=$('page-pftodol');
+  if(e&&e.classList.contains('active'))return'esic';
+  if(p&&p.classList.contains('active'))return'pf';
+  return''
+}
+function syncCloudType(type,force){
+  type=String(type||'').toLowerCase();if(type!=='esic'&&type!=='pf')return Promise.resolve(false);
   if(!cloudLoginReady())return Promise.resolve(false);
-  if(cloudSyncPromise)return cloudSyncPromise;
-  cloudSyncPromise=(async function(){
-    var ok=await Promise.all([refresh('esic'),refresh('pf')]);
-    if(ok[0])setStatus('esic','Shared backend loaded ✓ · same library for every login/device.');
-    if(ok[1])setStatus('pf','Shared backend loaded ✓ · same library for every login/device.');
-    return ok[0]&&ok[1]
-  })().catch(function(e){console.warn('DOL cloud-only refresh failed',e);return false}).finally(function(){cloudSyncPromise=null});
-  return cloudSyncPromise
+  if(cloudSyncPromises[type])return cloudSyncPromises[type];
+  if(!force&&Date.now()-cloudLastSync[type]<8000)return Promise.resolve(true);
+  cloudLastSync[type]=Date.now();
+  cloudSyncPromises[type]=Promise.resolve(refresh(type)).then(function(ok){
+    if(ok)setStatus(type,'Shared backend loaded ✓ · same library for every login/device.');
+    return !!ok
+  }).catch(function(e){console.warn('DOL '+type+' refresh failed',e);return false}).finally(function(){cloudSyncPromises[type]=null});
+  return cloudSyncPromises[type]
+}
+function syncCloudIndexes(type){
+  type=String(type||activeDolType()||'').toLowerCase();
+  if(type==='esic'||type==='pf')return syncCloudType(type,true);
+  return Promise.resolve(false)
 }
 
 async function upload(type,fileList){
@@ -781,18 +793,17 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final14-hard-delete'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
-  if(ok){syncCloudIndexes();return true}
-  page.innerHTML=pageHtml(type);wire(type);refresh(type).then(function(){return syncCloudIndexes()}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final16-stability'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  if(ok){syncCloudType(type,false);return true}
+  page.innerHTML=pageHtml(type);wire(type);syncCloudType(type,true).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
 function patchNavigation(){
   if(typeof root.goPage!=='function'||root.goPage.__cd2PersistentWrapped)return;
   var old=root.goPage;
   function wrapped(name){
+    var r=old.apply(this,arguments);
     if(name==='esictodol')mountLatest('esic');
     if(name==='pftodol')mountLatest('pf');
-    var r=old.apply(this,arguments);
-    if(name==='esictodol'||name==='pftodol')setTimeout(function(){mountLatest(name==='esictodol'?'esic':'pf')},80);
     return r
   }
   wrapped.__cd2PersistentWrapped=true;wrapped.__original=old;root.goPage=wrapped
@@ -803,13 +814,9 @@ async function boot(){
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
-  setStatus('esic','Waiting for shared backend…');
-  setStatus('pf','Waiting for shared backend…');
-  setTimeout(function(){syncCloudIndexes()},0);
-  root.document.addEventListener('atpl-authenticated',function(){setTimeout(function(){syncCloudIndexes()},0)});
-  root.addEventListener('focus',function(){syncCloudIndexes()});root.addEventListener('online',function(){syncCloudIndexes()});
-  root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncCloudIndexes()});
-  setTimeout(function(){mountLatest('esic');mountLatest('pf')},1200)
+  setStatus('esic','Ready · open ESIC → DOL to load shared library.');
+  setStatus('pf','Ready · open PF → DOL to load shared library.');
+  root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700)});
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
