@@ -10,6 +10,7 @@ test('critical JavaScript files parse',()=>{
     assert.doesNotThrow(()=>new Function(read(p)),p+' syntax');
   });
   assert.doesNotThrow(()=>new Function(read('backend/Backend-V4-DOL-Cloud-Master-Patch.gs')),'backend patch syntax');
+  assert.doesNotThrow(()=>new Function(read('backend/Backend-V4-Complete-Code.gs')),'complete backend syntax');
 });
 
 test('retired features are completely absent while protected salary features remain',()=>{
@@ -89,4 +90,13 @@ test('DOL original file bytes never ride EmployeeMaster metadata payload',()=>{
   assert.ok(i>0);
   const body=d.slice(i,d.indexOf('\n  }',i)+4);
   assert.equal(/buffer\s*:|blob\s*:|base64/i.test(body),false);
+});
+
+
+test('complete Backend V4 exposes every production route',()=>{
+  const b=read('backend/Backend-V4-Complete-Code.gs');
+  ['login','listUsers','saveUser','deleteUser','getEmployeeMaster','getSystemRecords','upsertEmployeeMaster','deleteEmployeeMaster','appendActivity','listActivity','getDOLRecords','checkDOLDuplicate','beginDOLUpload','commitDOLUpload','updateDOLRecord','deleteDOLRecord','getDOLFileInfo','getDOLFileChunk'].forEach(a=>assert.ok(b.includes("action === '"+a+"'"),'missing backend route '+a));
+  assert.ok(b.includes('function doPost(e)'));
+  assert.ok(b.includes("action === 'appendDOLChunkBatch'"));
+  assert.ok(b.includes("BACKEND_VERSION = '4.0-final-stability'"));
 });
