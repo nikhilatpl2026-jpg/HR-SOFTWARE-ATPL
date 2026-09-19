@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-broker2';
+var BUILD='2026.09.19-broker3-dol-lock';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
@@ -121,7 +121,16 @@ function enqueue(params,opts){
 }
 async function request(params,opts){
   params=cleanParams(params||{});opts=opts||{};
-  var action=String(params.action||'ping'),k=key(params),isRead=!!READ_ACTIONS[action],ttl=opts.cacheMs!=null?Number(opts.cacheMs):(CACHE_MS[action]||0);
+  var action=String(params.action||'ping');
+  if(action==='upsertEmployeeMaster'&&params.record_json){
+    try{
+      var rec=JSON.parse(String(params.record_json||''));
+      if(rec&&rec._atpl_system===true&&rec.object_kind==='compliance_dol_v1'){
+        return {ok:false,error:'LEGACY_DOL_CLIENT_BLOCKED_RELOAD_REQUIRED'};
+      }
+    }catch(_){}
+  }
+  var k=key(params),isRead=!!READ_ACTIONS[action],ttl=opts.cacheMs!=null?Number(opts.cacheMs):(CACHE_MS[action]||0);
   if(isRead&&ttl>0&&cache[k]&&now()-cache[k].at<ttl)return cache[k].data;
   if(isRead&&inflight[k])return inflight[k];
   var p=enqueue(params,opts).then(function(data){
