@@ -1,7 +1,7 @@
 /* Arora ERP shared Google Apps Script auth bridge — FAST cross-browser users. */
 (function(){'use strict';
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',TOKEN='ATPL_RemoteToken_V1';
+var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',MASTER='AroraTextilesEmployeeMasterV3';
 var remoteUsers=[];
 function q(id){return document.getElementById(id)}
 function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -9,8 +9,8 @@ function readUsers(){try{var a=JSON.parse(localStorage.getItem(USERS)||'[]');ret
 function currentUser(){try{var s=JSON.parse(sessionStorage.getItem(SESS)||'null');if(!s||!s.id)return null;return readUsers().find(function(u){return String(u.id).toLowerCase()===String(s.id).toLowerCase()})||null}catch(_){return null}}
 function token(){return sessionStorage.getItem(TOKEN)||''}
 function saveLocalUsers(a){localStorage.setItem(USERS,JSON.stringify(Array.isArray(a)?a:[]))}
-function setLogin(u,t,all){saveLocalUsers(all&&all.length?all:[u]);sessionStorage.setItem(SESS,JSON.stringify({id:u.id}));sessionStorage.setItem(TOKEN,t)}
-function clearLogin(){['ATPL_UserSession_V1','ATPL_UserSession_V2','ATPL_UserSession_V3','ATPL_UserSession_V4','ATPL_UserSession_V5',TOKEN].forEach(function(k){sessionStorage.removeItem(k)})}
+function setLogin(u,t,all){saveLocalUsers(all&&all.length?all:[u]);sessionStorage.setItem(SESS,JSON.stringify({id:u.id}));sessionStorage.setItem(TOKEN,t);sessionStorage.setItem(ALT,t)}
+function clearLogin(){['ATPL_UserSession_V1','ATPL_UserSession_V2','ATPL_UserSession_V3','ATPL_UserSession_V4','ATPL_UserSession_V5',TOKEN,ALT].forEach(function(k){sessionStorage.removeItem(k)})}
 function has(u,p){return !!u&&(u.admin===true||(Array.isArray(u.access)&&u.access.indexOf(p)>=0))}
 function api(params){return new Promise(function(resolve,reject){var cb='__atpl_remote_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Login server se connection timeout hua.'))},10000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete window[cb]}catch(_){window[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}window[cb]=function(data){finish();resolve(data||{})};params=params||{};params.callback=cb;var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Login server connect nahi hua.'))};s.src=API+'?'+qs;document.head.appendChild(s)})}
 function sha256(v){if(!window.crypto||!crypto.subtle||!window.TextEncoder)return Promise.reject(new Error('Secure login is browser me available nahi hai.'));return crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(v))).then(function(buf){return Array.prototype.map.call(new Uint8Array(buf),function(b){return('0'+b.toString(16)).slice(-2)}).join('')})}
@@ -21,7 +21,80 @@ function firstAllowed(u){var x=navFeatures().find(function(f){return has(u,f.id)
 function loginError(msg){var e=q('uaLoginErr');if(e)e.textContent=msg||''}
 function setBusy(btn,busy,text){if(!btn)return;if(!btn.dataset.fastBase)btn.dataset.fastBase=btn.textContent;btn.disabled=!!busy;btn.style.opacity=busy?'.65':'1';btn.textContent=busy?(text||'Please wait...'):btn.dataset.fastBase}
 async function getAllUsers(t){var r=await api({action:'listUsers',token:t});if(!r.ok)throw new Error(r.error||'Users load nahi hue.');return Array.isArray(r.users)?r.users:[]}
-async function remoteLogin(){var id=q('uaLoginId'),pw=q('uaLoginPass'),btn=q('uaLoginBtn');if(!id||!pw||!btn)return;var uid=id.value.trim(),pass=pw.value;loginError('');if(!uid||!pass){loginError('User ID aur Password enter karo.');return}setBusy(btn,true,'VERIFYING...');try{var hash=await sha256(pass),r=await api({action:'login',user_id:uid,password_hash:hash});if(!r.ok||!r.user||!r.token)throw new Error(r.error||'Wrong User ID or Password.');setLogin(r.user,r.token,[r.user]);remoteUsers=[r.user];applyAccess();var p=firstAllowed(r.user);if(p&&typeof window.goPage==='function')window.goPage(p);var l=q('uaLogin');if(l)l.style.display='none';document.body.classList.remove('uaLocked');var landing=q('landingPage');if(landing){landing.style.display='flex';landing.style.opacity='1';landing.style.visibility='visible';landing.style.pointerEvents='auto'}}catch(ex){clearLogin();applyAccess();loginError(ex.message||'Login failed.')}finally{setBusy(btn,false)}}
+
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+async function retry(label,fn,tries){
+  tries=tries||3;var last;
+  for(var i=0;i<tries;i++){try{return await fn()}catch(e){last=e;if(i+1<tries)await sleep(350*(i+1))}}
+  throw last||new Error(label+' failed')
+}
+function cleanMasterRecords(a){
+  return (Array.isArray(a)?a:[]).filter(function(r){var id=String(r&&r.emp_id||'');return r&&r._atpl_system!==true&&id.indexOf('__ATPL_SYS__')!==0})
+}
+function applyMaster(records){
+  records=cleanMasterRecords(records);
+  localStorage.setItem(MASTER,JSON.stringify(records));
+  try{
+    if(window.EM&&Array.isArray(window.EM.data)){window.EM.data.splice.apply(window.EM.data,[0,window.EM.data.length].concat(records));if(typeof window.emFilter==='function')window.emFilter();if(typeof window.emUpdateStats==='function')window.emUpdateStats()}
+    if(Array.isArray(window.EMP_MASTER_DATA)){window.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(window.EMP_MASTER_DATA,records)}
+    if(window.BroadcastChannel){var bc=new BroadcastChannel('ATPL_ERP_SHARED_V2');bc.postMessage({type:'master',data:records});bc.close()}
+  }catch(e){console.warn('Shared master render warning',e)}
+  return records.length
+}
+async function waitModule(test,ms){
+  var end=Date.now()+(ms||5000);while(Date.now()<end){try{var x=test();if(x)return x}catch(_){}await sleep(120)}return null
+}
+async function hydrateSharedData(u,t,progress){
+  var report={users:0,employees:0,activity:false,dol:false};
+  if(progress)progress('LOADING USERS...');
+  if(u&&u.admin===true){
+    try{var all=await retry('users',function(){return getAllUsers(t)},2);if(all&&all.length){saveLocalUsers(all);remoteUsers=all;report.users=all.length}}catch(e){console.warn('Shared users hydrate failed',e)}
+  }else{saveLocalUsers([u]);remoteUsers=[u];report.users=1}
+  applyAccess();
+
+  if(progress)progress('LOADING EMPLOYEE MASTER...');
+  var mr=await retry('employee master',function(){return api({action:'getEmployeeMaster',token:t})},3);
+  if(!(mr&&mr.ok&&Array.isArray(mr.records)))throw new Error(mr&&mr.error||'Employee Master cloud load failed');
+  report.employees=applyMaster(mr.records);
+
+  if(progress)progress('LOADING SHARED ACTIVITY...');
+  try{
+    var am=await waitModule(function(){return window.ATPLSharedActivityV2&&window.ATPLSharedActivityV2.syncCloud},3500);
+    if(am){await window.ATPLSharedActivityV2.syncCloud();report.activity=true}
+    else if(u&&u.admin===true){var ar=await api({action:'listActivity',token:t});report.activity=!!(ar&&ar.ok)}
+  }catch(e){console.warn('Shared activity hydrate failed',e)}
+
+  if(progress)progress('LOADING CHALLANS...');
+  try{
+    var dm=await waitModule(function(){return window.ATPLComplianceDOLV2&&window.ATPLComplianceDOLV2.syncCloud},5000);
+    if(dm){await window.ATPLComplianceDOLV2.syncCloud();report.dol=true}
+  }catch(e){console.warn('Shared DOL hydrate failed',e)}
+
+  try{
+    if(window.ATPLCloudSyncV1&&typeof window.ATPLCloudSyncV1.pullMaster==='function')await window.ATPLCloudSyncV1.pullMaster();
+    if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.syncNow==='function')window.ATPLCloudSharedStorageV1.syncNow()
+  }catch(_){}
+  try{document.dispatchEvent(new CustomEvent('atpl-shared-login-hydrated',{detail:report}))}catch(_){}
+  return report
+}
+
+async function remoteLogin(){
+  var id=q('uaLoginId'),pw=q('uaLoginPass'),btn=q('uaLoginBtn');if(!id||!pw||!btn)return;
+  var uid=id.value.trim(),pass=pw.value;loginError('');if(!uid||!pass){loginError('User ID aur Password enter karo.');return}
+  setBusy(btn,true,'VERIFYING...');
+  try{
+    var hash=await sha256(pass),r=await retry('login',function(){return api({action:'login',user_id:uid,password_hash:hash})},2);
+    if(!r.ok||!r.user||!r.token)throw new Error(r.error||'Wrong User ID or Password.');
+    setLogin(r.user,r.token,[r.user]);remoteUsers=[r.user];applyAccess();
+    var report=await hydrateSharedData(r.user,r.token,function(msg){setBusy(btn,true,msg)});
+    applyAccess();
+    var p=firstAllowed(currentUser()||r.user);if(p&&typeof window.goPage==='function')window.goPage(p);
+    var l=q('uaLogin');if(l)l.style.display='none';document.body.classList.remove('uaLocked');
+    var landing=q('landingPage');if(landing){landing.style.display='flex';landing.style.opacity='1';landing.style.visibility='visible';landing.style.pointerEvents='auto'}
+    try{if(typeof window.showToast==='function')window.showToast('☁ Shared data loaded · '+report.employees+' employees')}catch(_){}
+  }catch(ex){clearLogin();applyAccess();loginError(ex.message||'Login failed.')}
+  finally{setBusy(btn,false)}
+}
 function renderChecks(){var box=q('uaChecks');if(!box)return;box.innerHTML=navFeatures().map(function(f){var nm=(f.name||f.id).replace(/^\S+\s*/,'').trim()||f.id;return '<label class="uaCheck"><input type="checkbox" value="'+esc(f.id)+'"> '+esc(nm)+'</label>'}).join('')}
 function renderRemoteUsers(){var box=q('uaList');if(!box)return;if(!remoteUsers.length){box.innerHTML='<div style="padding:14px;color:#64748b;font-size:11px">No users found.</div>';return}box.innerHTML=remoteUsers.map(function(u){return '<div class="uaUser"><div class="uaUserInfo"><b>'+esc(u.name||u.id)+'</b><span>ID: '+esc(u.id)+' · '+(u.admin===true?'ADMIN · All Features':esc((u.access||[]).join(', ')))+'</span></div><div class="uaActions">'+(u.admin===true?'':'<button class="uaMini uaEdit" data-r-edit="'+esc(u.id)+'">Edit</button><button class="uaMini uaDel" data-r-del="'+esc(u.id)+'">Delete</button>')+'</div></div>'}).join('')}
 function clearForm(){['uaName','uaId','uaPass'].forEach(function(id){var x=q(id);if(x)x.value=''});Array.prototype.forEach.call(document.querySelectorAll('#uaChecks input'),function(c){c.checked=false});var t=q('uaFormTitle'),c=q('uaCancel'),id=q('uaId'),p=q('uaPass'),er=q('uaFormErr');if(t)t.textContent='Create User';if(c)c.style.display='none';if(id){id.disabled=false;id.style.opacity='1';delete id.dataset.remoteEdit}if(p)p.placeholder='Password';if(er)er.textContent=''}
@@ -32,7 +105,7 @@ async function remoteSaveUser(){var u=currentUser(),t=token(),name=q('uaName'),i
 async function deleteRemoteUser(id){var u=currentUser(),t=token();if(!u||u.admin!==true||!t)return;var x=remoteUsers.find(function(v){return String(v.id).toLowerCase()===String(id).toLowerCase()});if(!x||x.admin===true)return;if(!confirm('Delete user '+x.id+'?'))return;try{var r=await api({action:'deleteUser',token:t,user_id:x.id});if(!r.ok)throw new Error(r.error||'Delete failed.');remoteUsers=remoteUsers.filter(function(v){return String(v.id).toLowerCase()!==String(x.id).toLowerCase()});saveLocalUsers(remoteUsers);renderRemoteUsers()}catch(ex){alert(ex.message||'Delete failed.')}}
 function remoteLogout(){var t=token();clearLogin();saveLocalUsers([]);applyAccess();var l=q('uaLogin');if(l)l.style.display='flex';document.body.classList.add('uaLocked');var p=q('uaPage');if(p)p.style.display='none';if(q('uaLoginId'))q('uaLoginId').value='';if(q('uaLoginPass'))q('uaLoginPass').value='';loginError('');if(t)api({action:'logout',token:t}).catch(function(){})}
 function install(){var lb=q('uaLoginBtn'),pw=q('uaLoginPass'),sv=q('uaSave'),lo=q('uaLogoutBtn'),nav=q('vn-useraccess'),cancel=q('uaCancel');if(!lb||!sv)return false;lb.onclick=remoteLogin;if(pw)pw.onkeydown=function(ev){if(ev.key==='Enter'){ev.preventDefault();remoteLogin()}};sv.onclick=remoteSaveUser;if(lo)lo.onclick=remoteLogout;if(nav)nav.onclick=openRemoteUsers;if(cancel)cancel.onclick=clearForm;if(!window.__ATPL_REMOTE_LISTENER){window.__ATPL_REMOTE_LISTENER=1;document.addEventListener('click',function(ev){var eb=ev.target&&ev.target.closest?ev.target.closest('#uaList [data-r-edit]'):null;if(eb){ev.preventDefault();ev.stopPropagation();editRemoteUser(eb.getAttribute('data-r-edit'));return}var db=ev.target&&ev.target.closest?ev.target.closest('#uaList [data-r-del]'):null;if(db){ev.preventDefault();ev.stopPropagation();deleteRemoteUser(db.getAttribute('data-r-del'))}},true)}var note=q('uaFormErr');if(note)note.setAttribute('data-shared-backend','google-apps-script-fast');return true}
-function start(){if(window.__ATPL_SHARED_GOOGLE_AUTH_FAST)return;window.__ATPL_SHARED_GOOGLE_AUTH_FAST=1;if(!install())setTimeout(install,60)}
+function start(){if(window.__ATPL_SHARED_GOOGLE_AUTH_FAST)return;window.__ATPL_SHARED_GOOGLE_AUTH_FAST='2026.09.19-hydrate4';if(!install())setTimeout(install,60)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 /* ATPL FAST ACCESS V7 — instant User Access UI + admin credential change. */
