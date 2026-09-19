@@ -13,7 +13,7 @@
 (function(root){
 'use strict';
 if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-upload-first3';
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-upload-first4';
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
@@ -166,7 +166,7 @@ function parseExcel(buf,type,progress){
     var copy=buf.slice(0);excelWorker.postMessage({id:id,type:type,buffer:copy},[copy])
   }).catch(function(err){console.warn('Excel worker fallback',err);return main()})
 }
-async async function parsePdf(buf,type,progress){
+async function parsePdf(buf,type,progress){
   if(!root.pdfjsLib)throw new Error('PDF engine unavailable');
   if(root.pdfjsLib.GlobalWorkerOptions)root.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   var doc=await root.pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise,set=new Set(),sample='',items=0;
@@ -296,7 +296,7 @@ async function deleteOne(type,id){
   if(!confirm('Permanently delete this challan from V2 library?\\n\\n'+(r.name||id)+(r.period?'\\n'+periodLabel(r.period):'')))return;
   try{await dbDelete(id);await refresh(type);setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))}catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
-async async function upload(type,fileList){
+async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
   var saved=0,indexed=0,dups=0,warns=[];
