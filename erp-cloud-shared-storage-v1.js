@@ -3,7 +3,7 @@
    Uses the already-deployed authenticated EmployeeMaster backend with namespaced system records,
    so no Apps Script redeploy is required. Employee Master UI filters these records separately. */
 (function(root){'use strict';
- var BUILD='2026.09.19-shared-files2';
+ var BUILD='2026.09.19-shared-files3';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -43,10 +43,27 @@
  async function putHrDoc(doc){var d=await openDb(HR_DB,HR_VER,HR_STORE,'id');return new Promise(function(ok,no){var t=d.transaction(HR_STORE,'readwrite');t.objectStore(HR_STORE).put(doc);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
  function dateMs(v){var n=Date.parse(v||'');return isFinite(n)?n:0}
  async function pullSalary(records){var metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind==='salary_file'}),local=await salaryRows(),by={};local.forEach(function(x){by[String(x.name||'').toLowerCase()]=x});var changed=0;for(var i=0;i<metas.length;i++){var m=metas[i],lk=String(m.name||m.key_text||'').toLowerCase(),old=by[lk];if(old&&dateMs(old.saved)>=dateMs(m.saved_at))continue;try{var p=await loadObject(records,m),buf=payloadBuffer(p);await putSalary(m.name||p.name,buf,m.saved_at||m.uploaded_at);changed++}catch(e){console.warn('Shared salary pull failed',m.name,e)}}if(changed)refreshSalaryUi();return changed}
+ async function pushSalary(records){
+   var metas=(records||[]).filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind==='salary_file'}),remoteBy={};
+   metas.forEach(function(m){remoteBy[String(m.name||m.key_text||'').toLowerCase()]=m});
+   var local=await salaryRows(),pushed=0,failed=0;
+   for(var i=0;i<local.length;i++){
+     var row=local[i];if(!row||!row.name||!row.buf)continue;
+     var key=String(row.name).toLowerCase(),m=remoteBy[key],localTs=dateMs(row.saved),remoteTs=dateMs(m&&m.saved_at);
+     if(m&&remoteTs>=localTs)continue;
+     try{
+       var payload=workbookPayload(row.name,row.buf);
+       await saveObject('salary_file',row.name,payload,{name:row.name,saved_at:row.saved||new Date().toISOString()});
+       pushed++
+     }catch(e){failed++;console.warn('Existing local file cloud migration failed',row.name,e)}
+     if(i%2===1)await new Promise(function(r){setTimeout(r,0)})
+   }
+   return{pushed:pushed,failed:failed}
+ }
  async function pullHr(records){var metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.object_kind==='hr_doc'}),local=await hrRows(),by={};local.forEach(function(x){by[String(x.id||'')]=x});var changed=0;for(var i=0;i<metas.length;i++){var m=metas[i],old=by[m.key_text];if(old&&dateMs(old.updated_at)>=dateMs(m.saved_at))continue;try{var d=await loadObject(records,m);if(!d||!d.id)continue;if(d._cloud_attachment_omitted&&old){d.file_data=old.file_data||d.file_data;d.file_data_list=old.file_data_list||d.file_data_list}await putHrDoc(d);changed++}catch(e){console.warn('Shared HR document pull failed',m.name,e)}}if(changed)refreshHrUi();return changed}
  function refreshSalaryUi(){try{if(typeof root.loadAllFromDB==='function'&&typeof root.parseWB==='function'&&typeof root.wbToSheets==='function')root.loadAllFromDB(function(rows){try{root.FILES=(rows||[]).map(function(r){var wb=root.parseWB(r.buf);return{name:r.name,wb:wb,sheets:root.wbToSheets(wb),buf:r.buf,savedAt:r.saved}});['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects'].forEach(function(n){if(typeof root[n]==='function')root[n]()});storageLabel(root.FILES.length+' files saved · ☁ Shared')}catch(_){}})}catch(_){}}
  function refreshHrUi(){try{var ref=typeof root.hrDocGetDocs==='function'?root.hrDocGetDocs():null;if(!Array.isArray(ref))return;hrRows().then(function(all){ref.splice.apply(ref,[0,ref.length].concat(all));if(typeof root.hrDocRender==='function')root.hrDocRender()})}catch(_){}}
- async function syncNow(force){if(!token())return false;if(pulling)return pulling;if(!force&&Date.now()-lastPull<12000)return true;setBadge('busy','☁ Syncing files…');pulling=fetchRemote(true).then(async function(r){await pullSalary(r);await pullHr(r);setBadge('ok','☁ Files Shared');return true}).catch(function(e){console.warn('Shared storage sync failed',e);setBadge('bad','☁ Sync issue');return false}).finally(function(){pulling=null});return pulling}
+ async function syncNow(force){if(!token())return false;if(pulling)return pulling;if(!force&&Date.now()-lastPull<12000)return true;setBadge('busy','☁ Syncing files…');pulling=fetchRemote(true).then(async function(r){await pullSalary(r);var migrated=await pushSalary(r);if(migrated.pushed){r=await fetchRemote(true);await pullSalary(r)}await pullHr(r);refreshSalaryUi();if(migrated.failed)setBadge('bad','☁ '+migrated.failed+' file(s) pending');else setBadge('ok','☁ Files Shared');return migrated.failed===0}).catch(function(e){console.warn('Shared storage sync failed',e);setBadge('bad','☁ Sync issue');return false}).finally(function(){pulling=null});return pulling}
  async function cloudSaveSalary(name,buf,saved){try{var p=workbookPayload(name,buf);await saveObject('salary_file',name,p,{name:name,saved_at:saved||new Date().toISOString()});storageLabel('Saved locally + cloud · '+name);return true}catch(e){console.warn('Salary cloud save failed',e);setBadge('bad','☁ File save issue');storageLabel('Saved locally · cloud retry needed');return false}}
  async function cloudSaveHr(doc){try{return await saveObject('hr_doc',doc.id,doc,{name:doc.document_name||doc.id,saved_at:doc.updated_at||new Date().toISOString()})}catch(e){if(/too large/i.test(String(e&&e.message))){try{var slim=Object.assign({},doc,{file_data:null,file_data_list:null,_cloud_attachment_omitted:true,_cloud_attachment_names:(doc.file_data_list||[]).map(function(x){return x.name}).filter(Boolean)});await saveObject('hr_doc',doc.id,slim,{name:doc.document_name||doc.id,saved_at:doc.updated_at||new Date().toISOString()});setBadge('bad','☁ Large file local only');return false}catch(_){}}console.warn('HR document cloud save failed',e);setBadge('bad','☁ File save issue');return false}}
  function hookSalary(){if(typeof root.saveFileToDB!=='function'||root.saveFileToDB.__atplCloudShared)return false;var old=root.saveFileToDB;function wrapped(name,buf,cb){var saved=new Date().toISOString();return old.call(this,name,buf,function(){try{if(cb)cb()}finally{if(token())cloudSaveSalary(name,buf,saved)}})}wrapped.__atplCloudShared=true;wrapped.__original=old;root.saveFileToDB=wrapped;return true}
