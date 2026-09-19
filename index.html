@@ -10738,7 +10738,7 @@ else AInit();
 </script>
 
 <script src="hr-workplace.js?v=20260916-loader-fix2"></script>
-<script src="hr-docs-activity-v1.js?v=20260912-1"></script>
+<script src="hr-docs-activity-v1.js?v=20260919-shared-activity2"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
@@ -10748,15 +10748,16 @@ else AInit();
 <script src="bank-account-verifier-loader-v1.js?v=20260918-stable2"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260918-2"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5"></script>
-<script src="compliance-dol-rebuild-v2.js?v=20260919-persistent-vault2"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20260919-account-cloud3"></script>
+<script src="erp-account-cloud-restore-v1.js?v=20260919-account-restore1"></script>
 <script src="erp-enterprise-ui-v1.js?v=20260918-2"></script>\n<script src="employee-master-confirmed-save-v1.js?v=20260918-2"></script>
 <script>
 (function(){
-  var BUILD='2026.09.19-persistent-vault2';
+  var BUILD='2026.09.19-account-cloud3';
   setTimeout(function(){
     if(window.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
     var s=document.createElement('script');
-    s.src='compliance-dol-rebuild-v2.js?v=20260919-persistent-vault2&fresh='+Date.now();
+    s.src='compliance-dol-rebuild-v2.js?v=20260919-account-cloud3&fresh='+Date.now();
     s.async=false;
     document.body.appendChild(s);
   },900);
