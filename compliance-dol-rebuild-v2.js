@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-persistent-vault2';
+var BUILD='2026.09.19-account-cloud3';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -323,7 +323,7 @@ function ensureNav(type){
 
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
-  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="persistent-vault2">'+
+  return '<div class="cd2-shell" data-type="'+type+'" data-cd2-ui="account-cloud3">'+
     '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · V2.2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Original challan file vault me save hota hai, phir index hota hai. <b>Latest matched contribution month = DOL month.</b></div></div>'+
     '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
     '<div class="cd2-strip"><span id="cd2-'+type+'-storage">'+esc(storageLabel())+'</span><span>🔎 Challan Search</span><span>📁 Year Folders</span><span>⬇ Download</span><span>📅 Missing Month Tracker</span><span>🗑 Delete only by you</span></div>'+
@@ -458,39 +458,108 @@ async function updatePeriod(type,id,period){
   var r=await dbGet(id);if(!r)return;var oldPeriod=r.period||'';
   try{
     if(r.storage==='opfs'&&String(oldPeriod).slice(0,4)!==String(period||'').slice(0,4))await moveVaultFileForPeriod(r,period||'');else r.period=period||'';
-    r.periodSource='manual';r.updatedAt=new Date().toISOString();await dbPut(r);await writeVaultManifest();await refresh(type);setStatus(type,'Month saved ✓ — '+(r.period?periodLabel(r.period):'month cleared'))
+    r.periodSource='manual';r.updatedAt=new Date().toISOString();await dbPut(r);await writeVaultManifest();
+    var synced=await pushCloudIndex(r);await refresh(type);setStatus(type,'Month saved ✓ — '+(r.period?periodLabel(r.period):'month cleared')+(synced?' · cloud synced':' · cloud sync pending'))
   }catch(e){setStatus(type,'Month update failed — '+(e.message||e),true)}
 }
 async function deleteOne(type,id){
   var r=await dbGet(id);if(!r)return;
-  if(!confirm('Permanently delete this challan?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis is the only action that removes it from the V2 file vault.'))return;
-  try{await opfsDelete(r);await dbDelete(id);await writeVaultManifest();await refresh(type);setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))}catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
+  if(!confirm('Permanently delete this challan?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis removes the shared cloud index and this device copy.'))return;
+  try{
+    var api=durableApi();
+    if(r.cloudSynced&&(!api||typeof api.deleteComplianceDolConfirmed!=='function'))throw new Error('Cloud login/sync required before deleting this shared challan');
+    if(api&&typeof api.deleteComplianceDolConfirmed==='function')await api.deleteComplianceDolConfirmed(id);
+    await opfsDelete(r);await dbDelete(id);await writeVaultManifest();await refresh(type);setStatus(type,'Deleted from shared records ✓ — '+(r.name||'challan'))
+  }catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
+
+function durableApi(){return root.ATPLDurableEverythingV1||null}
+function cloudRecordFromLocal(r){
+  var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
+  ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
+  return{id:r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v2.2-account-cloud3',cloudConfirmedAt:r.cloudConfirmedAt||''}
+}
+function localRecordFromCloud(r){
+  var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||'');
+  return{id:String(r&&r.id||uid(String(r&&r.type||'esic'),hash)),version:2,type:String(r&&r.type||''),name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||''),cloudOnly:true}
+}
+async function pushCloudIndex(rec){
+  var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')return false;
+  try{
+    var back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(rec));rec.cloudSynced=true;rec.cloudOnly=false;rec.cloudConfirmedAt=String(back&&back.cloudConfirmedAt||new Date().toISOString());await dbPut(rec);return true
+  }catch(e){console.warn('DOL V2 cloud index save failed',rec&&rec.name,e);return false}
+}
+async function pushCloudBatch(list){
+  list=(list||[]).filter(Boolean);if(!list.length)return{saved:0,failed:0};
+  var api=durableApi();if(!api)return{saved:0,failed:list.length};
+  try{
+    if(typeof api.saveComplianceDolBatchConfirmed==='function'){
+      var res=await api.saveComplianceDolBatchConfirmed(list.map(cloudRecordFromLocal)),ok={};
+      (res&&res.results||[]).forEach(function(x){if(x&&x.ok)ok[String(x.id)]=1});
+      for(var i=0;i<list.length;i++){if(ok[String(list[i].id)]){list[i].cloudSynced=true;list[i].cloudOnly=false;list[i].cloudConfirmedAt=new Date().toISOString();await dbPut(list[i])}}
+      return{saved:Number(res&&res.saved||0),failed:Number(res&&res.failed||0)}
+    }
+    var saved=0;for(var j=0;j<list.length;j++)if(await pushCloudIndex(list[j]))saved++;return{saved:saved,failed:list.length-saved}
+  }catch(e){console.warn('DOL V2 cloud batch failed',e);return{saved:0,failed:list.length}}
+}
+async function pullCloudIndex(type){
+  var api=durableApi();if(!api||typeof api.getComplianceDolRecords!=='function')return false;
+  try{
+    var remote=await api.getComplianceDolRecords(type),local=await dbAll(),sameType=local.filter(function(r){return r&&r.type===type}),byId={},byHash={};
+    sameType.forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash)]=r});
+    for(var i=0;i<remote.length;i++){
+      var rr=localRecordFromCloud(remote[i]);if(!rr.type||rr.type!==type)continue;
+      var old=byId[rr.id]||(rr.hash&&byHash[rr.hash])||null;
+      if(old){
+        var preserve={blob:old.blob||null,viewerSheets:old.viewerSheets||null,storage:old.storage||rr.storage,opfsPath:old.opfsPath||null,cloudOnly:!old.blob&&!old.opfsPath};
+        var newer=Date.parse(rr.updatedAt||'')>=Date.parse(old.updatedAt||'');
+        var merged=newer?Object.assign({},old,rr,preserve):Object.assign({},rr,old,{cloudSynced:true,cloudConfirmedAt:rr.cloudConfirmedAt||old.cloudConfirmedAt||'',cloudOnly:preserve.cloudOnly});
+        await dbPut(merged);byId[merged.id]=merged;if(merged.hash)byHash[merged.hash]=merged
+      }else{await dbPut(rr);byId[rr.id]=rr;if(rr.hash)byHash[rr.hash]=rr}
+      if(i%8===0)await tick()
+    }
+    await refresh(type);return true
+  }catch(e){console.warn('DOL V2 cloud pull failed',type,e);return false}
+}
+async function syncCloudIndexes(){
+  await Promise.all([pullCloudIndex('esic'),pullCloudIndex('pf')]);return true
+}
+
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
   var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
-  var saved=0,indexed=0,dups=0,warns=[];
+  var saved=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[];
   for(var i=0;i<files.length;i++){
     var f=files[i];setStatus(type,'Saving '+(i+1)+' / '+files.length+' · '+f.name);
     try{
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
-      var buf=await f.arrayBuffer(),hash=await sha256(buf);
-      if(byHash[hash]){dups++;setStatus(type,'Already saved ✓ — '+f.name);continue}
-      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb'};
+      var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null;
+      if(existing){
+        var existingBlob=await getStoredBlob(existing);
+        if(existingBlob){dups++;setStatus(type,'Already saved ✓ — '+f.name);continue}
+        var attachBlob=new Blob([buf],{type:fileMime(f.name)}),vaultedAttach=false;try{vaultedAttach=await opfsSave(existing,attachBlob)}catch(_){}
+        if(!vaultedAttach)existing.blob=attachBlob;existing.storage=vaultedAttach?'opfs':'indexeddb';existing.cloudOnly=false;existing.name=existing.name||f.name;existing.size=f.size||existing.size;existing.lastModified=f.lastModified||existing.lastModified;
+        if(!(existing.ids||[]).length){
+          try{var reparsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Attaching cloud challan '+(i+1)+' / '+files.length+' · '+p+'%')});existing.ids=reparsed.ids||[];if(!existing.period&&reparsed.period){existing.period=reparsed.period;existing.periodSource=reparsed.periodSource};existing.parseStatus=existing.ids.length?'ready':'error';existing.parseError=existing.ids.length?'':'No valid IDs detected'}catch(pe){existing.parseStatus='error';existing.parseError=String(pe&&pe.message||pe)}
+        }
+        existing.updatedAt=new Date().toISOString();await dbPut(existing);await writeVaultManifest();cloudQueue.push(existing);attached++;byHash[hash]=existing;await refresh(type);continue
+      }
+      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false};
       var vaulted=false;try{vaulted=await opfsSave(rec,blob)}catch(_){}
       if(!vaulted)rec.blob=blob;
-      await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved in '+(vaulted?'persistent vault':'browser storage')+' ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
+      await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved locally ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
       try{
         var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
         rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
         rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
       }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
-      rec.updatedAt=new Date().toISOString();await dbPut(rec);await writeVaultManifest();buf=null;blob=null;await refresh(type);await tick()
+      rec.updatedAt=new Date().toISOString();await dbPut(rec);await writeVaultManifest();cloudQueue.push(rec);buf=null;blob=null;await refresh(type);await tick()
     }catch(e){warns.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
   }
-  await refresh(type);var msg=[];if(saved)msg.push(saved+' file saved ✓');if(indexed)msg.push(indexed+' indexed ✓');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
-  setStatus(type,msg.join(' · ')||'No files saved',!saved&&!!warns.length)
+  var cloud={saved:0,failed:0};if(cloudQueue.length){setStatus(type,'Local save complete ✓ · syncing shared cloud index…');cloud=await pushCloudBatch(cloudQueue);await writeVaultManifest()}
+  await refresh(type);var msg=[];if(saved)msg.push(saved+' new file saved ✓');if(attached)msg.push(attached+' cloud record attached locally ✓');if(indexed)msg.push(indexed+' indexed ✓');if(cloud.saved)msg.push(cloud.saved+' cloud synced ✓');if(cloud.failed)msg.push(cloud.failed+' cloud sync pending');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  setStatus(type,msg.join(' · ')||'No files saved',!saved&&!attached&&!!warns.length)
 }
 function parseQueries(type){
   var raw=String($('cd2-'+type+'-query').value||''),parts=raw.split(/[\s,;|]+/),out=[];
@@ -546,9 +615,9 @@ function wire(type){
 
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
-  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='persistent-vault2'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
-  if(ok)return true;
-  page.innerHTML=pageHtml(type);wire(type);refresh(type).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
+  var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='account-cloud3'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');
+  if(ok){pullCloudIndex(type);return true}
+  page.innerHTML=pageHtml(type);wire(type);pullCloudIndex(type).then(function(){return refresh(type)}).catch(function(e){console.warn('DOL remount refresh failed',e)});return true
 }
 function patchNavigation(){
   if(typeof root.goPage!=='function'||root.goPage.__cd2PersistentWrapped)return;
@@ -567,14 +636,16 @@ async function boot(){
   addCss();addLibraryCss();ensureViewer();ensureNav('esic');ensureNav('pf');await requestPersistentStorage();
   var ep=ensurePage('esic'),pp=ensurePage('pf');if(!ep||!pp)throw new Error('ERP content container not found');
   ep.innerHTML=pageHtml('esic');pp.innerHTML=pageHtml('pf');wire('esic');wire('pf');patchNavigation();
-  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
-  var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent=storageLabel();if(sp)sp.textContent=storageLabel();
-  setStatus('esic','V2.2 ready ✓ — challan search, year folders, download, missing-month tracker and persistent file vault active.');
-  setStatus('pf','V2.2 ready ✓ — challan search, year folders, download, missing-month tracker and persistent file vault active.');
+  await restoreVaultRecords();await migrateLegacy();await migrateDbFilesToVault();await syncCloudIndexes();await Promise.all([refresh('esic'),refresh('pf')]);await writeVaultManifest();
+  var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent=storageLabel()+' · ☁ shared index';if(sp)sp.textContent=storageLabel()+' · ☁ shared index';
+  setStatus('esic','V2.3 ready ✓ — same login on another device pulls saved challan index/search data from cloud.');
+  setStatus('pf','V2.3 ready ✓ — same login on another device pulls saved challan index/search data from cloud.');
+  root.addEventListener('focus',function(){syncCloudIndexes()});root.addEventListener('online',function(){syncCloudIndexes()});
+  root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncCloudIndexes()});
   setTimeout(function(){mountLatest('esic');mountLatest('pf')},1200)
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 
-root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__}};
+root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},syncCloud:syncCloudIndexes,version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__}};
 })(window);
