@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-cloud-only-final17-fast10';
+var BUILD='2026.09.19-cloud-only-final17-fast10b';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -21,6 +21,7 @@ var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
+var localPreviewPrepared=false;
 function bounded(p,ms,label){
   return new Promise(function(resolve,reject){
     var done=false,t=setTimeout(function(){if(done)return;done=true;reject(new Error((label||'Cloud sync')+' timeout'))},ms);
@@ -29,6 +30,11 @@ function bounded(p,ms,label){
 }
 async function localPreview(type){
   try{
+    if(!localPreviewPrepared){
+      await sanitizeLocalTypeMixups();
+      await dedupeLocalRecords();
+      localPreviewPrepared=true
+    }
     var rows=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.archived});
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
     if(rows.length){
