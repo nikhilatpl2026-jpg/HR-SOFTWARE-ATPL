@@ -13,7 +13,7 @@
 (function(root){
 'use strict';
 if(!root||root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__)return;
-root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-clean-rebuild2';
+root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__='2026.09.19-upload-first3';
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
@@ -26,7 +26,15 @@ function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){retur
 function tick(){return new Promise(function(r){setTimeout(r,0)})}
 function periodLabel(p){if(!p)return'Month required';var a=String(p).split('-'),d=new Date(Number(a[0]),Number(a[1])-1,1);return d.toLocaleString('en-IN',{month:'short',year:'numeric'})}
 function cleanName(s){return String(s||'').toLowerCase().replace(/\(\d+\)(?=\.[^.]+$)/,'').replace(/\s+/g,' ').trim()}
-function normalizeDigits(v){var s=String(v==null?'':v).trim().replace(/^['"]|['"]$/g,'').replace(/\.0+$/,'');if(/^\d{8,20}$/.test(s))return s;return''}
+function normalizeDigits(v){
+  if(typeof v==='number'&&isFinite(v)){if(Math.floor(v)!==v)return'';return String(v)}
+  var s=String(v==null?'':v).trim().replace(/^['"]|['"]$/g,'');if(!s)return'';
+  if(/[eE]/.test(s)){var n=Number(s);if(isFinite(n)&&Math.floor(n)===n)s=String(n)}
+  s=s.replace(/\.0+$/,'').trim();
+  if(/^\d+$/.test(s))return s;
+  if(/^\d[\d\s/_-]*\d$/.test(s))return s.replace(/\D/g,'');
+  return''
+}
 function normalizeAlpha(v){var s=String(v==null?'':v).toUpperCase().replace(/[^A-Z0-9]/g,'');return s.length>=8&&s.length<=32&&/\d/.test(s)?s:''}
 function validId(type,v){if(type==='esic')return normalizeDigits(v);var d=normalizeDigits(v);if(d&&d.length===12)return d;return normalizeAlpha(v)}
 function fileMime(name){var e=String(name||'').split('.').pop().toLowerCase();if(e==='pdf')return'application/pdf';if(e==='csv')return'text/csv';return'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
@@ -108,15 +116,18 @@ function inferPeriod(name,text){
 }
 function collectToken(type,value,set){
   var s=String(value==null?'':value).trim();if(!s)return;
+  var d=normalizeDigits(value),a=normalizeAlpha(s);
   if(type==='esic'){
-    var mm=s.match(/\b\d{8,20}\b/g)||[];mm.forEach(function(x){var v=validId(type,x);if(v)set.add(v)})
+    if(d.length>=8&&d.length<=20)set.add(d);
+    var dm=s.match(/\d(?:[\d\s/_.-]{6,24}\d)/g)||[];
+    dm.forEach(function(x){var y=normalizeDigits(x);if(y.length>=8&&y.length<=20)set.add(y)})
   }else{
-    var chunks=s.split(/[\s,;|]+/);
-    chunks.forEach(function(x){var v=validId(type,x);if(v)set.add(v)});
-    var d=s.match(/\b\d{12}\b/g)||[];d.forEach(function(x){set.add(x)})
+    if(d.length===12)set.add(d);
+    if(a.length>=8&&a.length<=32&&/\d/.test(a))set.add(a);
+    var am=s.match(/[A-Za-z0-9][A-Za-z0-9/_.-]{7,31}/g)||[];
+    am.forEach(function(x){var y=normalizeAlpha(x),z=normalizeDigits(x);if(z.length===12)set.add(z);else if(y.length>=8&&y.length<=32&&/\d/.test(y))set.add(y)})
   }
 }
-
 function ensureExcelWorker(){
   if(excelWorker)return true;
   try{
@@ -134,32 +145,46 @@ function ensureExcelWorker(){
   }catch(e){console.warn('V2 Excel worker unavailable',e);return false}
 }
 function parseExcel(buf,type,progress){
-  if(!ensureExcelWorker()){
-    return Promise.resolve().then(function(){
+  function main(){
+    return Promise.resolve().then(async function(){
       if(!root.XLSX)throw new Error('Excel engine unavailable');
       var wb=root.XLSX.read(buf,{type:'array',cellDates:false,cellText:true}),set=new Set(),sample='',sheets=[];
-      wb.SheetNames.forEach(function(sn){var rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});rows.forEach(function(r){(r||[]).forEach(function(v){collectToken(type,v,set);if(sample.length<12000)sample+=' '+String(v||'')})});sheets.push({name:sn,rows:rows})});
+      for(var si=0;si<wb.SheetNames.length;si++){
+        var sn=wb.SheetNames[si],rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});
+        for(var r=0;r<rows.length;r++){
+          var row=rows[r]||[];for(var cc=0;cc<row.length;cc++){collectToken(type,row[cc],set);if(sample.length<12000)sample+=' '+String(row[cc]||'')}
+          if(r%250===0)await tick()
+        }
+        sheets.push({name:sn,rows:rows});if(progress)progress(Math.round((si+1)/wb.SheetNames.length*100));await tick()
+      }
       return{ids:Array.from(set),sample:sample.slice(0,12000),sheets:sheets}
     })
   }
+  if(!ensureExcelWorker())return main();
   return new Promise(function(resolve,reject){
     var id=++excelSeq;excelPending[id]={resolve:resolve,reject:reject,progress:progress};
     var copy=buf.slice(0);excelWorker.postMessage({id:id,type:type,buffer:copy},[copy])
-  })
+  }).catch(function(err){console.warn('Excel worker fallback',err);return main()})
 }
-async function parsePdf(buf,type,progress){
+async async function parsePdf(buf,type,progress){
   if(!root.pdfjsLib)throw new Error('PDF engine unavailable');
   if(root.pdfjsLib.GlobalWorkerOptions)root.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   var doc=await root.pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise,set=new Set(),sample='',items=0;
   for(var p=1;p<=doc.numPages;p++){
-    var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[];
-    for(var i=0;i<arr.length;i++){var s=arr[i].str||'';collectToken(type,s,set);if(sample.length<12000)sample+=' '+s;items++}
+    var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt='';
+    for(var i=0;i<arr.length;i++){
+      var cur=arr[i],s=cur.str||'';collectToken(type,s,set);txt+=' '+s;items++;
+      if(i<arr.length-1){
+        var nx=arr[i+1],a=normalizeDigits(s),b=normalizeDigits(nx.str||''),y1=cur.transform&&cur.transform[5],y2=nx.transform&&nx.transform[5],x1=cur.transform&&cur.transform[4],x2=nx.transform&&nx.transform[4],gap=(x1!=null&&x2!=null)?x2-(x1+(cur.width||0)):999;
+        if(a&&b&&a.length<12&&b.length<12&&a.length+b.length>=8&&a.length+b.length<=20&&y1!=null&&y2!=null&&Math.abs(y1-y2)<1.8&&gap>-3&&gap<14)collectToken(type,a+b,set)
+      }
+    }
+    if(sample.length<12000)sample+=' '+txt;
     try{page.cleanup()}catch(_){}
-    if(progress)progress(Math.round(p/doc.numPages*100));
-    await tick()
+    if(progress)progress(Math.round(p/doc.numPages*100));await tick()
   }
   try{doc.cleanup()}catch(_){}
-  if(items<5||!set.size)throw new Error('Scanned/image PDF or no valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' IDs found. Use selectable-text PDF or Excel.');
+  if(items<5)throw new Error('Scanned/image PDF: text layer not found');
   return{ids:Array.from(set),sample:sample.slice(0,12000),sheets:null}
 }
 async function parseBuffer(buf,name,type,progress){
@@ -185,13 +210,13 @@ function ensureNav(type){
 function pageHtml(type){
   var label=type==='esic'?'ESIC / IP Number':'UAN / PF Member ID',icon=type==='esic'?'🩺':'🧾',title=type==='esic'?'ESIC → DOL':'PF → DOL';
   return '<div class="cd2-shell" data-type="'+type+'">'+
-    '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLEAN V2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">All challans upload karo. Exact '+label+' index hoga. <b>Latest matched contribution month = DOL month</b>; beech ke missing months ignore honge.</div></div>'+
-    '<label class="cd2-upload">＋ Upload Challans<input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple></label></div>'+
-    '<div class="cd2-strip"><span>💾 Original files IndexedDB me saved</span><span>👁 In-app viewer</span><span>🗑 Permanent delete</span><span>⚡ Search index — no re-parse</span><span>🧠 SHA-256 duplicate guard</span></div>'+
+    '<div class="cd2-head"><div><div class="cd2-kicker">COMPLIANCE DOL · CLEAN V2</div><div class="cd2-title">'+icon+' '+title+'</div><div class="cd2-sub">Challan pehle save hoga, phir index hoga. <b>Latest matched contribution month = DOL month</b>; beech ke missing months ignore honge.</div></div>'+
+    '<div><button type="button" class="cd2-upload" data-cd2-pick="'+type+'">＋ Upload Challans</button><input id="cd2-'+type+'-upload" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple style="display:none"></div></div>'+
+    '<div class="cd2-strip"><span>💾 File first saved</span><span>👁 In-app viewer</span><span>🗑 Permanent delete</span><span>⚡ Search index — no re-parse</span><span>🧠 SHA-256 duplicate guard</span></div>'+
     '<div id="cd2-'+type+'-status" class="cd2-status">Ready.</div>'+
     '<div class="cd2-grid">'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div><div id="cd2-'+type+'-files" class="cd2-files"></div></section>'+
-      '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Find DOL Month</b><small>Exact ID search across saved challans</small></div></div>'+
+      '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Find DOL Month</b><small>Exact ID search across successfully indexed challans</small></div></div>'+
         '<div class="cd2-search"><label>'+label+'</label><textarea id="cd2-'+type+'-query" placeholder="One or multiple IDs — space / comma / new line"></textarea><button data-cd2-search="'+type+'">Find DOL Month</button></div>'+
         '<div id="cd2-'+type+'-results" class="cd2-results"><div class="cd2-empty">Search an ID to see its contribution timeline.</div></div>'+
       '</section>'+
@@ -254,9 +279,14 @@ async function refresh(type){
 }
 function renderFiles(type){
   var rows=state[type].rows||[],box=$('cd2-'+type+'-files'),cov=$('cd2-'+type+'-coverage');if(!box)return;
-  var periods=state[type].periods||[];cov.textContent=rows.length+' saved file'+(rows.length===1?'':'s')+(periods.length?' · '+periodLabel(periods[0])+' → '+periodLabel(periods[periods.length-1]):'');
+  var periods=state[type].periods||[],bad=rows.filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).length;
+  cov.textContent=rows.length+' saved file'+(rows.length===1?'':'s')+(periods.length?' · '+periodLabel(periods[0])+' → '+periodLabel(periods[periods.length-1]):'')+(bad?' · '+bad+' need indexing':'');
   if(!rows.length){box.innerHTML='<div class="cd2-empty">No V2 challans yet. Upload all ESIC/PF challans here.</div>';return}
-  box.innerHTML=rows.map(function(r){return'<div class="cd2-file '+(!r.period?'warn':'')+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+Math.round((r.size||0)/1024)+' KB · '+(r.ids||[]).length+' indexed IDs · SHA '+esc(String(r.hash||'').slice(0,10))+(r.migrated?' · migrated':'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'}).join('')
+  box.innerHTML=rows.map(function(r){
+    var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' indexed IDs'):'⚠ Needs indexing';
+    if(r.parseStatus==='processing')meta='⏳ Indexing…';
+    return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+Math.round((r.size||0)/1024)+' KB · '+meta+' · SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+  }).join('')
 }
 async function updatePeriod(type,id,period){
   var r=await dbGet(id);if(!r)return;r.period=period||'';r.periodSource='manual';r.updatedAt=new Date().toISOString();await dbPut(r);await refresh(type);setStatus(type,'Month saved ✓ — '+(r.period?periodLabel(r.period):'month cleared'))
@@ -266,26 +296,32 @@ async function deleteOne(type,id){
   if(!confirm('Permanently delete this challan from V2 library?\\n\\n'+(r.name||id)+(r.period?'\\n'+periodLabel(r.period):'')))return;
   try{await dbDelete(id);await refresh(type);setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan'))}catch(e){setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
-async function upload(type,fileList){
-  var files=Array.from(fileList||[]);if(!files.length)return;
+async async function upload(type,fileList){
+  var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   var all=await dbAll(),byHash={};all.filter(function(r){return r.type===type}).forEach(function(r){if(r.hash)byHash[r.hash]=r});
-  var saved=0,dups=0,errs=[];
+  var saved=0,indexed=0,dups=0,warns=[];
   for(var i=0;i<files.length;i++){
-    var f=files[i];setStatus(type,'Checking '+(i+1)+' / '+files.length+' · '+f.name);
+    var f=files[i];setStatus(type,'Saving '+(i+1)+' / '+files.length+' · '+f.name);
     try{
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
       var buf=await f.arrayBuffer(),hash=await sha256(buf);
       if(byHash[hash]){dups++;setStatus(type,'Already saved ✓ — '+f.name);continue}
-      setStatus(type,'Reading '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
-      var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Reading '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
-      if(!parsed.ids.length)throw new Error('No valid IDs found');
-      var rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:parsed.period,periodSource:parsed.periodSource,ids:parsed.ids,uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(f.name)}),viewerSheets:parsed.sheets||null};
-      await dbPut(rec);byHash[hash]=rec;saved++;buf=null;parsed=null;await tick()
-    }catch(e){errs.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
+      var quick=inferPeriod(f.name,''),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(f.name)}),viewerSheets:null};
+      await dbPut(rec);byHash[hash]=rec;saved++;await refresh(type);setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
+      try{
+        var parsed=await parseBuffer(buf,f.name,type,function(p){setStatus(type,'Saved ✓ · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · '+p+'%')});
+        rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
+        rec.viewerSheets=parsed.sheets||null;rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';
+        if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected');
+      }catch(pe){
+        rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)
+      }
+      rec.updatedAt=new Date().toISOString();await dbPut(rec);buf=null;await refresh(type);await tick()
+    }catch(e){warns.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
   }
   await refresh(type);
-  var msg=[];if(saved)msg.push(saved+' saved ✓');if(dups)msg.push(dups+' duplicate skipped ✓');if(errs.length)msg.push(errs.slice(0,2).join(' | ')+(errs.length>2?' | +'+(errs.length-2)+' more':''));
-  setStatus(type,msg.join(' · ')||'No files saved',!!errs.length&&!saved)
+  var msg=[];if(saved)msg.push(saved+' file saved ✓');if(indexed)msg.push(indexed+' indexed ✓');if(dups)msg.push(dups+' duplicate skipped ✓');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  setStatus(type,msg.join(' · ')||'No files saved',!saved&&!!warns.length)
 }
 function parseQueries(type){
   var raw=String($('cd2-'+type+'-query').value||''),parts=raw.split(/[\s,;|]+/),out=[];
@@ -293,16 +329,17 @@ function parseQueries(type){
 }
 function search(type){
   var qs=parseQueries(type),box=$('cd2-'+type+'-results');if(!qs.length){setStatus(type,'Enter a valid '+(type==='esic'?'ESIC/IP number':'UAN/PF ID'),true);return}
-  var idx=state[type].index||{},coverage=state[type].periods||[],h='<table class="cd2-table"><thead><tr><th>ID</th><th>DOL MONTH</th><th>MATCHED CONTRIBUTIONS</th><th>CHECK</th></tr></thead><tbody>';
+  var idx=state[type].index||{},coverage=state[type].periods||[],unindexed=(state[type].rows||[]).filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length});
+  var h='<table class="cd2-table"><thead><tr><th>ID</th><th>DOL MONTH</th><th>MATCHED CONTRIBUTIONS</th><th>CHECK</th></tr></thead><tbody>';
   qs.forEach(function(id){
     var m=(idx[id]||[]).slice(),unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return a.period.localeCompare(b.period)}),months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=months.length?months[months.length-1]:'',later=last?coverage.filter(function(p){return p>last}).length:0;
-    var dol=!m.length?'<span class="cd2-bad">Not found</span>':unresolved.length?'<span class="cd2-warn">Set month first</span>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Latest contribution = DOL</div>';
-    var check=!m.length?'No exact ID match':unresolved.length?unresolved.length+' matched challan(s) need month':later+' later uploaded month(s) checked with no contribution';
+    var blocking=unindexed.filter(function(r){return !last||!r.period||r.period>=last});
+    var dol=!m.length?'<span class="cd2-bad">Not found</span>':unresolved.length?'<span class="cd2-warn">Set month first</span>':blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Latest contribution = DOL</div>';
+    var check=!m.length?'No exact ID match':unresolved.length?unresolved.length+' matched challan(s) need month':blocking.length?'Cannot certify latest month until pending challans are indexed':later+' later uploaded month(s) checked with no contribution';
     h+='<tr><td><b>'+esc(id)+'</b></td><td>'+dol+'</td><td><div class="cd2-months">'+(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+'</div></td><td>'+esc(check)+'</td></tr>'
   });
-  h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · gaps ignored · latest matched contribution month used as DOL · no file re-parse')
+  h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · gaps ignored · latest matched contribution month used as DOL · no file re-parse'+(unindexed.length?' · '+unindexed.length+' saved challan(s) still need indexing':''))
 }
-
 async function migrateLegacy(){
   if(!root.indexedDB)return;
   try{
@@ -325,7 +362,9 @@ async function migrateLegacy(){
   }catch(e){console.warn('V2 legacy migration unavailable',e)}
 }
 function wire(type){
-  $('cd2-'+type+'-upload').addEventListener('change',function(){var fs=this.files;this.value='';upload(type,fs)});
+  var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]');
+  pick.onclick=function(){inp.click()};
+  inp.addEventListener('change',function(){var fs=Array.from(this.files||[]);this.value='';if(fs.length)upload(type,fs);else setStatus(type,'No file selected',true)});
   document.querySelector('[data-cd2-search="'+type+'"]').onclick=function(){search(type)};
   document.querySelector('[data-cd2-refresh="'+type+'"]').onclick=function(){refresh(type)};
   $('cd2-'+type+'-files').addEventListener('change',function(e){var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
