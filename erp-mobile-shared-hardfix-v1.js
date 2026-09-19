@@ -95,11 +95,13 @@ function unlockApp(user,navigate){
   applyAccess();if(navigate!==false){var p=firstAllowed(user||current());if(p&&typeof root.goPage==='function')try{root.goPage(p)}catch(_){}}
 }
 function hydrateAfterLogin(user){
-  var jobs=[pullUsers(user),pullMaster(true),backgroundShared()];
+  // Critical login path only: users + Employee Master. Heavy modules sync lazily after UI is usable.
+  var jobs=[pullUsers(user),pullMaster(true)];
   Promise.allSettled(jobs).then(function(results){
     applyAccess();var count=results[1]&&results[1].status==='fulfilled'?Number(results[1].value||0):0;
     try{root.document.dispatchEvent(new CustomEvent('atpl-shared-data-ready',{detail:{employees:count}}))}catch(_){}
     try{if(typeof root.showToast==='function')root.showToast(count?'☁ Shared data ready · '+count+' employees':'☁ Shared data sync complete')}catch(_){}
+    root.setTimeout(function(){backgroundShared().catch(function(e){console.warn('Deferred shared hydration failed',e)})},2200);
   }).catch(function(e){console.warn('Post-login shared hydration failed',e)})
 }
 async function hardLogin(ev){
@@ -122,16 +124,15 @@ function captureEnter(ev){if(ev.key!=='Enter')return;var p=q('uaLoginPass');if(p
 function hookNav(){
   root.document.addEventListener('click',function(ev){
     var x=ev.target&&ev.target.closest?ev.target.closest('#vn-empmaster,#vn-employee,#vn-emaster,#vn-employees'):null;
-    if(x&&tok())setTimeout(function(){pullMaster(true).catch(function(e){console.warn(e)})},40);
-    var d=ev.target&&ev.target.closest?ev.target.closest('#vn-esictodol,#vn-pftodol'):null;
-    if(d&&tok())setTimeout(backgroundShared,80)
+    if(x&&tok())setTimeout(function(){pullMaster(true).catch(function(e){console.warn(e)})},80);
+    // PF/ESIC DOL owns its own lazy refresh. Do not launch whole-ERP background sync from these buttons.
   },true)
 }
 function boot(){
   root.document.addEventListener('click',captureClick,true);root.document.addEventListener('keydown',captureEnter,true);hookNav();
-  try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.ping==='function')root.ATPLCloudAPI.ping().catch(function(){})}catch(_){}
-  root.addEventListener('online',function(){if(tok())hydrateAfterLogin(current()||sess())});
-  if(tok()&&sess()){unlockApp(current()||sess(),false);setTimeout(function(){hydrateAfterLogin(current()||sess())},0)}
+  try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.ping==='function')root.setTimeout(function(){root.ATPLCloudAPI.ping().catch(function(){})},1200)}catch(_){}
+  root.addEventListener('online',function(){if(tok())root.setTimeout(function(){hydrateAfterLogin(current()||sess())},700)});
+  if(tok()&&sess()){unlockApp(current()||sess(),false);setTimeout(function(){hydrateAfterLogin(current()||sess())},900)}
 }
 root.ATPLMobileSharedHardFix={login:hardLogin,pullMaster:function(){return pullMaster(true)},syncAll:async function(){var n=await pullMaster(true);await backgroundShared();return n},version:function(){return BUILD}};
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
