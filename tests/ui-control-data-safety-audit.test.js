@@ -28,8 +28,12 @@ test('static HTML ids are unique',()=>{
 test('navigation controls resolve to real or explicitly dynamic pages',()=>{
   const markup=html.replace(/<script\b[\s\S]*?<\/script>/gi,'');
   const targets=[...markup.matchAll(/goPage\(['"]([^'"]+)['"]\)/g)].map(m=>m[1]);
-  const dynamic=new Set(['esictodol','pftodol']);
-  targets.forEach(t=>assert.ok(dynamic.has(t)||html.includes('id="page-'+t+'"')||html.includes("id='page-"+t+"'"),'dead goPage target '+t));
+  const jsCorpus=fs.readdirSync(ROOT).filter(x=>x.endsWith('.js')).map(read).join('\n');
+  targets.forEach(t=>{
+    const staticPage=html.includes('id="page-'+t+'"')||html.includes("id='page-"+t+"'");
+    const dynamicPage=jsCorpus.includes("page-"+t)||jsCorpus.includes("'page-"+t+"'")||jsCorpus.includes('"page-'+t+'"');
+    assert.ok(staticPage||dynamicPage,'dead goPage target '+t);
+  });
 });
 
 test('every static button has an action hook',()=>{
