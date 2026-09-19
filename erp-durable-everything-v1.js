@@ -57,6 +57,24 @@
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');
   return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})
 }
+async function fetchRemoteKinds(kinds){
+  kinds=Array.from(new Set((kinds||[]).map(text).filter(Boolean)));
+  if(!token()||!kinds.length)return[];
+  var out=[],seen={},supported=true;
+  for(var i=0;i<kinds.length;i++){
+    try{
+      var d=await api({action:'getSystemRecords',token:token(),kind:kinds[i]},16000);
+      if(!(d&&d.ok&&Array.isArray(d.records))){supported=false;break}
+      d.records.forEach(function(r){
+        var k=text(r&&r.emp_id)||[text(r&&r.object_kind),text(r&&r.object_key),text(r&&r._atpl_kind),text(r&&r.index)].join('|');
+        if(k&&!seen[k]){seen[k]=1;out.push(r)}
+      })
+    }catch(e){supported=false;break}
+  }
+  if(supported)return out;
+  var all=await fetchRemote(),allow={};kinds.forEach(function(k){allow[k]=1});
+  return all.filter(function(r){return r&&allow[text(r.object_kind)]})
+}
 
   function allowedLocalKey(k){k=String(k||'');if(!k||k===STAMP)return false;if(/token|session|password|credential|secret/i.test(k))return false;if(k==='ATPL_UserAccess_V1'||k==='AroraTextilesEmployeeMasterV3')return false;if(/^hrdoc_/i.test(k))return false;return /^ATPL_MamCompliance_/i.test(k)||/^ATPL_BankVerifier_/i.test(k)||/^ATPL_.*(?:UI|State|Profile|Rule|Setting|Preference|Auditor)/i.test(k)||/^AroraTextilesHRDocTypes/i.test(k)||/^arora_hr_doc_types$/i.test(k)}
   function collectState(){var values={};try{for(var i=0;i<root.localStorage.length;i++){var k=root.localStorage.key(i);if(allowedLocalKey(k))values[k]=root.localStorage.getItem(k)}}catch(_){}var stamp=Number(root.localStorage.getItem(STAMP)||0)||0;return{version:1,updatedAt:stamp,values:values}}
@@ -173,8 +191,9 @@
   async function getComplianceDolRecords(type){
     if(!token()||!session())throw new Error('Valid login required for challan cloud access');
     type=String(type||'').toLowerCase();if(type!=='esic'&&type!=='pf')throw new Error('Invalid challan type');
-    var records=await fetchRemote(),metas=records.filter(function(r){
-      return r&&r._atpl_kind==='meta'&&(r.object_kind===DOL_KIND_ESIC||r.object_kind===DOL_KIND_PF)
+    var activeKinds=type==='pf'?[DOL_KIND_PF,DOL_KIND_ESIC,DOL_KIND_LEGACY]:[DOL_KIND_ESIC,DOL_KIND_LEGACY];
+    var records=await fetchRemoteKinds(activeKinds),metas=records.filter(function(r){
+      return r&&r._atpl_kind==='meta'&&(r.object_kind===DOL_KIND_ESIC||r.object_kind===DOL_KIND_PF||r.object_kind===DOL_KIND_LEGACY)
     }),best={};
     for(var i=0;i<metas.length;i++){
       var m=metas[i];
@@ -251,7 +270,7 @@
     items.forEach(function(x){var k=[x.id,x.type,x.hash,x.name,x.period].join('|');if(!uniq[k]){uniq[k]=1;targets.push(x)}});
     if(!targets.length)return{ok:true,deleted:0,failed:0,results:[]};
 
-    var records=await fetchRemote(),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),plans=targets.map(function(t){return{target:t,objectKeys:{}}});
+    var records=await fetchRemoteKinds([DOL_KIND_LEGACY,DOL_KIND_ESIC,DOL_KIND_PF,DOL_KIND_PF_ARCHIVE,DOL_KIND_ESIC_ARCHIVE]),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)}),plans=targets.map(function(t){return{target:t,objectKeys:{}}});
     function normName(v){return text(v).toLowerCase().replace(/^\[(?:archived duplicate)\]\s*/,'').replace(/^(?:pf|esic)\s*·\s*/,'').replace(/\(\s*\d+\s*\)/g,'').replace(/[^a-z0-9]+/g,'')}
     function targetMatch(t,m,p){
       var pid=text(p&&p.id),ph=dolFingerprint(p),pt=text(p&&p.type).toLowerCase(),pn=text(p&&p.name),pp=text(p&&p.period);
@@ -285,7 +304,7 @@
     }
 
     try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    var verify=await fetchRemote(),leftKeys={};
+    var verify=await fetchRemoteKinds([DOL_KIND_LEGACY,DOL_KIND_ESIC,DOL_KIND_PF,DOL_KIND_PF_ARCHIVE,DOL_KIND_ESIC_ARCHIVE]),leftKeys={};
     verify.forEach(function(r){if(r&&r._atpl_kind==='meta'&&dolAllowedKind(r.object_kind)&&r.object_key)leftKeys[text(r.object_key)]=1});
     results.forEach(function(x,idx){
       if(!x.ok)return;
