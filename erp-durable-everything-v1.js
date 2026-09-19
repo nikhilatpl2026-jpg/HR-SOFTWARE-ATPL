@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.18-challan-delete3';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-mobile-gzip1';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -26,7 +26,19 @@
   function bytesToB64(bytes){var out='',step=0x8000;for(var i=0;i<bytes.length;i+=step)out+=String.fromCharCode.apply(null,bytes.subarray(i,Math.min(bytes.length,i+step)));return btoa(out)}
   function b64ToBytes(s){var bin=atob(s),a=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
   async function encodeObject(obj){var raw=new TextEncoder().encode(JSON.stringify(obj)),bytes=raw,encoding='utf8-base64';if(typeof root.CompressionStream==='function'){try{var cs=new root.CompressionStream('gzip'),ab=await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();bytes=new Uint8Array(ab);encoding='gzip-base64'}catch(_){}}return{encoding:encoding,data:bytesToB64(bytes),rawBytes:raw.length,packedBytes:bytes.length}}
-  async function decodeObject(encoding,data){var bytes=b64ToBytes(data);if(encoding==='gzip-base64'&&typeof root.DecompressionStream==='function'){var ds=new root.DecompressionStream('gzip'),ab=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();bytes=new Uint8Array(ab)}return JSON.parse(new TextDecoder().decode(bytes))}
+  async function decodeObject(encoding,data){
+  var bytes=b64ToBytes(data);
+  if(encoding==='gzip-base64'){
+    if(typeof root.DecompressionStream==='function'){
+      var ds=new root.DecompressionStream('gzip'),ab=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();bytes=new Uint8Array(ab)
+    }else if(root.pako&&typeof root.pako.ungzip==='function'){
+      bytes=root.pako.ungzip(bytes)
+    }else{
+      throw new Error('GZIP decoder unavailable on this browser')
+    }
+  }
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
   async function upsert(id,record,attempt){var tk=token();if(!tk)throw new Error('Login token missing');var d=await api({action:'upsertEmployeeMaster',token:tk,emp_id:id,record_json:JSON.stringify(Object.assign({emp_id:id,_atpl_system:true},record))},22000);if(d&&d.ok)return true;if(!attempt){await new Promise(function(r){setTimeout(r,650)});return upsert(id,record,1)}throw new Error(d&&d.error||'Durable cloud save failed')}
   async function removeRemote(id,attempt){var tk=token();if(!tk)throw new Error('Login token missing');var d=await api({action:'deleteEmployeeMaster',token:tk,emp_id:id},22000);if(d&&d.ok)return true;if(!attempt){await new Promise(function(r){setTimeout(r,500)});return removeRemote(id,1)}throw new Error(d&&d.error||'Durable cloud delete failed')}
   async function pool(tasks,limit){var at=0,failed=null;async function worker(){while(!failed){var i=at++;if(i>=tasks.length)return;try{await tasks[i]()}catch(e){failed=e;return}}}var ws=[];for(var n=0;n<Math.min(limit,tasks.length);n++)ws.push(worker());await Promise.all(ws);if(failed)throw failed}
