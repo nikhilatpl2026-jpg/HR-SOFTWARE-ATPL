@@ -16,7 +16,7 @@ function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function text(v){return v==null?'':String(v).trim()}
 function token(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function session(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
-function jsonp(p,timeout){return new Promise(function(ok,no){
+function jsonp(p,timeout){/* broker-routed-account */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(p,{timeout:timeout,source:'account-restore'});return new Promise(function(ok,no){
   var cb='__atpl_acr_'+Date.now()+'_'+Math.random().toString(36).slice(2),sc=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();no(new Error('Account cloud timeout'))},timeout||12000);
   function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(sc.parentNode)sc.parentNode.removeChild(sc)}
   root[cb]=function(x){finish();ok(x||{})};p=Object.assign({},p||{},{callback:cb,_ts:Date.now()});
@@ -89,7 +89,7 @@ function boot(){
   root.addEventListener('focus',function(){syncNow(false)});
   root.addEventListener('online',function(){syncNow(true)});
   root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden)syncNow(false)});
-  root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},30000)
+  root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},120000)
 }
 root.ATPLCloudSharedStorageV1={syncNow:function(){return syncNow(true)},syncUsers:syncUsers,status:function(){return{build:BUILD,token:!!token(),session:!!session(),running:running,lastRun:lastRun}}};
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
