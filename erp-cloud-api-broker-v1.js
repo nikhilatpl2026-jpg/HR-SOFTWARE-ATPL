@@ -9,7 +9,7 @@ if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
+var generation=0,inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
 var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,activeWrites:0,queued:0};
 
 var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1,getDOLRecords:1,checkDOLDuplicate:1,getDOLFileInfo:1,getDOLFileChunk:1};
@@ -50,6 +50,7 @@ function attemptsFor(action,asked){
   return 1
 }
 function invalidate(action){
+  if(INVALIDATE[action]){generation++;inflight={}}
   (INVALIDATE[action]||[]).forEach(function(a){Object.keys(cache).forEach(function(k){if(k.indexOf('action='+a+'&')===0||k==='action='+a)delete cache[k]})})
 }
 function jsonp(params,timeout){
@@ -141,8 +142,9 @@ async function request(params,opts){
   var k=key(params),isRead=!!READ_ACTIONS[action],ttl=opts.cacheMs!=null?Number(opts.cacheMs):(CACHE_MS[action]||0);
   if(isRead&&ttl>0&&cache[k]&&now()-cache[k].at<ttl)return cache[k].data;
   if(isRead&&inflight[k])return inflight[k];
+  var startedGeneration=generation;
   var p=enqueue(params,opts).then(function(data){
-    if(isRead&&ttl>0&&data&&data.ok!==false)cache[k]={at:now(),data:data};
+    if(isRead&&startedGeneration===generation&&ttl>0&&data&&data.ok!==false)cache[k]={at:now(),data:data};
     if(!isRead&&data&&data.ok!==false)invalidate(action);
     return data
   }).finally(function(){if(inflight[k]===p)delete inflight[k]});
@@ -150,7 +152,7 @@ async function request(params,opts){
   return p
 }
 async function ping(){return request({action:'ping'},{cacheMs:15000,attempts:2,timeout:12000})}
-function clear(){cache={};inflight={}}
+function clear(){generation++;cache={};inflight={}}
 function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
 root.ATPLCloudAPI={request:request,ping:ping,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}

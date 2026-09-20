@@ -28,23 +28,14 @@ function bounded(p,ms,label){
     Promise.resolve(p).then(function(v){if(done)return;done=true;clearTimeout(t);resolve(v)},function(e){if(done)return;done=true;clearTimeout(t);reject(e)})
   })
 }
+function dolToken(){try{return root.sessionStorage.getItem('ATPL_RemoteToken_V1')||root.sessionStorage.getItem('ATPL_SharedToken_V1')||''}catch(_){return''}}
+function dolAllowed(type){try{var u=JSON.parse(root.sessionStorage.getItem('ATPL_UserSession_V5')||'null');return !!(dolToken()&&u&&(u.admin===true||(u.access||[]).indexOf('*')>=0||(u.access||[]).indexOf(type+'todol')>=0))}catch(_){return false}}
+var refreshVersion={pf:0,esic:0},deleting={};
 async function localPreview(type){
-  try{
-    if(!localPreviewPrepared){
-      await sanitizeLocalTypeMixups();
-      await dedupeLocalRecords();
-      localPreviewPrepared=true
-    }
-    var rows=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.archived});
-    var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
-    if(rows.length){
-      state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
-      rebuildIndex(type);renderFiles(type);setStatus(type,'Cached challans ready ✓ · cloud refresh running…');
-      return true
-    }
-  }catch(e){console.warn('DOL local preview failed',type,e)}
+  // Device-wide caches supply file bytes only after the server authorizes a row.
   return false
 }
+
 var viewer={url:'',type:'',id:'',sheet:0,page:1,pageSize:100,sheets:null};
 var storageState={opfs:false,persisted:false,checked:false,rootName:'ATPL-Compliance-DOL-V2'};
 var MONTHS={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,sept:9,september:9,oct:10,october:10,nov:11,november:11,dec:12,december:12};
@@ -61,7 +52,7 @@ async function cloudRecords(type){
       var rows=await bounded(v.list(type),8500,'Dedicated challan backend');
       cloudMode[type]='v4';return{mode:'v4',records:Array.isArray(rows)?rows:[]}
     }catch(e){
-      if(v.supportState&&v.supportState()===true)throw e;
+      if(!/DOL_V4_UNAVAILABLE|unknown action/i.test(String(e&&e.message||e)))throw e;
       if(!/DOL_V4_UNAVAILABLE|unknown action/i.test(String(e&&e.message||e)))console.warn('DOL V4 unavailable; using compatibility index',e)
     }
   }
@@ -436,6 +427,7 @@ function closeViewer(){
   viewer.sheets=null;$('cd2-viewer').classList.remove('show');$('cd2-vbody').innerHTML='';$('cd2-vfoot').style.display='none';$('cd2-vsheet').style.display='none'
 }
 async function openViewer(type,id){
+  if(!dolAllowed(type))return;
   ensureViewer();var rec=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);
   if(!rec){setStatus(type,'Open failed — saved record not found',true);return}
   $('cd2-vname').textContent=rec.name||'Challan';$('cd2-vmeta').textContent=(rec.period?periodLabel(rec.period):'Month required')+' · SHA-256 '+String(rec.hash||'').slice(0,16)+'…';
@@ -467,6 +459,8 @@ function rebuildIndex(type){
   state[type].index=idx;state[type].periods=Array.from(periods).sort()
 }
 async function refresh(type){
+  var version=++refreshVersion[type],sessionToken=dolToken();
+  if(!dolAllowed(type)){state[type].rows=[];rebuildIndex(type);renderFiles(type);setStatus(type,'Access denied or login required.',true);return false}
   var hadLocal=(state[type].rows||[]).length>0;
   if(!hadLocal)hadLocal=await localPreview(type);
   if(!cloudLoginReady()){setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false}
@@ -481,13 +475,14 @@ async function refresh(type){
       }
       return r
     }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)});
+    if(version!==refreshVersion[type]||sessionToken!==dolToken()||!dolAllowed(type))return false;
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
     rebuildIndex(type);renderFiles(type);
     setStatus(type,(pack.mode==='v4'?'Shared backend + original-file vault loaded ✓':'Shared compatibility index loaded ✓')+' · '+rows.length+' challan'+(rows.length===1?'':'s')+'.');
     return true
   }catch(e){
-    if(!(state[type].rows||[]).length)await localPreview(type);
+    if(version!==refreshVersion[type]||sessionToken!==dolToken())return false;
     renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh failed. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
   }
 }
@@ -520,6 +515,7 @@ function renderMissingMonths(type){
   box.innerHTML='<div class="cd2-missbox"><div class="cd2-misshead"><b>📅 '+esc(year)+' Challan Coverage</b><span>'+(missing.length?missing.length+' missing month'+(missing.length===1?'':'s'):'All expected months uploaded ✓')+'</span></div><div class="cd2-monthgrid">'+chips.join('')+'</div></div>'
 }
 async function downloadChallan(type,id){
+  if(!dolAllowed(type))return;
   var rec=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!rec){setStatus(type,'Download failed — saved file not found',true);return}
   try{
     setStatus(type,'Preparing original file…');
@@ -559,6 +555,7 @@ function renderFiles(type){
   }).join('')
 }
 async function updatePeriod(type,id,period){
+  if(!dolAllowed(type))return;
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
   try{
     r=Object.assign({},r,{period:period||'',periodSource:'manual',updatedAt:new Date().toISOString()});
@@ -573,10 +570,13 @@ async function updatePeriod(type,id,period){
   }catch(e){await refresh(type);setStatus(type,'Month update failed — '+(e.message||e),true)}
 }
 async function deleteOne(type,id){
+  if(!dolAllowed(type)||deleting[type+':'+id])return;
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
   if(!confirm('Permanently delete this selected challan from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
+  deleting[type+':'+id]=true;refreshVersion[type]++;
   setStatus(type,'Deleting permanently…');
   try{
+    if(cloudMode[type]==='unknown')await cloudRecords(type);
     var v=vaultApi();
     if(cloudMode[type]==='v4'&&v&&typeof v.deleteRecord==='function')await v.deleteRecord(r);
     else{
@@ -590,11 +590,12 @@ async function deleteOne(type,id){
       if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
     await writeVaultManifest();try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    await refresh(type);
+    state[type].rows=state[type].rows.filter(function(x){return x.id!==r.id&&!(r.hash&&x.hash===r.hash)});rebuildIndex(type);renderFiles(type);
+    if(!await refresh(type))throw new Error('Delete accepted; cloud verification unavailable. Refresh to confirm.');
     var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
     if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
     setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''))
-  }catch(e){try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}await refresh(type);setStatus(type,'Delete failed — '+(e.message||e),true)}
+  }catch(e){try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}await refresh(type);setStatus(type,'Delete failed — '+(e.message||e),true)}finally{delete deleting[type+':'+id]}
 }
 
 function cloudRecordFromLocal(r){
@@ -758,9 +759,9 @@ function syncCloudIndexes(type){
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend · local viewer cache';
-  if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
+  if(!dolAllowed(type)){setStatus(type,'Login and module access required before upload.',true);return}
   var packs;
-  try{packs=await Promise.all([cloudRecords('esic'),cloudRecords('pf')])}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
+  try{packs=await Promise.all(['esic','pf'].map(function(t){return dolAllowed(t)?cloudRecords(t):Promise.resolve({records:[]})}))}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
   var mode=(packs[0].mode==='v4'&&packs[1].mode==='v4')?'v4':'legacy',byHash={},otherByHash={};
   (packs[type==='esic'?0:1].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
   (packs[type==='esic'?1:0].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)otherByHash[h]=localRecordFromCloud(x)});
@@ -891,6 +892,7 @@ async function boot(){
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
   setStatus('esic','Ready · open ESIC → DOL to load shared library.');
   setStatus('pf','Ready · open PF → DOL to load shared library.');
+  root.document.addEventListener('atpl-authenticated',function(){['pf','esic'].forEach(function(t){refreshVersion[t]++;cloudLastSync[t]=0;cloudSyncPromises[t]=null;state[t].rows=[];rebuildIndex(t);renderFiles(t)});var t=activeDolType();if(t)syncCloudType(t,true)});
   root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700)});
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
