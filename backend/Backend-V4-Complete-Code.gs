@@ -197,6 +197,7 @@ function appendDOLChunkBatch_(p) {
   if(!uploadId) return {ok:false,error:'upload_id required'};
   var meta=dolUploadMeta_(uploadId);
   if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  requireDolAccess_(p.token,meta.type);
   try{parts=JSON.parse(String(p.parts_json||'[]'));}catch(_){return {ok:false,error:'Invalid parts_json'};}
   if(!Array.isArray(parts)||!parts.length||parts.length>12)return {ok:false,error:'Invalid upload part batch'};
   var total=0,normalized=[];
@@ -289,6 +290,13 @@ function parseJsonArray_(v) {
   }
 }
 
+function requireDolAccess_(token,type) {
+  var u=requireUser_(token),access=u.access||[];
+  if(type!=='pf'&&type!=='esic')throw new Error('Invalid DOL type');
+  if(!u.admin&&access.indexOf('*')<0&&access.indexOf(type+'todol')<0)throw new Error('DOL access denied');
+  return u;
+}
+
 function publicDol_(r) {
   return {
     id:r.id,type:r.type,name:r.name,fileHash:r.file_hash,fingerprint:r.file_hash,
@@ -317,6 +325,7 @@ function getDOLRecords_(p) {
   requireUser_(p.token);
   var type = String(p.type||'').toLowerCase();
   if (type !== 'pf' && type !== 'esic') return {ok:false,error:'Invalid DOL type'};
+  requireDolAccess_(p.token,type);
   var out = dolRows_().filter(function(r){return r.type===type}).map(publicDol_);
   return {ok:true,type:type,records:out,count:out.length,source:'DOLRecords'};
 }
@@ -326,6 +335,7 @@ function checkDOLDuplicate_(p) {
   var hash = String(p.file_hash||p.hash||'').toLowerCase();
   if (!hash) return {ok:false,error:'file_hash required'};
   var r = findDolByHash_(hash);
+  if(r)requireDolAccess_(p.token,r.type);
   return {ok:true,duplicate:!!r,record:r?publicDol_(r):null};
 }
 
@@ -348,8 +358,9 @@ function beginDOLUpload_(p) {
   var type = String(p.type||'').toLowerCase(), hash = String(p.file_hash||'').toLowerCase();
   if (type!=='pf' && type!=='esic') return {ok:false,error:'Invalid DOL type'};
   if (!hash) return {ok:false,error:'file_hash required'};
+  requireDolAccess_(p.token,type);
   var dup = findDolByHash_(hash);
-  if (dup) return {ok:true,duplicate:true,record:publicDol_(dup)};
+  if (dup) {requireDolAccess_(p.token,dup.type);return {ok:true,duplicate:true,record:publicDol_(dup)};}
   var uploadId = Utilities.getUuid().replace(/-/g,'');
   var cache = CacheService.getScriptCache();
   cache.put('ATPL_DOL_UPLOAD_'+uploadId, JSON.stringify({
@@ -368,6 +379,7 @@ function appendDOLChunk_(p) {
   if(!uploadId||!isFinite(idx)||idx<0||Math.floor(idx)!==idx||!data)return {ok:false,error:'Invalid upload chunk'};
   if(data.length>DOL_UPLOAD_PART_MAX)return {ok:false,error:'Chunk too large'};
   var meta=dolUploadMeta_(uploadId);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  requireDolAccess_(p.token,meta.type);
   var ph=ensureDolSheets_().parts,lock=LockService.getScriptLock();lock.waitLock(15000);
   try{
     var existing=dolExistingPartMap_(uploadId),k=String(idx);
@@ -384,6 +396,7 @@ function commitDOLUpload_(p) {
   var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId);
   if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}
   var meta=JSON.parse(raw);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  requireDolAccess_(p.token,meta.type);
   var ph=ensureDolSheets_().parts,n=ph.getLastRow(),partMap={};
   if(n>=2){
     ph.getRange(2,1,n-1,5).getValues().forEach(function(r){
@@ -401,7 +414,7 @@ function commitDOLUpload_(p) {
   var actualHash=dolBytesSha256_(bytes);
   if(actualHash!==String(meta.file_hash||'').toLowerCase())return {ok:false,error:'SHA-256 verification failed'};
   if(meta.type==='esic'&&/\b(?:ECR|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN)\b/i.test(String(meta.name||'')))return {ok:false,error:'PF file blocked from ESIC'};
-  var lock=LockService.getScriptLock();lock.waitLock(20000),file=null;
+  var lock=LockService.getScriptLock();var file=null;lock.waitLock(20000);
   try{
     var dup=findDolByHash_(meta.file_hash);
     if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:publicDol_(dup)};}
@@ -426,6 +439,7 @@ function updateDOLRecord_(p) {
   requireUser_(p.token);var lock=LockService.getScriptLock();lock.waitLock(15000);
   try{
     var old=findDolById_(p.id);if(!old)return {ok:false,error:'DOL record not found'};
+    requireDolAccess_(p.token,old.type);
     var requested=String(p.type||old.type).toLowerCase();
     if(requested!==old.type)return {ok:false,error:'Challan category cannot be changed; delete and upload in the correct module'};
     var sh=ensureDolSheets_().records,now=new Date().toISOString();
@@ -439,9 +453,10 @@ function updateDOLRecord_(p) {
 }
 
 function deleteDOLRecord_(p) {
-  var u=requireUser_(p.token),lock=LockService.getScriptLock();lock.waitLock(15000),file=null,trashed=false;
+  var u=requireUser_(p.token),lock=LockService.getScriptLock();var file=null,trashed=false;lock.waitLock(15000);
   try{
     var old=findDolById_(p.id);if(!old)return {ok:true,deleted:String(p.id||''),already_missing:true};
+    requireDolAccess_(p.token,old.type);
     if(old.drive_file_id){file=DriveApp.getFileById(old.drive_file_id);file.setTrashed(true);trashed=true;}
     try{ensureDolSheets_().records.deleteRow(old.row);}
     catch(e){if(trashed&&file){try{file.setTrashed(false);}catch(_){}}throw e;}
@@ -452,6 +467,7 @@ function deleteDOLRecord_(p) {
 function getDOLFileInfo_(p) {
   requireUser_(p.token);
   var old = findDolById_(p.id);
+  if(old)requireDolAccess_(p.token,old.type);
   if (!old || !old.drive_file_id) return {ok:false,error:'Original file not found'};
   var f = DriveApp.getFileById(old.drive_file_id), bytes = f.getBlob().getBytes();
   var b64len = Utilities.base64Encode(bytes).length;
@@ -464,6 +480,7 @@ function getDOLFileInfo_(p) {
 function getDOLFileChunk_(p) {
   requireUser_(p.token);
   var old = findDolById_(p.id), idx = Number(p.part_index||0);
+  if(old)requireDolAccess_(p.token,old.type);
   if (!old || !old.drive_file_id) return {ok:false,error:'Original file not found'};
   if (!isFinite(idx) || idx<0) return {ok:false,error:'Invalid chunk index'};
   var b64 = Utilities.base64Encode(DriveApp.getFileById(old.drive_file_id).getBlob().getBytes());
