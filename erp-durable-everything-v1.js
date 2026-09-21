@@ -4,14 +4,14 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.21-system-records-authority13';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.21-system-records-authority14-dol-delete';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
   var STAMP='ATPL_DurableStateStamp_V1',STATE_KEY='global_ui_state_v1';
   var BANK_DB='ATPL_BANK_VERIFIER_PRIVATE_V3',BANK_VER=2,BANK_STORE='previousSheets',BANK_WORK_STORE='workingFiles';
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
-  var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2',DOL_KIND_PF_ARCHIVE='pf_dol_duplicate_archive_v1',DOL_KIND_ESIC_ARCHIVE='esic_dol_duplicate_archive_v1';
+  var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2',DOL_KIND_PF_ARCHIVE='pf_dol_duplicate_archive_v1',DOL_KIND_ESIC_ARCHIVE='esic_dol_duplicate_archive_v1',DOL_KIND_ESIC_DELETE='esic_dol_deleted_v1',DOL_KIND_PF_DELETE='pf_dol_deleted_v1';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
   var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false,dolLegacyMigrationPromise=null,systemRoute=null;
 
@@ -111,6 +111,49 @@ async function fetchRemoteKinds(kinds){
   }
   function dolKind(type){return String(type||'').toLowerCase()==='pf'?DOL_KIND_PF:DOL_KIND_ESIC}
   function dolAllowedKind(kind){return kind===DOL_KIND_LEGACY||kind===DOL_KIND_ESIC||kind===DOL_KIND_PF||kind===DOL_KIND_PF_ARCHIVE||kind===DOL_KIND_ESIC_ARCHIVE}
+  function dolDeleteKind(type){return String(type||'').toLowerCase()==='pf'?DOL_KIND_PF_DELETE:DOL_KIND_ESIC_DELETE}
+  function dolDeleteKey(r){
+    r=r||{};var h=dolFingerprint(r);if(h)return'h:'+h;
+    var n=dolLogicalName(r.name),p=text(r.period);if(n)return'np:'+n+'|'+p;
+    return'id:'+text(r.cloudRecordId||r.id)
+  }
+  function dolDeleteMatches(t,r){
+    t=t||{};r=r||{};var tt=text(t.type).toLowerCase(),rt=text(r.type).toLowerCase();if(tt&&rt&&tt!==rt)return false;
+    var ti=[text(t.id),text(t.cloudRecordId)].filter(Boolean),ri=[text(r.id),text(r.cloudRecordId)].filter(Boolean);
+    if(ti.some(function(x){return ri.indexOf(x)>=0}))return true;
+    var th=dolFingerprint(t),rh=dolFingerprint(r);if(th&&rh&&th===rh)return true;
+    var tn=dolLogicalName(t.name),rn=dolLogicalName(r.name);return !!(tn&&rn&&tn===rn&&text(t.period)===text(r.period))
+  }
+  async function saveComplianceDolDeleteTombstone(rec){
+    if(!token()||!session())throw new Error('Valid login required for shared delete');
+    rec=rec||{};var type=text(rec.type).toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+    var kind=dolDeleteKind(type),key=dolDeleteKey(rec),u=session()||{},now=new Date().toISOString(),p={
+      version:1,type:type,id:text(rec.cloudRecordId||rec.id),cloudRecordId:text(rec.cloudRecordId||''),
+      hash:dolFingerprint(rec),name:text(rec.name),period:text(rec.period),deletedAt:now,deletedBy:text(u.id)
+    };
+    await saveObject(kind,key,p,{name:type+' DOL delete · '+(p.name||p.id||key),saved_at:now});
+    return p
+  }
+  async function getComplianceDolDeleteTombstones(type){
+    if(!token()||!session())throw new Error('Valid login required for shared delete status');
+    type=text(type).toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+    var kind=dolDeleteKind(type),records=await fetchRemoteKinds([kind]),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind}),out=[];
+    for(var i=0;i<metas.length;i++){
+      try{var p=await loadObject(records,metas[i]);if(p&&text(p.type).toLowerCase()===type)out.push(p)}catch(e){console.warn('DOL delete tombstone read failed',metas[i]&&metas[i].key_text,e)}
+    }
+    return out
+  }
+  async function clearComplianceDolDeleteTombstone(rec){
+    if(!token()||!session())throw new Error('Valid login required for shared delete reset');
+    rec=rec||{};var type=text(rec.type).toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+    var kind=dolDeleteKind(type),key=dolDeleteKey(rec),records=await fetchRemoteKinds([kind]),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind&&text(r.key_text)===key});
+    if(!metas.length)return{ok:true,removed:0};
+    var objectKeys={};metas.forEach(function(m){objectKeys[text(m.object_key)]=1});
+    var ids=[];records.forEach(function(r){if(r&&objectKeys[text(r.object_key)]&&r.emp_id)ids.push(text(r.emp_id))});
+    ids=Array.from(new Set(ids)).sort(function(a,b){return a.indexOf('__META__')>=0?1:b.indexOf('__META__')>=0?-1:0});
+    for(var i=0;i<ids.length;i++)await removeRemote(ids[i]);
+    return{ok:true,removed:ids.length}
+  }
   function dolFingerprint(r){return text(r&& (r.fileHash||r.fingerprint||r.hash)).toLowerCase()}
   function dolLogicalName(name){return text(name).toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
   function dolLogicalKey(r){var h=dolFingerprint(r);if(h)return'h:'+h;var n=dolLogicalName(r&&r.name),p=text(r&&r.period);return n&&p?'np:'+n+'|'+p:''}
@@ -367,6 +410,6 @@ async function fetchRemoteKinds(kinds){
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');function idleSync(delay){setTimeout(function(){if(!token()||!session())return;if(typeof root.requestIdleCallback==='function')root.requestIdleCallback(function(){run(false)},{timeout:3500});else run(false)},delay)}if(token()&&session())idleSync(12000);root.document.addEventListener('atpl-authenticated',function(){idleSync(9000)});root.addEventListener('online',function(){if(token()&&session())idleSync(1800)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&token()&&session()&&Date.now()-lastRun>120000)idleSync(900)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final12'}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final14-shared-delete'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
