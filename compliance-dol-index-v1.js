@@ -91,9 +91,28 @@ function latest(matches){
   rows.sort(function(a,b){return text(a.period).localeCompare(text(b.period))||text(a.updatedAt).localeCompare(text(b.updatedAt))});
   return rows.length?rows[rows.length-1]:null
 }
+function mergeMatches(primary,fallback){
+  var out=[],at={};
+  function key(x){
+    var rid=text(x&&x.recordId),period=text(x&&x.period),source=text(x&&x.sourceChallan).toLowerCase();
+    return rid?'id:'+rid+'|'+period:'source:'+source+'|'+period
+  }
+  function add(x,isFallback){
+    if(!x)return;var row=Object.assign({},x),k=key(row),old=at[k];
+    if(old==null){if(isFallback)row.details=Object.assign({libraryIndex:true},row.details||{});at[k]=out.length;out.push(row);return}
+    var cur=out[old];
+    if(!cur.employeeName&&row.employeeName)cur.employeeName=row.employeeName;
+    if(!cur.sourceChallan&&row.sourceChallan)cur.sourceChallan=row.sourceChallan;
+    cur.details=Object.assign({},row.details||{},cur.details||{})
+  }
+  (Array.isArray(primary)?primary:[]).forEach(function(x){add(x,false)});
+  (Array.isArray(fallback)?fallback:[]).forEach(function(x){add(x,true)});
+  out.sort(function(a,b){return text(a.period).localeCompare(text(b.period))||text(a.updatedAt).localeCompare(text(b.updatedAt))});
+  return out
+}
 function detailsText(d){
   d=d&&typeof d==='object'?d:{};var labels={days:'Days',wages:'Wages',pfWages:'PF Wages',pensionWages:'Pension Wages',employeeContribution:'Employee',employerContribution:'Employer',totalContribution:'Total',pfContribution:'PF',pensionContribution:'Pension'};
   return Object.keys(labels).filter(function(k){return text(d[k])}).map(function(k){return labels[k]+': '+text(d[k])}).join(' · ')
 }
-return{validId:validId,fromRows:fromRows,fromSheets:fromSheets,fromTextLines:fromTextLines,latest:latest,detailsText:detailsText};
+return{validId:validId,fromRows:fromRows,fromSheets:fromSheets,fromTextLines:fromTextLines,latest:latest,mergeMatches:mergeMatches,detailsText:detailsText};
 });

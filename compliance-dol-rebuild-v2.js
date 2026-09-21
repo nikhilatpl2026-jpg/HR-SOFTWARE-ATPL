@@ -12,18 +12,19 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-production-v7-instant-delete';
+var BUILD='2026.09.21-production-v8-final-delete-dol';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
+var LEGACY_DB_NAME='ATPL_COMPLIANCE_DOL_V1',LEGACY_DB_VER=1,LEGACY_STORE='files';
 var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},periods:[],selected:{}}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
 var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={};
-var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=180000;
+var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=7776000000;
 
 function tombstoneRead(){
   var out={};try{out=JSON.parse(root.localStorage.getItem(DELETE_TOMBSTONE_KEY)||'{}')||{}}catch(_){}
@@ -34,9 +35,18 @@ function tombstoneRead(){
 function tombstoneKeys(type,r){
   type=String(type||r&&r.type||'').toLowerCase();r=r||{};var out=[],seen={};
   function add(k){k=String(k||'');if(k&&!seen[k]){seen[k]=1;out.push(k)}}
-  var id=String(r.cloudRecordId||r.id||''),rawId=String(r.id||''),h=String(r.hash||r.fileHash||r.fingerprint||'').toLowerCase();
-  if(id)add(type+'|id|'+id);if(rawId)add(type+'|id|'+rawId);if(h)add(type+'|hash|'+h);
+  var id=String(r.cloudRecordId||r.id||''),rawId=String(r.id||''),h=String(r.hash||r.fileHash||r.fingerprint||'').toLowerCase(),n=logicalName(r.name),p=String(r.period||'');
+  if(id)add(type+'|id|'+id);if(rawId)add(type+'|id|'+rawId);if(h)add(type+'|hash|'+h);if(n)add(type+'|name|'+n+'|'+p);
   return out
+}
+function sameDeleteIdentity(type,a,b){
+  a=a||{};b=b||{};type=String(type||a.type||b.type||'').toLowerCase();
+  var at=String(a.type||type).toLowerCase(),bt=String(b.type||type).toLowerCase();if(at&&bt&&at!==bt)return false;
+  var ai=[a.id,a.cloudRecordId].map(function(x){return String(x||'')}).filter(Boolean),bi=[b.id,b.cloudRecordId].map(function(x){return String(x||'')}).filter(Boolean);
+  if(ai.some(function(x){return bi.indexOf(x)>=0}))return true;
+  var ah=String(a.hash||a.fileHash||a.fingerprint||'').toLowerCase(),bh=String(b.hash||b.fileHash||b.fingerprint||'').toLowerCase();if(ah&&bh&&ah===bh)return true;
+  var an=logicalName(a.name),bn=logicalName(b.name),ap=String(a.period||''),bp=String(b.period||'');
+  return !!(an&&bn&&an===bn&&ap===bp)
 }
 function isDeleteTombstoned(type,r){
   var s=tombstoneRead(),ks=tombstoneKeys(type,r);for(var i=0;i<ks.length;i++)if(s[ks[i]])return true;return false
@@ -139,7 +149,7 @@ async function scheduleLegacyV5Migration(type,remote,localRows){
         var ids=recordIds(r).map(function(x){return validId(type,x)}).filter(Boolean);
         var work=Object.assign({},r,{
           id:uid(type,hash),type:type,hash:hash,size:Number(r.size||blob.size||buf.byteLength)||buf.byteLength,
-          mime:r.mime||blob.type||fileMime(r.name),ids:Array.from(new Set(ids)),cloudSynced:false,cloudOnly:false
+          mime:r.mime||blob.type||fileMime(r.name),ids:Array.from(new Set(ids)),cloudSynced:false,cloudOnly:false,uploadIntent:'legacy_migration'
         });
         if(work.ids.length)work.contributions=work.ids.map(function(id){return{memberId:id,employeeName:'',details:{legacyMigrated:true}}});
         else delete work.contributions;
@@ -152,6 +162,7 @@ async function scheduleLegacyV5Migration(type,remote,localRows){
         await dbPut(work);if(String(r.id)!==String(work.id))await dbDelete(r.id);
         migrated++;buf=null;await tick()
       }catch(e){
+        if(/DOL_RECORD_DELETED/i.test(String(e&&e.message||e))){markDeleteTombstone(type,r);try{await purgeLegacyLocalMatches(type,r)}catch(_){}try{await dbDelete(r.id)}catch(_){};continue}
         v5MigrationFailed[failKey]=1;failed++;console.warn('Legacy challan V5 migration skipped',r&&r.name,e)
       }
     }
@@ -727,48 +738,42 @@ async function deleteOne(type,id){
   delete state[type].selected[String(r.id)];rebuildIndex(type);renderFiles(type);
   setStatus(type,'Removed instantly ✓ · saving permanent delete to shared backend…');
 
+  var dedicatedDone=false;
   try{
     try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    var v=vaultApi(),dedicatedDone=false,alreadyGone=false,dedicatedUnavailable=false;
-    if(v&&typeof v.deleteRecord==='function'){
-      try{await v.deleteRecord(r);dedicatedDone=true}
-      catch(de){
-        if(isMissingCloudRecordError(de)){dedicatedDone=true;alreadyGone=true}
-        else if(isDedicatedUnavailableError(de)){dedicatedUnavailable=true}
-        else throw de
-      }
-    }else dedicatedUnavailable=true;
-
-    var api=durableApi(),legacyError=null;
+    var v=vaultApi(),alreadyGone=false,api=durableApi();
+    // Remove compatibility/system-record copies first. If this fails, the
+    // dedicated master is left intact so the UI can safely restore the row.
     if(api&&typeof api.deleteComplianceDolConfirmed==='function'){
       var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';
       try{await api.deleteComplianceDolConfirmed(target)}
-      catch(le){if(!isMissingCloudRecordError(le))legacyError=le;else alreadyGone=true}
-    }else if(!dedicatedDone)legacyError=new Error('Cloud backend unavailable');
-    if(!dedicatedDone&&legacyError)throw legacyError;
-    if(dedicatedDone&&legacyError)console.warn('Legacy challan cleanup deferred; V5 authoritative delete already completed',legacyError);
+      catch(le){if(!isMissingCloudRecordError(le))throw le;alreadyGone=true}
+    }
+    if(!v||typeof v.deleteRecord!=='function')throw new Error('Dedicated challan backend unavailable');
+    try{await v.deleteRecord(r);dedicatedDone=true}
+    catch(de){if(isMissingCloudRecordError(de)){dedicatedDone=true;alreadyGone=true}else if(isDedicatedUnavailableError(de))throw new Error('Dedicated challan backend unavailable');else throw de}
 
     var all=await dbAll(),purged=0;
     for(var i=0;i<all.length;i++){
       var x=all[i];if(!x||x.type!==type)continue;
-      var same=String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId));
-      if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
+      if(!sameDeleteIdentity(type,r,x))continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
+    var legacyPurged=await purgeLegacyLocalMatches(type,r);
     await writeVaultManifest();
     try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    setStatus(type,(alreadyGone?'Removed stale legacy/cache challan ✓ — ':'Deleted permanently ✓ — ')+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''));
-
-    setTimeout(async function(){
-      try{
-        if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache();
-        var pack=await cloudRecords(type),still=(pack.records||[]).some(function(x){return isDeleteTombstoned(type,x)});
-        if(!still)clearDeleteTombstone(type,r)
-      }catch(_){}
-    },900);
+    var pack=await cloudRecords(type),still=(pack.records||[]).some(function(x){return sameDeleteIdentity(type,r,x)});
+    if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
+    clearDeleteTombstone(type,r);await refresh(type);
+    setStatus(type,(alreadyGone?'Removed stale legacy/cache challan ✓ — ':'Deleted permanently ✓ — ')+(r.name||'challan')+((purged+legacyPurged)>1?' · all duplicate browser copies cleared':''));
   }catch(e){
-    clearDeleteTombstone(type,r);
     try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    await refresh(type);setStatus(type,'Delete failed — restored record · '+(e.message||e),true)
+    if(dedicatedDone){
+      try{await purgeLegacyLocalMatches(type,r)}catch(_){}
+      state[type].rows=(state[type].rows||[]).filter(function(x){return!sameDeleteIdentity(type,r,x)});rebuildIndex(type);renderFiles(type);
+      setStatus(type,'Cloud delete confirmed; stale browser-copy cleanup will retry automatically. '+(e.message||e),true)
+    }else{
+      clearDeleteTombstone(type,r);await refresh(type);setStatus(type,'Delete failed — restored record · '+(e.message||e),true)
+    }
   }
 }
 function cloudRecordFromLocal(r){
@@ -944,10 +949,11 @@ async function upload(type,fileList){
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
       var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null,cross=null;
       if(mode==='v4'&&vaultApi()&&typeof vaultApi().check==='function'){
-        var dupCheck=await vaultApi().check(hash);if(dupCheck&&dupCheck.duplicate){var dr=localRecordFromCloud(dupCheck.record||{});if(dr.type&&dr.type!==type)cross=dr;else existing=existing||dr}
+        var dupCheck=await vaultApi().check(hash,'user_upload');if(dupCheck&&dupCheck.duplicate){var dr=localRecordFromCloud(dupCheck.record||{});if(dr.type&&dr.type!==type)cross=dr;else existing=existing||dr}
       }
       if(cross){dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue}
       if(existing){
+        clearDeleteTombstone(type,existing);
         var localExisting=await dbGet(existing.id);
         if(!localExisting){
           var attachBlob=new Blob([buf],{type:fileMime(f.name)}),cacheRec=Object.assign({},existing,{blob:null,storage:'indexeddb',cloudOnly:false});
@@ -956,7 +962,7 @@ async function upload(type,fileList){
         }
         dups++;setStatus(type,'Already exists in shared backend ✓ — '+f.name);buf=null;continue
       }
-      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],contributions:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false,hasOriginalFile:false,mime:fileMime(f.name)};
+      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],contributions:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false,hasOriginalFile:false,mime:fileMime(f.name),uploadIntent:'user_upload'};
       var vaulted=false;try{vaulted=await opfsSave(rec,blob)}catch(_){}
       if(!vaulted)rec.blob=blob;await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;staged++;upsertStateRow(type,rec);
       setStatus(type,'Staged safely · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
@@ -977,6 +983,7 @@ async function upload(type,fileList){
           var sr=localRecordFromCloud(out.record||{});rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.cloudSynced=true;rec.cloudConfirmedAt=sr.cloudConfirmedAt||new Date().toISOString();rec.hasOriginalFile=!!sr.hasOriginalFile;rec.cloudOnly=false;
           rec.indexCount=Number(out.index&&out.index.count||sr.indexCount||0)||0;rec.indexStatus=String(out.index&&out.index.record&&out.index.record.indexStatus||sr.indexStatus||'');
           if(out.indexWarning){cloud.indexPending++;warns.push(f.name+': file saved, detailed index pending — '+out.indexWarning)}
+          clearDeleteTombstone(type,rec);
           await dbPut(rec);upsertStateRow(type,rec);
           byHash[hash]=rec;if(out.duplicate)dups++;else cloud.saved++
         }catch(ce){cloud.failed++;warns.push(f.name+': backend save failed — '+(ce.message||ce))}
@@ -997,14 +1004,32 @@ function localSearchPack(type,qs){
   var idx=state[type].index||{},matches={};qs.forEach(function(id){matches[id]=(idx[id]||[]).map(function(r){return{recordId:r.cloudRecordId||r.id,memberId:id,employeeName:'',period:r.period||'',sourceChallan:r.name||'',details:{},uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||''}})});
   return{matches:matches,coverage:(state[type].periods||[]).slice(),unindexed:(state[type].rows||[]).filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).map(function(r){return{id:r.id,name:r.name,period:r.period||''}}),source:'local-fallback'}
 }
+function mergeSearchPacks(type,qs,remote,local){
+  remote=remote||{};local=local||{};var helper=root.ATPLDOLIndexV1,out=Object.assign({},remote),matches={};
+  qs.forEach(function(id){
+    var a=Array.isArray(remote.matches&&remote.matches[id])?remote.matches[id]:[],b=Array.isArray(local.matches&&local.matches[id])?local.matches[id]:[];
+    if(helper&&typeof helper.mergeMatches==='function')matches[id]=helper.mergeMatches(a,b);
+    else{var seen={};matches[id]=a.concat(b).filter(function(x){var k=String(x&&x.recordId||'')+'|'+String(x&&x.period||'')+'|'+String(x&&x.sourceChallan||'');if(seen[k])return false;seen[k]=1;return true})}
+  });
+  out.matches=matches;out.coverage=Array.from(new Set([].concat(remote.coverage||[],local.coverage||[]).filter(Boolean))).sort();
+  var unseen={};out.unindexed=[].concat(remote.unindexed||[],local.unindexed||[]).filter(function(r){var k=String(r&&r.id||r&&r.recordId||r&&r.name||'')+'|'+String(r&&r.period||'');if(unseen[k])return false;unseen[k]=1;return true});
+  out.source=remote.source||'backend+library-index';return out
+}
+function unindexedBlocksDol(type,r,last){
+  if(!r)return false;if(last&&r.period&&String(r.period)<String(last))return false;
+  // DOLRecords already carries the complete lightweight ID list even when the
+  // optional detailed contribution rows are pending. Such a row is searchable
+  // through the merged library index and must not hide a correct DOL result.
+  return recordIds(r).map(function(x){return validId(type,x)}).filter(Boolean).length===0
+}
 function detailText(d){return root.ATPLDOLIndexV1&&typeof root.ATPLDOLIndexV1.detailsText==='function'?root.ATPLDOLIndexV1.detailsText(d):''}
-async function searchAsync(type,qs,box,localIndex){
+async function searchAsync(type,qs,box){
   var pack=null,v=vaultApi();
   try{if(v&&typeof v.searchIndex==='function')pack=await v.searchIndex(type,qs)}catch(e){if(!/DOL_INDEX_V5_UNAVAILABLE/.test(String(e&&e.message||e)))console.warn('Backend contribution search fallback',e)}
-  if(!pack)pack=localSearchPack(type,qs);
+  var local=localSearchPack(type,qs);pack=pack?mergeSearchPacks(type,qs,pack,local):local;
   var coverage=Array.isArray(pack.coverage)?pack.coverage:state[type].periods||[],unindexed=Array.isArray(pack.unindexed)?pack.unindexed:[],h='<table class="cd2-table"><thead><tr><th>ID / EMPLOYEE</th><th>LAST CONTRIBUTION / DOL</th><th>SOURCE & DETAILS</th><th>CONTRIBUTION TIMELINE</th></tr></thead><tbody>';
   qs.forEach(function(id){
-    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return!last||!r.period||r.period>=last}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
+    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return unindexedBlocksDol(type,r,last)}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
     if(!m.length){h+='<tr><td><b>'+esc(id)+'</b></td><td><span class="cd2-bad">No contribution record found in uploaded challans.</span></td><td>—</td><td>—</td></tr>';return}
     var dol=unresolved.length?'<span class="cd2-warn">Set source month first</span>':blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference</div>';
     var dt=latest?detailText(latest.details):'',src=latest?'<b>'+esc(latest.sourceChallan||'Saved challan')+'</b><div style="font-size:8px;color:#64748b;margin-top:3px">'+esc(dt||'Contribution found; amount detail not available in source format.')+'</div>':'—';
@@ -1013,16 +1038,45 @@ async function searchAsync(type,qs,box,localIndex){
   h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · complete saved history checked · gaps ignored · no PDF/Excel re-parse'+(unindexed.length?' · '+unindexed.length+' challan(s) still need indexing':'')+(pack.source==='local-fallback'?' · compatibility index used':''))
 }
 function search(type){
-  var qs=parseQueries(type),box=$('cd2-'+type+'-results'),localIndex=state[type].index||{};if(!qs.length){setStatus(type,'Enter a valid '+(type==='esic'?'ESIC/IP number':'UAN/PF ID'),true);return}
+  var qs=parseQueries(type),box=$('cd2-'+type+'-results');if(!qs.length){setStatus(type,'Enter a valid '+(type==='esic'?'ESIC/IP number':'UAN/PF ID'),true);return}
   box.innerHTML='<div class="cd2-empty">Searching backend contribution index…</div>';setStatus(type,'Searching complete saved history…');
-  return searchAsync(type,qs,box,localIndex).catch(function(e){box.innerHTML='<div class="cd2-empty cd2-bad">Search failed: '+esc(e.message||e)+'</div>';setStatus(type,'Search failed — '+(e.message||e),true)})
+  return searchAsync(type,qs,box).catch(function(e){box.innerHTML='<div class="cd2-empty cd2-bad">Search failed: '+esc(e.message||e)+'</div>';setStatus(type,'Search failed — '+(e.message||e),true)})
+}
+async function openLegacyDb(){
+  if(!root.indexedDB)return null;
+  try{if(typeof root.indexedDB.databases==='function'){var known=await root.indexedDB.databases();if(Array.isArray(known)&&!known.some(function(x){return x&&x.name===LEGACY_DB_NAME}))return null}}catch(_){}
+  return new Promise(function(ok,no){
+    var settled=false,created=false,req;
+    function done(v,e){if(settled)return;settled=true;if(e)no(e);else ok(v)}
+    try{req=root.indexedDB.open(LEGACY_DB_NAME,LEGACY_DB_VER)}catch(e){done(null,e);return}
+    req.onupgradeneeded=function(){created=true;try{req.transaction.abort()}catch(_){}};
+    req.onsuccess=function(){var db=req.result;if(created){try{db.close()}catch(_){}done(null);return}done(db)};
+    req.onerror=function(){var e=req.error;if(created||e&&e.name==='AbortError')done(null);else done(null,e)}
+  })
+}
+async function legacyDbRows(db){
+  if(!db||!db.objectStoreNames.contains(LEGACY_STORE))return[];
+  return new Promise(function(ok){var r=db.transaction(LEGACY_STORE,'readonly').objectStore(LEGACY_STORE).getAll();r.onsuccess=function(){ok(r.result||[])};r.onerror=function(){ok([])}})
+}
+function legacyIdentity(r){
+  r=r||{};var rawIds=[].concat(r.ids||[],r.digitIds||[],r.alnumIds||[]),type=looksLikePfRecord({type:r.type,name:r.name,ids:rawIds})?'pf':String(r.type||'esic').toLowerCase();
+  return{id:r.id,cloudRecordId:r.cloudRecordId,type:type,name:r.name,period:r.period||'',hash:r.hash||r.fileHash||r.fingerprint||''}
+}
+async function purgeLegacyLocalMatches(type,target){
+  var db=await openLegacyDb();if(!db)return 0;
+  try{
+    var rows=await legacyDbRows(db),keys=rows.filter(function(r){return sameDeleteIdentity(type,target,legacyIdentity(r))}).map(function(r){return r&&r.id}).filter(function(x){return x!=null});
+    if(!keys.length)return 0;
+    await new Promise(function(ok,no){var t=db.transaction(LEGACY_STORE,'readwrite'),s=t.objectStore(LEGACY_STORE);keys.forEach(function(k){s.delete(k)});t.oncomplete=function(){ok(true)};t.onerror=function(){no(t.error||new Error('Legacy challan cleanup failed'))};t.onabort=function(){no(t.error||new Error('Legacy challan cleanup aborted'))}});
+    return keys.length
+  }finally{try{db.close()}catch(_){}}
 }
 async function migrateLegacy(){
   if(!root.indexedDB)return;
   try{
-    var req=indexedDB.open('ATPL_COMPLIANCE_DOL_V1',1),db=await new Promise(function(ok,no){req.onsuccess=function(){ok(req.result)};req.onerror=function(){no(req.error)};req.onupgradeneeded=function(){try{req.transaction.abort()}catch(_){}}});
-    if(!db.objectStoreNames.contains('files')){db.close();return}
-    var old=await new Promise(function(ok){var r=db.transaction('files','readonly').objectStore('files').getAll();r.onsuccess=function(){ok(r.result||[])};r.onerror=function(){ok([])}});db.close();
+    var db=await openLegacyDb();if(!db)return;
+    if(!db.objectStoreNames.contains(LEGACY_STORE)){db.close();return}
+    var old=await legacyDbRows(db);db.close();
     var current=await dbAll(),hashes={};current.forEach(function(r){if(r.hash)hashes[r.hash]=1});
     var moved=0;
     for(var i=0;i<old.length;i++){
@@ -1032,7 +1086,8 @@ async function migrateLegacy(){
         var hash=r.fileHash||await sha256(buf);if(hashes[hash])continue;
         var rawIds=[].concat(r.digitIds||[],r.alnumIds||[]),targetType=looksLikePfRecord({type:r.type,name:r.name,ids:rawIds})?'pf':r.type;
         var ids=Array.from(new Set(rawIds.map(function(x){return validId(targetType,x)}).filter(Boolean)));if(!ids.length)continue;
-        var nr={id:uid(targetType,hash),version:2,type:targetType,name:r.name||'Legacy challan',size:r.size||buf.byteLength,lastModified:r.lastModified||0,hash:hash,period:r.period||'',periodSource:r.periodSource||'legacy',ids:ids,uploadedAt:r.uploadedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(r.name)}),viewerSheets:r.viewerSheets||null,migrated:true,cloudSynced:false,cloudOnly:false};
+        var nr={id:uid(targetType,hash),version:2,type:targetType,name:r.name||'Legacy challan',size:r.size||buf.byteLength,lastModified:r.lastModified||0,hash:hash,period:r.period||'',periodSource:r.periodSource||'legacy',ids:ids,uploadedAt:r.uploadedAt||new Date().toISOString(),updatedAt:new Date().toISOString(),blob:new Blob([buf],{type:fileMime(r.name)}),viewerSheets:r.viewerSheets||null,migrated:true,cloudSynced:false,cloudOnly:false,uploadIntent:'legacy_migration'};
+        if(isDeleteTombstoned(targetType,nr))continue;
         await dbPut(nr);hashes[hash]=1;moved++;await tick()
       }catch(e){console.warn('V2 legacy migration skipped',e)}
     }

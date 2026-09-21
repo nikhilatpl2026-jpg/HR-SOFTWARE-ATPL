@@ -37,7 +37,7 @@ jobs:
           last=''
           for attempt in 1 2 3; do
             last="$(curl -fsSL --connect-timeout 8 --max-time 20 --retry 1 --retry-delay 1 "$URL?action=ping&_ts=$(date +%s)" || true)"
-            if printf '%s' "$last" | grep -Fq '"version":"5.0-production-repair"'; then
+            if printf '%s' "$last" | grep -Fq '"version":"5.1-dol-delete-search-repair"'; then
               ok=1
               break
             fi
@@ -48,7 +48,7 @@ jobs:
             {
               echo '### ⚠ Backend deployment pending'
               echo ''
-              echo 'The live Apps Script endpoint is not yet `5.0-production-repair`.'
+              echo 'The live Apps Script endpoint is not yet `5.1-dol-delete-search-repair`.'
               echo ''
               printf 'Live ping response: `%s`\n' "$last"
             } >> "$GITHUB_STEP_SUMMARY"

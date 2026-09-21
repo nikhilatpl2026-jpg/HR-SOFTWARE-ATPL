@@ -2,7 +2,7 @@
    Uses JSONP for small control/read calls and hidden-form POST + postMessage for large upload parts.
    No DOL bytes are stored in EmployeeMaster. */
 (function(root){'use strict';
-var BUILD='2026.09.21-production-v7-delete-client';
+var BUILD='2026.09.21-production-v8-final-delete-dol';
 if(!root||root.__ATPL_DOL_CLOUD_V4__===BUILD)return;
 root.__ATPL_DOL_CLOUD_V4__=BUILD;
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',support=null,probePromise=null;
@@ -34,8 +34,8 @@ async function list(type){
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Challan list failed');
   support=true;return d.records
 }
-async function check(hash){
-  var d=await api({action:'checkDOLDuplicate',file_hash:String(hash||'').toLowerCase()},{timeout:6500,cacheMs:0});
+async function check(hash,intent){
+  var d=await api({action:'checkDOLDuplicate',file_hash:String(hash||'').toLowerCase(),upload_intent:String(intent||'user_upload')},{timeout:6500,cacheMs:0});
   if(unknown(d)){support=false;throw new Error('DOL_V4_UNAVAILABLE')}
   if(!(d&&d.ok))throw new Error(d&&d.error||'Duplicate check failed');support=true;return d
 }
@@ -59,14 +59,14 @@ async function toBase64(buf){
 }
 async function upload(rec,buf,progress){
   if(!(buf instanceof ArrayBuffer))throw new Error('Original file bytes required');
-  var dup=await check(rec.hash);
+  var intent=String(rec.uploadIntent||'user_upload'),dup=await check(rec.hash,intent);
   if(dup.duplicate){
     if(!dup.record)throw new Error('Exact same file is already saved in another restricted challan module');
     var ex=dup.record||{};if(String(ex.type||'')!==String(rec.type||''))throw new Error('Exact same file already belongs to '+(ex.type==='pf'?'PF → DOL':'ESIC → DOL'));
     return{duplicate:true,record:ex}
   }
   var digits=[],alnums=[];(rec.ids||[]).forEach(function(x){x=String(x||'');if(/^\d+$/.test(x))digits.push(x);else if(x)alnums.push(x)});
-  var begin=await api({action:'beginDOLUpload',type:rec.type,file_hash:rec.hash,name:rec.name,size:rec.size||buf.byteLength,mime:rec.mime||'',period:rec.period||'',period_source:rec.periodSource||'',digit_ids_json:JSON.stringify(digits),alnum_ids_json:JSON.stringify(alnums)},{timeout:10000,attempts:2});
+  var begin=await api({action:'beginDOLUpload',type:rec.type,file_hash:rec.hash,name:rec.name,size:rec.size||buf.byteLength,mime:rec.mime||'',period:rec.period||'',period_source:rec.periodSource||'',digit_ids_json:JSON.stringify(digits),alnum_ids_json:JSON.stringify(alnums),upload_intent:intent},{timeout:10000,attempts:2});
   if(!(begin&&begin.ok))throw new Error(begin&&begin.error||'Upload start failed');
   if(begin.duplicate){
     if(!begin.record)throw new Error('Exact same file is already saved in another restricted challan module');
@@ -118,10 +118,28 @@ async function update(rec){
   var d=await api({action:'updateDOLRecord',id:rec.cloudRecordId||rec.id,type:rec.type,name:rec.name||'',period:rec.period||'',period_source:rec.periodSource||'',digit_ids_json:JSON.stringify((rec.ids||[]).filter(function(x){return /^\d+$/.test(String(x))})),alnum_ids_json:JSON.stringify((rec.ids||[]).filter(function(x){return !/^\d+$/.test(String(x))}))},{timeout:9000,attempts:2});
   if(!(d&&d.ok&&d.record))throw new Error(d&&d.error||'Challan update failed');return d.record
 }
+function deleteName(v){return String(v||'').toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
+function sameDeleteTarget(rec,row){
+  rec=rec||{};row=row||{};var rt=String(rec.type||'').toLowerCase(),xt=String(row.type||'').toLowerCase();if(rt&&xt&&rt!==xt)return false;
+  var ids=[rec.cloudRecordId,rec.id].map(function(x){return String(x||'')}).filter(Boolean),xid=String(row.id||row.cloudRecordId||'');if(xid&&ids.indexOf(xid)>=0)return true;
+  var h=String(rec.hash||rec.fileHash||rec.fingerprint||'').toLowerCase(),xh=String(row.hash||row.fileHash||row.fingerprint||'').toLowerCase();if(h&&xh&&h===xh)return true;
+  var n=deleteName(rec.name),xn=deleteName(row.name),p=String(rec.period||''),xp=String(row.period||'');return !!(n&&xn&&n===xn&&p===xp)
+}
 async function remove(rec){
   try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-  var d=await api({action:'deleteDOLRecord',id:rec.cloudRecordId||rec.id},{timeout:22000,attempts:1,cacheMs:0});
-  if(!(d&&d.ok))throw new Error(d&&d.error||'Challan delete failed');
+  var type=String(rec&&rec.type||'').toLowerCase(),base={action:'deleteDOLRecord',id:rec.cloudRecordId||rec.id,type:type,file_hash:String(rec.hash||rec.fileHash||rec.fingerprint||'').toLowerCase(),name:String(rec.name||''),period:String(rec.period||'')};
+  var d=await api(base,{timeout:22000,attempts:1,cacheMs:0});if(!(d&&d.ok))throw new Error(d&&d.error||'Challan delete failed');
+  // Older records can carry a legacy/local id. Resolve and hard-delete every
+  // backend row with the same SHA/name+month, then read back before success.
+  for(var pass=0;pass<3;pass++){
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    var rows=await list(type),left=rows.filter(function(x){return sameDeleteTarget(rec,x)});if(!left.length)break;
+    if(pass===2)throw new Error('Delete verification failed — challan still exists in shared backend');
+    for(var i=0;i<left.length;i++){
+      var one=await api(Object.assign({},base,{id:left[i].id||left[i].cloudRecordId||''}),{timeout:22000,attempts:1,cacheMs:0});
+      if(!(one&&one.ok))throw new Error(one&&one.error||'Duplicate challan delete failed')
+    }
+  }
   try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
   return d
 }

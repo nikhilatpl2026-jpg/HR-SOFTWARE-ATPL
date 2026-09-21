@@ -15,6 +15,49 @@ test('contribution parser returns latest real month despite gaps',()=>{
   assert.deepEqual(Array.from(esic.ids),['1234567890']);
   assert.equal(esic.contributions[0].employeeName,'Asha');
   assert.equal(esic.contributions[0].details.totalContribution,'500');
+  const merged=api.mergeMatches(
+    [{recordId:'jan',period:'2026-01',sourceChallan:'Jan.pdf',details:{totalContribution:'500'}}],
+    [{recordId:'jan',period:'2026-01',sourceChallan:'Jan.pdf',details:{}},{recordId:'may',period:'2026-05',sourceChallan:'May.pdf',details:{}}]
+  );
+  assert.deepEqual(Array.from(merged,x=>x.period),['2026-01','2026-05']);
+  assert.equal(api.latest(merged).period,'2026-05','loaded challan ID index must repair a partial backend contribution index');
+});
+
+test('backend DOL search supplements partial detailed rows per challan',()=>{
+  const code=read('backend/Backend-V4-Complete-Code.gs'),ctx={console};vm.runInNewContext(code,ctx);
+  const id='100330064649';
+  ctx.requireFeature_=()=>({});ctx.dolFeature_=x=>x;
+  ctx.dolContributionRows_=()=>[{record_id:'jan',type:'pf',member_id:id,employee_name:'Worker',details_json:'{}',period:'2026-01',source_name:'Jan.pdf'}];
+  ctx.dolRows_=()=>[
+    {id:'jan',type:'pf',name:'Jan.pdf',file_hash:'a',period:'2026-01',period_source:'filename',digit_ids:[id],alnum_ids:[],size:1,mime:'application/pdf',drive_file_id:'1',uploaded_by:'u',uploaded_at:'',updated_at:'',index_count:1,index_status:'ready'},
+    {id:'may',type:'pf',name:'May.pdf',file_hash:'b',period:'2026-05',period_source:'filename',digit_ids:[id],alnum_ids:[],size:1,mime:'application/pdf',drive_file_id:'2',uploaded_by:'u',uploaded_at:'',updated_at:'',index_count:0,index_status:'pending'}
+  ];
+  ctx.publicDol_=r=>({id:r.id,type:r.type,name:r.name,period:r.period,digitIds:r.digit_ids,alnumIds:r.alnum_ids,indexStatus:r.index_status});
+  const out=ctx.searchDOLIndex_({token:'t',type:'pf',ids_json:JSON.stringify([id])});
+  assert.deepEqual(Array.from(out.matches[id],x=>x.period),['2026-01','2026-05']);
+});
+
+test('backend DOL hard-delete removes only the matching hash and records a tombstone',()=>{
+  const code=read('backend/Backend-V4-Complete-Code.gs'),ctx={console};vm.runInNewContext(code,ctx);
+  const removedRows=[],removedContributions=[],tombstones=[],trashed=[];
+  ctx.requireUser_=()=>({id:'admin',admin:true});
+  ctx.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
+  ctx.hasFeature_=()=>true;ctx.dolFeature_=x=>x;
+  ctx.dolRows_=()=>[
+    {id:'legacy-a',row:2,type:'pf',name:'PF May.pdf',file_hash:'samehash',period:'2026-05',drive_file_id:'drive-a'},
+    {id:'cloud-a',row:3,type:'pf',name:'PF May (1).pdf',file_hash:'samehash',period:'2026-05',drive_file_id:'drive-b'},
+    {id:'other-month',row:4,type:'pf',name:'PF May.pdf',file_hash:'otherhash',period:'2026-04',drive_file_id:'drive-c'}
+  ];
+  ctx.upsertDolDeletedUnlocked_=(...args)=>tombstones.push(args);
+  ctx.DriveApp={getFileById:id=>({setTrashed:v=>trashed.push([id,v])})};
+  ctx.deleteDolContributionsManyUnlocked_=ids=>removedContributions.push(...ids);
+  ctx.ensureDolSheets_=()=>({records:{deleteRow:r=>removedRows.push(r)}});
+  const out=ctx.deleteDOLRecord_({token:'t',id:'legacy-a',type:'pf',file_hash:'samehash',name:'PF May.pdf',period:'2026-05'});
+  assert.equal(out.ok,true);assert.equal(out.deleted_count,2);
+  assert.deepEqual(removedRows,[3,2]);
+  assert.deepEqual(removedContributions.sort(),['cloud-a','legacy-a']);
+  assert.deepEqual(trashed.map(x=>x[0]).sort(),['drive-a','drive-b']);
+  assert.equal(tombstones.length,1);
 });
 
 test('production V5 enforces permissions and strict PF/ESIC backend boundaries',()=>{
@@ -24,7 +67,7 @@ test('production V5 enforces permissions and strict PF/ESIC backend boundaries',
   assert.match(b,/systemKindAllowed_/);
   assert.match(b,/DOL_CONTRIBUTIONS_SHEET/);
   assert.match(b,/dolFolder_\(meta\.type,meta\.period\)/);
-  assert.match(b,/deleteDolContributionsUnlocked_\(old\.id\)/);
+  assert.match(b,/deleteDolContributionsManyUnlocked_\(matches\.map/);
   ['beginDOLIndex','finalizeDOLIndex','searchDOLIndex','listComplianceCalendar','upsertDOLContributionBatch','upsertComplianceCalendar','deleteComplianceCalendar','claimComplianceNotification'].forEach(a=>assert.ok(b.includes("action === '"+a+"'"),a));
 });
 
@@ -64,35 +107,41 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL legacy bridge remains active in V7 and treats already-missing delete as success',()=>{
+test('DOL legacy bridge remains active in V8 and treats already-missing delete as success',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production7'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production8'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v7-instant-delete",
+    "production-v8-final-delete-dol",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
-    "Removed stale legacy/cache challan"
+    "Removed stale legacy/cache challan",
+    "purgeLegacyLocalMatches",
+    "if(isDeleteTombstoned(targetType,nr))continue"
   ].forEach(x=>assert.ok(d.includes(x),x));
   assert.ok(d.includes("await migrateLegacy()"));
   assert.ok(d.includes("await migrateDbFilesToVault()"));
 });
 
-test('DOL instant delete is optimistic, reload-safe, and avoids stale list cache',()=>{
+test('DOL instant delete is optimistic, reload-safe, and purges V1 resurrection sources',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js');
-  assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production7'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production7'));
+  assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
+  assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production8'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production8'));
   [
-    'production-v7-instant-delete',
+    'production-v8-final-delete-dol',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'markDeleteTombstone',
     'isDeleteTombstoned',
+    'sameDeleteIdentity',
+    'purgeLegacyLocalMatches',
+    'mergeSearchPacks',
     'Removed instantly ✓',
     'Delete failed — restored record'
   ].forEach(x=>assert.ok(d.includes(x),x));
-  assert.ok(c.includes('production-v7-delete-client'));
+  assert.ok(c.includes('production-v8-final-delete-dol'));
+  assert.ok(c.includes('sameDeleteTarget'));
   assert.ok(c.includes("getDOLRecords',type:type},{timeout:8000,cacheMs:0"));
   assert.ok(c.includes("timeout:22000,attempts:1"));
 });
-

@@ -44,7 +44,8 @@ test('challan search is index-only and does not parse PDFs/Excel during search',
   assert.ok(start>0&&end>start);
   const body=s.slice(start,end);
   assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(body),false);
-  assert.ok(body.includes('state[type].index'));
+  assert.ok(s.includes('function localSearchPack(type,qs)'));
+  assert.ok(s.includes('mergeSearchPacks(type,qs,pack,local)'));
 });
 
 test('PF and ESIC have strict type guards and immutable backend category',()=>{
@@ -98,7 +99,7 @@ test('complete backend exposes every production route',()=>{
   ['login','listUsers','saveUser','deleteUser','getEmployeeMaster','getSystemRecords','upsertEmployeeMaster','deleteEmployeeMaster','appendActivity','listActivity','getDOLRecords','checkDOLDuplicate','beginDOLUpload','commitDOLUpload','updateDOLRecord','deleteDOLRecord','getDOLFileInfo','getDOLFileChunk'].forEach(a=>assert.ok(b.includes("action === '"+a+"'"),'missing backend route '+a));
   assert.ok(b.includes('function doPost(e)'));
   assert.ok(b.includes("action === 'appendDOLChunkBatch'"));
-  assert.ok(b.includes("BACKEND_VERSION = '5.0-production-repair'"));
+  assert.ok(b.includes("BACKEND_VERSION = '5.1-dol-delete-search-repair'"));
 });
 
 
@@ -108,4 +109,7 @@ test('complete Backend V4 stays aligned with latest DOL resilience contract',()=
   assert.ok(b.includes('function cleanupStaleDolParts_()'),'complete backend must clean abandoned upload parts');
   assert.ok(/function beginDOLUpload_\(p\)[\s\S]*?cleanupStaleDolParts_\(\)/.test(b),'DOL upload start must trigger bounded stale-part cleanup');
   assert.ok(b.includes("if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}"),'expired uploads must purge orphaned chunks');
+  assert.ok(b.includes("var DOL_DELETED_SHEET = 'DOLDeleted'"),'deleted hashes need a shared tombstone ledger');
+  assert.ok(b.includes("error:'DOL_RECORD_DELETED'"),'stale-device migration must not resurrect a deleted hash');
+  assert.ok(b.includes('deleteDolContributionsManyUnlocked_'),'hard delete must remove every matching contribution row');
 });
