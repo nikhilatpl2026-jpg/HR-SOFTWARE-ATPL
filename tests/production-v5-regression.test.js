@@ -90,7 +90,7 @@ test('live index cache-busts Sep-21 shared authority scripts',()=>{
   const h=read('index.html');
   [
     'erp-mobile-shared-hardfix-v1.js?v=20260921-permission-sync2',
-    'erp-durable-everything-v1.js?v=20260921-system-records-authority13',
+    'erp-durable-everything-v1.js?v=20260921-system-records-authority14-dol-delete',
     'erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3'
   ].forEach(x=>assert.ok(h.includes(x),x));
   ['erp-mobile-shared-hardfix-v1.js?v=20260919-final-stability','erp-durable-everything-v1.js?v=20260919-final-stability','erp-account-cloud-restore-v1.js?v=20260919-stability1'].forEach(x=>assert.equal(h.includes(x),false,x));
@@ -107,41 +107,59 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL legacy bridge remains active in V8 and treats already-missing delete as success',()=>{
+test('DOL legacy bridge remains active in V9 and treats already-missing delete as success',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production8'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production9'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v8-final-delete-dol",
+    "production-v9-shared-delete",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
     "Removed stale legacy/cache challan",
     "purgeLegacyLocalMatches",
-    "if(isDeleteTombstoned(targetType,nr))continue"
+    "if(isAnyDeleteTombstoned(targetType,nr))continue"
   ].forEach(x=>assert.ok(d.includes(x),x));
   assert.ok(d.includes("await migrateLegacy()"));
   assert.ok(d.includes("await migrateDbFilesToVault()"));
 });
 
-test('DOL instant delete is optimistic, reload-safe, and purges V1 resurrection sources',()=>{
-  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js');
+test('DOL delete is shared across devices and search repairs from fresh cloud library',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js'),dur=read('erp-durable-everything-v1.js');
+  assert.ok(h.includes('erp-durable-everything-v1.js?v=20260921-system-records-authority14-dol-delete'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production8'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production8'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production9'));
   [
-    'production-v8-final-delete-dol',
+    'production-v9-shared-delete',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
-    'markDeleteTombstone',
-    'isDeleteTombstoned',
+    'loadSharedDeleteTombstones',
+    'saveSharedDeleteTombstone',
+    'clearSharedDeleteTombstone',
+    'isSharedDeleteTombstoned',
+    'isAnyDeleteTombstoned',
     'sameDeleteIdentity',
     'purgeLegacyLocalMatches',
-    'mergeSearchPacks',
-    'Removed instantly ✓',
-    'Delete failed — restored record'
+    'librarySearchPack',
+    'await v.list(type)',
+    'locking delete across all devices',
+    'shared delete lock'
   ].forEach(x=>assert.ok(d.includes(x),x));
+  [
+    'system-records-authority14-dol-delete',
+    "DOL_KIND_ESIC_DELETE='esic_dol_deleted_v1'",
+    "DOL_KIND_PF_DELETE='pf_dol_deleted_v1'",
+    'saveComplianceDolDeleteTombstone',
+    'getComplianceDolDeleteTombstones',
+    'clearComplianceDolDeleteTombstone'
+  ].forEach(x=>assert.ok(dur.includes(x),x));
   assert.ok(c.includes('production-v8-final-delete-dol'));
   assert.ok(c.includes('sameDeleteTarget'));
   assert.ok(c.includes("getDOLRecords',type:type},{timeout:8000,cacheMs:0"));
   assert.ok(c.includes("timeout:22000,attempts:1"));
+  const searchStart=d.indexOf('async function searchAsync(type,qs,box)');
+  const searchEnd=d.indexOf('function search(type)',searchStart);
+  const searchBody=d.slice(searchStart,searchEnd);
+  assert.ok(searchBody.includes('await v.list(type)'));
+  assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(searchBody),false);
 });
