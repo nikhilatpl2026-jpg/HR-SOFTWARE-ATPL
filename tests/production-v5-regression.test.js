@@ -42,3 +42,25 @@ test('shared sync is backend-authoritative without recurring poll',()=>{
   assert.ok(guard.includes('MutationObserver'));
   assert.ok(guard.includes('atpl-authenticated'));
 });
+
+test('live index cache-busts Sep-21 shared authority scripts',()=>{
+  const h=read('index.html');
+  [
+    'erp-mobile-shared-hardfix-v1.js?v=20260921-permission-sync2',
+    'erp-durable-everything-v1.js?v=20260921-system-records-authority13',
+    'erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3'
+  ].forEach(x=>assert.ok(h.includes(x),x));
+  ['erp-mobile-shared-hardfix-v1.js?v=20260919-final-stability','erp-durable-everything-v1.js?v=20260919-final-stability','erp-account-cloud-restore-v1.js?v=20260919-stability1'].forEach(x=>assert.equal(h.includes(x),false,x));
+});
+
+test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
+  const b=read('backend/Backend-V4-Complete-Code.gs');
+  const start=b.indexOf('function getEmployeeMaster_(p)');
+  const end=b.indexOf('function getSystemRecords_(p)',start);
+  assert.ok(start>0&&end>start);
+  const body=b.slice(start,end);
+  assert.ok(body.includes("requireAnyFeature_(p.token,['empmaster','cmd','files','audit','machineaudit','bankverify','dolverify','ff','hrdocs','mamsalary'])"));
+  assert.equal(body.includes("'esictodol'"),false);
+  assert.equal(body.includes("'pftodol'"),false);
+});
+

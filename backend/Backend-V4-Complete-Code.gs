@@ -127,7 +127,7 @@ function logout_(p){if(p.token)CacheService.getScriptCache().remove('ATPL_TOKEN_
 function masterRows_(){var sh=ensureDataSheets_().master,n=sh.getLastRow();if(n<2)return[];return sh.getRange(2,1,n-1,4).getValues().map(function(r,i){return {row:i+2,emp_id:String(r[0]||''),json:String(r[1]||''),updated_by:String(r[2]||''),updated_at:String(r[3]||'')};}).filter(function(x){return x.emp_id;});}
 function findMaster_(id){var key=String(id||'').trim().toLowerCase(),all=masterRows_();for(var i=0;i<all.length;i++)if(all[i].emp_id.toLowerCase()===key)return all[i];return null;}
 function getEmployeeMaster_(p){
-  requireAnyFeature_(p.token,['empmaster','cmd','files','audit','machineaudit','bankverify','esictodol','pftodol','dolverify','ff','hrdocs','mamsalary']);
+  requireAnyFeature_(p.token,['empmaster','cmd','files','audit','machineaudit','bankverify','dolverify','ff','hrdocs','mamsalary']);
   var out=[];
   masterRows_().forEach(function(x){
     if (String(x.emp_id||'').indexOf('__ATPL_SYS__')===0) return;
