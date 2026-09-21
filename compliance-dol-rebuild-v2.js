@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-production-v6-legacy-bridge';
+var BUILD='2026.09.21-production-v7-instant-delete';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -23,6 +23,32 @@ var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
 var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={};
+var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=180000;
+
+function tombstoneRead(){
+  var out={};try{out=JSON.parse(root.localStorage.getItem(DELETE_TOMBSTONE_KEY)||'{}')||{}}catch(_){}
+  var n=Date.now(),changed=false;Object.keys(out).forEach(function(k){if(!out[k]||n-Number(out[k])>DELETE_TOMBSTONE_TTL){delete out[k];changed=true}});
+  if(changed)try{root.localStorage.setItem(DELETE_TOMBSTONE_KEY,JSON.stringify(out))}catch(_){}
+  return out
+}
+function tombstoneKeys(type,r){
+  type=String(type||r&&r.type||'').toLowerCase();r=r||{};var out=[],seen={};
+  function add(k){k=String(k||'');if(k&&!seen[k]){seen[k]=1;out.push(k)}}
+  var id=String(r.cloudRecordId||r.id||''),rawId=String(r.id||''),h=String(r.hash||r.fileHash||r.fingerprint||'').toLowerCase();
+  if(id)add(type+'|id|'+id);if(rawId)add(type+'|id|'+rawId);if(h)add(type+'|hash|'+h);
+  return out
+}
+function isDeleteTombstoned(type,r){
+  var s=tombstoneRead(),ks=tombstoneKeys(type,r);for(var i=0;i<ks.length;i++)if(s[ks[i]])return true;return false
+}
+function markDeleteTombstone(type,r){
+  var s=tombstoneRead(),ts=Date.now();tombstoneKeys(type,r).forEach(function(k){s[k]=ts});
+  try{root.localStorage.setItem(DELETE_TOMBSTONE_KEY,JSON.stringify(s))}catch(_){}
+}
+function clearDeleteTombstone(type,r){
+  var s=tombstoneRead();tombstoneKeys(type,r).forEach(function(k){delete s[k]});
+  try{root.localStorage.setItem(DELETE_TOMBSTONE_KEY,JSON.stringify(s))}catch(_){}
+}
 function bounded(p,ms,label){
   return new Promise(function(resolve,reject){
     var done=false,t=setTimeout(function(){if(done)return;done=true;reject(new Error((label||'Cloud sync')+' timeout'))},ms);
@@ -36,7 +62,7 @@ async function localPreview(type){
       await dedupeLocalRecords();
       localPreviewPrepared=true
     }
-    var rows=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.archived});
+    var rows=(await dbAll()).filter(function(r){return r&&r.type===type&&!r.archived&&!isDeleteTombstoned(type,r)});
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
     if(rows.length){
       state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
@@ -98,7 +124,7 @@ async function scheduleLegacyV5Migration(type,remote,localRows){
   if(v5MigrationPromise[type])return v5MigrationPromise[type];
   var v=vaultApi();if(!v||typeof v.upload!=='function')return Promise.resolve({migrated:0,failed:0});
   var maps=remoteIdentityMaps(remote),rows=(localRows||[]).filter(function(r){
-    if(!r||r.type!==type||r.archived||!hasLocalOriginalHint(r)||localAlreadyRemote(r,maps))return false;
+    if(!r||r.type!==type||r.archived||isDeleteTombstoned(type,r)||!hasLocalOriginalHint(r)||localAlreadyRemote(r,maps))return false;
     return !v5MigrationFailed[type+'|'+String(r.id||r.hash||r.name||'')]
   });
   if(!rows.length)return Promise.resolve({migrated:0,failed:0});
@@ -546,8 +572,8 @@ async function refresh(type){
   if(!hadLocal)hadLocal=await localPreview(type);
   if(!cloudLoginReady()){setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false}
   try{
-    var pack=await cloudRecords(type),remote=pack.records||[],local=await dbAll(),byId={},byHash={};
-    local.filter(function(r){return r&&r.type===type}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash).toLowerCase()]=r});
+    var pack=await cloudRecords(type),remote=(pack.records||[]).filter(function(x){return !isDeleteTombstoned(type,x)}),local=await dbAll(),byId={},byHash={};
+    local.filter(function(r){return r&&r.type===type&&!isDeleteTombstoned(type,r)}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash).toLowerCase()]=r});
     var rows=remote.map(function(x){
       var r=localRecordFromCloud(x),old=byId[String(r.id)]||(r.hash&&byHash[String(r.hash).toLowerCase()])||null;
       if(old){
@@ -555,12 +581,12 @@ async function refresh(type){
         r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile)
       }
       return r
-    }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)});
+    }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)&&!isDeleteTombstoned(type,r)});
     var pending=[];
     if(pack.mode==='v4'){
       var maps=remoteIdentityMaps(remote);
       pending=local.filter(function(r){
-        return r&&r.type===type&&!r.archived&&!looksLikePfRecord(r)&&hasLocalOriginalHint(r)&&!localAlreadyRemote(r,maps)
+        return r&&r.type===type&&!r.archived&&!isDeleteTombstoned(type,r)&&!looksLikePfRecord(r)&&hasLocalOriginalHint(r)&&!localAlreadyRemote(r,maps)
       }).map(function(r){return Object.assign({},r,{cloudSynced:false,cloudOnly:false,legacyPending:true})});
       rows=rows.concat(pending)
     }
@@ -572,7 +598,8 @@ async function refresh(type){
     return true
   }catch(e){
     if(!(state[type].rows||[]).length)await localPreview(type);
-    renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh failed. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
+    state[type].rows=(state[type].rows||[]).filter(function(r){return !isDeleteTombstoned(type,r)});
+    rebuildIndex(type);renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh failed. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
   }
 }
 function addLibraryCss(){
@@ -692,8 +719,16 @@ async function updatePeriod(type,id,period){
 async function deleteOne(type,id){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
   if(!confirm('Permanently delete this selected challan from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
-  setStatus(type,'Deleting permanently…');
+
+  markDeleteTombstone(type,r);
+  state[type].rows=(state[type].rows||[]).filter(function(x){
+    return !(String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId)))
+  });
+  delete state[type].selected[String(r.id)];rebuildIndex(type);renderFiles(type);
+  setStatus(type,'Removed instantly ✓ · saving permanent delete to shared backend…');
+
   try{
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     var v=vaultApi(),dedicatedDone=false,alreadyGone=false,dedicatedUnavailable=false;
     if(v&&typeof v.deleteRecord==='function'){
       try{await v.deleteRecord(r);dedicatedDone=true}
@@ -703,14 +738,14 @@ async function deleteOne(type,id){
         else throw de
       }
     }else dedicatedUnavailable=true;
+
     var api=durableApi(),legacyError=null;
     if(api&&typeof api.deleteComplianceDolConfirmed==='function'){
       var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';
       try{await api.deleteComplianceDolConfirmed(target)}
       catch(le){if(!isMissingCloudRecordError(le))legacyError=le;else alreadyGone=true}
     }else if(!dedicatedDone)legacyError=new Error('Cloud backend unavailable');
-    if(!dedicatedDone&&dedicatedUnavailable&&legacyError)throw legacyError;
-    if(!dedicatedDone&&!dedicatedUnavailable&&legacyError)throw legacyError;
+    if(!dedicatedDone&&legacyError)throw legacyError;
     if(dedicatedDone&&legacyError)console.warn('Legacy challan cleanup deferred; V5 authoritative delete already completed',legacyError);
 
     var all=await dbAll(),purged=0;
@@ -719,13 +754,22 @@ async function deleteOne(type,id){
       var same=String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId));
       if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
-    await writeVaultManifest();try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
-    delete state[type].selected[String(r.id)];
-    await refresh(type);
-    var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
-    if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
-    setStatus(type,(alreadyGone?'Removed stale legacy/cache challan ✓ — ':'Deleted permanently ✓ — ')+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''))
-  }catch(e){try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}await refresh(type);setStatus(type,'Delete failed — '+(e.message||e),true)}
+    await writeVaultManifest();
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    setStatus(type,(alreadyGone?'Removed stale legacy/cache challan ✓ — ':'Deleted permanently ✓ — ')+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''));
+
+    setTimeout(async function(){
+      try{
+        if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache();
+        var pack=await cloudRecords(type),still=(pack.records||[]).some(function(x){return isDeleteTombstoned(type,x)});
+        if(!still)clearDeleteTombstone(type,r)
+      }catch(_){}
+    },900);
+  }catch(e){
+    clearDeleteTombstone(type,r);
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    await refresh(type);setStatus(type,'Delete failed — restored record · '+(e.message||e),true)
+  }
 }
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
