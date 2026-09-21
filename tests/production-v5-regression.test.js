@@ -79,3 +79,20 @@ test('DOL V6 bridges legacy challans into V5 and treats already-missing delete a
   assert.ok(d.includes("await migrateDbFilesToVault()"));
 });
 
+test('DOL instant delete is optimistic, reload-safe, and avoids stale list cache',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js');
+  assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production7'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production7'));
+  [
+    'production-v7-instant-delete',
+    'ATPL_DOL_DELETE_TOMBSTONES_V2',
+    'markDeleteTombstone',
+    'isDeleteTombstoned',
+    'Removed instantly ✓',
+    'Delete failed — restored record'
+  ].forEach(x=>assert.ok(d.includes(x),x));
+  assert.ok(c.includes('production-v7-delete-client'));
+  assert.ok(c.includes("getDOLRecords',type:type},{timeout:8000,cacheMs:0"));
+  assert.ok(c.includes("timeout:22000,attempts:1"));
+});
+
