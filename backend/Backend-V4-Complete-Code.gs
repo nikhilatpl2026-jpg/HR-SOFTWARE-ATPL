@@ -8,9 +8,12 @@ var SHEET_NAME = 'Users';
 var MASTER_SHEET = 'EmployeeMaster';
 var ACTIVITY_SHEET = 'Activity';
 var TOKEN_TTL = 21600;
-var BACKEND_VERSION = '4.0-final-stability';
+var BACKEND_VERSION = '5.0-production-repair';
 var DOL_SHEET = 'DOLRecords';
 var DOL_PARTS_SHEET = 'DOLUploadParts';
+var DOL_CONTRIBUTIONS_SHEET = 'DOLContributions';
+var COMPLIANCE_SHEET = 'ComplianceCalendar';
+var COMPLIANCE_NOTIFICATIONS_SHEET = 'ComplianceNotifications';
 var DOL_FOLDER_NAME = 'Arora ERP DOL Challans';
 var DOL_FILE_CHUNK = 500000; // larger read chunks: fewer round-trips for cross-device Open/Download
 var DOL_UPLOAD_PART_MAX = 40000;
@@ -44,6 +47,10 @@ function doGet(e) {
     else if (action === 'deleteDOLRecord') data = deleteDOLRecord_(p);
     else if (action === 'getDOLFileInfo') data = getDOLFileInfo_(p);
     else if (action === 'getDOLFileChunk') data = getDOLFileChunk_(p);
+    else if (action === 'beginDOLIndex') data = beginDOLIndex_(p);
+    else if (action === 'finalizeDOLIndex') data = finalizeDOLIndex_(p);
+    else if (action === 'searchDOLIndex') data = searchDOLIndex_(p);
+    else if (action === 'listComplianceCalendar') data = listComplianceCalendar_(p);
     else data = {ok:false, error:'Unknown action'};
     return output_(data, p.callback);
   } catch (err) {
@@ -105,6 +112,10 @@ function issueToken_(u){var token=Utilities.getUuid().replace(/-/g,'')+Utilities
 function auth_(token){if(!token)return null;var raw=CacheService.getScriptCache().get('ATPL_TOKEN_'+token);if(!raw)return null;try{var s=JSON.parse(raw),u=findUser_(s.id);if(!u||!u.active)return null;return u;}catch(_){return null;}}
 function requireUser_(token){var u=auth_(token);if(!u)throw new Error('Valid login session required');return u;}
 function requireAdmin_(token){var u=requireUser_(token);if(!u.admin)throw new Error('Admin session required');return u;}
+function hasFeature_(u,feature){if(!u)return false;if(u.admin)return true;var key=String(feature||'').toLowerCase();return (u.access||[]).some(function(x){x=String(x||'').toLowerCase();return x==='*'||x===key;});}
+function requireFeature_(token,feature){var u=requireUser_(token);if(!hasFeature_(u,feature))throw new Error('Access denied for '+feature);return u;}
+function requireAnyFeature_(token,features){var u=requireUser_(token);for(var i=0;i<features.length;i++)if(hasFeature_(u,features[i]))return u;throw new Error('Access denied');}
+function dolFeature_(type){return String(type||'').toLowerCase()==='pf'?'pftodol':'esictodol';}
 function publicUser_(u){return {id:u.id,name:u.name,admin:u.admin,access:u.admin?['*']:u.access,active:u.active,updated:u.updated};}
 function login_(p){var id=String(p.user_id||'').trim(),hash=String(p.password_hash||'').trim().toLowerCase(),u=findUser_(id);if(!u||!u.active||!hash||u.hash.toLowerCase()!==hash)return {ok:false,error:'Wrong User ID or Password.'};return {ok:true,token:issueToken_(u),user:publicUser_(u)};}
 function listUsers_(p){requireAdmin_(p.token);return {ok:true,users:rows_().map(publicUser_)};}
@@ -116,7 +127,7 @@ function logout_(p){if(p.token)CacheService.getScriptCache().remove('ATPL_TOKEN_
 function masterRows_(){var sh=ensureDataSheets_().master,n=sh.getLastRow();if(n<2)return[];return sh.getRange(2,1,n-1,4).getValues().map(function(r,i){return {row:i+2,emp_id:String(r[0]||''),json:String(r[1]||''),updated_by:String(r[2]||''),updated_at:String(r[3]||'')};}).filter(function(x){return x.emp_id;});}
 function findMaster_(id){var key=String(id||'').trim().toLowerCase(),all=masterRows_();for(var i=0;i<all.length;i++)if(all[i].emp_id.toLowerCase()===key)return all[i];return null;}
 function getEmployeeMaster_(p){
-  requireUser_(p.token);
+  requireAnyFeature_(p.token,['empmaster','cmd','files','audit','machineaudit','bankverify','esictodol','pftodol','dolverify','ff','hrdocs','mamsalary']);
   var out=[];
   masterRows_().forEach(function(x){
     if (String(x.emp_id||'').indexOf('__ATPL_SYS__')===0) return;
@@ -131,7 +142,7 @@ function getEmployeeMaster_(p){
   return {ok:true,records:out,count:out.length,version:BACKEND_VERSION};
 }
 function getSystemRecords_(p){
-  requireUser_(p.token);
+  var u=requireUser_(p.token);
   var out=[],kind=String(p.kind||'').trim();
   masterRows_().forEach(function(x){
     var isSystem=String(x.emp_id||'').indexOf('__ATPL_SYS__')===0;
@@ -139,6 +150,7 @@ function getSystemRecords_(p){
       var r=JSON.parse(x.json);
       if (!isSystem && !(r && r._atpl_system===true)) return;
       if (kind && String(r.object_kind||'')!==kind) return;
+      if (!systemKindAllowed_(u,String(r.object_kind||''))) return;
       r._cloud_updated_by=x.updated_by;
       r._cloud_updated_at=x.updated_at;
       out.push(r);
@@ -147,8 +159,20 @@ function getSystemRecords_(p){
   return {ok:true,records:out,count:out.length,kind:kind||'all',version:BACKEND_VERSION};
 }
 
-function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id),now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
-function deleteEmployeeMaster_(p){var u=requireUser_(p.token),old=findMaster_(p.emp_id);if(!old)return {ok:true};var lock=LockService.getScriptLock();lock.waitLock(10000);try{ensureDataSheets_().master.deleteRow(old.row);return {ok:true,deleted:String(p.emp_id||''),deleted_by:u.id};}finally{lock.releaseLock();}}
+function systemKindAllowed_(u,kind){
+  kind=String(kind||'').toLowerCase();
+  if(u.admin)return true;
+  if(kind==='hr_doc')return hasFeature_(u,'hrdocs');
+  if(kind==='bank_ref_v3'||kind==='bank_work_v4')return hasFeature_(u,'bankverify');
+  if(kind==='esic_dol_v2'||kind.indexOf('esic')>=0)return hasFeature_(u,'esictodol');
+  if(kind==='pf_dol_v2'||kind.indexOf('pf_dol')>=0)return hasFeature_(u,'pftodol');
+  if(kind==='durable_state')return true;
+  if(kind==='salary_file')return ['cmd','files','audit','machineaudit','mamsalary','dolverify','ff'].some(function(f){return hasFeature_(u,f)});
+  return false;
+}
+
+function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}var system=id.indexOf('__ATPL_SYS__')===0||obj._atpl_system===true;if(system){if(id.indexOf('__ATPL_SYS__')!==0||obj._atpl_system!==true)return {ok:false,error:'Invalid system record'};if(!systemKindAllowed_(u,String(obj.object_kind||'')))return {ok:false,error:'Access denied for system record'};}else if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied for Employee Master'};obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id);if(old){try{var prev=JSON.parse(old.json);if(!!prev._atpl_system!==!!obj._atpl_system||String(prev.object_kind||'')!==String(obj.object_kind||''))return {ok:false,error:'Record category cannot be changed'};}catch(_){}}var now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
+function deleteEmployeeMaster_(p){var u=requireUser_(p.token),old=findMaster_(p.emp_id);if(!old)return {ok:true};try{var obj=JSON.parse(old.json);if(obj._atpl_system===true){if(!systemKindAllowed_(u,String(obj.object_kind||'')))return {ok:false,error:'Access denied'};}else if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied'};}catch(_){if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied'};}var lock=LockService.getScriptLock();lock.waitLock(10000);try{ensureDataSheets_().master.deleteRow(old.row);return {ok:true,deleted:String(p.emp_id||''),deleted_by:u.id};}finally{lock.releaseLock();}}
 
 
 function appendActivity_(p){var u=requireUser_(p.token),sh=ensureDataSheets_().activity,now=new Date().toISOString(),id=Utilities.getUuid();var meta=String(p.meta_json||'{}');try{JSON.parse(meta);}catch(_){meta='{}';}var lock=LockService.getScriptLock();lock.waitLock(10000);try{sh.appendRow([id,u.id,u.name,String(p.event_type||'activity'),String(p.page||''),String(p.action_text||p.action_name||''),meta,now]);}finally{lock.releaseLock();}return {ok:true,event_id:id,created_at:now};}
@@ -157,17 +181,22 @@ function listActivity_(p){requireAdmin_(p.token);var sh=ensureDataSheets_().acti
 function doPost(e) {
   var p = (e && e.parameter) || {};
   var requestId = String(p.request_id || '');
-  var data;
+  var data,action='';
   try {
     ensureUsersSheet_();
     ensureDataSheets_();
-    var action = String(p.action || '');
+    action = String(p.action || '');
     if (action === 'appendDOLChunkBatch') data = appendDOLChunkBatch_(p);
+    else if (action === 'upsertDOLContributionBatch') data = upsertDOLContributionBatch_(p);
+    else if (action === 'upsertComplianceCalendar') data = upsertComplianceCalendar_(p);
+    else if (action === 'deleteComplianceCalendar') data = deleteComplianceCalendar_(p);
+    else if (action === 'claimComplianceNotification') data = claimComplianceNotification_(p);
     else data = {ok:false,error:'Unknown POST action'};
   } catch (err) {
     data = {ok:false,error:String(err && err.message ? err.message : err)};
   }
-  var payload = JSON.stringify({channel:'ATPL_DOL_V4_POST',request_id:requestId,data:data}).replace(/</g,'\\u003c');
+  var channel=String(action||'').indexOf('Compliance')>=0?'ATPL_CALENDAR_POST':'ATPL_DOL_V4_POST';
+  var payload = JSON.stringify({channel:channel,request_id:requestId,data:data}).replace(/</g,'\\u003c');
   return HtmlService.createHtmlOutput('<script>parent.postMessage('+payload+',"*");<\\/script>')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
@@ -196,6 +225,7 @@ function appendDOLChunkBatch_(p) {
   var u=requireUser_(p.token),uploadId=String(p.upload_id||''),parts;
   if(!uploadId) return {ok:false,error:'upload_id required'};
   var meta=dolUploadMeta_(uploadId);
+  if(!hasFeature_(u,dolFeature_(meta.type)))return {ok:false,error:'Access denied'};
   if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
   try{parts=JSON.parse(String(p.parts_json||'[]'));}catch(_){return {ok:false,error:'Invalid parts_json'};}
   if(!Array.isArray(parts)||!parts.length||parts.length>12)return {ok:false,error:'Invalid upload part batch'};
@@ -236,29 +266,35 @@ function ensureDolSheets_() {
   var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sh = ss.getSheetByName(DOL_SHEET) || ss.insertSheet(DOL_SHEET);
   var ph = ss.getSheetByName(DOL_PARTS_SHEET) || ss.insertSheet(DOL_PARTS_SHEET);
+  var ch = ss.getSheetByName(DOL_CONTRIBUTIONS_SHEET) || ss.insertSheet(DOL_CONTRIBUTIONS_SHEET);
   var headers = [
     'id','type','name','file_hash','period','period_source',
     'digit_ids_json','alnum_ids_json','size','mime','drive_file_id','drive_url',
-    'uploaded_by','uploaded_at','updated_at'
+    'uploaded_by','uploaded_at','updated_at','index_count','index_status'
   ];
   var pheaders = ['upload_id','part_index','data','user_id','created_at'];
+  var cheaders = ['record_id','type','member_id','employee_name','details_json','period','source_name','updated_at'];
   if (sh.getLastRow() === 0) sh.getRange(1,1,1,headers.length).setValues([headers]);
   else sh.getRange(1,1,1,headers.length).setValues([headers]);
   if (ph.getLastRow() === 0) ph.getRange(1,1,1,pheaders.length).setValues([pheaders]);
   else ph.getRange(1,1,1,pheaders.length).setValues([pheaders]);
-  sh.setFrozenRows(1); ph.setFrozenRows(1);
-  return {records:sh,parts:ph};
+  if (ch.getLastRow() === 0) ch.getRange(1,1,1,cheaders.length).setValues([cheaders]);
+  else ch.getRange(1,1,1,cheaders.length).setValues([cheaders]);
+  sh.setFrozenRows(1); ph.setFrozenRows(1); ch.setFrozenRows(1);
+  return {records:sh,parts:ph,contributions:ch};
 }
 
-function dolFolder_() {
+function dolRootFolder_() {
   var it = DriveApp.getFoldersByName(DOL_FOLDER_NAME);
   return it.hasNext() ? it.next() : DriveApp.createFolder(DOL_FOLDER_NAME);
 }
+function childFolder_(parent,name){var it=parent.getFoldersByName(name);return it.hasNext()?it.next():parent.createFolder(name);}
+function dolFolder_(type,period){var root=dolRootFolder_(),typed=childFolder_(root,String(type||'unknown').toUpperCase()),year=/^(\d{4})-/.exec(String(period||''));return childFolder_(typed,year?year[1]:'Month Not Set');}
 
 function dolRows_() {
   var sh = ensureDolSheets_().records, n = sh.getLastRow();
   if (n < 2) return [];
-  return sh.getRange(2,1,n-1,15).getValues().map(function(r,i){
+  return sh.getRange(2,1,n-1,17).getValues().map(function(r,i){
     return {
       row:i+2,
       id:String(r[0]||''),
@@ -275,7 +311,9 @@ function dolRows_() {
       drive_url:String(r[11]||''),
       uploaded_by:String(r[12]||''),
       uploaded_at:String(r[13]||''),
-      updated_at:String(r[14]||'')
+      updated_at:String(r[14]||''),
+      index_count:Number(r[15]||0)||0,
+      index_status:String(r[16]||'pending')
     };
   }).filter(function(x){ return x.id; });
 }
@@ -294,7 +332,8 @@ function publicDol_(r) {
     id:r.id,type:r.type,name:r.name,fileHash:r.file_hash,fingerprint:r.file_hash,
     period:r.period,periodSource:r.period_source,digitIds:r.digit_ids,alnumIds:r.alnum_ids,
     size:r.size,mime:r.mime,hasOriginalFile:!!r.drive_file_id,
-    uploadedBy:r.uploaded_by,uploadedAt:r.uploaded_at,updatedAt:r.updated_at
+    uploadedBy:r.uploaded_by,uploadedAt:r.uploaded_at,updatedAt:r.updated_at,
+    indexCount:r.index_count,indexStatus:r.index_status
   };
 }
 
@@ -314,19 +353,19 @@ function findDolByHash_(hash) {
 }
 
 function getDOLRecords_(p) {
-  requireUser_(p.token);
   var type = String(p.type||'').toLowerCase();
   if (type !== 'pf' && type !== 'esic') return {ok:false,error:'Invalid DOL type'};
+  requireFeature_(p.token,dolFeature_(type));
   var out = dolRows_().filter(function(r){return r.type===type}).map(publicDol_);
   return {ok:true,type:type,records:out,count:out.length,source:'DOLRecords'};
 }
 
 function checkDOLDuplicate_(p) {
-  requireUser_(p.token);
+  var u=requireAnyFeature_(p.token,['pftodol','esictodol']);
   var hash = String(p.file_hash||p.hash||'').toLowerCase();
   if (!hash) return {ok:false,error:'file_hash required'};
   var r = findDolByHash_(hash);
-  return {ok:true,duplicate:!!r,record:r?publicDol_(r):null};
+  return {ok:true,duplicate:!!r,record:r&&hasFeature_(u,dolFeature_(r.type))?publicDol_(r):null};
 }
 
 function cleanupStaleDolParts_() {
@@ -347,6 +386,7 @@ function beginDOLUpload_(p) {
   cleanupStaleDolParts_();
   var type = String(p.type||'').toLowerCase(), hash = String(p.file_hash||'').toLowerCase();
   if (type!=='pf' && type!=='esic') return {ok:false,error:'Invalid DOL type'};
+  if(!hasFeature_(u,dolFeature_(type)))return {ok:false,error:'Access denied'};
   if (!hash) return {ok:false,error:'file_hash required'};
   var dup = findDolByHash_(hash);
   if (dup) return {ok:true,duplicate:true,record:publicDol_(dup)};
@@ -367,7 +407,7 @@ function appendDOLChunk_(p) {
   var u=requireUser_(p.token),uploadId=String(p.upload_id||''),idx=Number(p.part_index),data=String(p.data||'');
   if(!uploadId||!isFinite(idx)||idx<0||Math.floor(idx)!==idx||!data)return {ok:false,error:'Invalid upload chunk'};
   if(data.length>DOL_UPLOAD_PART_MAX)return {ok:false,error:'Chunk too large'};
-  var meta=dolUploadMeta_(uploadId);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  var meta=dolUploadMeta_(uploadId);if(!hasFeature_(u,dolFeature_(meta.type)))return {ok:false,error:'Access denied'};if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
   var ph=ensureDolSheets_().parts,lock=LockService.getScriptLock();lock.waitLock(15000);
   try{
     var existing=dolExistingPartMap_(uploadId),k=String(idx);
@@ -383,7 +423,7 @@ function appendDOLChunk_(p) {
 function commitDOLUpload_(p) {
   var u=requireUser_(p.token),uploadId=String(p.upload_id||''),cache=CacheService.getScriptCache(),raw=cache.get('ATPL_DOL_UPLOAD_'+uploadId);
   if(!raw){try{cleanupDolParts_(uploadId)}catch(_){}return {ok:false,error:'Upload session expired'};}
-  var meta=JSON.parse(raw);if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
+  var meta=JSON.parse(raw);if(!hasFeature_(u,dolFeature_(meta.type)))return {ok:false,error:'Access denied'};if(String(meta.user_id)!==String(u.id))return {ok:false,error:'Upload owner mismatch'};
   var ph=ensureDolSheets_().parts,n=ph.getLastRow(),partMap={};
   if(n>=2){
     ph.getRange(2,1,n-1,5).getValues().forEach(function(r){
@@ -406,9 +446,9 @@ function commitDOLUpload_(p) {
     var dup=findDolByHash_(meta.file_hash);
     if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:publicDol_(dup)};}
     var blob=Utilities.newBlob(bytes,meta.mime||'application/octet-stream',meta.name||'challan');
-    file=dolFolder_().createFile(blob);
+    file=dolFolder_(meta.type,meta.period).createFile(blob);
     var now=new Date().toISOString(),id='dol_'+meta.type+'_'+String(meta.file_hash).slice(0,24),sh=ensureDolSheets_().records;
-    sh.appendRow([id,meta.type,meta.name,meta.file_hash,meta.period||'',meta.period_source||'',JSON.stringify(meta.digit_ids||[]),JSON.stringify(meta.alnum_ids||[]),Number(meta.size||bytes.length)||bytes.length,meta.mime||'application/octet-stream',file.getId(),file.getUrl(),u.id,now,now]);
+    sh.appendRow([id,meta.type,meta.name,meta.file_hash,meta.period||'',meta.period_source||'',JSON.stringify(meta.digit_ids||[]),JSON.stringify(meta.alnum_ids||[]),Number(meta.size||bytes.length)||bytes.length,meta.mime||'application/octet-stream',file.getId(),file.getUrl(),u.id,now,now,0,'pending']);
     cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);
     return {ok:true,duplicate:false,record:publicDol_(findDolById_(id))};
   }catch(e){
@@ -423,17 +463,19 @@ function cleanupDolParts_(uploadId) {
 }
 
 function updateDOLRecord_(p) {
-  requireUser_(p.token);var lock=LockService.getScriptLock();lock.waitLock(15000);
+  var u=requireUser_(p.token);var lock=LockService.getScriptLock();lock.waitLock(15000);
   try{
     var old=findDolById_(p.id);if(!old)return {ok:false,error:'DOL record not found'};
+    if(!hasFeature_(u,dolFeature_(old.type)))return {ok:false,error:'Access denied'};
     var requested=String(p.type||old.type).toLowerCase();
     if(requested!==old.type)return {ok:false,error:'Challan category cannot be changed; delete and upload in the correct module'};
-    var sh=ensureDolSheets_().records,now=new Date().toISOString();
-    sh.getRange(old.row,1,1,15).setValues([[
-      old.id,old.type,String(p.name||old.name),old.file_hash,String(p.period!=null?p.period:old.period),String(p.period_source||old.period_source),
+    var sh=ensureDolSheets_().records,now=new Date().toISOString(),newPeriod=String(p.period!=null?p.period:old.period);
+    sh.getRange(old.row,1,1,17).setValues([[
+      old.id,old.type,String(p.name||old.name),old.file_hash,newPeriod,String(p.period_source||old.period_source),
       p.digit_ids_json?String(p.digit_ids_json):JSON.stringify(old.digit_ids),p.alnum_ids_json?String(p.alnum_ids_json):JSON.stringify(old.alnum_ids),
-      old.size,old.mime,old.drive_file_id,old.drive_url,old.uploaded_by,old.uploaded_at,now
+      old.size,old.mime,old.drive_file_id,old.drive_url,old.uploaded_by,old.uploaded_at,now,old.index_count,old.index_status
     ]]);
+    if(old.drive_file_id&&newPeriod!==old.period){var f=DriveApp.getFileById(old.drive_file_id),target=dolFolder_(old.type,newPeriod),parents=f.getParents();target.addFile(f);while(parents.hasNext()){var parent=parents.next();if(parent.getId()!==target.getId())parent.removeFile(f);}}
     return {ok:true,record:publicDol_(findDolById_(old.id))};
   }finally{lock.releaseLock();}
 }
@@ -442,16 +484,18 @@ function deleteDOLRecord_(p) {
   var u=requireUser_(p.token),lock=LockService.getScriptLock();lock.waitLock(15000),file=null,trashed=false;
   try{
     var old=findDolById_(p.id);if(!old)return {ok:true,deleted:String(p.id||''),already_missing:true};
+    if(!hasFeature_(u,dolFeature_(old.type)))return {ok:false,error:'Access denied'};
     if(old.drive_file_id){file=DriveApp.getFileById(old.drive_file_id);file.setTrashed(true);trashed=true;}
-    try{ensureDolSheets_().records.deleteRow(old.row);}
+    try{ensureDolSheets_().records.deleteRow(old.row);deleteDolContributionsUnlocked_(old.id);}
     catch(e){if(trashed&&file){try{file.setTrashed(false);}catch(_){}}throw e;}
     return {ok:true,deleted:old.id,deleted_by:u.id};
   }finally{lock.releaseLock();}
 }
 
 function getDOLFileInfo_(p) {
-  requireUser_(p.token);
+  var u=requireUser_(p.token);
   var old = findDolById_(p.id);
+  if(old&&!hasFeature_(u,dolFeature_(old.type)))return {ok:false,error:'Access denied'};
   if (!old || !old.drive_file_id) return {ok:false,error:'Original file not found'};
   var f = DriveApp.getFileById(old.drive_file_id), bytes = f.getBlob().getBytes();
   var b64len = Utilities.base64Encode(bytes).length;
@@ -462,8 +506,9 @@ function getDOLFileInfo_(p) {
 }
 
 function getDOLFileChunk_(p) {
-  requireUser_(p.token);
+  var u=requireUser_(p.token);
   var old = findDolById_(p.id), idx = Number(p.part_index||0);
+  if(old&&!hasFeature_(u,dolFeature_(old.type)))return {ok:false,error:'Access denied'};
   if (!old || !old.drive_file_id) return {ok:false,error:'Original file not found'};
   if (!isFinite(idx) || idx<0) return {ok:false,error:'Invalid chunk index'};
   var b64 = Utilities.base64Encode(DriveApp.getFileById(old.drive_file_id).getBlob().getBytes());
@@ -474,3 +519,19 @@ function getDOLFileChunk_(p) {
     done:start+DOL_FILE_CHUNK>=b64.length
   };
 }
+
+function dolContributionRows_(){var sh=ensureDolSheets_().contributions,n=sh.getLastRow();if(n<2)return[];return sh.getRange(2,1,n-1,8).getValues().map(function(r,i){return {row:i+2,record_id:String(r[0]||''),type:String(r[1]||''),member_id:String(r[2]||''),employee_name:String(r[3]||''),details_json:String(r[4]||'{}'),period:String(r[5]||''),source_name:String(r[6]||''),updated_at:String(r[7]||'')}});}
+function deleteDolContributionsUnlocked_(recordId){var sh=ensureDolSheets_().contributions,n=sh.getLastRow();if(n<2)return;var rows=sh.getRange(2,1,n-1,8).getValues(),keep=rows.filter(function(r){return String(r[0])!==String(recordId)});sh.getRange(2,1,n-1,8).clearContent();if(keep.length)sh.getRange(2,1,keep.length,8).setValues(keep);}
+function setDolIndexStatus_(recordId,count,status){var r=findDolById_(recordId);if(!r)return;ensureDolSheets_().records.getRange(r.row,16,1,2).setValues([[Number(count||0),String(status||'pending')]]);}
+function beginDOLIndex_(p){var u=requireUser_(p.token),r=findDolById_(p.id);if(!r)return {ok:false,error:'DOL record not found'};if(!hasFeature_(u,dolFeature_(r.type)))return {ok:false,error:'Access denied'};var lock=LockService.getScriptLock();lock.waitLock(15000);try{deleteDolContributionsUnlocked_(r.id);setDolIndexStatus_(r.id,0,'processing');return {ok:true,id:r.id};}finally{lock.releaseLock();}}
+function upsertDOLContributionBatch_(p){var u=requireUser_(p.token),r=findDolById_(p.id),items;if(!r)return {ok:false,error:'DOL record not found'};if(!hasFeature_(u,dolFeature_(r.type)))return {ok:false,error:'Access denied'};try{items=JSON.parse(String(p.entries_json||p.records_json||'[]'));}catch(_){return {ok:false,error:'Invalid records_json'};}if(!Array.isArray(items)||items.length>500)return {ok:false,error:'Invalid contribution batch'};var normalized=[],seen={};items.forEach(function(x){var id=String(x.memberId||x.member_id||'').replace(/\s+/g,'').toUpperCase();if(!id||seen[id])return;seen[id]=true;normalized.push([r.id,r.type,id,String(x.employeeName||x.employee_name||''),JSON.stringify(x.details||{}),r.period,r.name,new Date().toISOString()]);});var lock=LockService.getScriptLock();lock.waitLock(15000);try{var sh=ensureDolSheets_().contributions,old=dolContributionRows_(),existing={};old.forEach(function(x){if(x.record_id===r.id)existing[x.member_id]=x.row});normalized.forEach(function(row){var at=existing[row[2]];if(at)sh.getRange(at,1,1,8).setValues([row]);else sh.appendRow(row)});return {ok:true,written:normalized.length};}finally{lock.releaseLock();}}
+function finalizeDOLIndex_(p){var u=requireUser_(p.token),r=findDolById_(p.id);if(!r)return {ok:false,error:'DOL record not found'};if(!hasFeature_(u,dolFeature_(r.type)))return {ok:false,error:'Access denied'};var count=dolContributionRows_().filter(function(x){return x.record_id===r.id}).length;setDolIndexStatus_(r.id,count,'ready');return {ok:true,id:r.id,count:count,record:publicDol_(findDolById_(r.id))};}
+function searchDOLIndex_(p){var type=String(p.type||'').toLowerCase();requireFeature_(p.token,dolFeature_(type));var ids=[];try{ids=JSON.parse(String(p.ids_json||'[]'))}catch(_){}if(!Array.isArray(ids)||!ids.length)ids=[p.member_id||p.query||''];ids=ids.map(function(x){return String(x||'').replace(/\s+/g,'').toUpperCase()}).filter(String);var out={};ids.forEach(function(id){out[id]=[]});dolContributionRows_().forEach(function(x){if(x.type!==type||ids.indexOf(x.member_id)<0)return;var details={};try{details=JSON.parse(x.details_json||'{}')}catch(_){}out[x.member_id].push({recordId:x.record_id,type:x.type,memberId:x.member_id,employeeName:x.employee_name,details:details,period:x.period,sourceChallan:x.source_name});});var unindexed=[];dolRows_().forEach(function(r){if(r.type!==type)return;if(r.index_status!=='ready')unindexed.push(publicDol_(r));ids.forEach(function(id){if(out[id].length)return;var legacy=r.digit_ids.concat(r.alnum_ids).map(function(x){return String(x).replace(/\s+/g,'').toUpperCase()});if(legacy.indexOf(id)>=0)out[id].push({recordId:r.id,type:r.type,memberId:id,employeeName:'',details:{legacyIndex:true},period:r.period,sourceChallan:r.name})})});Object.keys(out).forEach(function(id){out[id].sort(function(a,b){return String(a.period).localeCompare(String(b.period))})});return {ok:true,type:type,matches:out,coverage:dolRows_().filter(function(r){return r.type===type&&r.period}).map(function(r){return r.period}),unindexed:unindexed};}
+
+function ensureComplianceSheets_(){var ss=SpreadsheetApp.openById(SPREADSHEET_ID),sh=ss.getSheetByName(COMPLIANCE_SHEET)||ss.insertSheet(COMPLIANCE_SHEET),nh=ss.getSheetByName(COMPLIANCE_NOTIFICATIONS_SHEET)||ss.insertSheet(COMPLIANCE_NOTIFICATIONS_SHEET);var h=['id','type','title','department','last_date','due_date','responsible','trainer','notes','status','reminder_days','issue_date','expiry_date','next_action_date','completed_at','created_by','created_at','updated_by','updated_at','revision'],hn=['notification_key','record_id','user_id','state','created_at'];sh.getRange(1,1,1,h.length).setValues([h]);nh.getRange(1,1,1,hn.length).setValues([hn]);sh.setFrozenRows(1);nh.setFrozenRows(1);return {records:sh,notifications:nh};}
+function complianceRows_(){var sh=ensureComplianceSheets_().records,n=sh.getLastRow();if(n<2)return[];return sh.getRange(2,1,n-1,20).getValues().map(function(r,i){return {row:i+2,id:String(r[0]||''),type:String(r[1]||''),title:String(r[2]||''),department:String(r[3]||''),lastDate:String(r[4]||''),dueDate:String(r[5]||''),responsible:String(r[6]||''),trainer:String(r[7]||''),notes:String(r[8]||''),status:String(r[9]||''),reminderDays:Number(r[10]||7)||0,issueDate:String(r[11]||''),expiryDate:String(r[12]||''),nextActionDate:String(r[13]||''),completedAt:String(r[14]||''),createdBy:String(r[15]||''),createdAt:String(r[16]||''),updatedBy:String(r[17]||''),updatedAt:String(r[18]||''),revision:Number(r[19]||1)||1};}).filter(function(x){return x.id});}
+function listComplianceCalendar_(p){requireFeature_(p.token,'compliancecalendar');var rows=complianceRows_(),since=String(p.updated_since||'');if(since)rows=rows.filter(function(x){return x.updatedAt>since});return {ok:true,records:rows,count:rows.length,serverTime:new Date().toISOString()};}
+function complianceRowValues_(x,u,old){var now=new Date().toISOString(),type=String(x.type||'training').toLowerCase();if(type!=='training'&&type!=='legal')throw new Error('Invalid compliance type');var title=String(x.title||'').trim();if(!title)throw new Error('Name is required');var status=String(x.status||'upcoming'),completed=status==='completed'?String(x.completedAt||(old&&old.completedAt)||now):'';return [old?old.id:'cal_'+Utilities.getUuid().replace(/-/g,''),type,title,String(x.department||''),String(x.lastDate||''),String(x.dueDate||''),String(x.responsible||''),String(x.trainer||''),String(x.notes||''),status,Math.max(0,Number(x.reminderDays||7)||0),String(x.issueDate||''),String(x.expiryDate||''),String(x.nextActionDate||''),completed,old?old.createdBy:u.id,old?old.createdAt:now,u.id,now,old?old.revision+1:1];}
+function upsertComplianceCalendar_(p){var u=requireFeature_(p.token,'compliancecalendar'),obj;try{obj=JSON.parse(String(p.record_json||'{}'));}catch(_){return {ok:false,error:'Invalid record_json'}}var lock=LockService.getScriptLock();lock.waitLock(15000);try{var old=null;if(obj.id)complianceRows_().some(function(x){if(x.id===String(obj.id)){old=x;return true}return false});if(old&&Number(obj.revision||0)!==old.revision)return {ok:false,error:'This record was updated on another device. Refresh and retry.',conflict:true,current:old};var row=complianceRowValues_(obj,u,old),sh=ensureComplianceSheets_().records;if(old)sh.getRange(old.row,1,1,20).setValues([row]);else sh.appendRow(row);return {ok:true,record:complianceRows_().filter(function(x){return x.id===row[0]})[0]};}finally{lock.releaseLock();}}
+function deleteComplianceCalendar_(p){var u=requireFeature_(p.token,'compliancecalendar'),id=String(p.id||''),lock=LockService.getScriptLock();lock.waitLock(15000);try{var old=null;complianceRows_().some(function(x){if(x.id===id){old=x;return true}return false});if(!old)return {ok:true,deleted:id,alreadyMissing:true};if(Number(p.revision||0)!==old.revision)return {ok:false,error:'This record was updated on another device. Refresh and retry.',conflict:true,current:old};ensureComplianceSheets_().records.deleteRow(old.row);return {ok:true,deleted:id,deletedBy:u.id};}finally{lock.releaseLock();}}
+function claimComplianceNotification_(p){var u=requireFeature_(p.token,'compliancecalendar'),key=String(p.notification_key||''),id=String(p.id||''),state=String(p.state||'');if(!key||!id)return {ok:false,error:'notification_key and id required'};var lock=LockService.getScriptLock();lock.waitLock(10000);try{var sh=ensureComplianceSheets_().notifications,n=sh.getLastRow();if(n>=2){var rows=sh.getRange(2,1,n-1,5).getValues();for(var i=0;i<rows.length;i++)if(String(rows[i][0])===key)return {ok:true,claimed:false};}sh.appendRow([key,id,u.id,state,new Date().toISOString()]);return {ok:true,claimed:true};}finally{lock.releaseLock();}}

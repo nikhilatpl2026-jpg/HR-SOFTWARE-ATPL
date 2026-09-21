@@ -12,13 +12,13 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-final-stability-v4';
+var BUILD='2026.09.21-production-v5-ui';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
-var state={esic:{rows:[],index:{},periods:[]},pf:{rows:[],index:{},periods:[]}};
+var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},periods:[],selected:{}}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
@@ -360,31 +360,35 @@ function parseExcel(buf,type,progress){
 async function parsePdf(buf,type,progress){
   if(!root.pdfjsLib)throw new Error('PDF engine unavailable');
   if(root.pdfjsLib.GlobalWorkerOptions)root.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  var doc=await root.pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise,set=new Set(),sample='',items=0;
+  var doc=await root.pdfjsLib.getDocument({data:new Uint8Array(buf.slice(0))}).promise,set=new Set(),sample='',items=0,lines=[];
   for(var p=1;p<=doc.numPages;p++){
-    var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt='';
+    var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt='',lineMap={};
     for(var i=0;i<arr.length;i++){
       var cur=arr[i],s=cur.str||'';collectToken(type,s,set);txt+=' '+s;items++;
+      var ly=cur.transform&&cur.transform[5],lx=cur.transform&&cur.transform[4],lk=String(Math.round(Number(ly||0)/2)*2);(lineMap[lk]||(lineMap[lk]=[])).push({x:Number(lx||0),s:String(s||'')});
       if(i<arr.length-1){
         var nx=arr[i+1],a=normalizeDigits(s),b=normalizeDigits(nx.str||''),y1=cur.transform&&cur.transform[5],y2=nx.transform&&nx.transform[5],x1=cur.transform&&cur.transform[4],x2=nx.transform&&nx.transform[4],gap=(x1!=null&&x2!=null)?x2-(x1+(cur.width||0)):999;
         if(a&&b&&a.length<12&&b.length<12&&a.length+b.length>=8&&a.length+b.length<=20&&y1!=null&&y2!=null&&Math.abs(y1-y2)<1.8&&gap>-3&&gap<14)collectToken(type,a+b,set)
       }
     }
+    Object.keys(lineMap).sort(function(a,b){return Number(b)-Number(a)}).forEach(function(k){var line=lineMap[k].sort(function(a,b){return a.x-b.x}).map(function(x){return x.s}).join(' ').replace(/\s+/g,' ').trim();if(line)lines.push(line)});
     if(sample.length<12000)sample+=' '+txt;
     try{page.cleanup()}catch(_){}
     if(progress)progress(Math.round(p/doc.numPages*100));await tick()
   }
   try{doc.cleanup()}catch(_){}
   if(items<5)throw new Error('Scanned/image PDF: text layer not found');
-  return{ids:Array.from(set),sample:sample.slice(0,12000),sheets:null}
+  return{ids:Array.from(set),sample:sample.slice(0,12000),sheets:null,lines:lines}
 }
 async function parseBuffer(buf,name,type,progress){
   var ext=String(name||'').split('.').pop().toLowerCase(),x;
   if(ext==='pdf')x=await parsePdf(buf,type,progress);
   else if(['xlsx','xls','csv'].indexOf(ext)>=0)x=await parseExcel(buf,type,progress);
   else throw new Error('Unsupported file type: '+name);
-  var per=inferPeriod(name,x.sample);
-  return{ids:x.ids||[],period:per.period,periodSource:per.source,sheets:x.sheets||null,detectedType:detectedDocumentType(name,x.ids||[],x.sample||'')}
+  var per=inferPeriod(name,x.sample),rich={ids:[],contributions:[]},helper=root.ATPLDOLIndexV1;
+  try{if(helper)rich=x.sheets?helper.fromSheets(x.sheets,type):helper.fromTextLines(x.lines||[],type)}catch(e){console.warn('Detailed contribution extraction skipped',e)}
+  var ids=Array.from(new Set([].concat(x.ids||[],rich.ids||[]).map(function(v){return validId(type,v)}).filter(Boolean)));
+  return{ids:ids,contributions:rich.contributions||[],period:per.period,periodSource:per.source,sheets:x.sheets||null,detectedType:detectedDocumentType(name,ids,x.sample||'')}
 }
 
 function ensurePage(type){
@@ -407,7 +411,8 @@ function pageHtml(type){
     '<div id="cd2-'+type+'-status" class="cd2-status">Ready.</div>'+
     '<div class="cd2-grid">'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div>'+
-        '<div class="cd2-libtools"><input id="cd2-'+type+'-libsearch" placeholder="Search challan name / month / year..."><select id="cd2-'+type+'-yearfilter"><option value="">All years</option></select></div>'+
+        '<div class="cd2-libtools"><input id="cd2-'+type+'-libsearch" placeholder="Search challan name / month / year..."><select id="cd2-'+type+'-yearfilter"><option value="">All years</option></select><select id="cd2-'+type+'-monthfilter"><option value="">All months</option></select></div>'+
+        '<div class="cd2-bulk"><label><input type="checkbox" data-cd2-selectall="'+type+'"> Select all shown</label><span id="cd2-'+type+'-selected">0 selected</span><button type="button" data-cd2-downloadselected="'+type+'" disabled>⬇ Download selected (.zip)</button></div>'+
         '<div id="cd2-'+type+'-missing" class="cd2-missing"></div>'+
         '<div id="cd2-'+type+'-files" class="cd2-files"></div></section>'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Find DOL Month</b><small>Exact ID search across successfully indexed challans</small></div></div>'+
@@ -494,7 +499,7 @@ async function refresh(type){
 function addLibraryCss(){
   if($('cd2-library-style'))return;
   var s=document.createElement('style');s.id='cd2-library-style';s.textContent=
-  '.cd2-libtools{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:7px;margin-bottom:8px}.cd2-libtools input,.cd2-libtools select{border:1px solid #cbd5e1;border-radius:8px;padding:8px 9px;font-size:9px;background:#fff;color:#0f172a}.cd2-missing{margin-bottom:9px}.cd2-missbox{border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:9px}.cd2-misshead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}.cd2-misshead b{font-size:10px;color:#0f172a}.cd2-misshead span{font-size:8px;color:#64748b}.cd2-monthgrid{display:flex;flex-wrap:wrap;gap:4px}.cd2-monthchip{padding:4px 6px;border-radius:999px;font-size:8px;font-weight:800;border:1px solid #e2e8f0;background:#fff;color:#475569}.cd2-monthchip.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}.cd2-monthchip.miss{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.cd2-yearfolder{border:1px solid #e2e8f0;border-radius:11px;background:#fff;overflow:hidden}.cd2-yearfolder+ .cd2-yearfolder{margin-top:7px}.cd2-yearfolder summary{cursor:pointer;list-style:none;padding:9px 10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;color:#1e293b}.cd2-yearfolder summary::-webkit-details-marker{display:none}.cd2-foldercount{font-size:8px;color:#64748b;font-weight:750}.cd2-yearbody{display:flex;flex-direction:column;gap:6px;padding:7px}.cd2-file{grid-template-columns:minmax(0,1fr) 112px auto auto auto!important}.cd2-dl{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}@media(max-width:1100px){.cd2-file{grid-template-columns:minmax(0,1fr) 105px auto auto!important}.cd2-file .cd2-dl{grid-column:auto}.cd2-libtools{grid-template-columns:1fr}}';
+  '.cd2-libtools{display:grid;grid-template-columns:minmax(0,1fr) 120px 110px;gap:7px;margin-bottom:8px}.cd2-libtools input,.cd2-libtools select{border:1px solid #cbd5e1;border-radius:8px;padding:8px 9px;font-size:9px;background:#fff;color:#0f172a}.cd2-bulk{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:7px 9px;border:1px solid #dbeafe;background:#eff6ff;border-radius:9px;font-size:9px;color:#1e3a8a}.cd2-bulk label{display:flex;align-items:center;gap:5px;font-weight:800}.cd2-bulk span{margin-left:auto}.cd2-bulk button{border:0;border-radius:7px;background:#1d4ed8;color:#fff;padding:6px 9px;font-size:9px;font-weight:850;cursor:pointer}.cd2-bulk button:disabled{opacity:.45;cursor:not-allowed}.cd2-missing{margin-bottom:9px}.cd2-missbox{border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:9px}.cd2-misshead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}.cd2-misshead b{font-size:10px;color:#0f172a}.cd2-misshead span{font-size:8px;color:#64748b}.cd2-monthgrid{display:flex;flex-wrap:wrap;gap:4px}.cd2-monthchip{padding:4px 6px;border-radius:999px;font-size:8px;font-weight:800;border:1px solid #e2e8f0;background:#fff;color:#475569}.cd2-monthchip.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}.cd2-monthchip.miss{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.cd2-yearfolder{border:1px solid #e2e8f0;border-radius:11px;background:#fff;overflow:hidden}.cd2-yearfolder+ .cd2-yearfolder{margin-top:7px}.cd2-yearfolder summary{cursor:pointer;list-style:none;padding:9px 10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;color:#1e293b}.cd2-yearfolder summary::-webkit-details-marker{display:none}.cd2-foldercount{font-size:8px;color:#64748b;font-weight:750}.cd2-yearbody{display:flex;flex-direction:column;gap:6px;padding:7px}.cd2-file{grid-template-columns:24px minmax(0,1fr) 112px auto auto auto!important}.cd2-select{width:15px!important;height:15px;accent-color:#1d4ed8}.cd2-dl{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}@media(max-width:1100px){.cd2-file{grid-template-columns:22px minmax(0,1fr) 105px auto auto!important}.cd2-file .cd2-dl{grid-column:auto}.cd2-libtools{grid-template-columns:1fr 1fr}.cd2-libtools input{grid-column:1/-1}.cd2-bulk{flex-wrap:wrap}.cd2-bulk span{margin-left:0}}';
   document.head.appendChild(s)
 }
 function libraryYearRows(type){
@@ -507,6 +512,10 @@ function syncYearFilter(type){
   var current=sel.value,years=Object.keys(libraryYearRows(type)).filter(function(y){return y!=='Unknown'}).sort().reverse();
   sel.innerHTML='<option value="">All years</option>'+years.map(function(y){return'<option value="'+y+'">'+y+'</option>'}).join('')+(libraryYearRows(type).Unknown?'<option value="Unknown">Month not set</option>':'');
   if(Array.from(sel.options).some(function(o){return o.value===current}))sel.value=current
+}
+function syncMonthFilter(type){
+  var sel=$('cd2-'+type+'-monthfilter');if(!sel)return;var keep=sel.value,names=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  sel.innerHTML='<option value="">All months</option>'+names.map(function(n,i){return'<option value="'+String(i+1).padStart(2,'0')+'">'+n+'</option>'}).join('');sel.value=keep
 }
 function renderMissingMonths(type){
   var box=$('cd2-'+type+'-missing');if(!box)return;
@@ -529,22 +538,51 @@ async function downloadChallan(type,id){
     setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
   }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
 }
+function selectedRows(type){var s=state[type].selected||{};return(state[type].rows||[]).filter(function(r){return!!s[String(r.id)]})}
+function updateBulk(type){
+  var n=selectedRows(type).length,label=$('cd2-'+type+'-selected'),btn=document.querySelector('[data-cd2-downloadselected="'+type+'"]');
+  if(label)label.textContent=n+' selected';if(btn)btn.disabled=!n
+}
+async function ensureZip(){
+  if(root.JSZip)return root.JSZip;
+  if(typeof root.ATPLLoadOptionalLib==='function')await root.ATPLLoadOptionalLib('JSZIP','https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  if(!root.JSZip)throw new Error('ZIP engine unavailable');return root.JSZip
+}
+function uniqueZipName(name,used){
+  name=fsSafeName(name||'challan');var dot=name.lastIndexOf('.'),base=dot>0?name.slice(0,dot):name,ext=dot>0?name.slice(dot):'',out=name,n=2;
+  while(used[out.toLowerCase()])out=base+' ('+(n++)+')'+ext;used[out.toLowerCase()]=1;return out
+}
+async function downloadSelected(type){
+  var rows=selectedRows(type);if(!rows.length){setStatus(type,'Select at least one challan.',true);return}
+  if(rows.length===1){await downloadChallan(type,rows[0].id);return}
+  try{
+    var Zip=await ensureZip(),zip=new Zip(),used={};
+    for(var i=0;i<rows.length;i++){
+      setStatus(type,'Preparing selected challans '+(i+1)+' / '+rows.length+'…');
+      var blob=await recordBlob(type,rows[i],function(p){setStatus(type,'Downloading '+(i+1)+' / '+rows.length+' · '+p+'%')});
+      if(!blob)throw new Error('Original unavailable: '+(rows[i].name||rows[i].id));zip.file(uniqueZipName(rows[i].name,used),blob);await tick()
+    }
+    setStatus(type,'Creating ZIP…');var out=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}},function(m){setStatus(type,'Creating ZIP… '+Math.round(m.percent||0)+'%')});
+    var url=URL.createObjectURL(out),a=document.createElement('a');a.href=url;a.download='ATPL_'+type.toUpperCase()+'_Challans_'+new Date().toISOString().slice(0,10)+'.zip';document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url)},2500);setStatus(type,rows.length+' selected challans downloaded ✓')
+  }catch(e){setStatus(type,'Selected download failed — '+(e.message||e),true)}
+}
 
 function renderFiles(type){
   var rows=state[type].rows||[],box=$('cd2-'+type+'-files'),cov=$('cd2-'+type+'-coverage');if(!box)return;
-  syncYearFilter(type);
-  var search=$('cd2-'+type+'-libsearch'),yearSel=$('cd2-'+type+'-yearfilter'),qv=String(search&&search.value||'').toLowerCase().trim(),yf=String(yearSel&&yearSel.value||'');
+  syncYearFilter(type);syncMonthFilter(type);
+  var search=$('cd2-'+type+'-libsearch'),yearSel=$('cd2-'+type+'-yearfilter'),monthSel=$('cd2-'+type+'-monthfilter'),qv=String(search&&search.value||'').toLowerCase().trim(),yf=String(yearSel&&yearSel.value||''),mf=String(monthSel&&monthSel.value||'');
   var periods=state[type].periods||[],bad=rows.filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).length;
   cov.textContent=rows.length+' saved file'+(rows.length===1?'':'s')+(periods.length?' · '+periodLabel(periods[0])+' → '+periodLabel(periods[periods.length-1]):'')+(bad?' · '+bad+' need indexing':'');
   renderMissingMonths(type);
   var filtered=rows.filter(function(r){
     var y=r.period?String(r.period).slice(0,4):'Unknown';
     if(yf&&y!==yf)return false;
+    if(mf&&String(r.period||'').slice(5,7)!==mf)return false;
     if(!qv)return true;
     var hay=[r.name,r.period,periodLabel(r.period||''),y].join(' ').toLowerCase();
     return hay.indexOf(qv)>=0
   });
-  if(!filtered.length){box.innerHTML='<div class="cd2-empty">'+(rows.length?'No challan matches this search/filter.':'No V2 challans yet. Upload all ESIC/PF challans here.')+'</div>';return}
+  if(!filtered.length){box.innerHTML='<div class="cd2-empty">'+(rows.length?'No challan matches this search/filter.':'No V2 challans yet. Upload all ESIC/PF challans here.')+'</div>';updateBulk(type);return}
   var groups={};
   filtered.forEach(function(r){var y=r.period?String(r.period).slice(0,4):'Unknown';(groups[y]||(groups[y]=[])).push(r)});
   var years=Object.keys(groups).sort(function(a,b){if(a==='Unknown')return 1;if(b==='Unknown')return-1;return b.localeCompare(a)});
@@ -553,10 +591,10 @@ function renderFiles(type){
     var body=items.map(function(r){
       var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' indexed IDs'):'⚠ Needs indexing';
       if(r.parseStatus==='processing')meta='⏳ Indexing…';
-      return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+' · SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+      return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><input class="cd2-select" type="checkbox" data-cd2-select="'+esc(r.id)+'" '+(state[type].selected[String(r.id)]?'checked':'')+' aria-label="Select '+esc(r.name)+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+' · '+esc(r.uploadedBy?'By '+r.uploadedBy+' · ':'')+'SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
     }).join('');
     return'<details class="cd2-yearfolder" open><summary><span>📁 '+esc(y==='Unknown'?'Month Not Set':y)+'</span><span class="cd2-foldercount">'+items.length+' challan'+(items.length===1?'':'s')+'</span></summary><div class="cd2-yearbody">'+body+'</div></details>'
-  }).join('')
+  }).join('');updateBulk(type)
 }
 async function updatePeriod(type,id,period){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
@@ -590,6 +628,7 @@ async function deleteOne(type,id){
       if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
     await writeVaultManifest();try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    delete state[type].selected[String(r.id)];
     await refresh(type);
     var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
     if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
@@ -605,7 +644,7 @@ function cloudRecordFromLocal(r){
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||''),type=String(r&&r.type||'');
   var id=hash&&type?uid(type,hash):String(r&&r.id||'');
-  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name))}
+  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,contributions:[],indexCount:Number(r&&r.indexCount||0)||0,indexStatus:String(r&&r.indexStatus||''),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedBy:String(r&&r.uploadedBy||''),uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name))}
 }
 async function sanitizeLocalTypeMixups(){
   var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),fixed=0;
@@ -759,17 +798,19 @@ async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
   await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend · local viewer cache';
   if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
-  var packs;
-  try{packs=await Promise.all([cloudRecords('esic'),cloudRecords('pf')])}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
-  var mode=(packs[0].mode==='v4'&&packs[1].mode==='v4')?'v4':'legacy',byHash={},otherByHash={};
-  (packs[type==='esic'?0:1].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
-  (packs[type==='esic'?1:0].records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)otherByHash[h]=localRecordFromCloud(x)});
-  var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0};
+  var pack;
+  try{pack=await cloudRecords(type)}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
+  var mode=pack.mode==='v4'?'v4':'legacy',byHash={};
+  (pack.records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
+  var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0,indexPending:0};
   for(var i=0;i<files.length;i++){
     var f=files[i];setStatus(type,'Checking '+(i+1)+' / '+files.length+' · '+f.name);
     try{
       if(!/\.(pdf|xlsx|xls|csv)$/i.test(f.name))throw new Error('Unsupported file type');
-      var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null,cross=otherByHash[hash]||null;
+      var buf=await f.arrayBuffer(),hash=await sha256(buf),existing=byHash[hash]||null,cross=null;
+      if(mode==='v4'&&vaultApi()&&typeof vaultApi().check==='function'){
+        var dupCheck=await vaultApi().check(hash);if(dupCheck&&dupCheck.duplicate){var dr=localRecordFromCloud(dupCheck.record||{});if(dr.type&&dr.type!==type)cross=dr;else existing=existing||dr}
+      }
       if(cross){dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue}
       if(existing){
         var localExisting=await dbGet(existing.id);
@@ -780,7 +821,7 @@ async function upload(type,fileList){
         }
         dups++;setStatus(type,'Already exists in shared backend ✓ — '+f.name);buf=null;continue
       }
-      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false,hasOriginalFile:false,mime:fileMime(f.name)};
+      var quick=inferPeriod(f.name,''),blob=new Blob([buf],{type:fileMime(f.name)}),rec={id:uid(type,hash),version:2,type:type,name:f.name,size:f.size,lastModified:f.lastModified||0,hash:hash,period:quick.period,periodSource:quick.source,ids:[],contributions:[],parseStatus:'processing',parseError:'',uploadedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),blob:null,viewerSheets:null,storage:'indexeddb',cloudSynced:false,cloudOnly:false,hasOriginalFile:false,mime:fileMime(f.name)};
       var vaulted=false;try{vaulted=await opfsSave(rec,blob)}catch(_){}
       if(!vaulted)rec.blob=blob;await dbPut(rec);await writeVaultManifest();byHash[hash]=rec;staged++;upsertStateRow(type,rec);
       setStatus(type,'Staged safely · indexing '+(i+1)+' / '+files.length+' · '+f.name+' · 0%');
@@ -790,7 +831,7 @@ async function upload(type,fileList){
           await opfsDelete(rec);await dbDelete(rec.id);delete byHash[hash];staged--;state[type].rows=(state[type].rows||[]).filter(function(x){return x.id!==rec.id});rebuildIndex(type);renderFiles(type);
           warns.push(f.name+': '+(parsed.detectedType==='pf'?'PF challan detected — upload only in PF → DOL':'ESIC challan detected — upload only in ESIC → DOL'));buf=null;blob=null;continue
         }
-        rec.ids=parsed.ids||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
+        rec.ids=parsed.ids||[];rec.contributions=parsed.contributions||[];if(!rec.period&&parsed.period){rec.period=parsed.period;rec.periodSource=parsed.periodSource}
         rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected')
       }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
       rec.updatedAt=new Date().toISOString();await dbPut(rec);upsertStateRow(type,rec);
@@ -798,7 +839,10 @@ async function upload(type,fileList){
         try{
           setStatus(type,'Uploading original to shared backend · '+f.name+' · 0%');
           var out=await vaultApi().upload(rec,buf,function(p){setStatus(type,'Uploading original to shared backend · '+f.name+' · '+p+'%')});
-          var sr=localRecordFromCloud(out.record||{});rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.cloudSynced=true;rec.cloudConfirmedAt=sr.cloudConfirmedAt||new Date().toISOString();rec.hasOriginalFile=!!sr.hasOriginalFile;rec.cloudOnly=false;await dbPut(rec);upsertStateRow(type,rec);
+          var sr=localRecordFromCloud(out.record||{});rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.cloudSynced=true;rec.cloudConfirmedAt=sr.cloudConfirmedAt||new Date().toISOString();rec.hasOriginalFile=!!sr.hasOriginalFile;rec.cloudOnly=false;
+          rec.indexCount=Number(out.index&&out.index.count||sr.indexCount||0)||0;rec.indexStatus=String(out.index&&out.index.record&&out.index.record.indexStatus||sr.indexStatus||'');
+          if(out.indexWarning){cloud.indexPending++;warns.push(f.name+': file saved, detailed index pending — '+out.indexWarning)}
+          await dbPut(rec);upsertStateRow(type,rec);
           byHash[hash]=rec;if(out.duplicate)dups++;else cloud.saved++
         }catch(ce){cloud.failed++;warns.push(f.name+': backend save failed — '+(ce.message||ce))}
       }else cloudQueue.push(rec);
@@ -807,25 +851,36 @@ async function upload(type,fileList){
   }
   if(mode!=='v4'&&cloudQueue.length){setStatus(type,'Uploading indexed record to compatibility backend…');var legacy=await pushCloudBatch(cloudQueue);cloud.saved+=legacy.saved;cloud.failed+=legacy.failed}
   await writeVaultManifest();await refresh(type);
-  var msg=[];if(cloud.saved)msg.push(cloud.saved+' backend-confirmed ✓');if(attached)msg.push(attached+' local cache attached ✓');if(indexed)msg.push(indexed+' indexed ✓');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(mode!=='v4'&&staged)msg.push('Original-file cross-device vault pending Backend V4 deployment');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
-  setStatus(type,msg.join(' · ')||'No files saved',!!cloud.failed||(!cloud.saved&&!attached&&!!warns.length))
+  var msg=[];if(cloud.saved)msg.push(cloud.saved+' file(s) backend-confirmed ✓');if(attached)msg.push(attached+' local cache attached ✓');if(indexed&&!cloud.indexPending)msg.push(indexed+' contribution index(es) backend-confirmed ✓');if(cloud.indexPending)msg.push(cloud.indexPending+' detailed index pending — Backend V5 deploy/retry required');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(mode!=='v4'&&staged)msg.push('Original-file cross-device vault pending Backend V4 deployment');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  setStatus(type,msg.join(' · ')||'No files saved',!!cloud.failed||!!cloud.indexPending||(!cloud.saved&&!attached&&!!warns.length))
 }
 function parseQueries(type){
   var raw=String($('cd2-'+type+'-query').value||''),parts=raw.split(/[\s,;|]+/),out=[];
   parts.forEach(function(x){var v=validId(type,x);if(v&&out.indexOf(v)<0)out.push(v)});return out
 }
-function search(type){
-  var qs=parseQueries(type),box=$('cd2-'+type+'-results');if(!qs.length){setStatus(type,'Enter a valid '+(type==='esic'?'ESIC/IP number':'UAN/PF ID'),true);return}
-  var idx=state[type].index||{},coverage=state[type].periods||[],unindexed=(state[type].rows||[]).filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length});
-  var h='<table class="cd2-table"><thead><tr><th>ID</th><th>DOL MONTH</th><th>MATCHED CONTRIBUTIONS</th><th>CHECK</th></tr></thead><tbody>';
+function localSearchPack(type,qs){
+  var idx=state[type].index||{},matches={};qs.forEach(function(id){matches[id]=(idx[id]||[]).map(function(r){return{recordId:r.cloudRecordId||r.id,memberId:id,employeeName:'',period:r.period||'',sourceChallan:r.name||'',details:{},uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||''}})});
+  return{matches:matches,coverage:(state[type].periods||[]).slice(),unindexed:(state[type].rows||[]).filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).map(function(r){return{id:r.id,name:r.name,period:r.period||''}}),source:'local-fallback'}
+}
+function detailText(d){return root.ATPLDOLIndexV1&&typeof root.ATPLDOLIndexV1.detailsText==='function'?root.ATPLDOLIndexV1.detailsText(d):''}
+async function searchAsync(type,qs,box,localIndex){
+  var pack=null,v=vaultApi();
+  try{if(v&&typeof v.searchIndex==='function')pack=await v.searchIndex(type,qs)}catch(e){if(!/DOL_INDEX_V5_UNAVAILABLE/.test(String(e&&e.message||e)))console.warn('Backend contribution search fallback',e)}
+  if(!pack)pack=localSearchPack(type,qs);
+  var coverage=Array.isArray(pack.coverage)?pack.coverage:state[type].periods||[],unindexed=Array.isArray(pack.unindexed)?pack.unindexed:[],h='<table class="cd2-table"><thead><tr><th>ID / EMPLOYEE</th><th>LAST CONTRIBUTION / DOL</th><th>SOURCE & DETAILS</th><th>CONTRIBUTION TIMELINE</th></tr></thead><tbody>';
   qs.forEach(function(id){
-    var m=(idx[id]||[]).slice(),unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return a.period.localeCompare(b.period)}),months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=months.length?months[months.length-1]:'',later=last?coverage.filter(function(p){return p>last}).length:0;
-    var blocking=unindexed.filter(function(r){return !last||!r.period||r.period>=last});
-    var dol=!m.length?'<span class="cd2-bad">Not found</span>':unresolved.length?'<span class="cd2-warn">Set month first</span>':blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Latest contribution = DOL</div>';
-    var check=!m.length?'No exact ID match':unresolved.length?unresolved.length+' matched challan(s) need month':blocking.length?'Cannot certify latest month until pending challans are indexed':later+' later uploaded month(s) checked with no contribution';
-    h+='<tr><td><b>'+esc(id)+'</b></td><td>'+dol+'</td><td><div class="cd2-months">'+(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+'</div></td><td>'+esc(check)+'</td></tr>'
+    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return!last||!r.period||r.period>=last}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
+    if(!m.length){h+='<tr><td><b>'+esc(id)+'</b></td><td><span class="cd2-bad">No contribution record found in uploaded challans.</span></td><td>—</td><td>—</td></tr>';return}
+    var dol=unresolved.length?'<span class="cd2-warn">Set source month first</span>':blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference</div>';
+    var dt=latest?detailText(latest.details):'',src=latest?'<b>'+esc(latest.sourceChallan||'Saved challan')+'</b><div style="font-size:8px;color:#64748b;margin-top:3px">'+esc(dt||'Contribution found; amount detail not available in source format.')+'</div>':'—';
+    h+='<tr><td><b>'+esc(id)+'</b>'+(name?'<div style="font-size:9px;color:#475569;margin-top:3px">'+esc(name)+'</div>':'')+'</td><td>'+dol+'</td><td>'+src+'</td><td><div class="cd2-months">'+(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+esc(later+' later uploaded month(s) checked; gaps ignored')+'</div></td></tr>'
   });
-  h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · gaps ignored · latest matched contribution month used as DOL · no file re-parse'+(unindexed.length?' · '+unindexed.length+' saved challan(s) still need indexing':''))
+  h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · complete saved history checked · gaps ignored · no PDF/Excel re-parse'+(unindexed.length?' · '+unindexed.length+' challan(s) still need indexing':'')+(pack.source==='local-fallback'?' · compatibility index used':''))
+}
+function search(type){
+  var qs=parseQueries(type),box=$('cd2-'+type+'-results'),localIndex=state[type].index||{};if(!qs.length){setStatus(type,'Enter a valid '+(type==='esic'?'ESIC/IP number':'UAN/PF ID'),true);return}
+  box.innerHTML='<div class="cd2-empty">Searching backend contribution index…</div>';setStatus(type,'Searching complete saved history…');
+  return searchAsync(type,qs,box,localIndex).catch(function(e){box.innerHTML='<div class="cd2-empty cd2-bad">Search failed: '+esc(e.message||e)+'</div>';setStatus(type,'Search failed — '+(e.message||e),true)})
 }
 async function migrateLegacy(){
   if(!root.indexedDB)return;
@@ -850,7 +905,7 @@ async function migrateLegacy(){
   }catch(e){console.warn('V2 legacy migration unavailable',e)}
 }
 function wire(type){
-  var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]'),libSearch=$('cd2-'+type+'-libsearch'),yearFilter=$('cd2-'+type+'-yearfilter');
+  var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]'),libSearch=$('cd2-'+type+'-libsearch'),yearFilter=$('cd2-'+type+'-yearfilter'),monthFilter=$('cd2-'+type+'-monthfilter');
   if(!inp||!pick)return;
   pick.onclick=async function(){await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();inp.click()};
   inp.addEventListener('change',function(){var fs=Array.from(this.files||[]);this.value='';if(fs.length)upload(type,fs);else setStatus(type,'No file selected',true)});
@@ -858,8 +913,12 @@ function wire(type){
   var rb=document.querySelector('[data-cd2-refresh="'+type+'"]');if(rb)rb.onclick=function(){refresh(type)};
   if(libSearch)libSearch.addEventListener('input',function(){renderFiles(type)});
   if(yearFilter)yearFilter.addEventListener('change',function(){renderFiles(type)});
+  if(monthFilter)monthFilter.addEventListener('change',function(){renderFiles(type)});
+  var all=document.querySelector('[data-cd2-selectall="'+type+'"]'),bulk=document.querySelector('[data-cd2-downloadselected="'+type+'"]');
+  if(all)all.addEventListener('change',function(){Array.prototype.forEach.call($('cd2-'+type+'-files').querySelectorAll('[data-cd2-select]'),function(x){x.checked=all.checked;state[type].selected[String(x.getAttribute('data-cd2-select'))]=all.checked});updateBulk(type)});
+  if(bulk)bulk.onclick=function(){downloadSelected(type)};
   var files=$('cd2-'+type+'-files');if(!files)return;
-  files.addEventListener('change',function(e){var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
+  files.addEventListener('change',function(e){var sid=e.target.getAttribute('data-cd2-select');if(sid){state[type].selected[String(sid)]=!!e.target.checked;updateBulk(type);return}var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
   files.addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}var dl=e.target.closest&&e.target.closest('[data-cd2-download]');if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))})
 }
 

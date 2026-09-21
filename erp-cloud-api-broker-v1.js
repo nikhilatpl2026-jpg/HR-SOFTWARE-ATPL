@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-final-stability-v4';
+var BUILD='2026.09.21-production-v5';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
@@ -12,15 +12,17 @@ var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8
 var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=2,MAX_WRITES=1,lastStart=0,MIN_GAP=160,seq=0;
 var health={ok:0,fail:0,lastOk:0,lastFail:0,lastError:'',active:0,activeWrites:0,queued:0};
 
-var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1,getDOLRecords:1,checkDOLDuplicate:1,getDOLFileInfo:1,getDOLFileChunk:1};
-var CACHE_MS={ping:30000,listUsers:12000,getEmployeeMaster:7000,getSystemRecords:7000,listActivity:5000,getDOLRecords:2500,checkDOLDuplicate:0,getDOLFileInfo:3000,getDOLFileChunk:15000};
+var READ_ACTIONS={ping:1,login:1,listUsers:1,getEmployeeMaster:1,getSystemRecords:1,listActivity:1,getDOLRecords:1,checkDOLDuplicate:1,getDOLFileInfo:1,getDOLFileChunk:1,searchDOLIndex:1,listComplianceCalendar:1};
+var CACHE_MS={ping:30000,listUsers:12000,getEmployeeMaster:7000,getSystemRecords:7000,listActivity:5000,getDOLRecords:2500,checkDOLDuplicate:0,getDOLFileInfo:3000,getDOLFileChunk:15000,searchDOLIndex:0,listComplianceCalendar:2500};
 var INVALIDATE={
   saveUser:['listUsers'],deleteUser:['listUsers'],
   upsertEmployeeMaster:['getEmployeeMaster','getSystemRecords'],
   deleteEmployeeMaster:['getEmployeeMaster','getSystemRecords'],
   appendActivity:['listActivity'],
   beginDOLUpload:['checkDOLDuplicate'],commitDOLUpload:['getDOLRecords','checkDOLDuplicate','getDOLFileInfo','getDOLFileChunk'],
-  updateDOLRecord:['getDOLRecords'],deleteDOLRecord:['getDOLRecords','checkDOLDuplicate','getDOLFileInfo','getDOLFileChunk']
+  updateDOLRecord:['getDOLRecords','searchDOLIndex'],deleteDOLRecord:['getDOLRecords','checkDOLDuplicate','getDOLFileInfo','getDOLFileChunk','searchDOLIndex'],
+  beginDOLIndex:['searchDOLIndex'],finalizeDOLIndex:['getDOLRecords','searchDOLIndex'],
+  upsertComplianceCalendar:['listComplianceCalendar'],deleteComplianceCalendar:['listComplianceCalendar']
 };
 
 function now(){return Date.now()}

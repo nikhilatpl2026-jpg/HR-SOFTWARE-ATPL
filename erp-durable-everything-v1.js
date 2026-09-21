@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.19-cloud-master-final12';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.21-system-records-authority13';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -13,7 +13,7 @@
   var DOL_DB='ATPL_COMPLIANCE_DOL_V1',DOL_VER=1,DOL_STORE='files';
   var DOL_KIND_LEGACY='compliance_dol_v1',DOL_KIND_ESIC='esic_dol_v2',DOL_KIND_PF='pf_dol_v2',DOL_KIND_PF_ARCHIVE='pf_dol_duplicate_archive_v1',DOL_KIND_ESIC_ARCHIVE='esic_dol_duplicate_archive_v1';
   var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3;
-  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false,dolLegacyMigrationPromise=null;
+  var running=false,pending=false,lastRun=0,lastStateHash='',lastBankPush={},lastDolPush={},fileSaveQueue={},fileSaveTimer=0,fileSaveRunning=false,dolLegacyMigrationPromise=null,systemRoute=null;
 
   function text(v){return v==null?'':String(v).trim()}
   function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
@@ -48,10 +48,19 @@
   async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records,meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete durable object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
   async function fetchRemote(){
   if(!token())return[];
-  // Live Backend V2 does not expose getSystemRecords. Calling it first caused
-  // repeated timeout/fallback chains. Pull EmployeeMaster once; broker de-dupes
-  // the request, then keep only namespaced system records client-side.
-  var d=await api({action:'getEmployeeMaster',token:token()},8000);
+  var d;
+  if(systemRoute!==false){
+    try{
+      d=await api({action:'getSystemRecords',token:token()},8000);
+      if(d&&d.ok&&Array.isArray(d.records)){systemRoute=true;return d.records}
+      if(d&&d.ok===false&&/unknown action|not found/i.test(String(d.error||'')))systemRoute=false;
+      else if(d&&d.ok===false)throw new Error(d.error||'System records unavailable')
+    }catch(e){if(/unknown action|not found/i.test(String(e&&e.message||e)))systemRoute=false;else if(systemRoute===true)throw e}
+  }
+  // Compatibility only for an older backend. Modern backends intentionally
+  // separate Employee Master from system records, so this path is not used
+  // once getSystemRecords has been confirmed.
+  d=await api({action:'getEmployeeMaster',token:token()},8000);
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');
   return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})
 }

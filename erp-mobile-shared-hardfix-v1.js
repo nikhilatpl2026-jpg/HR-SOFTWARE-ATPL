@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-final-stability1';
+var BUILD='2026.09.21-permission-sync2';
 if(!root||root.__ATPL_MOBILE_SHARED_HARDFIX__===BUILD)return;
 root.__ATPL_MOBILE_SHARED_HARDFIX__=BUILD;
 
@@ -44,6 +44,11 @@ function setSession(user,token){
   root.sessionStorage.setItem(TOKEN,token);root.sessionStorage.setItem(ALT,token)
 }
 function has(u,p){return !!u&&(u.admin===true||(Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(p)>=0)))}
+function canUseMaster(u){
+  if(root.ATPLPermissionGuard&&typeof root.ATPLPermissionGuard.canUseMaster==='function')return root.ATPLPermissionGuard.canUseMaster(u);
+  var needs=['cmd','files','audit','machineaudit','bankverify','dol','dolverify','ff','empmaster','hrdocs','mamsalary'];
+  return !!u&&(u.admin===true||needs.some(function(x){return has(u,x)}))
+}
 function applyAccess(){
   var u=current();if(!u)return;
   Array.prototype.forEach.call(root.document.querySelectorAll('.vitem[id^="vn-"]'),function(el){var id=el.id.slice(3),ok=id==='useraccess'?u.admin===true:has(u,id);el.hidden=!ok;if(ok){el.classList.remove('uaNoAccess');el.style.removeProperty('display');el.removeAttribute('aria-hidden')}else{el.classList.add('uaNoAccess');el.style.setProperty('display','none','important');el.setAttribute('aria-hidden','true')}});
@@ -51,6 +56,11 @@ function applyAccess(){
   var who=q('uaWho'),lo=q('uaLogoutBtn');if(who){who.style.display='inline-flex';who.textContent='👤 '+text(u.name||u.id)}if(lo)lo.style.display='inline-flex'
 }
 function cleanMaster(a){return (Array.isArray(a)?a:[]).filter(function(r){var id=text(r&&r.emp_id);return r&&r._atpl_system!==true&&id.indexOf('__ATPL_SYS__')!==0})}
+function clearMasterView(){
+  try{root.localStorage.setItem(MASTER,'[]')}catch(_){}
+  try{if(root.EM&&Array.isArray(root.EM.data)){root.EM.data.length=0;if(typeof root.emFilter==='function')root.emFilter();if(typeof root.emUpdateStats==='function')root.emUpdateStats()}if(Array.isArray(root.EMP_MASTER_DATA))root.EMP_MASTER_DATA.length=0}catch(_){}
+  return 0
+}
 function injectMaster(records){
   records=cleanMaster(records);
   root.localStorage.setItem(MASTER,JSON.stringify(records));
@@ -63,6 +73,7 @@ function injectMaster(records){
   return records.length
 }
 async function pullMaster(force){
+  var u=current()||sess();if(!canUseMaster(u))return clearMasterView();
   var t=tok();if(!t)return 0;if(!force&&Date.now()-lastMasterPull<8000)return cleanMaster(J(root.localStorage.getItem(MASTER)||'[]',[])).length;
   lastMasterPull=Date.now();var r=await api({action:'getEmployeeMaster',token:t},7000);
   if(!(r&&r.ok&&Array.isArray(r.records)))throw new Error(r&&r.error||'Employee Master cloud load failed');
@@ -96,7 +107,7 @@ function unlockApp(user,navigate){
 }
 function hydrateAfterLogin(user){
   // Critical login path only: users + Employee Master. Heavy modules sync lazily after UI is usable.
-  var jobs=[pullUsers(user),pullMaster(true)];
+  var jobs=[pullUsers(user),canUseMaster(user)?pullMaster(true):Promise.resolve(clearMasterView())];
   Promise.allSettled(jobs).then(function(results){
     applyAccess();var count=results[1]&&results[1].status==='fulfilled'?Number(results[1].value||0):0;
     try{root.document.dispatchEvent(new CustomEvent('atpl-shared-data-ready',{detail:{employees:count}}))}catch(_){}

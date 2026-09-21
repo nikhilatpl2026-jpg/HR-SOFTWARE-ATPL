@@ -2,7 +2,7 @@
    Uses JSONP for small control/read calls and hidden-form POST + postMessage for large upload parts.
    No DOL bytes are stored in EmployeeMaster. */
 (function(root){'use strict';
-var BUILD='2026.09.19-final-v4';
+var BUILD='2026.09.21-production-v5-client';
 if(!root||root.__ATPL_DOL_CLOUD_V4__===BUILD)return;
 root.__ATPL_DOL_CLOUD_V4__=BUILD;
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',support=null,probePromise=null;
@@ -82,7 +82,35 @@ async function upload(rec,buf,progress){
   var commit=await api({action:'commitDOLUpload',upload_id:begin.upload_id},{timeout:12000,attempts:2});
   if(!(commit&&commit.ok&&commit.record))throw new Error(commit&&commit.error||'Upload commit failed');
   if(String(commit.record.type||'')!==String(rec.type||''))throw new Error('Backend category verification failed');
-  return{duplicate:!!commit.duplicate,record:commit.record}
+  var indexResult=null,indexWarning='';
+  if(!commit.duplicate&&Array.isArray(rec.contributions)){
+    try{indexResult=await saveContributionIndex(commit.record.id,rec.type,rec.contributions,progress)}
+    catch(e){indexWarning=errMsg(e)}
+  }
+  return{duplicate:!!commit.duplicate,record:indexResult&&indexResult.record||commit.record,index:indexResult,indexWarning:indexWarning}
+}
+async function saveContributionIndex(recordId,type,entries,progress){
+  entries=(Array.isArray(entries)?entries:[]).map(function(x){return{memberId:String(x&&x.memberId||''),employeeName:String(x&&x.employeeName||'').slice(0,160),details:x&&typeof x.details==='object'?x.details:{}}}).filter(function(x){return!!x.memberId});
+  var begin=await api({action:'beginDOLIndex',id:recordId,type:type},{timeout:9000,attempts:2});
+  if(unknown(begin))throw new Error('Detailed contribution index requires Backend V5 deployment');
+  if(!(begin&&begin.ok))throw new Error(begin&&begin.error||'Contribution index start failed');
+  var step=24;
+  for(var at=0;at<entries.length;at+=step){
+    var batch=entries.slice(at,at+step);
+    await postForm('upsertDOLContributionBatch',{id:recordId,type:type,entries_json:JSON.stringify(batch)},18000);
+    if(progress)progress(Math.min(99,96+Math.round(((at+batch.length)/Math.max(1,entries.length))*3)));
+    await new Promise(function(r){root.setTimeout(r,0)})
+  }
+  var done=await api({action:'finalizeDOLIndex',id:recordId,type:type},{timeout:10000,attempts:2});
+  if(!(done&&done.ok&&done.record))throw new Error(done&&done.error||'Contribution index finalization failed');
+  return done
+}
+async function searchIndex(type,ids){
+  type=String(type||'').toLowerCase();ids=(Array.isArray(ids)?ids:[]).map(String).filter(Boolean).slice(0,60);
+  var d=await api({action:'searchDOLIndex',type:type,ids_json:JSON.stringify(ids)},{timeout:9000,cacheMs:0,attempts:2});
+  if(unknown(d))throw new Error('DOL_INDEX_V5_UNAVAILABLE');
+  if(!(d&&d.ok&&d.matches))throw new Error(d&&d.error||'Contribution search failed');
+  return d
 }
 async function update(rec){
   var d=await api({action:'updateDOLRecord',id:rec.cloudRecordId||rec.id,type:rec.type,name:rec.name||'',period:rec.period||'',period_source:rec.periodSource||'',digit_ids_json:JSON.stringify((rec.ids||[]).filter(function(x){return /^\d+$/.test(String(x))})),alnum_ids_json:JSON.stringify((rec.ids||[]).filter(function(x){return !/^\d+$/.test(String(x))}))},{timeout:9000,attempts:2});
@@ -106,5 +134,5 @@ async function fileBlob(rec,progress){
   var all=new Uint8Array(total),off=0;arrays.forEach(function(a){all.set(a,off);off+=a.length});arrays.length=0;
   return new Blob([all],{type:info.mime||rec.mime||'application/octet-stream'})
 }
-root.ATPLDOLCloudV4={probe:probe,list:list,check:check,upload:upload,update:update,deleteRecord:remove,fileBlob:fileBlob,supported:function(){return support===true},supportState:function(){return support},version:function(){return BUILD}};
+root.ATPLDOLCloudV4={probe:probe,list:list,check:check,upload:upload,saveContributionIndex:saveContributionIndex,searchIndex:searchIndex,update:update,deleteRecord:remove,fileBlob:fileBlob,supported:function(){return support===true},supportState:function(){return support},version:function(){return BUILD}};
 })(window);

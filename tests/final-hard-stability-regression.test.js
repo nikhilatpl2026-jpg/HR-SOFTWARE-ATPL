@@ -93,12 +93,12 @@ test('DOL original file bytes never ride EmployeeMaster metadata payload',()=>{
 });
 
 
-test('complete Backend V4 exposes every production route',()=>{
+test('complete backend exposes every production route',()=>{
   const b=read('backend/Backend-V4-Complete-Code.gs');
   ['login','listUsers','saveUser','deleteUser','getEmployeeMaster','getSystemRecords','upsertEmployeeMaster','deleteEmployeeMaster','appendActivity','listActivity','getDOLRecords','checkDOLDuplicate','beginDOLUpload','commitDOLUpload','updateDOLRecord','deleteDOLRecord','getDOLFileInfo','getDOLFileChunk'].forEach(a=>assert.ok(b.includes("action === '"+a+"'"),'missing backend route '+a));
   assert.ok(b.includes('function doPost(e)'));
   assert.ok(b.includes("action === 'appendDOLChunkBatch'"));
-  assert.ok(b.includes("BACKEND_VERSION = '4.0-final-stability'"));
+  assert.ok(b.includes("BACKEND_VERSION = '5.0-production-repair'"));
 });
 
 

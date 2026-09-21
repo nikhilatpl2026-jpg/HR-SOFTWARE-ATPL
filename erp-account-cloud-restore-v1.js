@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.19-shared-orchestrator2';
+var BUILD='2026.09.21-permission-orchestrator3';
 if(!root||root.__ATPL_ACCOUNT_CLOUD_RESTORE_V1__===BUILD)return;
 root.__ATPL_ACCOUNT_CLOUD_RESTORE_V1__=BUILD;
 
@@ -69,8 +69,9 @@ function syncNow(force){
   running=(async function(){
     // Critical shared state only. Module-specific heavy data loads when its page is opened.
     var jobs=[syncUsers()];
-    if(root.ATPLMobileSharedHardFix&&typeof root.ATPLMobileSharedHardFix.pullMaster==='function')jobs.push(root.ATPLMobileSharedHardFix.pullMaster());
-    else if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
+    var allowMaster=root.ATPLPermissionGuard&&typeof root.ATPLPermissionGuard.canUseMaster==='function'?root.ATPLPermissionGuard.canUseMaster(currentUser()):true;
+    if(allowMaster&&root.ATPLMobileSharedHardFix&&typeof root.ATPLMobileSharedHardFix.pullMaster==='function')jobs.push(root.ATPLMobileSharedHardFix.pullMaster());
+    else if(allowMaster&&root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
     if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
     var results=await Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)}));
     results.forEach(function(x){if(x.status==='rejected')console.warn('Account critical sync job failed',x.reason)});
@@ -93,7 +94,7 @@ function boot(){
   if(token()&&session())schedule(4200);
   root.document.addEventListener('atpl-authenticated',function(){schedule(700)});
   root.addEventListener('online',function(){if(token())schedule(900)});
-  root.setInterval(function(){if(!root.document.hidden&&token())syncNow(false)},300000)
+  root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&token()&&Date.now()-lastRun>60000)schedule(700)})
 }
 root.ATPLAccountCloudRestoreV1={syncNow:function(force){return syncNow(force!==false)},syncUsers:syncUsers,status:function(){return{build:BUILD,token:!!token(),session:!!session(),running:!!running,lastRun:lastRun}}};
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
