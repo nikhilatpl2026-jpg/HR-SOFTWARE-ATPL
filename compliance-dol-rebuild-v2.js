@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-production-v5-ui';
+var BUILD='2026.09.21-production-v6-legacy-bridge';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -22,6 +22,7 @@ var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},p
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
+var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={};
 function bounded(p,ms,label){
   return new Promise(function(resolve,reject){
     var done=false,t=setTimeout(function(){if(done)return;done=true;reject(new Error((label||'Cloud sync')+' timeout'))},ms);
@@ -69,6 +70,75 @@ async function cloudRecords(type){
   if(!d||typeof d.getComplianceDolRecords!=='function')throw new Error('Challan cloud backend unavailable');
   var legacy=await bounded(d.getComplianceDolRecords(type),8500,'Challan compatibility sync');
   cloudMode[type]='legacy';return{mode:'legacy',records:Array.isArray(legacy)?legacy:[]}
+}
+
+function isMissingCloudRecordError(e){
+  return /no matching cloud challan object found|challan record not found|record not found|not found/i.test(String(e&&e.message||e||''))
+}
+function isDedicatedUnavailableError(e){
+  return /DOL_V4_UNAVAILABLE|unknown action|backend v4|backend v5 deployment/i.test(String(e&&e.message||e||''))
+}
+function hasLocalOriginalHint(r){
+  return !!(r&&((typeof Blob!=='undefined'&&r.blob instanceof Blob)||r.buffer||(Array.isArray(r.opfsPath)&&r.opfsPath.length===3)))
+}
+function remoteIdentityMaps(remote){
+  var ids={},hashes={};
+  (remote||[]).forEach(function(x){
+    var id=String(x&&x.id||'');if(id)ids[id]=1;
+    var h=String(x&&x.fileHash||x&&x.fingerprint||x&&x.hash||'').toLowerCase();if(h)hashes[h]=1
+  });
+  return{ids:ids,hashes:hashes}
+}
+function localAlreadyRemote(r,maps){
+  if(!r)return false;
+  var cid=String(r.cloudRecordId||''),id=String(r.id||''),h=String(r.hash||r.fileHash||r.fingerprint||'').toLowerCase();
+  return !!((cid&&maps.ids[cid])||(id&&maps.ids[id])||(h&&maps.hashes[h]))
+}
+async function scheduleLegacyV5Migration(type,remote,localRows){
+  if(v5MigrationPromise[type])return v5MigrationPromise[type];
+  var v=vaultApi();if(!v||typeof v.upload!=='function')return Promise.resolve({migrated:0,failed:0});
+  var maps=remoteIdentityMaps(remote),rows=(localRows||[]).filter(function(r){
+    if(!r||r.type!==type||r.archived||!hasLocalOriginalHint(r)||localAlreadyRemote(r,maps))return false;
+    return !v5MigrationFailed[type+'|'+String(r.id||r.hash||r.name||'')]
+  });
+  if(!rows.length)return Promise.resolve({migrated:0,failed:0});
+  v5MigrationPromise[type]=(async function(){
+    var migrated=0,failed=0;
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i],failKey=type+'|'+String(r.id||r.hash||r.name||i);
+      try{
+        var blob=await getStoredBlob(r);if(!blob){v5MigrationFailed[failKey]=1;failed++;continue}
+        var buf=await blob.arrayBuffer(),hash=String(r.hash||'').toLowerCase();
+        if(!hash)hash=await sha256(buf);
+        var ids=recordIds(r).map(function(x){return validId(type,x)}).filter(Boolean);
+        var work=Object.assign({},r,{
+          id:uid(type,hash),type:type,hash:hash,size:Number(r.size||blob.size||buf.byteLength)||buf.byteLength,
+          mime:r.mime||blob.type||fileMime(r.name),ids:Array.from(new Set(ids)),cloudSynced:false,cloudOnly:false
+        });
+        if(work.ids.length)work.contributions=work.ids.map(function(id){return{memberId:id,employeeName:'',details:{legacyMigrated:true}}});
+        else delete work.contributions;
+        setStatus(type,'Migrating old challan '+(i+1)+' / '+rows.length+' to V5 cloud…');
+        var out=await v.upload(work,buf),sr=localRecordFromCloud(out&&out.record||{});
+        work.cloudRecordId=sr.cloudRecordId||work.cloudRecordId||String(out&&out.record&&out.record.id||'');
+        work.cloudSynced=true;work.cloudConfirmedAt=sr.cloudConfirmedAt||new Date().toISOString();
+        work.hasOriginalFile=!!(sr.hasOriginalFile||out&&out.record&&out.record.hasOriginalFile||true);
+        work.migrated=true;work.updatedAt=new Date().toISOString();
+        await dbPut(work);if(String(r.id)!==String(work.id))await dbDelete(r.id);
+        migrated++;buf=null;await tick()
+      }catch(e){
+        v5MigrationFailed[failKey]=1;failed++;console.warn('Legacy challan V5 migration skipped',r&&r.name,e)
+      }
+    }
+    if(migrated){
+      try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+      await writeVaultManifest();cloudLastSync[type]=0
+    }
+    return{migrated:migrated,failed:failed}
+  })().then(async function(out){
+    if(out.migrated){await refresh(type);setStatus(type,'Legacy → V5 migration complete ✓ · '+out.migrated+' challan'+(out.migrated===1?'':'s')+' secured in shared backend'+(out.failed?' · '+out.failed+' need re-upload':'')+'.')}
+    return out
+  }).catch(function(e){console.warn('Legacy → V5 migration failed',type,e);return{migrated:0,failed:rows.length}}).finally(function(){v5MigrationPromise[type]=null});
+  return v5MigrationPromise[type]
 }
 function upsertStateRow(type,rec){
   var rows=(state[type].rows||[]).slice(),key=String(rec&&rec.id||''),at=rows.findIndex(function(x){return String(x&&x.id||'')===key||(rec&&rec.hash&&x&&x.hash===rec.hash)});
@@ -476,20 +546,29 @@ async function refresh(type){
   if(!hadLocal)hadLocal=await localPreview(type);
   if(!cloudLoginReady()){setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false}
   try{
-    var pack=await cloudRecords(type),remote=pack.records,local=await dbAll(),byId={},byHash={};
-    local.filter(function(r){return r&&r.type===type}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash)]=r});
-    var rows=(remote||[]).map(function(x){
-      var r=localRecordFromCloud(x),old=byId[String(r.id)]||(r.hash&&byHash[String(r.hash)])||null;
+    var pack=await cloudRecords(type),remote=pack.records||[],local=await dbAll(),byId={},byHash={};
+    local.filter(function(r){return r&&r.type===type}).forEach(function(r){byId[String(r.id)]=r;if(r.hash)byHash[String(r.hash).toLowerCase()]=r});
+    var rows=remote.map(function(x){
+      var r=localRecordFromCloud(x),old=byId[String(r.id)]||(r.hash&&byHash[String(r.hash).toLowerCase()])||null;
       if(old){
         r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';
         r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile)
       }
       return r
     }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)});
-    var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+r.hash:'id:'+r.id;if(seen[k])return false;seen[k]=1;return true});
+    var pending=[];
+    if(pack.mode==='v4'){
+      var maps=remoteIdentityMaps(remote);
+      pending=local.filter(function(r){
+        return r&&r.type===type&&!r.archived&&!looksLikePfRecord(r)&&hasLocalOriginalHint(r)&&!localAlreadyRemote(r,maps)
+      }).map(function(r){return Object.assign({},r,{cloudSynced:false,cloudOnly:false,legacyPending:true})});
+      rows=rows.concat(pending)
+    }
+    var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+String(r.hash).toLowerCase():'id:'+String(r.cloudRecordId||r.id);if(seen[k])return false;seen[k]=1;return true});
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
     rebuildIndex(type);renderFiles(type);
-    setStatus(type,(pack.mode==='v4'?'Shared backend + original-file vault loaded ✓':'Shared compatibility index loaded ✓')+' · '+rows.length+' challan'+(rows.length===1?'':'s')+'.');
+    setStatus(type,(pack.mode==='v4'?'Shared backend + original-file vault loaded ✓':'Shared compatibility index loaded ✓')+' · '+rows.length+' challan'+(rows.length===1?'':'s')+(pending.length?' · '+pending.length+' old local challan'+(pending.length===1?'':'s')+' queued for V5 migration':'')+'.');
+    if(pack.mode==='v4'&&pending.length)setTimeout(function(){scheduleLegacyV5Migration(type,remote,local)},80);
     return true
   }catch(e){
     if(!(state[type].rows||[]).length)await localPreview(type);
@@ -615,27 +694,39 @@ async function deleteOne(type,id){
   if(!confirm('Permanently delete this selected challan from shared backend?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')))return;
   setStatus(type,'Deleting permanently…');
   try{
-    var v=vaultApi();
-    if(cloudMode[type]==='v4'&&v&&typeof v.deleteRecord==='function')await v.deleteRecord(r);
-    else{
-      var api=durableApi();if(!api||typeof api.deleteComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
-      var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';await api.deleteComplianceDolConfirmed(target)
-    }
+    var v=vaultApi(),dedicatedDone=false,alreadyGone=false,dedicatedUnavailable=false;
+    if(v&&typeof v.deleteRecord==='function'){
+      try{await v.deleteRecord(r);dedicatedDone=true}
+      catch(de){
+        if(isMissingCloudRecordError(de)){dedicatedDone=true;alreadyGone=true}
+        else if(isDedicatedUnavailableError(de)){dedicatedUnavailable=true}
+        else throw de
+      }
+    }else dedicatedUnavailable=true;
+    var api=durableApi(),legacyError=null;
+    if(api&&typeof api.deleteComplianceDolConfirmed==='function'){
+      var target=cloudRecordFromLocal(r);target.hash=r.hash||target.fileHash||'';target.cloudRecordId=r.cloudRecordId||'';
+      try{await api.deleteComplianceDolConfirmed(target)}
+      catch(le){if(!isMissingCloudRecordError(le))legacyError=le;else alreadyGone=true}
+    }else if(!dedicatedDone)legacyError=new Error('Cloud backend unavailable');
+    if(!dedicatedDone&&dedicatedUnavailable&&legacyError)throw legacyError;
+    if(!dedicatedDone&&!dedicatedUnavailable&&legacyError)throw legacyError;
+    if(dedicatedDone&&legacyError)console.warn('Legacy challan cleanup deferred; V5 authoritative delete already completed',legacyError);
+
     var all=await dbAll(),purged=0;
     for(var i=0;i<all.length;i++){
       var x=all[i];if(!x||x.type!==type)continue;
-      var same=String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId));
+      var same=String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId));
       if(!same)continue;try{await opfsDelete(x)}catch(_){}await dbDelete(x.id);purged++
     }
     await writeVaultManifest();try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     delete state[type].selected[String(r.id)];
     await refresh(type);
-    var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash)===String(r.hash))||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
+    var still=(state[type].rows||[]).some(function(x){return String(x.id)===String(r.id)||(r.hash&&x.hash&&String(x.hash).toLowerCase()===String(r.hash).toLowerCase())||(r.cloudRecordId&&String(x.cloudRecordId||'')===String(r.cloudRecordId))});
     if(still)throw new Error('Delete verification failed — selected challan still exists in cloud');
-    setStatus(type,'Deleted permanently ✓ — '+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''))
+    setStatus(type,(alreadyGone?'Removed stale legacy/cache challan ✓ — ':'Deleted permanently ✓ — ')+(r.name||'challan')+(purged>1?' · duplicate local cache cleared':''))
   }catch(e){try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}await refresh(type);setStatus(type,'Delete failed — '+(e.message||e),true)}
 }
-
 function cloudRecordFromLocal(r){
   var ids=Array.isArray(r&&r.ids)?r.ids:[],digits=[],alnums=[];
   ids.forEach(function(x){var s=String(x||'');if(/^\d+$/.test(s))digits.push(s);else if(s)alnums.push(s)});
@@ -904,6 +995,20 @@ async function migrateLegacy(){
     if(moved)console.info('Compliance DOL V2 migrated',moved,'local challan files')
   }catch(e){console.warn('V2 legacy migration unavailable',e)}
 }
+
+async function prepareLegacyMigration(){
+  if(legacyPrepPromise)return legacyPrepPromise;
+  legacyPrepPromise=(async function(){
+    await requestPersistentStorage();
+    try{await restoreVaultRecords()}catch(e){console.warn('Vault restore skipped',e)}
+    try{await migrateLegacy()}catch(e){console.warn('V1 migration skipped',e)}
+    try{await migrateDbFilesToVault()}catch(e){console.warn('Local vault migration skipped',e)}
+    try{await dedupeLocalRecords()}catch(e){console.warn('Local DOL dedupe skipped',e)}
+    localPreviewPrepared=false;
+    return true
+  })();
+  return legacyPrepPromise
+}
 function wire(type){
   var inp=$('cd2-'+type+'-upload'),pick=document.querySelector('[data-cd2-pick="'+type+'"]'),libSearch=$('cd2-'+type+'-libsearch'),yearFilter=$('cd2-'+type+'-yearfilter'),monthFilter=$('cd2-'+type+'-monthfilter');
   if(!inp||!pick)return;
@@ -950,6 +1055,7 @@ async function boot(){
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
   setStatus('esic','Ready · open ESIC → DOL to load shared library.');
   setStatus('pf','Ready · open PF → DOL to load shared library.');
+  setTimeout(function(){prepareLegacyMigration().then(function(){var t=activeDolType();if(t){cloudLastSync[t]=0;return syncCloudType(t,true)}}).catch(function(e){console.warn('Legacy migration preparation failed',e)})},350);
   root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700)});
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
