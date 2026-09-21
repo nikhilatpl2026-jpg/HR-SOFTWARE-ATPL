@@ -61,6 +61,7 @@ async function upload(rec,buf,progress){
   if(!(buf instanceof ArrayBuffer))throw new Error('Original file bytes required');
   var dup=await check(rec.hash);
   if(dup.duplicate){
+    if(!dup.record)throw new Error('Exact same file is already saved in another restricted challan module');
     var ex=dup.record||{};if(String(ex.type||'')!==String(rec.type||''))throw new Error('Exact same file already belongs to '+(ex.type==='pf'?'PF → DOL':'ESIC → DOL'));
     return{duplicate:true,record:ex}
   }
@@ -68,6 +69,7 @@ async function upload(rec,buf,progress){
   var begin=await api({action:'beginDOLUpload',type:rec.type,file_hash:rec.hash,name:rec.name,size:rec.size||buf.byteLength,mime:rec.mime||'',period:rec.period||'',period_source:rec.periodSource||'',digit_ids_json:JSON.stringify(digits),alnum_ids_json:JSON.stringify(alnums)},{timeout:10000,attempts:2});
   if(!(begin&&begin.ok))throw new Error(begin&&begin.error||'Upload start failed');
   if(begin.duplicate){
+    if(!begin.record)throw new Error('Exact same file is already saved in another restricted challan module');
     var ex2=begin.record||{};if(String(ex2.type||'')!==String(rec.type||''))throw new Error('Exact same file already belongs to '+(ex2.type==='pf'?'PF → DOL':'ESIC → DOL'));
     return{duplicate:true,record:ex2}
   }

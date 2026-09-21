@@ -389,7 +389,7 @@ function beginDOLUpload_(p) {
   if(!hasFeature_(u,dolFeature_(type)))return {ok:false,error:'Access denied'};
   if (!hash) return {ok:false,error:'file_hash required'};
   var dup = findDolByHash_(hash);
-  if (dup) return {ok:true,duplicate:true,record:publicDol_(dup)};
+  if (dup) return {ok:true,duplicate:true,record:hasFeature_(u,dolFeature_(dup.type))?publicDol_(dup):null};
   var uploadId = Utilities.getUuid().replace(/-/g,'');
   var cache = CacheService.getScriptCache();
   cache.put('ATPL_DOL_UPLOAD_'+uploadId, JSON.stringify({
@@ -444,7 +444,7 @@ function commitDOLUpload_(p) {
   var lock=LockService.getScriptLock();lock.waitLock(20000),file=null;
   try{
     var dup=findDolByHash_(meta.file_hash);
-    if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:publicDol_(dup)};}
+    if(dup){cleanupDolPartsUnlocked_(uploadId);cache.remove('ATPL_DOL_UPLOAD_'+uploadId);return {ok:true,duplicate:true,record:hasFeature_(u,dolFeature_(dup.type))?publicDol_(dup):null};}
     var blob=Utilities.newBlob(bytes,meta.mime||'application/octet-stream',meta.name||'challan');
     file=dolFolder_(meta.type,meta.period).createFile(blob);
     var now=new Date().toISOString(),id='dol_'+meta.type+'_'+String(meta.file_hash).slice(0,24),sh=ensureDolSheets_().records;
