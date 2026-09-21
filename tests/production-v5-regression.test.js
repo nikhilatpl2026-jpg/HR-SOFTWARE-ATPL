@@ -64,12 +64,12 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL V6 bridges legacy challans into V5 and treats already-missing delete as success',()=>{
+test('DOL legacy bridge remains active in V7 and treats already-missing delete as success',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
   assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production7'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v6-legacy-bridge",
+    "production-v7-instant-delete",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
