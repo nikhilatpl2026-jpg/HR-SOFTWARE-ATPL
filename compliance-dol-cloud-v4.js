@@ -2,7 +2,7 @@
    Uses JSONP for small control/read calls and hidden-form POST + postMessage for large upload parts.
    No DOL bytes are stored in EmployeeMaster. */
 (function(root){'use strict';
-var BUILD='2026.09.21-production-v5-client';
+var BUILD='2026.09.21-production-v7-delete-client';
 if(!root||root.__ATPL_DOL_CLOUD_V4__===BUILD)return;
 root.__ATPL_DOL_CLOUD_V4__=BUILD;
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',support=null,probePromise=null;
@@ -29,7 +29,7 @@ async function probe(){
 }
 async function list(type){
   type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
-  var d=await api({action:'getDOLRecords',type:type},{timeout:8000,cacheMs:2500});
+  var d=await api({action:'getDOLRecords',type:type},{timeout:8000,cacheMs:0});
   if(unknown(d)){support=false;throw new Error('DOL_V4_UNAVAILABLE')}
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Challan list failed');
   support=true;return d.records
@@ -119,8 +119,11 @@ async function update(rec){
   if(!(d&&d.ok&&d.record))throw new Error(d&&d.error||'Challan update failed');return d.record
 }
 async function remove(rec){
-  var d=await api({action:'deleteDOLRecord',id:rec.cloudRecordId||rec.id},{timeout:10000,attempts:2});
-  if(!(d&&d.ok))throw new Error(d&&d.error||'Challan delete failed');return d
+  try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+  var d=await api({action:'deleteDOLRecord',id:rec.cloudRecordId||rec.id},{timeout:22000,attempts:1,cacheMs:0});
+  if(!(d&&d.ok))throw new Error(d&&d.error||'Challan delete failed');
+  try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+  return d
 }
 function b64Bytes(s){var bin=atob(String(s||'')),a=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return a}
 async function fileBlob(rec,progress){
