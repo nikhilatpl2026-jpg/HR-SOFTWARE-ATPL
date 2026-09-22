@@ -29,6 +29,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Confirm browser CORS allows x-atpl-token
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://gsbyzddibdjxekutpkip.supabase.co/functions/v1/dol-api'
+          headers="$(mktemp)"
+          code="$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 \
+            -X OPTIONS "$URL" \
+            -H 'Origin: https://nikhilatpl2026-jpg.github.io' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: x-atpl-token,apikey,authorization,content-type')"
+          cat "$headers"
+          case "$code" in 200|204) ;; *) echo "Preflight failed: HTTP $code" >&2; exit 1;; esac
+          allow_headers="$(grep -i '^access-control-allow-headers:' "$headers" | tr '[:upper:]' '[:lower:]' || true)"
+          allow_origin="$(grep -i '^access-control-allow-origin:' "$headers" | tr '[:upper:]' '[:lower:]' || true)"
+          printf '%s' "$allow_headers" | grep -Fq 'x-atpl-token' || { echo 'CORS does not allow x-atpl-token' >&2; exit 1; }
+          [ -n "$allow_origin" ] || { echo 'CORS allow-origin header missing' >&2; exit 1; }
+
       - name: Confirm dol-api refuses requests without ERP token
         shell: bash
         run: |
