@@ -109,10 +109,10 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
 
 test('DOL shared cloud union preserves history while browser-local rows stay non-authoritative',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production12-shared-cloud-union'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production13-server-authority-open-download'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v12-shared-cloud-union",
+    "production-v13-server-authority-open-download",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -129,9 +129,9 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production12-shared-cloud-union'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production13-server-authority-open-download'));
   [
-    'production-v12-shared-cloud-union',
+    'production-v13-server-authority-open-download',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
@@ -161,6 +161,11 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   const searchEnd=d.indexOf('function search(type)',searchStart);
   const searchBody=d.slice(searchStart,searchEnd);
   assert.ok(searchBody.includes('await cloudRecords(type)'));
+  assert.ok(searchBody.includes('Live shared challan library could not be verified'));
+  assert.ok(searchBody.includes('Local cached DOL is intentionally not shown'));
+  assert.ok(d.includes('local-only challans are hidden to prevent stale/cross-browser mismatch'));
+  assert.ok(d.includes('promoteHistoricalOriginal'));
+  assert.ok(d.includes("rec.sharedSource==='dedicated'"));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,local,freshRows)'));
   assert.ok(d.includes('Shared legacy challan history'));
