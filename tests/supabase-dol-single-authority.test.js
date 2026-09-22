@@ -13,7 +13,7 @@ test('Supabase DOL files parse and load in authority order',()=>{
   const supa=h.indexOf('compliance-dol-supabase-v1.js');
   const rebuild=h.indexOf('compliance-dol-rebuild-v2.js');
   assert.ok(legacy>0&&legacy<supa&&supa<rebuild,'legacy -> supabase -> rebuild loader order');
-  assert.ok(h.includes('supabase-authority3-stable-first-load'));
+  assert.ok(h.includes('supabase-authority4-server-migration'));
   assert.ok(h.includes('production19-stable-supabase-first-load'));
 });
 
@@ -24,7 +24,9 @@ test('Supabase adapter is the only normal DOL authority and has no polling',()=>
   assert.ok(s.includes("root.ATPLDOLCloudV4=api"));
   assert.equal(s.includes('setInterval('),false);
   assert.equal(s.includes('syncEventExists('),false,'migration must not be skipped by an unrelated sync event');
-  assert.ok(/async function list\(type\)[\s\S]*?await maybeStartLegacyMigration\(type\)[\s\S]*?await listRaw\(type,true\)/.test(s),'first list must await one-time migration before rendering');
+  const listBody=s.slice(s.indexOf('async function list(type)'),s.indexOf('async function check(hash)'));
+  assert.ok(listBody.includes('await listRaw(type,true)'));
+  assert.equal(listBody.includes('maybeStartLegacyMigration'),false,'browser list must not run legacy migration');
 });
 
 test('Edge request/response mapping matches DOL contract',()=>{
@@ -78,7 +80,7 @@ test('Delete and period update are Supabase-authoritative and purge browser copi
   assert.ok(upd.includes("v&&v.authority==='supabase'&&typeof v.update==='function'"));
 });
 
-test('Legacy migration is idempotent, duplicate safe and reports unrecoverable originals',()=>{
+test('Legacy browser migration is retained only as an unused recovery helper',()=>{
   const s=read('compliance-dol-supabase-v1.js');
   const a=s.indexOf('async function maybeStartLegacyMigration(type)');
   const b=s.indexOf('async function list(type)',a);
@@ -91,6 +93,8 @@ test('Legacy migration is idempotent, duplicate safe and reports unrecoverable o
   assert.ok(m.includes("failures.push({name:String(old.name||'challan'),reason:String(e&&e.message||e)})"));
   assert.ok(m.includes('need manual re-upload'));
   assert.ok(s.includes('migrationReport:migrationReport'));
+  const listBody=s.slice(s.indexOf('async function list(type)'),s.indexOf('async function check(hash)'));
+  assert.equal(listBody.includes('maybeStartLegacyMigration'),false);
 });
 
 test('PF and ESIC stay isolated and duplicate check is fresh across both types',()=>{
@@ -123,10 +127,16 @@ test('Deployable dol-api is service-role only and migration locks browser access
   assert.ok(e.includes('action === "health"'));
   assert.ok(e.includes('dol_sync_events'));
   assert.ok(e.includes('createSignedUrl(row.file_path, 300)'));
+  assert.ok(e.includes('ensureLegacyIndex'));
+  assert.ok(e.includes('materializeLegacyOriginal'));
+  assert.ok(e.includes('dol_migration_state'));
+  assert.ok(e.includes('legacy_source_id'));
   assert.ok(e.includes('await supabase.storage.from(BUCKET).remove([row.file_path])'));
   assert.ok(m.includes('revoke all on table public.dol_challans from anon, authenticated'));
   assert.ok(m.includes("grant select, insert, update, delete on table public.dol_challans to service_role"));
   assert.ok(m.includes("alter publication supabase_realtime add table public.dol_sync_events"));
+  assert.ok(m.includes('dol_migration_state'));
+  assert.ok(m.includes('legacy_source_id'));
   assert.ok(cfg.includes('[functions.dol-api]'));
   assert.ok(cfg.includes('verify_jwt = false'));
 });
