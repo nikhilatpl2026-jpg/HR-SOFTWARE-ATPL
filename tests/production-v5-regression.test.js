@@ -112,7 +112,7 @@ test('DOL shared cloud union preserves history while browser-local rows stay non
   assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production20-forced-supabase-page-sync'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v19-stable-supabase-first-load",
+    "production-v20-forced-supabase-page-sync",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -131,7 +131,7 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
   assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production20-forced-supabase-page-sync'));
   [
-    'production-v19-stable-supabase-first-load',
+    'production-v20-forced-supabase-page-sync',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
