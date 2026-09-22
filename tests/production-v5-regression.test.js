@@ -109,10 +109,10 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
 
 test('DOL shared cloud union preserves history while browser-local rows stay non-authoritative',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production18-supabase-authority'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production19-stable-supabase-first-load'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v18-supabase-authority",
+    "production-v19-stable-supabase-first-load",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -129,9 +129,9 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production18-supabase-authority'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production19-stable-supabase-first-load'));
   [
-    'production-v18-supabase-authority',
+    'production-v19-stable-supabase-first-load',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
