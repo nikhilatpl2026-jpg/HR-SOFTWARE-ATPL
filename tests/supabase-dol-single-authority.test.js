@@ -14,7 +14,7 @@ test('Supabase DOL files parse and load in authority order',()=>{
   const rebuild=h.indexOf('compliance-dol-rebuild-v2.js');
   assert.ok(legacy>0&&legacy<supa&&supa<rebuild,'legacy -> supabase -> rebuild loader order');
   assert.ok(h.includes('supabase-authority4-server-migration'));
-  assert.ok(h.includes('production19-stable-supabase-first-load'));
+  assert.ok(h.includes('production20-forced-supabase-page-sync'));
 });
 
 test('Supabase adapter is the only normal DOL authority and has no polling',()=>{
@@ -112,6 +112,7 @@ test('Supabase authority does not schedule normal-runtime legacy historical repa
   assert.equal(r.includes("authority.migrateLegacy('pf');authority.migrateLegacy('esic')"),false,'Supabase migration must not run in the background');
   assert.ok(r.includes("if(promotable.length&&!(vaultApi()&&vaultApi().authority==='supabase'))"));
   assert.equal(r.includes('setInterval('),false);
+  assert.ok(r.includes("#vn-pftodol,#vn-esictodol"),'DOL nav must force Supabase sync');
 });
 
 
