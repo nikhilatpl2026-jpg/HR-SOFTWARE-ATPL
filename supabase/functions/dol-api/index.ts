@@ -32,6 +32,10 @@ type LegacyRow = {
   uploadedBy?: string;
   uploadedAt?: string;
   updatedAt?: string;
+  detail?: string;
+  parseVersion?: string;
+  _sourceKind?: string;
+  _sourceKey?: string;
 };
 
 const authCache = new Map<string, { until: number; records: LegacyRow[] }>();
@@ -174,6 +178,161 @@ function base64Bytes(b64: string) {
   return out;
 }
 
+
+const DURABLE_KIND_LEGACY = "compliance_dol_v1";
+const DURABLE_KIND_ESIC = "esic_dol_v2";
+const DURABLE_KIND_PF = "pf_dol_v2";
+
+function strongPfText(v: unknown) {
+  return /\b(?:ECR|ECR\s+STATEMENT|ECR\s+CHALLAN|EPF|EPFO|PF\s+CHALLAN|PROVIDENT\s+FUND|UAN|TRRN|GROSS\s+EPF\s+WAGES|MEMBER\s+ID)\b/i.test(String(v || ""));
+}
+
+function looksLikePfInEsic(r: any) {
+  const ids = ([] as unknown[]).concat(
+    arr(r?.ids),
+    arr(r?.digitIds),
+    arr(r?.alnumIds),
+  ).map(String);
+  const twelve = ids.filter((x) => /^\d{12}$/.test(x.replace(/\D/g, ""))).length;
+  const establishment = ids.some((x) =>
+    /^[A-Z]{2,6}\d{7,}[A-Z0-9]*$/.test(
+      x.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+    )
+  );
+  const sample = [r?.name, r?.detail, r?.parseVersion].join(" ");
+  return establishment || twelve >= 3 || strongPfText(sample);
+}
+
+function routedDurableType(payload: any, kind: string) {
+  if (kind === DURABLE_KIND_PF) return "pf";
+  if (kind === DURABLE_KIND_ESIC) {
+    return looksLikePfInEsic({ ...payload, type: "esic" }) ? "pf" : "esic";
+  }
+  const t = String(payload?.type || "").toLowerCase();
+  if (t === "pf" || looksLikePfInEsic({ ...payload, type: "esic" })) return "pf";
+  return "esic";
+}
+
+function durableDisplayKey(p: any) {
+  const hash = String(p?.fileHash || p?.fingerprint || p?.hash || "").toLowerCase();
+  if (hash) return "h:" + hash;
+  const name = String(p?.name || "")
+    .toLowerCase()
+    .replace(/\.[^.]+$/, "")
+    .replace(/\(\s*\d+\s*\)$/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+  const period = String(p?.period || "");
+  if (name) return "np:" + name + "|" + period;
+  return "id:" + String(p?.id || "");
+}
+
+async function decodeDurableObject(records: any[], meta: any) {
+  const chunks = records
+    .filter((r) =>
+      r &&
+      r._atpl_kind === "chunk" &&
+      String(r.object_key || "") === String(meta.object_key || "")
+    )
+    .sort((a, b) => Number(a.index || 0) - Number(b.index || 0));
+
+  const expected = Number(meta.chunks || 0);
+  if (!expected || chunks.length < expected) {
+    throw new Error("Incomplete durable object " + String(meta.name || meta.key_text || ""));
+  }
+
+  let b64 = "";
+  for (let i = 0; i < expected; i++) {
+    const part = chunks.find((x) => Number(x.index || 0) === i);
+    if (!part) throw new Error("Missing durable chunk " + i);
+    b64 += String(part.data || "");
+  }
+
+  let bytes = base64Bytes(b64);
+  b64 = "";
+
+  if (String(meta.encoding || "") === "gzip-base64") {
+    const ds = new DecompressionStream("gzip");
+    const ab = await new Response(
+      new Blob([bytes]).stream().pipeThrough(ds),
+    ).arrayBuffer();
+    bytes = new Uint8Array(ab);
+  }
+
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+async function fetchHistoricalDol(token: string, type: string): Promise<LegacyRow[]> {
+  const kinds = type === "pf"
+    ? [DURABLE_KIND_PF, DURABLE_KIND_ESIC, DURABLE_KIND_LEGACY]
+    : [DURABLE_KIND_ESIC, DURABLE_KIND_LEGACY];
+
+  const best = new Map<string, any>();
+
+  for (const kind of kinds) {
+    const data = await legacyRequest("getSystemRecords", { kind }, token);
+    const records = Array.isArray(data.records) ? data.records : [];
+    const metas = records.filter((r: any) =>
+      r &&
+      r._atpl_kind === "meta" &&
+      [DURABLE_KIND_PF, DURABLE_KIND_ESIC, DURABLE_KIND_LEGACY].includes(
+        String(r.object_kind || ""),
+      )
+    );
+
+    for (const meta of metas) {
+      try {
+        const p = await decodeDurableObject(records, meta);
+        if (!p || !p.id) continue;
+
+        const routed = routedDurableType(p, String(meta.object_kind || ""));
+        if (routed !== type) continue;
+
+        p.type = routed;
+        p._sourceKind = String(meta.object_kind || kind);
+        p._sourceKey = String(meta.object_key || "");
+        p.cloudConfirmedAt =
+          p.cloudConfirmedAt ||
+          meta.saved_at ||
+          meta.uploaded_at ||
+          new Date().toISOString();
+
+        const key = durableDisplayKey(p);
+        const score =
+          (String(meta.object_kind || "") ===
+              (routed === "pf" ? DURABLE_KIND_PF : DURABLE_KIND_ESIC)
+            ? 10
+            : 0) +
+          (String(p.fileHash || p.fingerprint || "") ? 2 : 0);
+
+        const ts = Date.parse(
+          String(
+            meta.saved_at ||
+              meta.uploaded_at ||
+              p.updatedAt ||
+              p.uploadedAt ||
+              "",
+          ),
+        ) || 0;
+
+        const old = best.get(key);
+        if (!old || score > old.__score || (score === old.__score && ts >= old.__ts)) {
+          p.__score = score;
+          p.__ts = ts;
+          best.set(key, p);
+        }
+      } catch (e) {
+        console.warn("Historical DOL decode skipped", meta?.key_text, e);
+      }
+    }
+  }
+
+  return Array.from(best.values()).map((p: any) => {
+    delete p.__score;
+    delete p.__ts;
+    return p as LegacyRow;
+  });
+}
+
 async function legacyRequest(
   action: string,
   params: Record<string, unknown>,
@@ -278,7 +437,8 @@ async function announce(
 async function ensureLegacyIndex(
   supabase: ReturnType<typeof createClient>,
   type: string,
-  legacyRows: LegacyRow[],
+  dedicatedRows: LegacyRow[],
+  token: string,
 ) {
   const { data: state, error: stateError } = await supabase
     .from(MIGRATION_STATE)
@@ -292,46 +452,59 @@ async function ensureLegacyIndex(
     );
   }
 
-  if (state) return state;
+  if (state && Number(state.source_version || 0) >= 2) return state;
 
+  const historicalRows = await fetchHistoricalDol(token, type);
   const now = new Date().toISOString();
+  const byHash = new Map<string, any>();
 
-  const rows = legacyRows
-    .filter((r) =>
-      String(r?.type || "").toLowerCase() === type &&
-      String(r?.id || "") &&
-      String(r?.fileHash || r?.fingerprint || "")
-    )
-    .map((r) => {
-      const hash = String(
-        r.fileHash || r.fingerprint || "",
-      ).toLowerCase();
+  function candidate(r: LegacyRow, sourceKind: string, sourceKey: string) {
+    const hash = String(r.fileHash || r.fingerprint || "").toLowerCase();
+    if (!hash) return;
 
-      return {
-        challan_type: type,
-        file_name: String(r.name || "Challan"),
-        file_path: null,
-        file_hash: hash,
-        mime_type: String(
-          r.mime || "application/octet-stream",
-        ),
-        file_size: Number(r.size || 0) || 0,
-        period: String(r.period || ""),
-        uploaded_by: String(r.uploadedBy || ""),
-        member_ids: uniqueStrings([
-          ...arr(r.digitIds),
-          ...arr(r.alnumIds),
-        ]),
-        contributions: [],
-        legacy_source_id: String(r.id || ""),
-        created_at: validIso(r.uploadedAt) || now,
-        updated_at:
-          validIso(r.updatedAt) ||
-          validIso(r.uploadedAt) ||
-          now,
-      };
+    byHash.set(hash, {
+      challan_type: type,
+      file_name: String(r.name || "Challan"),
+      file_path: null,
+      file_hash: hash,
+      mime_type: String(r.mime || "application/octet-stream"),
+      file_size: Number(r.size || 0) || 0,
+      period: String(r.period || ""),
+      uploaded_by: String(r.uploadedBy || ""),
+      member_ids: uniqueStrings([
+        ...arr(r.digitIds),
+        ...arr(r.alnumIds),
+      ]),
+      contributions: [],
+      legacy_source_id:
+        sourceKind === "dedicated" ? String(r.id || "") : null,
+      legacy_source_kind: sourceKind,
+      legacy_source_key: sourceKey,
+      created_at: validIso(r.uploadedAt) || now,
+      updated_at:
+        validIso(r.updatedAt) ||
+        validIso(r.uploadedAt) ||
+        now,
     });
+  }
 
+  for (const r of historicalRows) {
+    if (String(r?.type || "").toLowerCase() !== type) continue;
+    candidate(
+      r,
+      "durable",
+      String(r._sourceKey || r.id || ""),
+    );
+  }
+
+  // Dedicated V4 rows override historical metadata for the same SHA because
+  // they can still provide the original file through getDOLFileChunk.
+  for (const r of dedicatedRows) {
+    if (String(r?.type || "").toLowerCase() !== type) continue;
+    candidate(r, "dedicated", String(r.id || ""));
+  }
+
+  const rows = Array.from(byHash.values());
   let imported = 0;
 
   if (rows.length) {
@@ -345,7 +518,7 @@ async function ensureLegacyIndex(
 
     if (error) {
       throw new Error(
-        "Legacy metadata import failed: " + error.message,
+        "Historical metadata import failed: " + error.message,
       );
     }
 
@@ -357,6 +530,7 @@ async function ensureLegacyIndex(
     indexed_at: now,
     legacy_count: rows.length,
     imported_count: imported,
+    source_version: 2,
   };
 
   const { error: markError } = await supabase
@@ -398,6 +572,12 @@ async function materializeLegacyOriginal(
   token: string,
 ) {
   if (row.file_path) return row;
+
+  if (String(row.legacy_source_kind || "") === "durable") {
+    throw new Error(
+      "Original file unavailable in historical cloud record",
+    );
+  }
 
   const legacyId = String(row.legacy_source_id || "");
   if (!legacyId) {
@@ -570,6 +750,7 @@ Deno.serve(async (req) => {
         supabase,
         type,
         legacyRows,
+        token,
       );
 
       const { data, error } = await supabase
