@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v16-recovery-score-runtime-fix';
+var BUILD='2026.09.22-production-v17-supabase-authority';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -25,7 +25,7 @@ var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetry
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
 var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={},historicalPromotionPromises={},historicalRepairPromises={esic:null,pf:null},historicalRepairDoneAt={esic:0,pf:0};
 var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=7776000000;
-var sharedDeleteTombstones={esic:[],pf:[]},sharedDeleteLoadedAt={esic:0,pf:0},SHARED_DELETE_CACHE_MS=15000;
+var sharedDeleteTombstones={esic:[],pf:[]},sharedDeleteLoadedAt={esic:0,pf:0},SHARED_DELETE_CACHE_MS=4000;
 
 function tombstoneRead(){
   var out={};try{out=JSON.parse(root.localStorage.getItem(DELETE_TOMBSTONE_KEY)||'{}')||{}}catch(_){}
@@ -62,6 +62,7 @@ function clearDeleteTombstone(type,r){
 }
 async function loadSharedDeleteTombstones(type,force){
   type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return[];
+  var authority=vaultApi();if(authority&&authority.authority==='supabase'){sharedDeleteTombstones[type]=[];sharedDeleteLoadedAt[type]=Date.now();return[]}
   if(!force&&sharedDeleteLoadedAt[type]&&Date.now()-sharedDeleteLoadedAt[type]<SHARED_DELETE_CACHE_MS)return sharedDeleteTombstones[type]||[];
   var api=durableApi();
   if(!api||typeof api.getComplianceDolDeleteTombstones!=='function')return sharedDeleteTombstones[type]||[];
@@ -132,6 +133,12 @@ function sharedCloudRecordKey(r){
 }
 async function cloudRecords(type){
   var v=vaultApi(),d=durableApi(),dedicated=[],legacy=[],dedicatedOk=false,legacyOk=false,errors=[];
+  if(v&&v.authority==='supabase'&&typeof v.list==='function'){
+    dedicated=await bounded(v.list(type),30000,'Supabase challan authority');
+    dedicated=Array.isArray(dedicated)?dedicated:[];
+    cloudMode[type]='supabase';
+    return{mode:'supabase',records:dedicated,dedicatedCount:dedicated.length,legacyCount:0,partialErrors:[]}
+  }
   if(v&&typeof v.list==='function'){
     try{
       dedicated=await bounded(v.list(type),24000,'Dedicated challan backend');
@@ -898,7 +905,7 @@ async function updatePeriod(type,id,period){
   try{
     r=Object.assign({},r,{period:period||'',periodSource:'manual',updatedAt:new Date().toISOString()});
     var v=vaultApi(),back;
-    if(cloudMode[type]==='v4'&&v&&typeof v.update==='function')back=await v.update(r);
+    if((cloudMode[type]==='v4'||cloudMode[type]==='supabase')&&v&&typeof v.update==='function')back=await v.update(r);
     else{
       var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
       back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(r))
@@ -915,6 +922,25 @@ async function deleteOne(type,id){
   state[type].rows=(state[type].rows||[]).filter(function(x){return !sameDeleteIdentity(type,r,x)});
   delete state[type].selected[String(r.id)];rebuildIndex(type);renderFiles(type);
   setStatus(type,'Removed instantly ✓ · locking delete across all devices…');
+
+  var direct=vaultApi();
+  if(direct&&direct.authority==='supabase'){
+    try{
+      await direct.deleteRecord(r);
+      var directAll=await dbAll(),directPurged=0;
+      for(var di=0;di<directAll.length;di++){
+        var dx=directAll[di];if(!dx||dx.type!==type||!sameDeleteIdentity(type,r,dx))continue;
+        try{await opfsDelete(dx)}catch(_){}await dbDelete(dx.id);directPurged++
+      }
+      try{directPurged+=await purgeLegacyLocalMatches(type,r)}catch(_){}
+      clearDeleteTombstone(type,r);await writeVaultManifest();cloudLastSync[type]=0;await refresh(type);
+      setStatus(type,'Deleted permanently from Supabase ✓ — '+(r.name||'challan')+(directPurged>1?' · duplicate browser copies cleared':''));
+    }catch(se){
+      clearDeleteTombstone(type,r);cloudLastSync[type]=0;await refresh(type);
+      setStatus(type,'Delete failed — record restored · '+(se.message||se),true)
+    }
+    return
+  }
 
   var dedicatedDone=false,sharedSaved=false;
   try{
@@ -1120,7 +1146,7 @@ async function upload(type,fileList){
   if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
   var pack;
   try{pack=await cloudRecords(type)}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
-  var mode=pack.mode==='v4'?'v4':'legacy',byHash={};
+  var mode=(pack.mode==='v4'||pack.mode==='supabase')?pack.mode:'legacy',byHash={};
   (pack.records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
   var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0,indexPending:0};
   for(var i=0;i<files.length;i++){
@@ -1132,7 +1158,7 @@ async function upload(type,fileList){
         try{await clearSharedDeleteTombstone(type,restoreProbe);clearDeleteTombstone(type,restoreProbe)}
         catch(re){throw new Error('Cannot restore previously deleted challan until shared delete marker clears: '+(re.message||re))}
       }
-      if(mode==='v4'&&vaultApi()&&typeof vaultApi().check==='function'){
+      if((mode==='v4'||mode==='supabase')&&vaultApi()&&typeof vaultApi().check==='function'){
         var dupCheck=await vaultApi().check(hash,'user_upload');if(dupCheck&&dupCheck.duplicate){var dr=localRecordFromCloud(dupCheck.record||{});if(dr.type&&dr.type!==type)cross=dr;else existing=existing||dr}
       }
       if(cross){dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue}
@@ -1160,7 +1186,7 @@ async function upload(type,fileList){
         rec.parseStatus=rec.ids.length?'ready':'error';rec.parseError=rec.ids.length?'':'No valid '+(type==='esic'?'ESIC/IP':'PF/UAN')+' number detected';if(rec.ids.length)indexed++;else warns.push(f.name+': no IDs detected')
       }catch(pe){rec.parseStatus='error';rec.parseError=String(pe&&pe.message||pe);warns.push(f.name+': '+rec.parseError)}
       rec.updatedAt=new Date().toISOString();await dbPut(rec);upsertStateRow(type,rec);
-      if(mode==='v4'){
+      if(mode==='v4'||mode==='supabase'){
         try{
           setStatus(type,'Uploading original to shared backend · '+f.name+' · 0%');
           var out=await vaultApi().upload(rec,buf,function(p){setStatus(type,'Uploading original to shared backend · '+f.name+' · '+p+'%')});
@@ -1175,9 +1201,9 @@ async function upload(type,fileList){
       buf=null;blob=null;await tick()
     }catch(e){warns.push(f.name+': '+(e.message||e));console.warn('V2 challan upload failed',f.name,e)}
   }
-  if(mode!=='v4'&&cloudQueue.length){setStatus(type,'Uploading indexed record to compatibility backend…');var legacy=await pushCloudBatch(cloudQueue);cloud.saved+=legacy.saved;cloud.failed+=legacy.failed}
+  if(mode!=='v4'&&mode!=='supabase'&&cloudQueue.length){setStatus(type,'Uploading indexed record to compatibility backend…');var legacy=await pushCloudBatch(cloudQueue);cloud.saved+=legacy.saved;cloud.failed+=legacy.failed}
   await writeVaultManifest();await refresh(type);
-  var msg=[];if(cloud.saved)msg.push(cloud.saved+' file(s) backend-confirmed ✓');if(attached)msg.push(attached+' local cache attached ✓');if(indexed&&!cloud.indexPending)msg.push(indexed+' contribution index(es) backend-confirmed ✓');if(cloud.indexPending)msg.push(cloud.indexPending+' detailed index pending — Backend V5 deploy/retry required');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(mode!=='v4'&&staged)msg.push('Original-file cross-device vault pending Backend V4 deployment');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
+  var msg=[];if(cloud.saved)msg.push(cloud.saved+' file(s) backend-confirmed ✓');if(attached)msg.push(attached+' local cache attached ✓');if(indexed&&!cloud.indexPending)msg.push(indexed+' contribution index(es) backend-confirmed ✓');if(cloud.indexPending)msg.push(cloud.indexPending+' detailed index pending — Backend V5 deploy/retry required');if(cloud.failed)msg.push(cloud.failed+' NOT saved — retry required');if(dups)msg.push(dups+' duplicate skipped ✓');if(mode!=='v4'&&mode!=='supabase'&&staged)msg.push('Original-file cross-device vault pending Backend V4 deployment');if(warns.length)msg.push(warns.slice(0,2).join(' | ')+(warns.length>2?' | +'+(warns.length-2)+' more':''));
   setStatus(type,msg.join(' · ')||'No files saved',!!cloud.failed||!!cloud.indexPending||(!cloud.saved&&!attached&&!!warns.length))
 }
 function parseQueries(type){
@@ -1363,7 +1389,7 @@ function wire(type){
   pick.onclick=async function(){await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();inp.click()};
   inp.addEventListener('change',function(){var fs=Array.from(this.files||[]);this.value='';if(fs.length)upload(type,fs);else setStatus(type,'No file selected',true)});
   var sb=document.querySelector('[data-cd2-search="'+type+'"]');if(sb)sb.onclick=function(){search(type)};
-  var rb=document.querySelector('[data-cd2-refresh="'+type+'"]');if(rb)rb.onclick=function(){refresh(type)};
+  var rb=document.querySelector('[data-cd2-refresh="'+type+'"]');if(rb)rb.onclick=async function(){await loadSharedDeleteTombstones(type,true);cloudLastSync[type]=0;await syncCloudType(type,true)};
   if(libSearch)libSearch.addEventListener('input',function(){renderFiles(type)});
   if(yearFilter)yearFilter.addEventListener('change',function(){renderFiles(type)});
   if(monthFilter)monthFilter.addEventListener('change',function(){renderFiles(type)});
@@ -1412,7 +1438,13 @@ async function boot(){
     setTimeout(function(){repairHistoricalOriginals('pf',true)},1800);
     setTimeout(function(){repairHistoricalOriginals('esic',true)},2800);
   });
-  root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700);setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)});
+  root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700);if(!(vaultApi()&&vaultApi().authority==='supabase'))setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)});
+  root.addEventListener('atpl-dol-supabase-change',function(e){
+    var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;
+    sharedDeleteTombstones[type]=[];sharedDeleteLoadedAt[type]=Date.now();cloudLastSync[type]=0;
+    if(activeDolType()===type)syncCloudType(type,true)
+  });
+  try{var sv=vaultApi();if(sv&&sv.authority==='supabase'&&typeof sv.startRealtime==='function')sv.startRealtime()}catch(_){}
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
