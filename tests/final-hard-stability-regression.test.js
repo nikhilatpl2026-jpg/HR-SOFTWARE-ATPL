@@ -99,7 +99,7 @@ test('complete backend exposes every production route',()=>{
   ['login','listUsers','saveUser','deleteUser','getEmployeeMaster','getSystemRecords','upsertEmployeeMaster','deleteEmployeeMaster','appendActivity','listActivity','getDOLRecords','checkDOLDuplicate','beginDOLUpload','commitDOLUpload','updateDOLRecord','deleteDOLRecord','getDOLFileInfo','getDOLFileChunk'].forEach(a=>assert.ok(b.includes("action === '"+a+"'"),'missing backend route '+a));
   assert.ok(b.includes('function doPost(e)'));
   assert.ok(b.includes("action === 'appendDOLChunkBatch'"));
-  assert.ok(b.includes("BACKEND_VERSION = '5.1-dol-delete-search-repair'"));
+  assert.ok(b.includes("BACKEND_VERSION = '5.2-dol-orphan-index-cleanup'"));
 });
 
 
