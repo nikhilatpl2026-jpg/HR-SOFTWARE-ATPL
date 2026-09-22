@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v15-direct-v1-original-recovery';
+var BUILD='2026.09.22-production-v16-recovery-score-runtime-fix';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -254,11 +254,11 @@ function recoveryMatchScore(type,target,cand){
   }
   var th=String(target&&target.hash||target&&target.fileHash||target&&target.fingerprint||'').toLowerCase();
   var ch=String(cand.fileHash||cand.hash||cand.fingerprint||'').toLowerCase();
-  if(th&&ch&&th===ch)return100;
+  if(th&&ch&&th===ch)return 100;
   var tn=logicalName(target&&target.name),cn=logicalName(cand.name),tp=String(target&&target.period||''),cp=String(cand.period||''),ts=Number(target&&target.size||0),cs=Number(cand.size||0);
-  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp&&ts&&cs&&ts===cs)return90;
-  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp)return80;
-  if(tn&&cn&&tn===cn&&ts&&cs&&ts===cs)return70;
+  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp&&ts&&cs&&ts===cs)return 90;
+  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp)return 80;
+  if(tn&&cn&&tn===cn&&ts&&cs&&ts===cs)return 70;
   return-1
 }
 async function findRecoverableLocalOriginal(type,target){
