@@ -90,7 +90,7 @@ test('live index cache-busts Sep-21 shared authority scripts',()=>{
   const h=read('index.html');
   [
     'erp-mobile-shared-hardfix-v1.js?v=20260921-permission-sync2',
-    'erp-durable-everything-v1.js?v=20260921-system-records-authority14-dol-delete',
+    'erp-durable-everything-v1.js?v=20260922-system-records-authority16-delete-bridge',
     'erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3'
   ].forEach(x=>assert.ok(h.includes(x),x));
   ['erp-mobile-shared-hardfix-v1.js?v=20260919-final-stability','erp-durable-everything-v1.js?v=20260919-final-stability','erp-account-cloud-restore-v1.js?v=20260919-stability1'].forEach(x=>assert.equal(h.includes(x),false,x));
@@ -107,12 +107,12 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL legacy bridge remains active in V10 and treats already-missing delete as success',()=>{
+test('DOL cleanup bridge remains available in V11 while backend-only authority blocks resurrection',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production10'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production11-backend-only-authority'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v10-live-library-authority",
+    "production-v11-backend-only-authority",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -126,12 +126,12 @@ test('DOL legacy bridge remains active in V10 and treats already-missing delete 
 
 test('DOL delete is shared across devices and search repairs from fresh cloud library',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js'),dur=read('erp-durable-everything-v1.js');
-  assert.ok(h.includes('erp-durable-everything-v1.js?v=20260921-system-records-authority14-dol-delete'));
+  assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority16-delete-bridge'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
-  assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production8'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production10'));
+  assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production11-backend-only-authority'));
   [
-    'production-v10-live-library-authority',
+    'production-v11-backend-only-authority',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
@@ -146,22 +146,24 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
     'shared delete lock'
   ].forEach(x=>assert.ok(d.includes(x),x));
   [
-    'system-records-authority14-dol-delete',
+    'system-records-authority16-delete-bridge',
     "DOL_KIND_ESIC_DELETE='esic_dol_deleted_v1'",
     "DOL_KIND_PF_DELETE='pf_dol_deleted_v1'",
     'saveComplianceDolDeleteTombstone',
     'getComplianceDolDeleteTombstones',
     'clearComplianceDolDeleteTombstone'
   ].forEach(x=>assert.ok(dur.includes(x),x));
-  assert.ok(c.includes('production-v8-final-delete-dol'));
+  assert.ok(c.includes('production-v9-long-read-authority'));
   assert.ok(c.includes('sameDeleteTarget'));
-  assert.ok(c.includes("getDOLRecords',type:type},{timeout:8000,cacheMs:0"));
+  assert.ok(c.includes("getDOLRecords',type:type},{timeout:22000,cacheMs:0,attempts:2"));
   assert.ok(c.includes("timeout:22000,attempts:1"));
   const searchStart=d.indexOf('async function searchAsync(type,qs,box)');
   const searchEnd=d.indexOf('function search(type)',searchStart);
   const searchBody=d.slice(searchStart,searchEnd);
   assert.ok(searchBody.includes('await v.list(type)'));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
+  assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,local,freshRows)'));
+  assert.ok(d.includes('legacy fallback blocked'));
   assert.ok(d.includes('backend-index filtered by live challan library'));
   assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(searchBody),false);
 });
