@@ -109,10 +109,10 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
 
 test('DOL shared cloud union preserves history while browser-local rows stay non-authoritative',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production15-direct-v1-original-recovery'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production16-recovery-score-runtime-fix'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v15-direct-v1-original-recovery",
+    "production-v16-recovery-score-runtime-fix",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -129,9 +129,9 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production15-direct-v1-original-recovery'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production16-recovery-score-runtime-fix'));
   [
-    'production-v15-direct-v1-original-recovery',
+    'production-v16-recovery-score-runtime-fix',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
@@ -169,6 +169,8 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(d.includes('findRecoverableLocalOriginal'));
   assert.ok(d.includes('legacyRowBlob'));
   assert.ok(d.includes('recoveryMatchScore'));
+  ['return100;','return90;','return80;','return70;'].forEach(x=>assert.equal(d.includes(x),false,x));
+  ['return 100;','return 90;','return 80;','return 70;'].forEach(x=>assert.ok(d.includes(x),x));
   assert.ok(d.includes('Direct V1 original recovery scan failed'));
   assert.ok(d.includes("repairHistoricalOriginals('pf',true)"));
   assert.ok(d.includes("repairHistoricalOriginals('esic',true)"));
