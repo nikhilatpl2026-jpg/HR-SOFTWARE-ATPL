@@ -42,9 +42,27 @@ function fail(req: Request, message: string, status = 400, extra: Record<string,
   return json(req, { ok: false, error: message, ...extra }, status);
 }
 
+function assertServiceRoleKey() {
+  if (!SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing in Edge Function environment");
+  if (SERVICE_ROLE_KEY.startsWith("sb_secret_")) return;
+  const parts = SERVICE_ROLE_KEY.split(".");
+  if (parts.length === 3) {
+    try {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+      if (payload?.role !== "service_role") {
+        throw new Error("SUPABASE_SERVICE_ROLE_KEY is not a service_role key");
+      }
+      return;
+    } catch (e) {
+      if (String((e as Error)?.message || e).includes("not a service_role")) throw e;
+    }
+  }
+  throw new Error("SUPABASE_SERVICE_ROLE_KEY is not a recognized service-role secret");
+}
+
 function requireServiceRoleClient() {
   if (!SUPABASE_URL) throw new Error("SUPABASE_URL is missing in Edge Function environment");
-  if (!SERVICE_ROLE_KEY) throw new Error("SUPABASE_SERVICE_ROLE_KEY is missing in Edge Function environment");
+  assertServiceRoleKey();
   return createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -287,15 +305,15 @@ Deno.serve(async (req) => {
 
       const { data, error: insertError } = await supabase.from(TABLE).insert(row).select("*").single();
       if (insertError) {
-        await supabase.storage.from(BUCKET).remove([path]).catch(() => null);
+        try { await supabase.storage.from(BUCKET).remove([path]); } catch (_) {}
         throw new Error("Database save failed: " + insertError.message);
       }
 
       try {
         await announce(supabase, type);
       } catch (eventError) {
-        await supabase.from(TABLE).delete().eq("id", data.id).catch(() => null);
-        await supabase.storage.from(BUCKET).remove([path]).catch(() => null);
+        try { await supabase.from(TABLE).delete().eq("id", data.id); } catch (_) {}
+        try { await supabase.storage.from(BUCKET).remove([path]); } catch (_) {}
         throw eventError;
       }
 
