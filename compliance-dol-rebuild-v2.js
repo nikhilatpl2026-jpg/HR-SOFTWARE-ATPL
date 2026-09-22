@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v19-stable-supabase-first-load';
+var BUILD='2026.09.22-production-v20-forced-supabase-page-sync';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -1466,6 +1466,11 @@ async function boot(){
       setTimeout(function(){repairHistoricalOriginals('esic',true)},2800);
     });
   }
+  root.document.addEventListener('click',function(e){
+    var nav=e.target&&e.target.closest?e.target.closest('#vn-pftodol,#vn-esictodol'):null;if(!nav)return;
+    var type=nav.id==='vn-pftodol'?'pf':'esic';
+    setTimeout(function(){mountLatest(type);cloudLastSync[type]=0;syncCloudType(type,true)},220)
+  },true);
   root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700);if(!(vaultApi()&&vaultApi().authority==='supabase'))setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)});
   root.addEventListener('atpl-dol-supabase-change',function(e){
     var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;
