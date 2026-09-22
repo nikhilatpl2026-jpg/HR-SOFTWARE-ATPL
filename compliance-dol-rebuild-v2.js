@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v12-shared-cloud-union';
+var BUILD='2026.09.22-production-v13-server-authority-open-download';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -23,7 +23,7 @@ var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},p
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
-var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={};
+var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={},historicalPromotionPromises={};
 var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=7776000000;
 var sharedDeleteTombstones={esic:[],pf:[]},sharedDeleteLoadedAt={esic:0,pf:0},SHARED_DELETE_CACHE_MS=15000;
 
@@ -151,9 +151,11 @@ async function cloudRecords(type){
   // Keep server-backed history from both stores. Dedicated records win on
   // duplicates; browser-only IndexedDB rows never become authoritative.
   var out=[],seen={};
-  dedicated.concat(legacy).forEach(function(r){
-    if(!r)return;var k=sharedCloudRecordKey(r);if(!k||seen[k])return;seen[k]=1;out.push(r)
-  });
+  dedicated.map(function(r){return Object.assign({},r,{_sharedSource:'dedicated'})})
+    .concat(legacy.map(function(r){return Object.assign({},r,{_sharedSource:'historical'})}))
+    .forEach(function(r){
+      if(!r)return;var k=sharedCloudRecordKey(r);if(!k||seen[k])return;seen[k]=1;out.push(r)
+    });
   cloudMode[type]=dedicatedOk?(legacyOk?'v4+legacy':'v4'):'legacy-shared';
   return{mode:cloudMode[type],records:out,dedicatedCount:dedicated.length,legacyCount:legacy.length,partialErrors:errors}
 }
@@ -232,13 +234,38 @@ function upsertStateRow(type,rec){
   if(at>=0)rows[at]=rec;else rows.unshift(rec);
   state[type].rows=rows;rebuildIndex(type);renderFiles(type)
 }
+async function promoteHistoricalOriginal(type,rec,blob){
+  if(!rec||!rec.sharedAuthoritative||rec.sharedSource==='dedicated'||isAnyDeleteTombstoned(type,rec)||!blob)return false;
+  var key=type+'|'+String(rec.hash||rec.id||rec.name||'');if(historicalPromotionPromises[key])return historicalPromotionPromises[key];
+  historicalPromotionPromises[key]=(async function(){
+    var shared=await cloudRecords(type),exists=(shared.records||[]).some(function(x){return sameDeleteIdentity(type,rec,localRecordFromCloud(x))});
+    if(!exists||isAnyDeleteTombstoned(type,rec))return false;
+    var v=vaultApi();if(!v||typeof v.upload!=='function')return false;
+    var buf=await blob.arrayBuffer(),hash=String(rec.hash||'').toLowerCase();if(!hash)hash=await sha256(buf);
+    var work=Object.assign({},rec,{id:uid(type,hash),hash:hash,type:type,size:Number(rec.size||blob.size||buf.byteLength)||buf.byteLength,mime:rec.mime||blob.type||fileMime(rec.name),ids:Array.from(new Set(recordIds(rec).map(function(x){return validId(type,x)}).filter(Boolean))),uploadIntent:'legacy_migration',cloudOnly:false});
+    if(work.ids.length)work.contributions=work.ids.map(function(id){return{memberId:id,employeeName:'',details:{historicalPromoted:true}}});
+    var out=await v.upload(work,buf),sr=localRecordFromCloud(out&&out.record||{});
+    rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.hasOriginalFile=true;rec.sharedSource='dedicated';rec.sharedAuthoritative=true;rec.cloudSynced=true;rec.cloudOnly=false;
+    try{await dbPut(Object.assign({},rec,{blob:null,storage:rec.opfsPath?'opfs':'indexeddb'}));await writeVaultManifest()}catch(_){}
+    try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+    return true
+  })().catch(function(e){console.warn('Historical original promotion skipped',rec&&rec.name,e);return false}).finally(function(){delete historicalPromotionPromises[key]});
+  return historicalPromotionPromises[key]
+}
 async function recordBlob(type,rec,progress){
-  var blob=await getStoredBlob(rec);if(blob)return blob;
+  var blob=await getStoredBlob(rec);
+  if(blob){
+    if(rec.sharedAuthoritative&&rec.sharedSource!=='dedicated')setTimeout(function(){promoteHistoricalOriginal(type,rec,blob)},0);
+    return blob
+  }
   var v=vaultApi();
-  if(v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||cloudMode[type]==='v4'||(v.supported&&v.supported()))){
-    blob=await bounded(v.fileBlob(rec,progress),30000,'Original challan download');
+  if(v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||rec.sharedSource==='dedicated')){
+    try{blob=await bounded(v.fileBlob(rec,progress),45000,'Original challan download')}catch(e){
+      if(!/not found|unavailable|missing/i.test(String(e&&e.message||e||'')))throw e;
+      blob=null
+    }
     if(blob){
-      var local=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false});
+      var local=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false,sharedAuthoritative:true,sharedSource:'dedicated'});
       var vaulted=false;try{vaulted=await opfsSave(local,blob)}catch(_){}
       if(!vaulted)local.blob=blob;local.storage=vaulted?'opfs':'indexeddb';
       try{await dbPut(local);await writeVaultManifest()}catch(_){}
@@ -604,7 +631,7 @@ async function openViewer(type,id){
   $('cd2-viewer').classList.add('show');$('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
   var blob;
   try{blob=await recordBlob(type,rec,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Downloading original… '+p+'%</div>'})}catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Open failed: '+esc(e.message||e)+'</div>';return}
-  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not available in the shared file vault. Backend V4 deployment is required for cross-device Open/Download.</div>';return}
+  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file was never secured in the shared file vault. Re-upload this exact challan once; after that Open/Download will work across authorized browsers.</div>';return}
   var ext=String(rec.name||'').split('.').pop().toLowerCase();
   if(ext==='pdf'){viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return}
   try{
@@ -629,9 +656,11 @@ function rebuildIndex(type){
   state[type].index=idx;state[type].periods=Array.from(periods).sort()
 }
 async function refresh(type){
-  var hadLocal=(state[type].rows||[]).length>0;
-  if(!hadLocal)hadLocal=await localPreview(type);
-  if(!cloudLoginReady()){setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false}
+  if(!cloudLoginReady()){
+    var hadLocal=(state[type].rows||[]).length>0;if(!hadLocal)hadLocal=await localPreview(type);
+    setStatus(type,hadLocal?'Cached challans shown · cloud login required for latest sync.':'Cloud login required for challan library.',!hadLocal);return false
+  }
+  setStatus(type,'Loading shared cloud authority…');
   try{
     await loadSharedDeleteTombstones(type,false);
     var pack=await cloudRecords(type),rawRemote=pack.records||[],resurrected=rawRemote.filter(function(x){return isSharedDeleteTombstoned(type,x)}),remote=rawRemote.filter(function(x){return !isAnyDeleteTombstoned(type,x)}),local=await dbAll(),byId={},byHash={};
@@ -642,6 +671,7 @@ async function refresh(type){
         r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';
         r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile)
       }
+      r.sharedAuthoritative=true;
       return r
     }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)&&!isAnyDeleteTombstoned(type,r)});
     // Dedicated backend is authoritative. Local-only legacy copies are not
@@ -651,6 +681,8 @@ async function refresh(type){
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
     rebuildIndex(type);renderFiles(type);
     setStatus(type,'Shared cloud loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+' · '+Number(pack.dedicatedCount||0)+' dedicated + '+Number(pack.legacyCount||0)+' historical'+(resurrected.length?' · '+resurrected.length+' deleted stale cop'+(resurrected.length===1?'y blocked':'ies blocked'):'')+(pack.partialErrors&&pack.partialErrors.length?' · partial: '+pack.partialErrors.join(' / '):'')+'.');
+    var promotable=rows.filter(function(r){return r.sharedSource==='historical'&&hasLocalOriginalHint(r)&&!isAnyDeleteTombstoned(type,r)}).slice(0,6);
+    if(promotable.length)setTimeout(async function(){for(var pi=0;pi<promotable.length;pi++){var pb=await getStoredBlob(promotable[pi]);if(pb)await promoteHistoricalOriginal(type,promotable[pi],pb)}},250);
     if(pack.mode==='v4'&&resurrected.length){
       setTimeout(async function(){
         var v=vaultApi(),api=durableApi();
@@ -663,9 +695,9 @@ async function refresh(type){
     }
     return true
   }catch(e){
-    if(!(state[type].rows||[]).length)await localPreview(type);
-    state[type].rows=(state[type].rows||[]).filter(function(r){return !isAnyDeleteTombstoned(type,r)});
-    rebuildIndex(type);renderFiles(type);setStatus(type,(state[type].rows||[]).length?'Cached challans shown · cloud refresh failed. Retry available.':'Cloud library load failed: '+(e.message||e),true);return false
+    state[type].rows=(state[type].rows||[]).filter(function(r){return r&&r.sharedAuthoritative&&!isAnyDeleteTombstoned(type,r)});
+    rebuildIndex(type);renderFiles(type);
+    setStatus(type,'Shared cloud refresh failed — local-only challans are hidden to prevent stale/cross-browser mismatch. Retry. · '+(e.message||e),true);return false
   }
 }
 function addLibraryCss(){
@@ -705,7 +737,7 @@ async function downloadChallan(type,id){
   try{
     setStatus(type,'Preparing original file…');
     var blob=await recordBlob(type,rec,function(p){setStatus(type,'Downloading original from shared vault… '+p+'%')});
-    if(!blob)throw new Error('Original file unavailable; Backend V4 file vault is required for another device');
+    if(!blob)throw new Error('Original file is not in the shared vault. Re-upload this exact challan once to enable cross-browser Open/Download');
     var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();
     setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
   }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
@@ -839,7 +871,7 @@ function cloudRecordFromLocal(r){
 function localRecordFromCloud(r){
   var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||''),type=String(r&&r.type||'');
   var id=hash&&type?uid(type,hash):String(r&&r.id||'');
-  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,contributions:[],indexCount:Number(r&&r.indexCount||0)||0,indexStatus:String(r&&r.indexStatus||''),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedBy:String(r&&r.uploadedBy||''),uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name))}
+  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,contributions:[],indexCount:Number(r&&r.indexCount||0)||0,indexStatus:String(r&&r.indexStatus||''),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedBy:String(r&&r.uploadedBy||''),uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name)),sharedAuthoritative:true,sharedSource:String(r&&r._sharedSource||r&&r.sharedSource||((r&&r.hasOriginalFile)?'dedicated':'historical'))}
 }
 async function sanitizeLocalTypeMixups(){
   var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),fixed=0;
@@ -1131,12 +1163,18 @@ async function searchAsync(type,qs,box){
   var pack=null,v=vaultApi(),freshLibrary=null,freshRows=null;
   await loadSharedDeleteTombstones(type,false);
   try{if(v&&typeof v.searchIndex==='function')pack=await v.searchIndex(type,qs)}catch(e){if(!/DOL_INDEX_V5_UNAVAILABLE/.test(String(e&&e.message||e)))console.warn('Backend contribution search fallback',e)}
+  var sharedSearchError=null;
   try{
     var sharedPack=await cloudRecords(type);
     freshRows=(sharedPack.records||[]).filter(function(r){return !isAnyDeleteTombstoned(type,r)});
     freshLibrary=librarySearchPack(type,qs,freshRows);
     if(pack)pack=filterSearchPackToLiveLibrary(type,qs,pack,freshRows)
-  }catch(e){console.warn('Fresh shared challan library search unavailable',e)}
+  }catch(e){sharedSearchError=e;console.warn('Fresh shared challan library search unavailable',e)}
+  if(!freshRows){
+    box.innerHTML='<div class="cd2-empty cd2-bad">Live shared challan library could not be verified. Local cached DOL is intentionally not shown, so an old/deleted 2026 result cannot appear. Retry cloud refresh.</div>';
+    setStatus(type,'DOL search blocked until live shared library is verified · '+String(sharedSearchError&&sharedSearchError.message||sharedSearchError||'cloud unavailable'),true);
+    return
+  }
   var local=localSearchPack(type,qs);
   if(freshRows){
     // Once the live library is known, local browser cache cannot contribute
