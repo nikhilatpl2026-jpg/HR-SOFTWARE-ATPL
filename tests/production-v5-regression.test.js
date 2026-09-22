@@ -141,7 +141,7 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
     'sameDeleteIdentity',
     'purgeLegacyLocalMatches',
     'librarySearchPack',
-    'await v.list(type)',
+    'await cloudRecords(type)',
     'locking delete across all devices',
     'shared delete lock'
   ].forEach(x=>assert.ok(d.includes(x),x));
@@ -160,7 +160,7 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   const searchStart=d.indexOf('async function searchAsync(type,qs,box)');
   const searchEnd=d.indexOf('function search(type)',searchStart);
   const searchBody=d.slice(searchStart,searchEnd);
-  assert.ok(searchBody.includes('await v.list(type)'));
+  assert.ok(searchBody.includes('await cloudRecords(type)'));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,local,freshRows)'));
   assert.ok(d.includes('Shared legacy challan history'));
