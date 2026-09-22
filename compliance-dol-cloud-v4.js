@@ -2,7 +2,7 @@
    Uses JSONP for small control/read calls and hidden-form POST + postMessage for large upload parts.
    No DOL bytes are stored in EmployeeMaster. */
 (function(root){'use strict';
-var BUILD='2026.09.21-production-v8-final-delete-dol';
+var BUILD='2026.09.22-production-v9-long-read-authority';
 if(!root||root.__ATPL_DOL_CLOUD_V4__===BUILD)return;
 root.__ATPL_DOL_CLOUD_V4__=BUILD;
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',support=null,probePromise=null;
@@ -20,7 +20,7 @@ function unknown(d){return !!(d&&d.ok===false&&/unknown action|not found/i.test(
 async function probe(){
   if(support!==null)return support;
   if(probePromise)return probePromise;
-  probePromise=api({action:'getDOLRecords',type:'esic'},{timeout:6500,cacheMs:1500}).then(function(d){
+  probePromise=api({action:'getDOLRecords',type:'esic'},{timeout:18000,cacheMs:1500,attempts:2}).then(function(d){
     if(unknown(d)){support=false;return false}
     if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'DOL V4 probe failed');
     support=true;return true
@@ -29,7 +29,7 @@ async function probe(){
 }
 async function list(type){
   type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
-  var d=await api({action:'getDOLRecords',type:type},{timeout:8000,cacheMs:0});
+  var d=await api({action:'getDOLRecords',type:type},{timeout:22000,cacheMs:0,attempts:2});
   if(unknown(d)){support=false;throw new Error('DOL_V4_UNAVAILABLE')}
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Challan list failed');
   support=true;return d.records
@@ -109,7 +109,7 @@ async function saveContributionIndex(recordId,type,entries,progress){
 }
 async function searchIndex(type,ids){
   type=String(type||'').toLowerCase();ids=(Array.isArray(ids)?ids:[]).map(String).filter(Boolean).slice(0,60);
-  var d=await api({action:'searchDOLIndex',type:type,ids_json:JSON.stringify(ids)},{timeout:9000,cacheMs:0,attempts:2});
+  var d=await api({action:'searchDOLIndex',type:type,ids_json:JSON.stringify(ids)},{timeout:22000,cacheMs:0,attempts:2});
   if(unknown(d))throw new Error('DOL_INDEX_V5_UNAVAILABLE');
   if(!(d&&d.ok&&d.matches))throw new Error(d&&d.error||'Contribution search failed');
   return d
