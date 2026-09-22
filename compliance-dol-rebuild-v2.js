@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v13-server-authority-open-download';
+var BUILD='2026.09.22-production-v14-auto-legacy-original-recovery';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -23,7 +23,7 @@ var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},p
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
-var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={},historicalPromotionPromises={};
+var legacyPrepPromise=null,v5MigrationPromise={esic:null,pf:null},v5MigrationFailed={},historicalPromotionPromises={},historicalRepairPromises={esic:null,pf:null},historicalRepairDoneAt={esic:0,pf:0};
 var DELETE_TOMBSTONE_KEY='ATPL_DOL_DELETE_TOMBSTONES_V2',DELETE_TOMBSTONE_TTL=7776000000;
 var sharedDeleteTombstones={esic:[],pf:[]},sharedDeleteLoadedAt={esic:0,pf:0},SHARED_DELETE_CACHE_MS=15000;
 
@@ -251,6 +251,42 @@ async function promoteHistoricalOriginal(type,rec,blob){
     return true
   })().catch(function(e){console.warn('Historical original promotion skipped',rec&&rec.name,e);return false}).finally(function(){delete historicalPromotionPromises[key]});
   return historicalPromotionPromises[key]
+}
+async function repairHistoricalOriginals(type,force){
+  type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return{repaired:0,available:0,missing:0};
+  if(!cloudLoginReady())return{repaired:0,available:0,missing:0};
+  if(historicalRepairPromises[type])return historicalRepairPromises[type];
+  if(!force&&historicalRepairDoneAt[type]&&Date.now()-historicalRepairDoneAt[type]<60000)return{repaired:0,available:0,missing:0,skipped:true};
+  historicalRepairPromises[type]=(async function(){
+    await prepareLegacyMigration();
+    var shared=await cloudRecords(type),remote=(shared.records||[]).filter(function(r){return !isAnyDeleteTombstoned(type,r)});
+    var local=await dbAll(),byHash={},byId={};
+    local.filter(function(r){return r&&r.type===type&&!isAnyDeleteTombstoned(type,r)}).forEach(function(r){
+      if(r.hash)byHash[String(r.hash).toLowerCase()]=r;
+      if(r.id)byId[String(r.id)]=r
+    });
+    var historical=remote.map(localRecordFromCloud).filter(function(r){return r.sharedSource==='historical'&&!r.hasOriginalFile&&!isAnyDeleteTombstoned(type,r)});
+    var repaired=0,available=0,missing=0;
+    for(var i=0;i<historical.length;i++){
+      var h=historical[i],candidate=(h.hash&&byHash[String(h.hash).toLowerCase()])||byId[String(h.id)]||null;
+      if(!candidate||!hasLocalOriginalHint(candidate)){missing++;continue}
+      var blob=await getStoredBlob(candidate);if(!blob){missing++;continue}
+      available++;
+      if(activeDolType()===type)setStatus(type,'Securing old original files in shared vault… '+(available)+' found · '+repaired+' repaired');
+      var merged=Object.assign({},h,candidate,{sharedAuthoritative:true,sharedSource:'historical'});
+      if(await promoteHistoricalOriginal(type,merged,blob))repaired++;
+      await tick()
+    }
+    historicalRepairDoneAt[type]=Date.now();
+    if(repaired){
+      try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
+      cloudLastSync[type]=0;
+      if(activeDolType()===type)await refresh(type)
+    }
+    console.info('Historical original recovery',type,{repaired:repaired,available:available,missing:missing});
+    return{repaired:repaired,available:available,missing:missing}
+  })().catch(function(e){console.warn('Historical original recovery failed',type,e);return{repaired:0,available:0,missing:0,error:String(e&&e.message||e)}}).finally(function(){historicalRepairPromises[type]=null});
+  return historicalRepairPromises[type]
 }
 async function recordBlob(type,rec,progress){
   var blob=await getStoredBlob(rec);
@@ -681,9 +717,9 @@ async function refresh(type){
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
     rebuildIndex(type);renderFiles(type);
     setStatus(type,'Shared cloud loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+' · '+Number(pack.dedicatedCount||0)+' dedicated + '+Number(pack.legacyCount||0)+' historical'+(resurrected.length?' · '+resurrected.length+' deleted stale cop'+(resurrected.length===1?'y blocked':'ies blocked'):'')+(pack.partialErrors&&pack.partialErrors.length?' · partial: '+pack.partialErrors.join(' / '):'')+'.');
-    var promotable=rows.filter(function(r){return r.sharedSource==='historical'&&hasLocalOriginalHint(r)&&!isAnyDeleteTombstoned(type,r)}).slice(0,6);
-    if(promotable.length)setTimeout(async function(){for(var pi=0;pi<promotable.length;pi++){var pb=await getStoredBlob(promotable[pi]);if(pb)await promoteHistoricalOriginal(type,promotable[pi],pb)}},250);
-    if(pack.mode==='v4'&&resurrected.length){
+    var promotable=rows.filter(function(r){return r.sharedSource==='historical'&&!r.hasOriginalFile&&!isAnyDeleteTombstoned(type,r)});
+    if(promotable.length)setTimeout(function(){repairHistoricalOriginals(type,false)},350);
+    if(String(pack.mode||'').indexOf('v4')===0&&resurrected.length){
       setTimeout(async function(){
         var v=vaultApi(),api=durableApi();
         for(var z=0;z<resurrected.length;z++){
@@ -1310,8 +1346,16 @@ async function boot(){
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
   setStatus('esic','Ready · open ESIC → DOL to load shared library.');
   setStatus('pf','Ready · open PF → DOL to load shared library.');
-  setTimeout(function(){prepareLegacyMigration().then(function(){var t=activeDolType();if(t){cloudLastSync[t]=0;return syncCloudType(t,true)}}).catch(function(e){console.warn('Legacy migration preparation failed',e)})},350);
-  root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700)});
+  setTimeout(function(){prepareLegacyMigration().then(async function(){
+    var t=activeDolType();if(t){cloudLastSync[t]=0;await syncCloudType(t,true)}
+    setTimeout(function(){repairHistoricalOriginals('pf',true)},1200);
+    setTimeout(function(){repairHistoricalOriginals('esic',true)},2200);
+  }).catch(function(e){console.warn('Legacy migration preparation failed',e)})},350);
+  root.document.addEventListener('atpl-authenticated',function(){
+    setTimeout(function(){repairHistoricalOriginals('pf',true)},1800);
+    setTimeout(function(){repairHistoricalOriginals('esic',true)},2800);
+  });
+  root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700);setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)});
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
