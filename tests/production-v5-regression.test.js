@@ -109,10 +109,10 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
 
 test('DOL shared cloud union preserves history while browser-local rows stay non-authoritative',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production13-server-authority-open-download'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production14-auto-legacy-original-recovery'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v13-server-authority-open-download",
+    "production-v14-auto-legacy-original-recovery",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -129,9 +129,9 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production13-server-authority-open-download'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production14-auto-legacy-original-recovery'));
   [
-    'production-v13-server-authority-open-download',
+    'production-v14-auto-legacy-original-recovery',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
@@ -165,6 +165,10 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(searchBody.includes('Local cached DOL is intentionally not shown'));
   assert.ok(d.includes('local-only challans are hidden to prevent stale/cross-browser mismatch'));
   assert.ok(d.includes('promoteHistoricalOriginal'));
+  assert.ok(d.includes('repairHistoricalOriginals'));
+  assert.ok(d.includes("repairHistoricalOriginals('pf',true)"));
+  assert.ok(d.includes("repairHistoricalOriginals('esic',true)"));
+  assert.ok(d.includes('Securing old original files in shared vault'));
   assert.ok(d.includes("rec.sharedSource==='dedicated'"));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
   assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,local,freshRows)'));
