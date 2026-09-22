@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.22-system-records-authority16-delete-bridge';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.22-system-records-authority17-kind-scoped-dol';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -67,6 +67,28 @@
 async function fetchRemoteKinds(kinds){
   kinds=Array.from(new Set((kinds||[]).map(text).filter(Boolean)));
   if(!token()||!kinds.length)return[];
+  // Modern backend supports kind-scoped reads; do not download unrelated
+  // salary/HR chunks during PF/ESIC refresh.
+  if(systemRoute!==false){
+    try{
+      var out=[];
+      for(var i=0;i<kinds.length;i++){
+        var d=await api({action:'getSystemRecords',token:token(),kind:kinds[i]},18000);
+        if(d&&d.ok&&Array.isArray(d.records)){systemRoute=true;out=out.concat(d.records);continue}
+        if(d&&d.ok===false&&/unknown action|not found/i.test(String(d.error||''))){systemRoute=false;break}
+        if(d&&d.ok===false)throw new Error(d.error||'System records unavailable')
+      }
+      if(systemRoute!==false){
+        var seen={};return out.filter(function(r){
+          var id=text(r&&r.emp_id)||[text(r&&r.object_kind),text(r&&r.object_key),text(r&&r._atpl_kind),text(r&&r.index)].join('|');
+          if(seen[id])return false;seen[id]=1;return true
+        })
+      }
+    }catch(e){
+      if(/unknown action|not found/i.test(String(e&&e.message||e)))systemRoute=false;
+      else throw e
+    }
+  }
   var all=await fetchRemote(),allow={};kinds.forEach(function(k){allow[k]=1});
   return all.filter(function(r){return r&&allow[text(r.object_kind)]})
 }
@@ -430,6 +452,6 @@ async function fetchRemoteKinds(kinds){
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');function idleSync(delay){setTimeout(function(){if(!token()||!session())return;if(typeof root.requestIdleCallback==='function')root.requestIdleCallback(function(){run(false)},{timeout:3500});else run(false)},delay)}if(token()&&session())idleSync(12000);root.document.addEventListener('atpl-authenticated',function(){idleSync(9000)});root.addEventListener('online',function(){if(token()&&session())idleSync(1800)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&token()&&session()&&Date.now()-lastRun>120000)idleSync(900)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,saveComplianceDolDeleteTombstoneBatch:saveComplianceDolDeleteTombstoneBatch,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final16-delete-bridge'}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,saveComplianceDolDeleteTombstoneBatch:saveComplianceDolDeleteTombstoneBatch,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final17-kind-scoped-dol'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
