@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v10-live-library-authority';
+var BUILD='2026.09.22-production-v11-backend-only-authority';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -124,19 +124,21 @@ function durableApi(){return root.ATPLDurableEverythingV1||null}
 function vaultApi(){return root.ATPLDOLCloudV4||null}
 async function cloudRecords(type){
   var v=vaultApi();
-  if(v&&typeof v.list==='function'&&(!v.supportState||v.supportState()!==false)){
+  if(v&&typeof v.list==='function'){
     try{
-      var rows=await bounded(v.list(type),8500,'Dedicated challan backend');
+      var rows=await bounded(v.list(type),24000,'Dedicated challan backend');
       cloudMode[type]='v4';return{mode:'v4',records:Array.isArray(rows)?rows:[]}
     }catch(e){
-      if(v.supportState&&v.supportState()===true)throw e;
-      if(!/DOL_V4_UNAVAILABLE|unknown action/i.test(String(e&&e.message||e)))console.warn('DOL V4 unavailable; using compatibility index',e)
+      var msg=String(e&&e.message||e||'');
+      if(!/DOL_V4_UNAVAILABLE|unknown action/i.test(msg)){
+        cloudMode[type]='v4-error';
+        throw e
+      }
     }
   }
-  var d=durableApi();
-  if(!d||typeof d.getComplianceDolRecords!=='function')throw new Error('Challan cloud backend unavailable');
-  var legacy=await bounded(d.getComplianceDolRecords(type),8500,'Challan compatibility sync');
-  cloudMode[type]='legacy';return{mode:'legacy',records:Array.isArray(legacy)?legacy:[]}
+  // Backend V5+ is authoritative. Never resurrect old EmployeeMaster/local
+  // challan copies when the dedicated PF/ESIC store is unavailable.
+  throw new Error('Dedicated challan backend unavailable; legacy fallback blocked')
 }
 
 function isMissingCloudRecordError(e){
@@ -625,19 +627,13 @@ async function refresh(type){
       }
       return r
     }).filter(function(r){return r.type===type&&!looksLikePfRecord(r)&&!isAnyDeleteTombstoned(type,r)});
+    // Dedicated backend is authoritative. Local-only legacy copies are not
+    // re-added or auto-migrated because that can resurrect deleted challans.
     var pending=[];
-    if(pack.mode==='v4'){
-      var maps=remoteIdentityMaps(remote);
-      pending=local.filter(function(r){
-        return r&&r.type===type&&!r.archived&&!isAnyDeleteTombstoned(type,r)&&!looksLikePfRecord(r)&&hasLocalOriginalHint(r)&&!localAlreadyRemote(r,maps)
-      }).map(function(r){return Object.assign({},r,{cloudSynced:false,cloudOnly:false,legacyPending:true})});
-      rows=rows.concat(pending)
-    }
     var seen={};rows=rows.filter(function(r){var k=r.hash?'h:'+String(r.hash).toLowerCase():'id:'+String(r.cloudRecordId||r.id);if(seen[k])return false;seen[k]=1;return true});
     state[type].rows=rows.sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
     rebuildIndex(type);renderFiles(type);
-    setStatus(type,(pack.mode==='v4'?'Shared backend + original-file vault loaded ✓':'Shared compatibility index loaded ✓')+' · '+rows.length+' challan'+(rows.length===1?'':'s')+(pending.length?' · '+pending.length+' old local challan'+(pending.length===1?'':'s')+' queued for V5 migration':'')+(resurrected.length?' · '+resurrected.length+' deleted stale cop'+(resurrected.length===1?'y blocked':'ies blocked'):'')+'.');
-    if(pack.mode==='v4'&&pending.length)setTimeout(function(){scheduleLegacyV5Migration(type,remote,local)},80);
+    setStatus(type,'Shared backend loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+(resurrected.length?' · '+resurrected.length+' deleted stale cop'+(resurrected.length===1?'y blocked':'ies blocked'):'')+'.');
     if(pack.mode==='v4'&&resurrected.length){
       setTimeout(async function(){
         var v=vaultApi();if(!v||typeof v.deleteRecord!=='function')return;
@@ -1122,6 +1118,11 @@ async function searchAsync(type,qs,box){
     }
   }catch(e){console.warn('Fresh challan library search fallback unavailable',e)}
   var local=localSearchPack(type,qs);
+  if(freshRows){
+    // Once the live library is known, local browser cache cannot contribute
+    // records that are absent from the shared backend.
+    local=filterSearchPackToLiveLibrary(type,qs,local,freshRows)
+  }
   if(freshLibrary)pack=pack?mergeSearchPacks(type,qs,pack,freshLibrary):freshLibrary;
   pack=pack?mergeSearchPacks(type,qs,pack,local):local;
   var coverage=Array.isArray(pack.coverage)?pack.coverage:state[type].periods||[],unindexed=Array.isArray(pack.unindexed)?pack.unindexed:[],h='<table class="cd2-table"><thead><tr><th>ID / EMPLOYEE</th><th>LAST CONTRIBUTION / DOL</th><th>SOURCE & DETAILS</th><th>CONTRIBUTION TIMELINE</th></tr></thead><tbody>';
