@@ -1,12 +1,6 @@
 name: Deploy Supabase DOL Backend
 
 on:
-  push:
-    branches: [ supabase-dol-single-authority ]
-    paths:
-      - supabase/functions/dol-api/**
-      - supabase/config.toml
-      - .github/workflows/deploy-supabase-dol-backend.yml
   workflow_dispatch:
 
 permissions:
