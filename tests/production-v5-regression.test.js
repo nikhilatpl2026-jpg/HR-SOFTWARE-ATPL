@@ -73,7 +73,7 @@ test('production V5 enforces permissions and strict PF/ESIC backend boundaries',
 
 test('calendar and challan production UI contracts are mounted',()=>{
   const h=read('index.html'),c=read('compliance-calendar-v1.js'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen2'));
+  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen3'));
   ['vn-compliancecalendar','page-compliancecalendar','TRAINING','LEGAL DOCUMENTS','listComplianceCalendar','upsertComplianceCalendar','deleteComplianceCalendar','ccFull','requestFullscreen','Next Retraining / Renewal Date','Expiry Date','ccStats'].forEach(x=>assert.ok(c.includes(x),x));
   ['monthfilter','downloadSelected','data-cd2-select','JSZip','Missing'].forEach(x=>assert.ok(d.includes(x),x));
 });
