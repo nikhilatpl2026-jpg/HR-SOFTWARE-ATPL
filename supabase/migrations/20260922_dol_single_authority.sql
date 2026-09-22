@@ -115,3 +115,31 @@ select
   has_table_privilege('service_role', 'public.dol_challans', 'DELETE') as challans_delete,
   has_table_privilege('service_role', 'public.dol_sync_events', 'SELECT') as events_select,
   has_table_privilege('service_role', 'public.dol_sync_events', 'INSERT') as events_insert;
+
+
+-- Stable one-time legacy index authority.
+-- Legacy metadata is indexed into Supabase once; original bytes are materialized
+-- into Storage on first Open/Download or repaired by a matching user upload.
+alter table public.dol_challans
+  alter column file_path drop not null;
+
+alter table public.dol_challans
+  add column if not exists legacy_source_id text;
+
+create unique index if not exists dol_challans_file_hash_uq
+  on public.dol_challans(file_hash);
+
+create index if not exists dol_challans_legacy_source_idx
+  on public.dol_challans(legacy_source_id)
+  where legacy_source_id is not null;
+
+create table if not exists public.dol_migration_state (
+  challan_type text primary key check (challan_type in ('pf','esic')),
+  indexed_at timestamptz not null default now(),
+  legacy_count integer not null default 0,
+  imported_count integer not null default 0
+);
+
+alter table public.dol_migration_state enable row level security;
+revoke all on table public.dol_migration_state from anon, authenticated;
+grant select, insert, update, delete on table public.dol_migration_state to service_role;
