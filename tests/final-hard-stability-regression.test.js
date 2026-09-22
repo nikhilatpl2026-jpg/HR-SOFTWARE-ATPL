@@ -6,7 +6,7 @@ const ROOT=path.resolve(__dirname,'..');
 const read=p=>fs.readFileSync(path.join(ROOT,p),'utf8');
 
 test('critical JavaScript files parse',()=>{
-  ['erp-cloud-api-broker-v1.js','erp-mobile-shared-hardfix-v1.js','erp-cloud-sync-v1.js','erp-durable-everything-v1.js','compliance-dol-cloud-v4.js','compliance-dol-rebuild-v2.js'].forEach(p=>{
+  ['erp-cloud-api-broker-v1.js','erp-mobile-shared-hardfix-v1.js','erp-cloud-sync-v1.js','erp-durable-everything-v1.js','compliance-dol-cloud-v4.js','compliance-dol-rebuild-v2.js','compliance-calendar-v1.js'].forEach(p=>{
     assert.doesNotThrow(()=>new Function(read(p)),p+' syntax');
   });
   assert.doesNotThrow(()=>new Function(read('backend/Backend-V4-DOL-Cloud-Master-Patch.gs')),'backend patch syntax');
@@ -112,4 +112,22 @@ test('complete Backend V4 stays aligned with latest DOL resilience contract',()=
   assert.ok(b.includes("var DOL_DELETED_SHEET = 'DOLDeleted'"),'deleted hashes need a shared tombstone ledger');
   assert.ok(b.includes("error:'DOL_RECORD_DELETED'"),'stale-device migration must not resurrect a deleted hash');
   assert.ok(b.includes('deleteDolContributionsManyUnlocked_'),'hard delete must remove every matching contribution row');
+});
+
+
+test('DOL search drops orphan contribution rows after a challan is deleted',()=>{
+  const s=read('compliance-dol-rebuild-v2.js'),b=read('backend/Backend-V4-Complete-Code.gs');
+  assert.ok(s.includes('function filterSearchPackToLiveLibrary(type,qs,pack,rows)'));
+  assert.ok(s.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
+  assert.ok(s.includes('backend-index filtered by live challan library'));
+  assert.ok(b.includes("BACKEND_VERSION = '5.2-dol-orphan-index-cleanup'"));
+  assert.ok(b.includes('function dolContributionDeleteName_(v)'));
+  assert.ok(b.includes('orphan_contributions_removed'));
+  assert.ok(b.includes('matches.concat([q])'));
+});
+
+test('Training and Legal compliance calendar supports full-screen retraining and expiry workflow',()=>{
+  const c=read('compliance-calendar-v1.js'),h=read('index.html');
+  ['ccFull','requestFullscreen','TRAINING','LEGAL DOCUMENTS','Next Retraining / Renewal Date','Expiry Date','Renewal / Follow-up Date','ccStats'].forEach(x=>assert.ok(c.includes(x),x));
+  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen2'));
 });
