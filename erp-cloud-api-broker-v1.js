@@ -4,7 +4,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-production-v5';
+var BUILD='2026.09.22-production-v6-dol-long-reads';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
@@ -42,10 +42,13 @@ function parseText(t){
   throw new Error('INVALID_RESPONSE')
 }
 function timeoutFor(action,asked){
-  if(asked&&asked>0)return Math.max(3000,Math.min(12000,asked));
-  if(action==='login')return 9000;
-  if(READ_ACTIONS[action])return 8000;
-  return 12000
+  if(asked&&asked>0)return Math.max(3000,Math.min(30000,asked));
+  if(action==='login')return 12000;
+  if(action==='getSystemRecords')return 24000;
+  if(action==='getDOLRecords'||action==='searchDOLIndex'||action==='getDOLFileInfo'||action==='getDOLFileChunk')return 22000;
+  if(action==='listComplianceCalendar')return 15000;
+  if(READ_ACTIONS[action])return 12000;
+  return 22000
 }
 function attemptsFor(action,asked){
   if(asked!=null)return Math.max(1,Math.min(2,Number(asked)||1));
