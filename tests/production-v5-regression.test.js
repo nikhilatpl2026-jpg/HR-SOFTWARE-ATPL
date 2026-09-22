@@ -73,8 +73,8 @@ test('production V5 enforces permissions and strict PF/ESIC backend boundaries',
 
 test('calendar and challan production UI contracts are mounted',()=>{
   const h=read('index.html'),c=read('compliance-calendar-v1.js'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-calendar-v1.js'));
-  ['vn-compliancecalendar','page-compliancecalendar','TRAINING','LEGAL DOCUMENTS','listComplianceCalendar','upsertComplianceCalendar','deleteComplianceCalendar'].forEach(x=>assert.ok(c.includes(x),x));
+  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen2'));
+  ['vn-compliancecalendar','page-compliancecalendar','TRAINING','LEGAL DOCUMENTS','listComplianceCalendar','upsertComplianceCalendar','deleteComplianceCalendar','ccFull','requestFullscreen','Next Retraining / Renewal Date','Expiry Date','ccStats'].forEach(x=>assert.ok(c.includes(x),x));
   ['monthfilter','downloadSelected','data-cd2-select','JSZip','Missing'].forEach(x=>assert.ok(d.includes(x),x));
 });
 
@@ -107,12 +107,12 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL legacy bridge remains active in V9 and treats already-missing delete as success',()=>{
+test('DOL legacy bridge remains active in V10 and treats already-missing delete as success',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production9'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production10'));
   assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
   [
-    "production-v9-shared-delete",
+    "production-v10-live-library-authority",
     "prepareLegacyMigration",
     "scheduleLegacyV5Migration",
     "isMissingCloudRecordError",
@@ -129,9 +129,9 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   assert.ok(h.includes('erp-durable-everything-v1.js?v=20260921-system-records-authority14-dol-delete'));
   assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260921-production8'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production9'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production10'));
   [
-    'production-v9-shared-delete',
+    'production-v10-live-library-authority',
     'ATPL_DOL_DELETE_TOMBSTONES_V2',
     'loadSharedDeleteTombstones',
     'saveSharedDeleteTombstone',
@@ -161,5 +161,7 @@ test('DOL delete is shared across devices and search repairs from fresh cloud li
   const searchEnd=d.indexOf('function search(type)',searchStart);
   const searchBody=d.slice(searchStart,searchEnd);
   assert.ok(searchBody.includes('await v.list(type)'));
+  assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
+  assert.ok(d.includes('backend-index filtered by live challan library'));
   assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(searchBody),false);
 });
