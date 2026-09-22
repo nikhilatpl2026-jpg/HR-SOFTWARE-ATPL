@@ -16,8 +16,8 @@
   function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
   function idKey(v){var s=text(v).toLowerCase();if(/^\d+$/.test(s)){var z=s.replace(/^0+(?=\d)/,'');return z||'0'}return s}
   function normalizePending(o){var x={};Object.keys(o||{}).forEach(function(k){x[idKey(k)]=Number(o[k]&&o[k].ts||o[k])||Date.now()});return x}
-  function tok(){try{var a=root.sessionStorage.getItem(TOKEN)||'',b=root.sessionStorage.getItem(ALT_TOKEN)||'',t=a||b;if(t){if(!a)root.sessionStorage.setItem(TOKEN,t);if(!b)root.sessionStorage.setItem(ALT_TOKEN,t)}return t}catch(_){return''}}
-  function session(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);if(!s||!s.id)return null;var us=J(root.localStorage.getItem(USERS)||'[]',[]),u=(Array.isArray(us)?us:[]).find(function(x){return idKey(x&&x.id)===idKey(s.id)});return u||{id:s.id,name:s.id,admin:false}}catch(_){return null}}
+  function tok(){try{var a=root.sessionStorage.getItem(TOKEN)||root.localStorage.getItem(TOKEN)||'',b=root.sessionStorage.getItem(ALT_TOKEN)||root.localStorage.getItem(ALT_TOKEN)||'',t=a||b;if(t){if(!a)root.sessionStorage.setItem(TOKEN,t);if(!b)root.sessionStorage.setItem(ALT_TOKEN,t)}return t}catch(_){return''}}
+  function session(){try{var s=J(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);if(!s||!s.id)return null;var us=J(root.localStorage.getItem(USERS)||'[]',[]),u=(Array.isArray(us)?us:[]).find(function(x){return idKey(x&&x.id)===idKey(s.id)});return u||{id:s.id,name:s.id,admin:false}}catch(_){return null}}
   function codeOf(r){return text(r&&(r.emp_id||r.empCode||r.employee_code||r.code))}
   function keyOf(r){return idKey(codeOf(r))}
   function isSystemRecord(r){var id=codeOf(r);return id.indexOf(SYS)===0||!!(r&&r._atpl_system)}

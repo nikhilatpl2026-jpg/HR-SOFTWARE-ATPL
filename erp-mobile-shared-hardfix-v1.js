@@ -15,8 +15,8 @@ var busy=false,lastMasterPull=0,backgroundRun=null;
 function q(id){return root.document.getElementById(id)}
 function text(v){return v==null?'':String(v).trim()}
 function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
-function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
-function sess(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
+function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'')}catch(_){return''}}
+function sess(){try{var s=J(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
 function current(){var s=sess();if(!s)return null;var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase();return (Array.isArray(a)?a:[]).find(function(u){return text(u&&u.id).toLowerCase()===id})||(s.access||s.admin===true?s:null)}
 function api(p,timeout){/* broker-routed-login-authority */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(p,{timeout:timeout,source:'login-authority'});return new Promise(function(ok,no){
   var cb='__atpl_mobile_'+Date.now()+'_'+Math.random().toString(36).slice(2),sc=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();no(new Error('Cloud connection timeout'))},timeout||18000);

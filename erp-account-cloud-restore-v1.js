@@ -14,8 +14,8 @@ var running=null,lastRun=0,timer=0;
 
 function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function text(v){return v==null?'':String(v).trim()}
-function token(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
-function session(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
+function token(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'')}catch(_){return''}}
+function session(){try{var s=J(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
 function jsonp(p,timeout){/* broker-routed-account */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(p,{timeout:timeout,source:'account-restore'});return new Promise(function(ok,no){
   var cb='__atpl_acr_'+Date.now()+'_'+Math.random().toString(36).slice(2),sc=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();no(new Error('Account cloud timeout'))},timeout||12000);
   function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(sc.parentNode)sc.parentNode.removeChild(sc)}
@@ -73,6 +73,7 @@ function syncNow(force){
     if(allowMaster&&root.ATPLMobileSharedHardFix&&typeof root.ATPLMobileSharedHardFix.pullMaster==='function')jobs.push(root.ATPLMobileSharedHardFix.pullMaster());
     else if(allowMaster&&root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
     if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
+    if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow(false));
     var results=await Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)}));
     results.forEach(function(x){if(x.status==='rejected')console.warn('Account critical sync job failed',x.reason)});
     applyAccess();badge('☁ Shared Data Ready');
