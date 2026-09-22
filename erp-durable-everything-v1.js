@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.21-system-records-authority14-dol-delete';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.22-system-records-authority15-dol-read-timeout';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -51,7 +51,7 @@
   var d;
   if(systemRoute!==false){
     try{
-      d=await api({action:'getSystemRecords',token:token()},8000);
+      d=await api({action:'getSystemRecords',token:token()},24000);
       if(d&&d.ok&&Array.isArray(d.records)){systemRoute=true;return d.records}
       if(d&&d.ok===false&&/unknown action|not found/i.test(String(d.error||'')))systemRoute=false;
       else if(d&&d.ok===false)throw new Error(d.error||'System records unavailable')
@@ -60,7 +60,7 @@
   // Compatibility only for an older backend. Modern backends intentionally
   // separate Employee Master from system records, so this path is not used
   // once getSystemRecords has been confirmed.
-  d=await api({action:'getEmployeeMaster',token:token()},8000);
+  d=await api({action:'getEmployeeMaster',token:token()},24000);
   if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Durable records unavailable');
   return d.records.filter(function(r){return r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)})
 }
@@ -410,6 +410,6 @@ async function fetchRemoteKinds(kinds){
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');function idleSync(delay){setTimeout(function(){if(!token()||!session())return;if(typeof root.requestIdleCallback==='function')root.requestIdleCallback(function(){run(false)},{timeout:3500});else run(false)},delay)}if(token()&&session())idleSync(12000);root.document.addEventListener('atpl-authenticated',function(){idleSync(9000)});root.addEventListener('online',function(){if(token()&&session())idleSync(1800)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&token()&&session()&&Date.now()-lastRun>120000)idleSync(900)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final14-shared-delete'}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final15-dol-read-timeout'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
