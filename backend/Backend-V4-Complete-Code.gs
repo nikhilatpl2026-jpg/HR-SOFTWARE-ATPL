@@ -8,7 +8,7 @@ var SHEET_NAME = 'Users';
 var MASTER_SHEET = 'EmployeeMaster';
 var ACTIVITY_SHEET = 'Activity';
 var TOKEN_TTL = 21600;
-var BACKEND_VERSION = '5.1-dol-delete-search-repair';
+var BACKEND_VERSION = '5.2-dol-orphan-index-cleanup';
 var DOL_SHEET = 'DOLRecords';
 var DOL_PARTS_SHEET = 'DOLUploadParts';
 var DOL_CONTRIBUTIONS_SHEET = 'DOLContributions';
@@ -525,14 +525,18 @@ function deleteDOLRecord_(p) {
     if(q.type&&q.type!=='pf'&&q.type!=='esic')return {ok:false,error:'Invalid DOL type'};
     if(q.type&&!hasFeature_(u,dolFeature_(q.type)))return {ok:false,error:'Access denied'};
     var matches=rows.filter(function(r){return dolRecordMatchesDelete_(r,q)});
-    if(!matches.length){if(q.type&&(q.file_hash||q.name))upsertDolDeletedUnlocked_(q.type,q.file_hash,q.name,q.period,u.id,id?[id]:[]);return {ok:true,deleted:id,deleted_count:0,already_missing:true};}
+    if(!matches.length){
+      if(q.type&&(q.file_hash||q.name))upsertDolDeletedUnlocked_(q.type,q.file_hash,q.name,q.period,u.id,id?[id]:[]);
+      var orphanRemoved=deleteDolContributionsManyUnlocked_(id?[id]:[],[q]);
+      return {ok:true,deleted:id,deleted_count:0,already_missing:true,orphan_contributions_removed:orphanRemoved};
+    }
     for(var m=0;m<matches.length;m++)if(!hasFeature_(u,dolFeature_(matches[m].type)))return {ok:false,error:'Access denied'};
     upsertDolDeletedUnlocked_(q.type||matches[0].type,q.file_hash||matches[0].file_hash,q.name||matches[0].name,q.period||matches[0].period,u.id,matches.map(function(r){return r.id}));
     var warnings=[];
     matches.forEach(function(r){if(!r.drive_file_id)return;try{DriveApp.getFileById(r.drive_file_id).setTrashed(true)}catch(e){warnings.push('Original file already missing: '+r.id)}});
-    deleteDolContributionsManyUnlocked_(matches.map(function(r){return r.id}));
+    var removedContributions=deleteDolContributionsManyUnlocked_(matches.map(function(r){return r.id}),matches.concat([q]));
     var sh=ensureDolSheets_().records;matches.map(function(r){return r.row}).sort(function(a,b){return b-a}).forEach(function(row){sh.deleteRow(row)});
-    return {ok:true,deleted:matches[0].id,deleted_ids:matches.map(function(r){return r.id}),deleted_count:matches.length,deleted_by:u.id,warnings:warnings};
+    return {ok:true,deleted:matches[0].id,deleted_ids:matches.map(function(r){return r.id}),deleted_count:matches.length,deleted_contributions:removedContributions,deleted_by:u.id,warnings:warnings};
   }finally{lock.releaseLock();}
 }
 
@@ -565,7 +569,22 @@ function getDOLFileChunk_(p) {
 }
 
 function dolContributionRows_(){var sh=ensureDolSheets_().contributions,n=sh.getLastRow();if(n<2)return[];return sh.getRange(2,1,n-1,8).getValues().map(function(r,i){return {row:i+2,record_id:String(r[0]||''),type:String(r[1]||''),member_id:String(r[2]||''),employee_name:String(r[3]||''),details_json:String(r[4]||'{}'),period:String(r[5]||''),source_name:String(r[6]||''),updated_at:String(r[7]||'')}});}
-function deleteDolContributionsManyUnlocked_(recordIds){var ids={};(recordIds||[]).forEach(function(id){ids[String(id)]=1});var sh=ensureDolSheets_().contributions,n=sh.getLastRow();if(n<2)return;var rows=sh.getRange(2,1,n-1,8).getValues(),keep=rows.filter(function(r){return !ids[String(r[0])]});sh.getRange(2,1,n-1,8).clearContent();if(keep.length)sh.getRange(2,1,keep.length,8).setValues(keep);}
+function dolContributionDeleteName_(v){return String(v||'').toLowerCase().replace(/^\[(?:archived duplicate)\]\s*/,'').replace(/^(?:pf|esic)\s*·\s*/,'').replace(/\(\s*\d+\s*\)/g,'').replace(/[^a-z0-9]+/g,'');}
+function deleteDolContributionsManyUnlocked_(recordIds,targets){
+  var ids={};(recordIds||[]).forEach(function(id){id=String(id||'');if(id)ids[id]=1});
+  var targetKeys={};(targets||[]).forEach(function(t){
+    t=t||{};var type=String(t.type||'').toLowerCase(),name=dolContributionDeleteName_(t.name),period=String(t.period||'');
+    if(type&&name)targetKeys[type+'|'+name+'|'+period]=1
+  });
+  var sh=ensureDolSheets_().contributions,n=sh.getLastRow();if(n<2)return 0;
+  var rows=sh.getRange(2,1,n-1,8).getValues(),removed=0,keep=rows.filter(function(r){
+    if(ids[String(r[0]||'')]){removed++;return false}
+    var key=String(r[1]||'').toLowerCase()+'|'+dolContributionDeleteName_(r[6])+'|'+String(r[5]||'');
+    if(targetKeys[key]){removed++;return false}
+    return true
+  });
+  sh.getRange(2,1,n-1,8).clearContent();if(keep.length)sh.getRange(2,1,keep.length,8).setValues(keep);return removed
+}
 function deleteDolContributionsUnlocked_(recordId){deleteDolContributionsManyUnlocked_([recordId]);}
 function setDolIndexStatus_(recordId,count,status){var r=findDolById_(recordId);if(!r)return;ensureDolSheets_().records.getRange(r.row,16,1,2).setValues([[Number(count||0),String(status||'pending')]]);}
 function beginDOLIndex_(p){var u=requireUser_(p.token),r=findDolById_(p.id);if(!r)return {ok:false,error:'DOL record not found'};if(!hasFeature_(u,dolFeature_(r.type)))return {ok:false,error:'Access denied'};var lock=LockService.getScriptLock();lock.waitLock(15000);try{deleteDolContributionsUnlocked_(r.id);setDolIndexStatus_(r.id,0,'processing');return {ok:true,id:r.id};}finally{lock.releaseLock();}}
