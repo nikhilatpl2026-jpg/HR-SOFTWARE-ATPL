@@ -109,3 +109,24 @@ test('Supabase authority does not schedule normal-runtime legacy historical repa
   assert.ok(r.includes("if(promotable.length&&!(vaultApi()&&vaultApi().authority==='supabase'))"));
   assert.equal(r.includes('setInterval('),false);
 });
+
+
+test('Deployable dol-api is service-role only and migration locks browser access',()=>{
+  const e=read('supabase/functions/dol-api/index.ts');
+  const m=read('supabase/migrations/20260922_dol_single_authority.sql');
+  const cfg=read('supabase/config.toml');
+  assert.ok(e.includes('SUPABASE_SERVICE_ROLE_KEY'));
+  assert.ok(e.includes('createClient(SUPABASE_URL, SERVICE_ROLE_KEY'));
+  assert.equal(e.includes('SUPABASE_ANON_KEY'),false);
+  assert.ok(e.includes('x-atpl-token'));
+  assert.ok(e.includes('getDOLRecords'));
+  assert.ok(e.includes('action === "health"'));
+  assert.ok(e.includes('dol_sync_events'));
+  assert.ok(e.includes('createSignedUrl(row.file_path, 300)'));
+  assert.ok(e.includes('await supabase.storage.from(BUCKET).remove([row.file_path])'));
+  assert.ok(m.includes('revoke all on table public.dol_challans from anon, authenticated'));
+  assert.ok(m.includes("grant select, insert, update, delete on table public.dol_challans to service_role"));
+  assert.ok(m.includes("alter publication supabase_realtime add table public.dol_sync_events"));
+  assert.ok(cfg.includes('[functions.dol-api]'));
+  assert.ok(cfg.includes('verify_jwt = false'));
+});
