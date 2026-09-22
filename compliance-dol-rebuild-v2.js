@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v17-supabase-authority';
+var BUILD='2026.09.22-production-v18-supabase-authority';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -342,7 +342,20 @@ async function repairHistoricalOriginals(type,force){
   return historicalRepairPromises[type]
 }
 async function recordBlob(type,rec,progress){
-  var blob=await getStoredBlob(rec),recovered=null;
+  var v=vaultApi(),blob=null,recovered=null;
+  if(v&&v.authority==='supabase'&&typeof v.fileBlob==='function'){
+    try{blob=await bounded(v.fileBlob(rec,progress),45000,'Supabase original challan download')}catch(e){
+      if(!/not found|unavailable|missing/i.test(String(e&&e.message||e||'')))throw e;
+      return null
+    }
+    if(!blob)return null;
+    var authoritativeLocal=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false,sharedAuthoritative:true,sharedSource:'dedicated'});
+    var authoritativeVaulted=false;try{authoritativeVaulted=await opfsSave(authoritativeLocal,blob)}catch(_){}
+    if(!authoritativeVaulted)authoritativeLocal.blob=blob;authoritativeLocal.storage=authoritativeVaulted?'opfs':'indexeddb';
+    try{await dbPut(authoritativeLocal);await writeVaultManifest()}catch(_){}
+    return blob
+  }
+  blob=await getStoredBlob(rec);
   if(!blob&&rec&&rec.sharedAuthoritative&&rec.sharedSource!=='dedicated'){
     if(progress)progress(1);
     recovered=await findRecoverableLocalOriginal(type,rec);
@@ -358,7 +371,6 @@ async function recordBlob(type,rec,progress){
     }
     return blob
   }
-  var v=vaultApi();
   if(v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||rec.sharedSource==='dedicated')){
     try{blob=await bounded(v.fileBlob(rec,progress),45000,'Original challan download')}catch(e){
       if(!/not found|unavailable|missing/i.test(String(e&&e.message||e||'')))throw e;
@@ -782,7 +794,7 @@ async function refresh(type){
     rebuildIndex(type);renderFiles(type);
     setStatus(type,'Shared cloud loaded ✓ · '+rows.length+' challan'+(rows.length===1?'':'s')+' · '+Number(pack.dedicatedCount||0)+' dedicated + '+Number(pack.legacyCount||0)+' historical'+(resurrected.length?' · '+resurrected.length+' deleted stale cop'+(resurrected.length===1?'y blocked':'ies blocked'):'')+(pack.partialErrors&&pack.partialErrors.length?' · partial: '+pack.partialErrors.join(' / '):'')+'.');
     var promotable=rows.filter(function(r){return r.sharedSource==='historical'&&!r.hasOriginalFile&&!isAnyDeleteTombstoned(type,r)});
-    if(promotable.length)setTimeout(function(){repairHistoricalOriginals(type,false)},350);
+    if(promotable.length&&!(vaultApi()&&vaultApi().authority==='supabase'))setTimeout(function(){repairHistoricalOriginals(type,false)},350);
     if(String(pack.mode||'').indexOf('v4')===0&&resurrected.length){
       setTimeout(async function(){
         var v=vaultApi(),api=durableApi();
@@ -905,7 +917,8 @@ async function updatePeriod(type,id,period){
   try{
     r=Object.assign({},r,{period:period||'',periodSource:'manual',updatedAt:new Date().toISOString()});
     var v=vaultApi(),back;
-    if((cloudMode[type]==='v4'||cloudMode[type]==='supabase')&&v&&typeof v.update==='function')back=await v.update(r);
+    if(v&&v.authority==='supabase'&&typeof v.update==='function')back=await v.update(r);
+    else if(cloudMode[type]==='v4'&&v&&typeof v.update==='function')back=await v.update(r);
     else{
       var api=durableApi();if(!api||typeof api.saveComplianceDolConfirmed!=='function')throw new Error('Cloud backend unavailable');
       back=await api.saveComplianceDolConfirmed(cloudRecordFromLocal(r))
@@ -1429,20 +1442,38 @@ async function boot(){
   var se=$('cd2-esic-storage'),sp=$('cd2-pf-storage');if(se)se.textContent='☁ Shared backend master';if(sp)sp.textContent='☁ Shared backend master';
   setStatus('esic','Ready · open ESIC → DOL to load shared library.');
   setStatus('pf','Ready · open PF → DOL to load shared library.');
-  setTimeout(function(){prepareLegacyMigration().then(async function(){
-    var t=activeDolType();if(t){cloudLastSync[t]=0;await syncCloudType(t,true)}
-    setTimeout(function(){repairHistoricalOriginals('pf',true)},1200);
-    setTimeout(function(){repairHistoricalOriginals('esic',true)},2200);
-  }).catch(function(e){console.warn('Legacy migration preparation failed',e)})},350);
-  root.document.addEventListener('atpl-authenticated',function(){
-    setTimeout(function(){repairHistoricalOriginals('pf',true)},1800);
-    setTimeout(function(){repairHistoricalOriginals('esic',true)},2800);
-  });
+  var authority=vaultApi(),supabaseAuthority=!!(authority&&authority.authority==='supabase');
+  if(supabaseAuthority){
+    setTimeout(async function(){
+      var t=activeDolType();if(t){cloudLastSync[t]=0;await syncCloudType(t,true)}
+      try{if(authority&&typeof authority.migrateLegacy==='function'){authority.migrateLegacy('pf');authority.migrateLegacy('esic')}}catch(e){console.warn('Supabase one-time DOL migration start failed',e)}
+    },350);
+    root.document.addEventListener('atpl-authenticated',function(){
+      var sv=vaultApi();if(!sv||sv.authority!=='supabase')return;
+      try{if(typeof sv.startRealtime==='function')sv.startRealtime()}catch(_){}
+      try{if(typeof sv.migrateLegacy==='function'){sv.migrateLegacy('pf');sv.migrateLegacy('esic')}}catch(e){console.warn('Supabase one-time DOL migration resume failed',e)}
+      var t=activeDolType();if(t){cloudLastSync[t]=0;syncCloudType(t,true)}
+    });
+  }else{
+    setTimeout(function(){prepareLegacyMigration().then(async function(){
+      var t=activeDolType();if(t){cloudLastSync[t]=0;await syncCloudType(t,true)}
+      setTimeout(function(){repairHistoricalOriginals('pf',true)},1200);
+      setTimeout(function(){repairHistoricalOriginals('esic',true)},2200);
+    }).catch(function(e){console.warn('Legacy migration preparation failed',e)})},350);
+    root.document.addEventListener('atpl-authenticated',function(){
+      setTimeout(function(){repairHistoricalOriginals('pf',true)},1800);
+      setTimeout(function(){repairHistoricalOriginals('esic',true)},2800);
+    });
+  }
   root.addEventListener('online',function(){var t=activeDolType();if(t)setTimeout(function(){syncCloudType(t,true)},700);if(!(vaultApi()&&vaultApi().authority==='supabase'))setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)});
   root.addEventListener('atpl-dol-supabase-change',function(e){
     var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;
     sharedDeleteTombstones[type]=[];sharedDeleteLoadedAt[type]=Date.now();cloudLastSync[type]=0;
     if(activeDolType()===type)syncCloudType(type,true)
+  });
+  root.addEventListener('atpl-dol-migration-progress',function(e){
+    var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();if(type!=='pf'&&type!=='esic'||activeDolType()!==type)return;
+    var msg=String(e&&e.detail&&e.detail.message||'');if(msg)setStatus(type,msg,!!(e&&e.detail&&e.detail.report&&e.detail.report.failed))
   });
   try{var sv=vaultApi();if(sv&&sv.authority==='supabase'&&typeof sv.startRealtime==='function')sv.startRealtime()}catch(_){}
 }
