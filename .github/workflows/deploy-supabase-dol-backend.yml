@@ -1,0 +1,72 @@
+name: Deploy Supabase DOL Backend
+
+on:
+  push:
+    branches: [ supabase-dol-single-authority ]
+    paths:
+      - supabase/functions/dol-api/**
+      - supabase/config.toml
+      - .github/workflows/deploy-supabase-dol-backend.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dol-backend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: gsbyzddibdjxekutpkip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require Supabase deployment token
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::GitHub secret SUPABASE_ACCESS_TOKEN is missing. Backend was NOT deployed."
+            exit 1
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy dol-api with ERP-token auth
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy dol-api --project-ref "$PROJECT_REF" --no-verify-jwt
+
+      - name: Verify live CORS and unauthenticated rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://${PROJECT_REF}.supabase.co/functions/v1/dol-api"
+          KEY="sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII"
+
+          headers="$(mktemp)"
+          code="$(curl -sS -D "$headers" -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 25 \
+            -X OPTIONS "$URL" \
+            -H 'Origin: https://nikhilatpl2026-jpg.github.io' \
+            -H 'Access-Control-Request-Method: POST' \
+            -H 'Access-Control-Request-Headers: x-atpl-token,apikey,authorization,content-type')"
+          case "$code" in 200|204) ;; *) echo "Preflight failed: HTTP $code" >&2; exit 1;; esac
+          grep -i '^access-control-allow-headers:' "$headers" | tr '[:upper:]' '[:lower:]' | grep -Fq 'x-atpl-token'
+
+          body="$(mktemp)"
+          code="$(curl -sS -o "$body" -w '%{http_code}' --connect-timeout 10 --max-time 25 \
+            -X POST "$URL" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY" \
+            -H 'Content-Type: application/json' \
+            --data '{"action":"list","type":"pf"}')"
+          cat "$body"
+          case "$code" in 400|401|403) ;; *) echo "Unexpected unauthenticated status: HTTP $code" >&2; exit 1;; esac
