@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-production-v9-shared-delete';
+var BUILD='2026.09.22-production-v10-live-library-authority';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -1068,6 +1068,40 @@ function mergeSearchPacks(type,qs,remote,local){
   var unseen={};out.unindexed=[].concat(remote.unindexed||[],local.unindexed||[]).filter(function(r){var k=String(r&&r.id||r&&r.recordId||r&&r.name||'')+'|'+String(r&&r.period||'');if(unseen[k])return false;unseen[k]=1;return true});
   out.source=remote.source||'backend+library-index';return out
 }
+function liveLibraryAuthority(type,rows){
+  var ids={},namePeriods={},periods={};
+  (rows||[]).forEach(function(raw){
+    var r=raw&&raw.cloudRecordId!==undefined?raw:localRecordFromCloud(raw||{});
+    if(!r||String(r.type||'')!==type||isAnyDeleteTombstoned(type,r))return;
+    var rid=String(r.cloudRecordId||r.id||'');if(rid)ids[rid]=1;
+    var nk=logicalName(r.name),p=String(r.period||'');if(nk)namePeriods[nk+'|'+p]=1;
+    if(p)periods[p]=1
+  });
+  return{ids:ids,namePeriods:namePeriods,periods:Object.keys(periods).sort()}
+}
+function filterSearchPackToLiveLibrary(type,qs,pack,rows){
+  if(!pack)return pack;
+  var a=liveLibraryAuthority(type,rows),out=Object.assign({},pack),matches={};
+  qs.forEach(function(id){
+    var src=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id]:[];
+    matches[id]=src.filter(function(x){
+      var rid=String(x&&x.recordId||''),name=String(x&&x.sourceChallan||''),period=String(x&&x.period||'');
+      var probe={type:type,id:rid,cloudRecordId:rid,name:name,period:period};
+      if(isAnyDeleteTombstoned(type,probe))return false;
+      if(rid&&a.ids[rid])return true;
+      var nk=logicalName(name);return !!(nk&&a.namePeriods[nk+'|'+period])
+    })
+  });
+  out.matches=matches;
+  out.coverage=a.periods;
+  out.unindexed=(pack.unindexed||[]).filter(function(x){
+    var rid=String(x&&x.id||x&&x.recordId||''),name=String(x&&x.name||x&&x.sourceChallan||''),period=String(x&&x.period||'');
+    if(rid&&a.ids[rid])return true;
+    var nk=logicalName(name);return !!(nk&&a.namePeriods[nk+'|'+period])
+  });
+  out.source='backend-index filtered by live challan library';
+  return out
+}
 function unindexedBlocksDol(type,r,last){
   if(!r)return false;if(last&&r.period&&String(r.period)<String(last))return false;
   // DOLRecords already carries the complete lightweight ID list even when the
@@ -1077,10 +1111,16 @@ function unindexedBlocksDol(type,r,last){
 }
 function detailText(d){return root.ATPLDOLIndexV1&&typeof root.ATPLDOLIndexV1.detailsText==='function'?root.ATPLDOLIndexV1.detailsText(d):''}
 async function searchAsync(type,qs,box){
-  var pack=null,v=vaultApi(),freshLibrary=null;
+  var pack=null,v=vaultApi(),freshLibrary=null,freshRows=null;
   await loadSharedDeleteTombstones(type,false);
   try{if(v&&typeof v.searchIndex==='function')pack=await v.searchIndex(type,qs)}catch(e){if(!/DOL_INDEX_V5_UNAVAILABLE/.test(String(e&&e.message||e)))console.warn('Backend contribution search fallback',e)}
-  try{if(v&&typeof v.list==='function')freshLibrary=librarySearchPack(type,qs,await v.list(type))}catch(e){console.warn('Fresh challan library search fallback unavailable',e)}
+  try{
+    if(v&&typeof v.list==='function'){
+      freshRows=await v.list(type);
+      freshLibrary=librarySearchPack(type,qs,freshRows);
+      if(pack)pack=filterSearchPackToLiveLibrary(type,qs,pack,freshRows)
+    }
+  }catch(e){console.warn('Fresh challan library search fallback unavailable',e)}
   var local=localSearchPack(type,qs);
   if(freshLibrary)pack=pack?mergeSearchPacks(type,qs,pack,freshLibrary):freshLibrary;
   pack=pack?mergeSearchPacks(type,qs,pack,local):local;
