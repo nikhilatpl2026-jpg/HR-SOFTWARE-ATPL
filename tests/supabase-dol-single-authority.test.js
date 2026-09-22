@@ -13,8 +13,8 @@ test('Supabase DOL files parse and load in authority order',()=>{
   const supa=h.indexOf('compliance-dol-supabase-v1.js');
   const rebuild=h.indexOf('compliance-dol-rebuild-v2.js');
   assert.ok(legacy>0&&legacy<supa&&supa<rebuild,'legacy -> supabase -> rebuild loader order');
-  assert.ok(h.includes('supabase-authority2'));
-  assert.ok(h.includes('production18-supabase-authority'));
+  assert.ok(h.includes('supabase-authority3-stable-first-load'));
+  assert.ok(h.includes('production19-stable-supabase-first-load'));
 });
 
 test('Supabase adapter is the only normal DOL authority and has no polling',()=>{
@@ -24,7 +24,7 @@ test('Supabase adapter is the only normal DOL authority and has no polling',()=>
   assert.ok(s.includes("root.ATPLDOLCloudV4=api"));
   assert.equal(s.includes('setInterval('),false);
   assert.equal(s.includes('syncEventExists('),false,'migration must not be skipped by an unrelated sync event');
-  assert.ok(/async function list\(type\)[\s\S]*?maybeStartLegacyMigration\(type\)/.test(s));
+  assert.ok(/async function list\(type\)[\s\S]*?await maybeStartLegacyMigration\(type\)[\s\S]*?await listRaw\(type,true\)/.test(s),'first list must await one-time migration before rendering');
 });
 
 test('Edge request/response mapping matches DOL contract',()=>{
@@ -105,7 +105,7 @@ test('PF and ESIC stay isolated and duplicate check is fresh across both types',
 test('Supabase authority does not schedule normal-runtime legacy historical repairs',()=>{
   const r=read('compliance-dol-rebuild-v2.js');
   assert.ok(r.includes("supabaseAuthority=!!(authority&&authority.authority==='supabase')"));
-  assert.ok(r.includes("authority.migrateLegacy('pf');authority.migrateLegacy('esic')"));
+  assert.equal(r.includes("authority.migrateLegacy('pf');authority.migrateLegacy('esic')"),false,'Supabase migration must not run in the background');
   assert.ok(r.includes("if(promotable.length&&!(vaultApi()&&vaultApi().authority==='supabase'))"));
   assert.equal(r.includes('setInterval('),false);
 });
