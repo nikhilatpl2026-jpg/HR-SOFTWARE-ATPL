@@ -4,7 +4,7 @@
    Existing Employee Master / HR Docs / Activity cloud modules remain authoritative for those datasets. */
 (function(root){'use strict';
   if(!root||root.__ATPL_DURABLE_EVERYTHING_V1__)return;
-  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.22-system-records-authority15-dol-read-timeout';
+  root.__ATPL_DURABLE_EVERYTHING_V1__='2026.09.22-system-records-authority16-delete-bridge';
 
   var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
   var TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -134,12 +134,32 @@ async function fetchRemoteKinds(kinds){
     await saveObject(kind,key,p,{name:type+' DOL delete · '+(p.name||p.id||key),saved_at:now});
     return p
   }
+  async function saveComplianceDolDeleteTombstoneBatch(type,entries){
+    if(!token()||!session())throw new Error('Valid login required for shared delete');
+    type=text(type).toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+    entries=(Array.isArray(entries)?entries:[]).map(function(rec){
+      rec=rec||{};return{
+        version:2,type:type,id:text(rec.cloudRecordId||rec.id),cloudRecordId:text(rec.cloudRecordId||''),
+        hash:dolFingerprint(rec),name:text(rec.name),period:text(rec.period),
+        deletedAt:text(rec.deletedAt||new Date().toISOString()),deletedBy:text(rec.deletedBy||(session()||{}).id)
+      }
+    }).filter(function(x){return!!(x.id||x.hash||x.name)});
+    if(!entries.length)return[];
+    var sig=entries.map(function(x){return[x.id,x.hash,dolLogicalName(x.name),x.period].join('|')}).sort().join('||');
+    var key='batch:'+fnv(sig),now=new Date().toISOString(),payload={version:2,type:type,entries:entries,savedAt:now};
+    await saveObject(dolDeleteKind(type),key,payload,{name:type+' DOL delete batch · '+entries.length,saved_at:now});
+    return entries
+  }
   async function getComplianceDolDeleteTombstones(type){
     if(!token()||!session())throw new Error('Valid login required for shared delete status');
     type=text(type).toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
     var kind=dolDeleteKind(type),records=await fetchRemoteKinds([kind]),metas=records.filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind===kind}),out=[];
     for(var i=0;i<metas.length;i++){
-      try{var p=await loadObject(records,metas[i]);if(p&&text(p.type).toLowerCase()===type)out.push(p)}catch(e){console.warn('DOL delete tombstone read failed',metas[i]&&metas[i].key_text,e)}
+      try{
+        var p=await loadObject(records,metas[i]);if(!p)continue;
+        if(Array.isArray(p.entries)){p.entries.forEach(function(x){if(x&&text(x.type).toLowerCase()===type)out.push(x)})}
+        else if(text(p.type).toLowerCase()===type)out.push(p)
+      }catch(e){console.warn('DOL delete tombstone read failed',metas[i]&&metas[i].key_text,e)}
     }
     return out
   }
@@ -410,6 +430,6 @@ async function fetchRemoteKinds(kinds){
 
   function boot(){patchLocalStorage();hookMutations();badge('☁ Auto-Save Ready');function idleSync(delay){setTimeout(function(){if(!token()||!session())return;if(typeof root.requestIdleCallback==='function')root.requestIdleCallback(function(){run(false)},{timeout:3500});else run(false)},delay)}if(token()&&session())idleSync(12000);root.document.addEventListener('atpl-authenticated',function(){idleSync(9000)});root.addEventListener('online',function(){if(token()&&session())idleSync(1800)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&token()&&session()&&Date.now()-lastRun>120000)idleSync(900)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-bankverify'):null;if(x)setTimeout(function(){run(true)},500)},true);root.document.addEventListener('change',function(e){var x=e.target;if(!x)return;if(x.id==='bavSaveRefInput'||x.hasAttribute&&x.hasAttribute('data-ref-select'))setTimeout(function(){run(true)},1200)},true)}
 
-  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final15-dol-read-timeout'}}};
+  root.ATPLDurableEverythingV1={sync:function(){return run(true)},persistFiles:persistAllFiles,persistFile:persistFileIndex,saveComplianceDolConfirmed:saveComplianceDolConfirmed,saveComplianceDolBatchConfirmed:saveComplianceDolBatchConfirmed,deleteComplianceDolConfirmed:deleteComplianceDolConfirmed,deleteComplianceDolBatchConfirmed:deleteComplianceDolBatchConfirmed,getComplianceDolRecords:getComplianceDolRecords,saveComplianceDolDeleteTombstone:saveComplianceDolDeleteTombstone,saveComplianceDolDeleteTombstoneBatch:saveComplianceDolDeleteTombstoneBatch,getComplianceDolDeleteTombstones:getComplianceDolDeleteTombstones,clearComplianceDolDeleteTombstone:clearComplianceDolDeleteTombstone,status:function(){return{token:!!token(),session:!!session(),lastRun:lastRun,running:running,pendingFiles:Object.keys(fileSaveQueue).length,dolMode:'cloud-master-v3-final16-delete-bridge'}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
