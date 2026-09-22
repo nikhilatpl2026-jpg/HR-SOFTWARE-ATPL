@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v18-supabase-authority';
+var BUILD='2026.09.22-production-v19-stable-supabase-first-load';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -1444,14 +1444,15 @@ async function boot(){
   setStatus('pf','Ready · open PF → DOL to load shared library.');
   var authority=vaultApi(),supabaseAuthority=!!(authority&&authority.authority==='supabase');
   if(supabaseAuthority){
+    // Supabase first load is deterministic: no background legacy migration.
+    // The active PF/ESIC library awaits its one-time migration inside authority.list()
+    // before rendering, preventing stale challans from appearing seconds later.
     setTimeout(async function(){
       var t=activeDolType();if(t){cloudLastSync[t]=0;await syncCloudType(t,true)}
-      try{if(authority&&typeof authority.migrateLegacy==='function'){authority.migrateLegacy('pf');authority.migrateLegacy('esic')}}catch(e){console.warn('Supabase one-time DOL migration start failed',e)}
     },350);
     root.document.addEventListener('atpl-authenticated',function(){
       var sv=vaultApi();if(!sv||sv.authority!=='supabase')return;
       try{if(typeof sv.startRealtime==='function')sv.startRealtime()}catch(_){}
-      try{if(typeof sv.migrateLegacy==='function'){sv.migrateLegacy('pf');sv.migrateLegacy('esic')}}catch(e){console.warn('Supabase one-time DOL migration resume failed',e)}
       var t=activeDolType();if(t){cloudLastSync[t]=0;syncCloudType(t,true)}
     });
   }else{
