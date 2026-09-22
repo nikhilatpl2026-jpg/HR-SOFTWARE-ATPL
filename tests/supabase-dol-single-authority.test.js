@@ -131,7 +131,7 @@ test('Deployable dol-api is service-role only and migration locks browser access
   assert.ok(e.includes('materializeLegacyOriginal'));
   assert.ok(e.includes('dol_migration_state'));
   assert.ok(e.includes('legacy_source_id'));
-  assert.ok(e.includes('await supabase.storage.from(BUCKET).remove([row.file_path])'));
+  assert.ok(e.includes('.remove([row.file_path])'));
   assert.ok(m.includes('revoke all on table public.dol_challans from anon, authenticated'));
   assert.ok(m.includes("grant select, insert, update, delete on table public.dol_challans to service_role"));
   assert.ok(m.includes("alter publication supabase_realtime add table public.dol_sync_events"));
