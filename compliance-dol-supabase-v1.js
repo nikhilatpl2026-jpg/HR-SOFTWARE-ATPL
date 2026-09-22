@@ -3,7 +3,7 @@
    Existing Apps Script DOL client is preserved only as ATPLDOLCloudV4Legacy for explicit migration/recovery work.
    No recurring polling. Cross-browser refresh is event-driven through Supabase Realtime. */
 (function(root){'use strict';
-var BUILD='2026.09.22-supabase-authority-v2';
+var BUILD='2026.09.22-supabase-authority-v3-stable-first-load';
 if(!root||root.__ATPL_DOL_SUPABASE_V1__===BUILD)return;
 root.__ATPL_DOL_SUPABASE_V1__=BUILD;
 
@@ -135,8 +135,11 @@ async function maybeStartLegacyMigration(type){
   return migrationPromises[type]
 }
 async function list(type){
+  type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+  if(!migrationChecked[type]){
+    await maybeStartLegacyMigration(type)
+  }
   var rows=await listRaw(type,true);
-  maybeStartLegacyMigration(type).catch(function(e){console.warn('Legacy migration start failed',type,e)});
   return rows.map(mapRow)
 }
 async function check(hash){
