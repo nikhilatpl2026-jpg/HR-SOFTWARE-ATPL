@@ -3,7 +3,7 @@
    Existing Apps Script DOL client is preserved only as ATPLDOLCloudV4Legacy for explicit migration/recovery work.
    No recurring polling. Cross-browser refresh is event-driven through Supabase Realtime. */
 (function(root){'use strict';
-var BUILD='2026.09.22-supabase-authority-v1';
+var BUILD='2026.09.22-supabase-authority-v2';
 if(!root||root.__ATPL_DOL_SUPABASE_V1__===BUILD)return;
 root.__ATPL_DOL_SUPABASE_V1__=BUILD;
 
@@ -14,7 +14,7 @@ var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1';
 var legacy=root.ATPLDOLCloudV4||null;
 if(legacy&&!root.ATPLDOLCloudV4Legacy)root.ATPLDOLCloudV4Legacy=legacy;
 var rawCache={pf:null,esic:null},rawCacheAt={pf:0,esic:0},RAW_CACHE_MS=2500;
-var rtClient=null,rtChannel=null,rtStarting=null,migrationPromises={pf:null,esic:null},migrationEmptyChecked={pf:false,esic:false};
+var rtClient=null,rtChannel=null,rtStarting=null,migrationPromises={pf:null,esic:null},migrationChecked={pf:false,esic:false},migrationReports={pf:null,esic:null};
 
 function tok(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function wait(ms){return new Promise(function(r){root.setTimeout(r,ms)})}
@@ -49,7 +49,7 @@ function mapRow(r){
     period:String(r.period||''),periodSource:'supabase',digitIds:digits,alnumIds:alnums,
     uploadedBy:String(r.uploaded_by||r.uploadedBy||''),uploadedAt:String(r.created_at||r.uploadedAt||''),
     updatedAt:String(r.updated_at||r.updatedAt||r.created_at||''),mime:String(r.mime_type||r.mime||'application/octet-stream'),
-    hasOriginalFile:true,indexCount:ids.length,indexStatus:'ready',contributions:arr(r.contributions),
+    hasOriginalFile:!!String(r.file_path||''),indexCount:ids.length,indexStatus:'ready',contributions:arr(r.contributions),
     _sharedSource:'dedicated',sharedSource:'dedicated',supabase:true,filePath:String(r.file_path||'')
   }
 }
@@ -59,52 +59,84 @@ async function listRaw(type,force){
   var d=await edgeJson({action:'list',type:type},26000),rows=arr(d.records);
   rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows
 }
-async function syncEventExists(type){
-  try{
-    var url=SUPABASE_URL+'/rest/v1/dol_sync_events?challan_type=eq.'+encodeURIComponent(type)+'&select=id&limit=1';
-    var res=await timeoutFetch(url,{method:'GET',headers:{'apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY}},9000);
-    if(!res.ok)return true;
-    var rows=await res.json();return Array.isArray(rows)&&rows.length>0
-  }catch(_){return true}
+function migrationProgress(type,msg,done,report){
+  try{root.dispatchEvent(new CustomEvent('atpl-dol-migration-progress',{detail:{type:type,message:msg,done:!!done,report:report||null}}))}catch(_){}
 }
-function migrationProgress(type,msg,done){
-  try{root.dispatchEvent(new CustomEvent('atpl-dol-migration-progress',{detail:{type:type,message:msg,done:!!done}}))}catch(_){}
+function migrationReport(type){
+  return migrationReports[String(type||'').toLowerCase()]||null
 }
-function maybeStartLegacyMigration(type){
-  if(migrationPromises[type]||migrationEmptyChecked[type]||!legacy||typeof legacy.list!=='function'||typeof legacy.fileBlob!=='function')return;
+async function maybeStartLegacyMigration(type){
+  type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return{migrated:0,skipped:0,failed:0,failures:[]};
+  if(migrationPromises[type])return migrationPromises[type];
+  if(migrationChecked[type])return migrationReports[type]||{migrated:0,skipped:0,failed:0,failures:[]};
+  if(!legacy||typeof legacy.list!=='function'||typeof legacy.fileBlob!=='function'){
+    migrationChecked[type]=true;
+    migrationReports[type]={migrated:0,skipped:0,failed:0,failures:[],reason:'legacy-client-unavailable'};
+    return migrationReports[type]
+  }
   migrationPromises[type]=(async function(){
-    if(await syncEventExists(type)){migrationEmptyChecked[type]=true;return{migrated:0,skipped:'supabase-history-exists'}}
     migrationProgress(type,'Checking old '+type.toUpperCase()+' challans for one-time migration…',false);
+    var current=(await listRaw(type,true)).map(mapRow),byHash={};
+    current.forEach(function(r){if(r.fileHash)byHash[String(r.fileHash).toLowerCase()]=r});
     var oldRows=await legacy.list(type);oldRows=Array.isArray(oldRows)?oldRows:[];
-    if(!oldRows.length){migrationEmptyChecked[type]=true;migrationProgress(type,'No old '+type.toUpperCase()+' challans need migration.',true);return{migrated:0,failed:0}}
-    var migrated=0,failed=0;
+    var migrated=0,skipped=0,failed=0,failures=[];
+    if(!oldRows.length){
+      var emptyReport={migrated:0,skipped:0,failed:0,failures:[]};
+      migrationChecked[type]=true;migrationReports[type]=emptyReport;
+      migrationProgress(type,'No old '+type.toUpperCase()+' challans need migration.',true,emptyReport);
+      return emptyReport
+    }
     for(var i=0;i<oldRows.length;i++){
-      var old=oldRows[i]||{};
+      var old=oldRows[i]||{},blob=null,buf=null,hash=String(old.fileHash||old.fingerprint||old.hash||'').toLowerCase();
       try{
         migrationProgress(type,'Migrating old challan '+(i+1)+' / '+oldRows.length+' · '+String(old.name||'challan'),false);
-        var blob=await legacy.fileBlob(old,function(p){migrationProgress(type,'Migrating '+(i+1)+' / '+oldRows.length+' · '+p+'% · '+String(old.name||'challan'),false)});
+        if(hash&&byHash[hash]&&byHash[hash].hasOriginalFile){
+          skipped++;
+          try{if(typeof legacy.deleteRecord==='function')await legacy.deleteRecord(old)}catch(e){console.warn('Legacy cleanup deferred after verified Supabase duplicate',old&&old.name,e)}
+          continue
+        }
+        blob=await legacy.fileBlob(old,function(p){migrationProgress(type,'Migrating '+(i+1)+' / '+oldRows.length+' · '+p+'% · '+String(old.name||'challan'),false)});
         if(!blob)throw new Error('Original file unavailable in old vault');
-        var buf=await blob.arrayBuffer(),hash=String(old.fileHash||old.fingerprint||old.hash||'').toLowerCase();
+        buf=await blob.arrayBuffer();
         if(!hash){
           var dig=await root.crypto.subtle.digest('SHA-256',buf);hash=Array.from(new Uint8Array(dig)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')
         }
+        if(byHash[hash]&&byHash[hash].hasOriginalFile){
+          skipped++;
+          try{if(typeof legacy.deleteRecord==='function')await legacy.deleteRecord(old)}catch(e){console.warn('Legacy cleanup deferred after verified Supabase duplicate',old&&old.name,e)}
+          continue
+        }
         var ids=[].concat(arr(old.digitIds),arr(old.alnumIds),arr(old.ids)).map(String).filter(Boolean);
         var work={type:type,name:String(old.name||'challan'),size:Number(old.size||blob.size||buf.byteLength)||buf.byteLength,hash:hash,period:String(old.period||''),periodSource:String(old.periodSource||'legacy'),ids:Array.from(new Set(ids)),contributions:arr(old.contributions),mime:String(old.mime||blob.type||'application/octet-stream')};
-        await upload(work,buf);
-        migrated++;
-        try{if(typeof legacy.deleteRecord==='function')await legacy.deleteRecord(old)}catch(e){console.warn('Old DOL cleanup deferred after Supabase migration',old&&old.name,e)}
+        var out=await upload(work,buf),saved=out&&out.record||null;
+        if(!saved||!saved.id||saved.type!==type||!saved.hasOriginalFile||!saved.filePath)throw new Error('Supabase save did not return a complete stored record');
+        if(hash&&saved.fileHash&&String(saved.fileHash).toLowerCase()!==hash)throw new Error('Supabase SHA-256 does not match legacy original');
+        byHash[hash]=saved;
+        if(out.duplicate)skipped++;else migrated++;
+        try{if(typeof legacy.deleteRecord==='function')await legacy.deleteRecord(old)}catch(e){console.warn('Legacy cleanup deferred after Supabase migration',old&&old.name,e)}
         rawCache[type]=null;rawCacheAt[type]=0;await wait(0)
-      }catch(e){failed++;console.warn('Old DOL migration skipped',old&&old.name,e)}
+      }catch(e){
+        failed++;
+        failures.push({name:String(old.name||'challan'),reason:String(e&&e.message||e)});
+        console.warn('Old DOL migration needs manual re-upload',old&&old.name,e)
+      }finally{blob=null;buf=null}
     }
-    migrationEmptyChecked[type]=true;
-    migrationProgress(type,'One-time '+type.toUpperCase()+' migration finished · '+migrated+' moved'+(failed?' · '+failed+' need manual re-upload':''),true);
-    try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:type,at:Date.now(),migration:true}}))}catch(_){}
-    return{migrated:migrated,failed:failed}
-  })().catch(function(e){console.warn('One-time DOL migration failed',type,e);migrationProgress(type,'Old challan migration failed · '+String(e&&e.message||e),true);return{migrated:0,failed:1}}).finally(function(){migrationPromises[type]=null});
+    var report={migrated:migrated,skipped:skipped,failed:failed,failures:failures};
+    migrationChecked[type]=true;migrationReports[type]=report;
+    migrationProgress(type,'One-time '+type.toUpperCase()+' migration finished · '+migrated+' moved · '+skipped+' already safe'+(failed?' · '+failed+' need manual re-upload':''),true,report);
+    rawCache[type]=null;rawCacheAt[type]=0;
+    try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:type,at:Date.now(),migration:true,report:report}}))}catch(_){}
+    return report
+  })().catch(function(e){
+    var report={migrated:0,skipped:0,failed:1,failures:[{name:'migration',reason:String(e&&e.message||e)}]};
+    migrationChecked[type]=true;migrationReports[type]=report;
+    console.warn('One-time DOL migration failed',type,e);migrationProgress(type,'Old challan migration failed · '+String(e&&e.message||e),true,report);return report
+  }).finally(function(){migrationPromises[type]=null});
+  return migrationPromises[type]
 }
 async function list(type){
   var rows=await listRaw(type,true);
-  if(!rows.length)maybeStartLegacyMigration(type);
+  maybeStartLegacyMigration(type).catch(function(e){console.warn('Legacy migration start failed',type,e)});
   return rows.map(mapRow)
 }
 async function check(hash){
@@ -112,7 +144,7 @@ async function check(hash){
   var types=['pf','esic'];
   for(var i=0;i<types.length;i++){
     try{
-      var rows=await listRaw(types[i],false),hit=rows.find(function(r){return String(r.file_hash||'').toLowerCase()===hash});
+      var rows=await listRaw(types[i],true),hit=rows.find(function(r){return String(r.file_hash||'').toLowerCase()===hash});
       if(hit)return{ok:true,duplicate:true,record:mapRow(hit)}
     }catch(_){}
   }
@@ -129,6 +161,8 @@ async function upload(rec,buf,progress){
   form.append('action','upload');form.append('type',type);form.append('period',String(rec&&rec.period||''));
   form.append('uploaded_by',currentUserId());form.append('member_ids',JSON.stringify(ids));
   form.append('contributions',JSON.stringify(arr(rec&&rec.contributions)));
+  form.append('file_hash',String(rec&&rec.hash||rec&&rec.fileHash||'').toLowerCase());
+  form.append('file_size',String(Number(rec&&rec.size||buf.byteLength)||buf.byteLength));form.append('mime_type',mime);
   form.append('file',new Blob([buf],{type:mime}),String(rec&&rec.name||'challan'));
   if(progress)progress(8);
   var res=await timeoutFetch(EDGE_URL,{method:'POST',headers:edgeHeaders(false),body:form},60000),d=null;
@@ -136,22 +170,26 @@ async function upload(rec,buf,progress){
   if(!res.ok||!d||d.ok===false)throw new Error(d&&d.error||('Supabase challan upload failed ('+res.status+')'));
   rawCache[type]=null;rawCacheAt[type]=0;if(progress)progress(100);
   var mapped=mapRow(d.record||{}),count=arr(rec&&rec.contributions).length||ids.length;
+  if(!mapped.id||mapped.type!==type||!mapped.filePath||!mapped.hasOriginalFile)throw new Error('Supabase upload returned an incomplete stored record');
+  var expectedHash=String(rec&&rec.hash||rec&&rec.fileHash||'').toLowerCase();if(expectedHash&&mapped.fileHash&&mapped.fileHash!==expectedHash)throw new Error('Supabase SHA-256 verification failed');
   return{duplicate:!!d.duplicate,record:mapped,index:{ok:true,count:count,record:mapped}}
 }
 async function update(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
+  if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id)throw new Error('Challan id missing');
   var d=await edgeJson({action:'updatePeriod',type:type,id:id,period:String(rec&&rec.period||'')},22000);
   rawCache[type]=null;rawCacheAt[type]=0;return mapRow(d.record||{})
 }
 async function remove(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
-  if(!id)throw new Error('Challan id missing');
+  if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id)throw new Error('Challan id missing');
   var d=await edgeJson({action:'delete',type:type,id:id},30000);
   rawCache[type]=null;rawCacheAt[type]=0;
   return d
 }
 async function signedFile(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
+  if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id)throw new Error('Challan id missing');
   return edgeJson({action:'file',type:type,id:id},22000)
 }
 async function fileBlob(rec,progress){
@@ -215,9 +253,20 @@ async function startRealtime(){
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'dol_sync_events'},function(payload){
         var type=String(payload&&payload.new&&payload.new.challan_type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;
         rawCache[type]=null;rawCacheAt[type]=0;
-        try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:type,at:Date.now()}}))}catch(_){}
+        try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:type,at:Date.now(),event:payload&&payload.new||null}}))}catch(_){}
       })
-      .subscribe(function(status){if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('DOL realtime status',status)});
+      .subscribe(function(status){
+        if(status==='SUBSCRIBED'){
+          try{root.dispatchEvent(new CustomEvent('atpl-dol-realtime-status',{detail:{connected:true,status:status,at:Date.now()}}))}catch(_){}
+          return
+        }
+        if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
+          console.warn('DOL realtime status',status);
+          var dead=rtChannel;rtChannel=null;
+          try{if(rtClient&&dead)rtClient.removeChannel(dead)}catch(_){}
+          try{root.dispatchEvent(new CustomEvent('atpl-dol-realtime-status',{detail:{connected:false,status:status,at:Date.now()}}))}catch(_){}
+        }
+      });
     return true
   })().catch(function(e){console.warn('DOL realtime unavailable',e);rtChannel=null;return false}).finally(function(){rtStarting=null});
   return rtStarting
@@ -228,10 +277,13 @@ function stopRealtime(){
 var api={
   authority:'supabase',provider:'supabase',probe:function(){return Promise.resolve(true)},list:list,check:check,upload:upload,
   saveContributionIndex:saveContributionIndex,searchIndex:searchIndex,update:update,deleteRecord:remove,fileBlob:fileBlob,
-  startRealtime:startRealtime,stopRealtime:stopRealtime,migrateLegacy:maybeStartLegacyMigration,legacyClient:legacy,supported:function(){return true},supportState:function(){return true},
+  startRealtime:startRealtime,stopRealtime:stopRealtime,migrateLegacy:maybeStartLegacyMigration,migrationReport:migrationReport,legacyClient:legacy,supported:function(){return true},supportState:function(){return true},
   version:function(){return BUILD}
 };
 root.ATPLDOLCloudV4=api;
 root.ATPLDOLSupabaseV1=api;
+function resumeRealtime(){if(!rtChannel)startRealtime()}
+root.addEventListener('online',resumeRealtime);
+try{root.document.addEventListener('atpl-authenticated',resumeRealtime)}catch(_){}
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',function(){startRealtime()},{once:true});else startRealtime();
 })(window);
