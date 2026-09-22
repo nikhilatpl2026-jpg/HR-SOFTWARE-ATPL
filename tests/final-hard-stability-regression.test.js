@@ -129,5 +129,5 @@ test('DOL search drops orphan contribution rows after a challan is deleted',()=>
 test('Training and Legal compliance calendar supports full-screen retraining and expiry workflow',()=>{
   const c=read('compliance-calendar-v1.js'),h=read('index.html');
   ['ccFull','requestFullscreen','TRAINING','LEGAL DOCUMENTS','Next Retraining / Renewal Date','Expiry Date','Renewal / Follow-up Date','ccStats'].forEach(x=>assert.ok(c.includes(x),x));
-  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen2'));
+  assert.ok(h.includes('compliance-calendar-v1.js?v=20260922-fullscreen3'));
 });
