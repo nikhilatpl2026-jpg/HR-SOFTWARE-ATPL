@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.22-production-v14-auto-legacy-original-recovery';
+var BUILD='2026.09.22-production-v15-direct-v1-original-recovery';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -234,6 +234,51 @@ function upsertStateRow(type,rec){
   if(at>=0)rows[at]=rec;else rows.unshift(rec);
   state[type].rows=rows;rebuildIndex(type);renderFiles(type)
 }
+function legacyRowBlob(r){
+  try{
+    if(!r)return null;
+    if(typeof Blob!=='undefined'&&r.blob instanceof Blob)return r.blob;
+    var b=r.buffer;
+    if(typeof Blob!=='undefined'&&b instanceof Blob)return b;
+    if(b instanceof ArrayBuffer)return new Blob([b],{type:r.mime||fileMime(r.name)});
+    if(ArrayBuffer.isView&&ArrayBuffer.isView(b))return new Blob([b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)],{type:r.mime||fileMime(r.name)});
+  }catch(_){}
+  return null
+}
+function recoveryMatchScore(type,target,cand){
+  if(!cand)return-1;
+  var ct=String(cand.type||'').toLowerCase();
+  if(ct&&ct!==type){
+    var routed=looksLikePfRecord({type:ct,name:cand.name,ids:[].concat(cand.digitIds||[],cand.alnumIds||[])})?'pf':ct;
+    if(routed!==type)return-1
+  }
+  var th=String(target&&target.hash||target&&target.fileHash||target&&target.fingerprint||'').toLowerCase();
+  var ch=String(cand.fileHash||cand.hash||cand.fingerprint||'').toLowerCase();
+  if(th&&ch&&th===ch)return100;
+  var tn=logicalName(target&&target.name),cn=logicalName(cand.name),tp=String(target&&target.period||''),cp=String(cand.period||''),ts=Number(target&&target.size||0),cs=Number(cand.size||0);
+  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp&&ts&&cs&&ts===cs)return90;
+  if(tn&&cn&&tn===cn&&tp&&cp&&tp===cp)return80;
+  if(tn&&cn&&tn===cn&&ts&&cs&&ts===cs)return70;
+  return-1
+}
+async function findRecoverableLocalOriginal(type,target){
+  var rows=await dbAll(),best=null,bestScore=-1;
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];if(!r||r.type!==type||isAnyDeleteTombstoned(type,r)||!hasLocalOriginalHint(r))continue;
+    var sc=recoveryMatchScore(type,target,r);if(sc>bestScore){bestScore=sc;best=r}
+  }
+  if(best&&bestScore>=70){var bb=await getStoredBlob(best);if(bb)return{blob:bb,record:best,source:'v2',score:bestScore}}
+  try{
+    var db=await openLegacyDb();if(!db)return null;
+    var old=await legacyDbRows(db);db.close();var lb=null,ls=-1;
+    for(var j=0;j<old.length;j++){
+      var o=old[j],ob=legacyRowBlob(o);if(!ob)continue;
+      var score=recoveryMatchScore(type,target,o);if(score>ls){ls=score;lb={blob:ob,record:o,source:'v1',score:score}}
+    }
+    if(lb&&lb.score>=70)return lb
+  }catch(e){console.warn('Direct V1 original recovery scan failed',e)}
+  return null
+}
 async function promoteHistoricalOriginal(type,rec,blob){
   if(!rec||!rec.sharedAuthoritative||rec.sharedSource==='dedicated'||isAnyDeleteTombstoned(type,rec)||!blob)return false;
   var key=type+'|'+String(rec.hash||rec.id||rec.name||'');if(historicalPromotionPromises[key])return historicalPromotionPromises[key];
@@ -268,9 +313,10 @@ async function repairHistoricalOriginals(type,force){
     var historical=remote.map(localRecordFromCloud).filter(function(r){return r.sharedSource==='historical'&&!r.hasOriginalFile&&!isAnyDeleteTombstoned(type,r)});
     var repaired=0,available=0,missing=0;
     for(var i=0;i<historical.length;i++){
-      var h=historical[i],candidate=(h.hash&&byHash[String(h.hash).toLowerCase()])||byId[String(h.id)]||null;
-      if(!candidate||!hasLocalOriginalHint(candidate)){missing++;continue}
-      var blob=await getStoredBlob(candidate);if(!blob){missing++;continue}
+      var h=historical[i],candidate=(h.hash&&byHash[String(h.hash).toLowerCase()])||byId[String(h.id)]||null,recovered=null,blob=null;
+      if(candidate&&hasLocalOriginalHint(candidate))blob=await getStoredBlob(candidate);
+      if(!blob){recovered=await findRecoverableLocalOriginal(type,h);if(recovered){candidate=recovered.record;blob=recovered.blob}}
+      if(!candidate||!blob){missing++;continue}
       available++;
       if(activeDolType()===type)setStatus(type,'Securing old original files in shared vault… '+(available)+' found · '+repaired+' repaired');
       var merged=Object.assign({},h,candidate,{sharedAuthoritative:true,sharedSource:'historical'});
@@ -289,9 +335,20 @@ async function repairHistoricalOriginals(type,force){
   return historicalRepairPromises[type]
 }
 async function recordBlob(type,rec,progress){
-  var blob=await getStoredBlob(rec);
+  var blob=await getStoredBlob(rec),recovered=null;
+  if(!blob&&rec&&rec.sharedAuthoritative&&rec.sharedSource!=='dedicated'){
+    if(progress)progress(1);
+    recovered=await findRecoverableLocalOriginal(type,rec);
+    if(recovered&&recovered.blob){
+      blob=recovered.blob;
+      rec=Object.assign({},rec,recovered.record,{sharedAuthoritative:true,sharedSource:'historical'});
+    }
+  }
   if(blob){
-    if(rec.sharedAuthoritative&&rec.sharedSource!=='dedicated')setTimeout(function(){promoteHistoricalOriginal(type,rec,blob)},0);
+    if(rec.sharedAuthoritative&&rec.sharedSource!=='dedicated'){
+      if(progress)progress(4);
+      try{await promoteHistoricalOriginal(type,rec,blob)}catch(e){console.warn('Open/Download promotion deferred',e)}
+    }
     return blob
   }
   var v=vaultApi();
@@ -667,7 +724,7 @@ async function openViewer(type,id){
   $('cd2-viewer').classList.add('show');$('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
   var blob;
   try{blob=await recordBlob(type,rec,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Downloading original… '+p+'%</div>'})}catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Open failed: '+esc(e.message||e)+'</div>';return}
-  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file was never secured in the shared file vault. Re-upload this exact challan once; after that Open/Download will work across authorized browsers.</div>';return}
+  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in this browser or the shared vault. Open the browser/device where this challan was originally uploaded once so ERP can recover it automatically; only if that original is gone everywhere is one re-upload required.</div>';return}
   var ext=String(rec.name||'').split('.').pop().toLowerCase();
   if(ext==='pdf'){viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return}
   try{
@@ -773,7 +830,7 @@ async function downloadChallan(type,id){
   try{
     setStatus(type,'Preparing original file…');
     var blob=await recordBlob(type,rec,function(p){setStatus(type,'Downloading original from shared vault… '+p+'%')});
-    if(!blob)throw new Error('Original file is not in the shared vault. Re-upload this exact challan once to enable cross-browser Open/Download');
+    if(!blob)throw new Error('Original file is not present in this browser or the shared vault. Open the original upload browser/device once for automatic recovery; re-upload is needed only if the original is gone everywhere');
     var url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=rec.name||('challan_'+id);document.body.appendChild(a);a.click();a.remove();
     setTimeout(function(){try{URL.revokeObjectURL(url)}catch(_){}},1500);setStatus(type,'Downloaded ✓ — '+(rec.name||'challan'))
   }catch(e){setStatus(type,'Download failed — '+(e.message||e),true)}
