@@ -14,7 +14,7 @@ var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1';
 var legacy=root.ATPLDOLCloudV4||null;
 if(legacy&&!root.ATPLDOLCloudV4Legacy)root.ATPLDOLCloudV4Legacy=legacy;
 var rawCache={pf:null,esic:null},rawCacheAt={pf:0,esic:0},RAW_CACHE_MS=2500;
-var rtClient=null,rtChannel=null,rtStarting=null;
+var rtClient=null,rtChannel=null,rtStarting=null,migrationPromises={pf:null,esic:null},migrationEmptyChecked={pf:false,esic:false};
 
 function tok(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function wait(ms){return new Promise(function(r){root.setTimeout(r,ms)})}
@@ -59,7 +59,54 @@ async function listRaw(type,force){
   var d=await edgeJson({action:'list',type:type},26000),rows=arr(d.records);
   rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows
 }
-async function list(type){return (await listRaw(type,true)).map(mapRow)}
+async function syncEventExists(type){
+  try{
+    var url=SUPABASE_URL+'/rest/v1/dol_sync_events?challan_type=eq.'+encodeURIComponent(type)+'&select=id&limit=1';
+    var res=await timeoutFetch(url,{method:'GET',headers:{'apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY}},9000);
+    if(!res.ok)return true;
+    var rows=await res.json();return Array.isArray(rows)&&rows.length>0
+  }catch(_){return true}
+}
+function migrationProgress(type,msg,done){
+  try{root.dispatchEvent(new CustomEvent('atpl-dol-migration-progress',{detail:{type:type,message:msg,done:!!done}}))}catch(_){}
+}
+function maybeStartLegacyMigration(type){
+  if(migrationPromises[type]||migrationEmptyChecked[type]||!legacy||typeof legacy.list!=='function'||typeof legacy.fileBlob!=='function')return;
+  migrationPromises[type]=(async function(){
+    if(await syncEventExists(type)){migrationEmptyChecked[type]=true;return{migrated:0,skipped:'supabase-history-exists'}}
+    migrationProgress(type,'Checking old '+type.toUpperCase()+' challans for one-time migration…',false);
+    var oldRows=await legacy.list(type);oldRows=Array.isArray(oldRows)?oldRows:[];
+    if(!oldRows.length){migrationEmptyChecked[type]=true;migrationProgress(type,'No old '+type.toUpperCase()+' challans need migration.',true);return{migrated:0,failed:0}}
+    var migrated=0,failed=0;
+    for(var i=0;i<oldRows.length;i++){
+      var old=oldRows[i]||{};
+      try{
+        migrationProgress(type,'Migrating old challan '+(i+1)+' / '+oldRows.length+' · '+String(old.name||'challan'),false);
+        var blob=await legacy.fileBlob(old,function(p){migrationProgress(type,'Migrating '+(i+1)+' / '+oldRows.length+' · '+p+'% · '+String(old.name||'challan'),false)});
+        if(!blob)throw new Error('Original file unavailable in old vault');
+        var buf=await blob.arrayBuffer(),hash=String(old.fileHash||old.fingerprint||old.hash||'').toLowerCase();
+        if(!hash){
+          var dig=await root.crypto.subtle.digest('SHA-256',buf);hash=Array.from(new Uint8Array(dig)).map(function(b){return b.toString(16).padStart(2,'0')}).join('')
+        }
+        var ids=[].concat(arr(old.digitIds),arr(old.alnumIds),arr(old.ids)).map(String).filter(Boolean);
+        var work={type:type,name:String(old.name||'challan'),size:Number(old.size||blob.size||buf.byteLength)||buf.byteLength,hash:hash,period:String(old.period||''),periodSource:String(old.periodSource||'legacy'),ids:Array.from(new Set(ids)),contributions:arr(old.contributions),mime:String(old.mime||blob.type||'application/octet-stream')};
+        await upload(work,buf);
+        migrated++;
+        try{if(typeof legacy.deleteRecord==='function')await legacy.deleteRecord(old)}catch(e){console.warn('Old DOL cleanup deferred after Supabase migration',old&&old.name,e)}
+        rawCache[type]=null;rawCacheAt[type]=0;await wait(0)
+      }catch(e){failed++;console.warn('Old DOL migration skipped',old&&old.name,e)}
+    }
+    migrationEmptyChecked[type]=true;
+    migrationProgress(type,'One-time '+type.toUpperCase()+' migration finished · '+migrated+' moved'+(failed?' · '+failed+' need manual re-upload':''),true);
+    try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:type,at:Date.now(),migration:true}}))}catch(_){}
+    return{migrated:migrated,failed:failed}
+  })().catch(function(e){console.warn('One-time DOL migration failed',type,e);migrationProgress(type,'Old challan migration failed · '+String(e&&e.message||e),true);return{migrated:0,failed:1}}).finally(function(){migrationPromises[type]=null});
+}
+async function list(type){
+  var rows=await listRaw(type,true);
+  if(!rows.length)maybeStartLegacyMigration(type);
+  return rows.map(mapRow)
+}
 async function check(hash){
   hash=String(hash||'').toLowerCase();if(!hash)return{ok:true,duplicate:false};
   var types=['pf','esic'];
@@ -181,7 +228,7 @@ function stopRealtime(){
 var api={
   authority:'supabase',provider:'supabase',probe:function(){return Promise.resolve(true)},list:list,check:check,upload:upload,
   saveContributionIndex:saveContributionIndex,searchIndex:searchIndex,update:update,deleteRecord:remove,fileBlob:fileBlob,
-  startRealtime:startRealtime,stopRealtime:stopRealtime,legacyClient:legacy,supported:function(){return true},supportState:function(){return true},
+  startRealtime:startRealtime,stopRealtime:stopRealtime,migrateLegacy:maybeStartLegacyMigration,legacyClient:legacy,supported:function(){return true},supportState:function(){return true},
   version:function(){return BUILD}
 };
 root.ATPLDOLCloudV4=api;
