@@ -845,6 +845,61 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 .hr-doc-form{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:16px}.hr-doc-field{display:flex;flex-direction:column;gap:4px}.hr-doc-field.full{grid-column:1/-1}.hr-doc-field label{font-size:9px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.5px}.hr-doc-field input,.hr-doc-field select,.hr-doc-field textarea{width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;font-size:11px;outline:none;background:#fff}.hr-doc-field textarea{min-height:70px;resize:vertical}.hr-doc-help{font-size:9px;color:#94a3b8}.hr-doc-file{font-size:10px}.hr-doc-empty{padding:28px;text-align:center;color:#94a3b8}
 @media(max-width:1100px){.hr-doc-row{grid-template-columns:1fr 1fr 1fr}.hr-doc-actions{justify-content:flex-start}.hr-doc-head{display:none}}
 @media(max-width:650px){.hr-doc-form{grid-template-columns:1fr}.hr-doc-field.full{grid-column:auto}}
+
+/* ════════════ MOBILE APP RESPONSIVE OPTIMIZATIONS ════════════ */
+@media (max-width: 768px) {
+  /* Prevent horizontal cutoffs and scrolling glitches */
+  body, html {
+    overflow-x: hidden !important;
+    width: 100% !important;
+    font-size: 13px !important;
+  }
+  
+  /* Header adjustments on phone */
+  .header {
+    height: auto !important;
+    min-height: 48px !important;
+    padding: 6px 10px !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  
+  /* Layout stacks cleanly on mobile instead of squeezing */
+  .layout {
+    flex-direction: column !important;
+    height: auto !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Sidebar behaves as compact drawer/top bar on phone */
+  .sidebar {
+    width: 100% !important;
+    max-height: 260px !important;
+    overflow-y: auto !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--border) !important;
+  }
+  
+  /* Main workspace gets full width */
+  .main, .workspace, #page-cmd, #page-audit, #page-master, #page-dol, #page-hrdocs {
+    width: 100% !important;
+    padding: 8px !important;
+    overflow-x: auto !important;
+  }
+  
+  /* Tables allow smooth horizontal swipe without breaking page width */
+  table, .table-wrap, .data-table {
+    display: block !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* Touch target sizes for phone buttons */
+  button, select, input[type="button"], input[type="submit"] {
+    min-height: 38px !important;
+  }
+}
 </style>
 </head>
 <body>
