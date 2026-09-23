@@ -978,6 +978,160 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   }
 }
 
+
+/* ── MOBILE EMP CARDS STYLES ── */
+.mobile-only-cards-container {
+  display: none;
+}
+.desktop-only-table-wrap {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .mobile-only-cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 8px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  .desktop-only-table-wrap {
+    display: none !important;
+  }
+  
+  /* WhatsApp / Native Mobile Card UI */
+  .m-emp-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #111B21;
+    border: 1px solid #202C33;
+    border-radius: 12px;
+    padding: 12px 10px;
+    transition: background 0.15s;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .m-emp-card:active {
+    background: #182229;
+  }
+  .m-emp-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+  }
+  .m-emp-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .m-emp-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .m-emp-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #E9EDEF;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .m-emp-code {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8696A0;
+    font-family: monospace;
+  }
+  .m-emp-dup {
+    background: #7f1d1d;
+    color: #fca5a5;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .m-emp-sub {
+    font-size: 12px;
+    color: #8696A0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .m-emp-badges {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .m-badge-pf, .m-badge-esi, .m-badge-bank {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .m-badge-pf {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34D399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  .m-badge-esi {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60A5FA;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+  }
+  .m-badge-bank {
+    background: rgba(245, 158, 11, 0.15);
+    color: #FBBF24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+  .m-emp-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .m-act-btn {
+    border: none;
+    background: #202C33;
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .m-act-btn:active {
+    background: #2A3942;
+  }
+
+  /* Employee top stats and buttons wrap cleanly on phone */
+  #page-empmaster .header-stat-row, #page-empmaster > div > div > div {
+    flex-wrap: wrap !important;
+  }
+  #emStatTotal, #emStatPF, #emStatESI {
+    font-size: 11px !important;
+  }
+  #page-empmaster button {
+    padding: 6px 10px !important;
+    font-size: 11px !important;
+  }
+  #emSearch {
+    max-width: 100% !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1992,8 +2146,9 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
         <div style="margin-left:auto;font-size:11px;color:#64748b" id="emShowingInfo"></div>
       </div>
 
-      <!-- TABLE AREA -->
-      <div style="flex:1;overflow:auto">
+      <!-- TABLE AREA (Desktop table + Mobile cards) -->
+      <div id="emMobileCardsWrap" class="mobile-only-cards-container"></div>
+      <div id="emDesktopTableWrap" class="desktop-only-table-wrap" style="flex:1;overflow:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">
           <thead style="position:sticky;top:0;z-index:10">
             <tr style="background:#0f172a;border-bottom:2px solid #334155">
@@ -6672,6 +6827,9 @@ function emRenderTable() {
   var pages = Math.max(1,Math.ceil(total/rpp));
   var start = (EM.currentPage-1)*rpp;
   var slice = EM.filtered.slice(start, start+rpp);
+  
+  var isMobile = window.innerWidth <= 768;
+  var mobileCardContainer = document.getElementById('emMobileCardsWrap');
 
   // Find duplicates in ALL data (not just filtered)
   var allCodes = EM.data.map(function(e){return String(e.emp_id).replace(/^0+/,'');});
