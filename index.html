@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ATPL HR & Payroll Software</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/HR-SOFTWARE-ATPL/manifest.json">
 <meta name="theme-color" content="#1e1b4b">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,7 +15,7 @@
   // Register Auto-Updating Service Worker for PWA
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      navigator.serviceWorker.register('sw.js').then(function(reg) {
+      navigator.serviceWorker.register('/HR-SOFTWARE-ATPL/sw.js', { scope: '/HR-SOFTWARE-ATPL/' }).then(function(reg) {
         // Check for updates on every page load
         reg.update();
         reg.onupdatefound = function() {
