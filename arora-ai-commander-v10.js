@@ -423,6 +423,97 @@
     var fileCount = KnowledgeGraph.filesSummary.length;
     var monthKeys = Object.keys(KnowledgeGraph.months).sort();
 
+
+    // ══════════════════════════════════════════════════════════════════
+    // 100X SUPER-INTELLIGENCE: STATUTORY, LABOUR LAWS & RULES EXPERT
+    // ══════════════════════════════════════════════════════════════════
+
+    // 1. PF WAGE CEILING / NEW CEILING / EPF RULES
+    if (lower.match(/(pf|epf|provident\s*fund).*(ceiling|limit|celling|new\s*limit|hike|15000|21000|rule|percentage|rules)/i) ||
+        lower.match(/(ceiling|celling|limit).*(pf|epf)/i)) {
+      var pfHtml = '<div style="line-height:1.7">';
+      pfHtml += '🏛️ <strong>EPF (Employees Provident Fund) Wage Ceiling & Latest Rules:</strong><br><br>';
+      pfHtml += '📌 <strong>1. Current Statutory Wage Ceiling:</strong><br>';
+      pfHtml += '• <strong>₹15,000 per month</strong> (Yeh statutory cap 1 September 2014 se laagu hai).<br>';
+      pfHtml += '• Jis employee ka Basic + DA ₹15,000 ya usse kam hai, uske liye PF deduction <strong>Mandatory (Anivarya)</strong> hai.<br><br>';
+      
+      pfHtml += '📌 <strong>2. Proposed / New Wage Ceiling (Latest Update):</strong><br>';
+      pfHtml += '• Labour Ministry & EPFO board ne wage ceiling ko <strong>₹15,000 se badha kar ₹21,000 per month</strong> karne ka proposal Govt ko forward kiya hua hai (ESIC limit ke barabar karne ke liye).<br>';
+      pfHtml += '• <em>Note:</em> Jab tak central government ka official gazette notification nahi aata, tab tak ERP aur payroll calculations me official ceiling <strong>₹15,000</strong> hi valid hai.<br><br>';
+
+      pfHtml += '📌 <strong>3. Contribution Breakdown (Total 24%):</strong><br>';
+      pfHtml += '• <strong>Employee Share:</strong> 12% of (Basic + DA)<br>';
+      pfHtml += '• <strong>Employer Share (12%):</strong><br>';
+      pfHtml += '  - <strong>3.67%</strong> ➔ EPF (Provident Fund)<br>';
+      pfHtml += '  - <strong>8.33%</strong> ➔ EPS (Pension Scheme - capped at max ₹1,250 on ₹15,000)<br>';
+      pfHtml += '  - <strong>0.50%</strong> ➔ EDLI (Insurance)<br>';
+      pfHtml += '  - <strong>0.50%</strong> ➔ EPF Admin Charges<br><br>';
+
+      pfHtml += '📌 <strong>4. Higher Pension / Ceiling Se Upar:</strong><br>';
+      pfHtml += '• Agar basic pay ₹15,000 se zyada hai, toh voluntary joint declaration ke under actual basic par bhi 12% PF deduct ho sakta hai.<br>';
+      pfHtml += '</div>';
+      return { html: pfHtml };
+    }
+
+    // 2. ESIC WAGE CEILING & RULES
+    if (lower.match(/(esic|esi|bima).*(ceiling|limit|celling|rule|coverage|percentage|rate)/i) ||
+        lower.match(/(ceiling|celling|limit).*(esic|esi)/i)) {
+      var esiHtml = '<div style="line-height:1.7">';
+      esiHtml += '🏥 <strong>ESIC (Employee State Insurance) Wage Limit & Rules:</strong><br><br>';
+      esiHtml += '📌 <strong>1. Statutory Gross Wage Ceiling:</strong><br>';
+      esiHtml += '• <strong>₹21,000 per month (Gross Salary)</strong>.<br>';
+      esiHtml += '• Specially-abled (PWD) employees ke liye limit <strong>₹25,000 per month</strong> hai.<br>';
+      esiHtml += '• Agar kisi employee ki Gross earning ₹21,000 se 1 rupee bhi upar chali jaye, toh wo us contribution period ke baad ESI coverage se bahar ho jata hai.<br><br>';
+      
+      esiHtml += '📌 <strong>2. Contribution Rates (Revised):</strong><br>';
+      esiHtml += '• <strong>Employee Share:</strong> <strong>0.75%</strong> of Total Gross Earning<br>';
+      esiHtml += '• <strong>Employer Share:</strong> <strong>3.25%</strong> of Total Gross Earning<br>';
+      esiHtml += '• <strong>Total Contribution:</strong> 4.00%<br><br>';
+
+      esiHtml += '📌 <strong>3. Exemption Rule:</strong><br>';
+      esiHtml += '• Jin workers ki average daily wage ₹176 ya usse kam hoti hai, unka 0.75% employee share deduct nahi hota (Govt exempt karti hai), employer ko apna share dena hota hai.<br>';
+      esiHtml += '</div>';
+      return { html: esiHtml };
+    }
+
+    // 3. BONUS ACT RULES & CALCULATION
+    if (lower.match(/(bonus|diwali\s*bonus).*(rule|calculation|percentage|formula|limit|ceiling|act)/i)) {
+      var bHtml = '<div style="line-height:1.7">';
+      bHtml += '🎁 <strong>Payment of Bonus Act, 1965 (Statutory Rules):</strong><br><br>';
+      bHtml += '• <strong>Eligibility:</strong> Employee ne saal me kam se kam 30 working days kaam kiya ho aur salary ₹21,000/month tak ho.<br>';
+      bHtml += '• <strong>Minimum Statutory Bonus:</strong> <strong>8.33%</strong> of Earned Basic+DA (or ₹7,000 ceiling whichever is higher).<br>';
+      bHtml += '• <strong>Maximum Bonus:</strong> Up to <strong>20%</strong> based on allocable surplus.<br>';
+      bHtml += '• <strong>Calculation Formula:</strong> Bonus = Earned Basic (or ₹7,000 pro-rata) × 8.33%.<br>';
+      bHtml += '</div>';
+      return { html: bHtml };
+    }
+
+    // 4. GRATUITY FORMULA & RULES
+    if (lower.match(/(gratuity).*(rule|formula|calculation|limit|act|sal|years)/i)) {
+      var gHtml = '<div style="line-height:1.7">';
+      gHtml += '💰 <strong>Payment of Gratuity Act, 1972:</strong><br><br>';
+      gHtml += '• <strong>Eligibility:</strong> Minimum <strong>5 continuous years</strong> of service in the organization (exception: death or disability me 5 years condition waive off ho jati hai).<br>';
+      gHtml += '• <strong>Formula:</strong><br>';
+      gHtml += '  <code>Gratuity = (15 × Last Drawn Basic + DA × Completed Years of Service) ÷ 26</code><br>';
+      gHtml += '• <strong>Maximum Limit:</strong> Statutory tax-free gratuity limit is <strong>₹20,00,000 (20 Lakh)</strong>.<br>';
+      gHtml += '</div>';
+      return { html: gHtml };
+    }
+
+    // 5. SALARY DIVISOR / 26 VS 30/31 FORMULA
+    if (lower.match(/(divisor|26\s*days|30\s*days|salary\s*formula|gross\s*to\s*net|ot\s*rate)/i)) {
+      var dHtml = '<div style="line-height:1.7">';
+      dHtml += '📐 <strong>Factory & Payroll Divisor Calculations (ATPL Standard):</strong><br><br>';
+      dHtml += '• <strong>Standard Factory Divisor:</strong> <strong>26 Days</strong> (excluding 4 Sundays).<br>';
+      dHtml += '• <strong>Per Day Rate:</strong> <code>Daily Rate = Monthly Basic ÷ 26</code>.<br>';
+      dHtml += '• <strong>Overtime (Double Rate as per Factories Act 1948):</strong><br>';
+      dHtml += '  <code>OT Rate per Hour = (Basic Salary ÷ 26 ÷ 8) × 2</code> (Double Normal Wages).<br>';
+      dHtml += '• <strong>Net Salary Calculation:</strong><br>';
+      dHtml += '  <code>Net = Earned Gross - (PF + ESIC + Advance + Loan + TDS)</code>.<br>';
+      dHtml += '</div>';
+      return { html: dHtml };
+    }
+
     // ── GREETING / CASUAL ──
     if (lower.match(/^(hi|hello|hey|namaste|ram ram|kya hal|kaise ho|bhai)\b/)) {
       var greeting = 'Namaste Bhai! 🙏 Main <strong>Arora Autonomous AI Commander (v10)</strong> hoon.<br><br>';
