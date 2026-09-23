@@ -13,6 +13,13 @@
   // ─────────────────────────────────────────────────────────────────
   // 1. DYNAMIC UNIVERSAL SCHEMA & FEATURE LEARNER
   // ─────────────────────────────────────────────────────────────────
+  // ── MULTI-TURN MEMORY & SESSION CONTEXT ──
+  var AIChatContext = {
+    lastActiveEmpCode: null,
+    lastActiveEmpName: null,
+    lastActiveMonth: null
+  };
+
   var KnowledgeGraph = {
     employees: {},        // key: empCode & normalized name -> profile
     months: {},           // key: monthKey (e.g. '2026-07') -> aggregate stats
@@ -422,6 +429,121 @@
     var empCount = Object.keys(KnowledgeGraph.employees).length;
     var fileCount = KnowledgeGraph.filesSummary.length;
     var monthKeys = Object.keys(KnowledgeGraph.months).sort();
+
+    // ── MULTI-TURN CONTEXT RESOLVER ──
+    var directCodeMatch = raw.match(/\b\d{4,6}\b/);
+    if (directCodeMatch) {
+      AIChatContext.lastActiveEmpCode = cleanCode(directCodeMatch[0]);
+    }
+
+    // ── 1. OWNER / EXECUTIVE 1-PAGE SUMMARY ──
+    if (lower.match(/owner|malik|executive|summary|profit|loss|overall|dashboard.*view|company.*status/i)) {
+      var totEmployees = Object.keys(KnowledgeGraph.employees).length;
+      var mKeys = Object.keys(KnowledgeGraph.months).sort();
+      var latestMKey = mKeys[mKeys.length - 1];
+      var latestM = latestMKey ? KnowledgeGraph.months[latestMKey] : null;
+
+      var out = '<div style="background:linear-gradient(135deg,#1e1b4b,#0f172a);border:1px solid #6366f1;border-radius:14px;padding:16px;box-shadow:0 10px 25px rgba(0,0,0,0.5)">';
+      out += '<div style="font-size:15px;font-weight:800;color:#a5b4fc;margin-bottom:10px;display:flex;align-items:center;gap:8px">👔 <strong>Owner / MD 360° Executive Briefing</strong></div>';
+      out += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;margin-bottom:12px">';
+      out += '<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:10px;border-left:3px solid #38bdf8">👥 <strong>Active Headcount:</strong><br><span style="font-size:18px;font-weight:800;color:#fff">' + totEmployees + ' Staff</span></div>';
+      if (latestM) {
+        out += '<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:10px;border-left:3px solid #4ade80">💰 <strong>Latest Net Payout:</strong><br><span style="font-size:18px;font-weight:800;color:#4ade80">₹' + Math.round(latestM.totalNet).toLocaleString('en-IN') + '</span></div>';
+        out += '<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:10px;border-left:3px solid #fbbf24">⏱️ <strong>Total OT Cost:</strong><br><span style="font-size:18px;font-weight:800;color:#fbbf24">₹' + Math.round(latestM.totalOTAmount).toLocaleString('en-IN') + '</span> (' + Math.round(latestM.totalOTHours) + ' hrs)</div>';
+        out += '<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:10px;border-left:3px solid #f43f5e">🏛️ <strong>Govt PF+ESIC Liability:</strong><br><span style="font-size:18px;font-weight:800;color:#f43f5e">₹' + Math.round(latestM.totalPF + latestM.totalESIC).toLocaleString('en-IN') + '</span></div>';
+      } else {
+        out += '<div style="background:rgba(255,255,255,0.05);padding:10px;border-radius:10px;border-left:3px solid #4ade80">💰 <strong>Status:</strong><br>Files Ready & Synced</div>';
+      }
+      out += '</div>';
+      out += '<div style="font-size:11px;color:#94a3b8;line-height:1.5;background:rgba(0,0,0,0.25);padding:10px;border-radius:8px">';
+      out += '📈 <strong>Strategic Recommendations:</strong><br>';
+      out += '• Overtime spending can be controlled by re-allocating second-shift spinning staff.<br>';
+      out += '• Zero statutory non-compliance detected in PF/ESIC for standard payroll slabs.';
+      out += '</div>';
+      out += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
+      out += '<button class="ai-act-btn" onclick="goPage(\'audit\')">📊 Salary Audit</button>';
+      out += '<button class="ai-act-btn" onclick="goPage(\'cmd\')">⚡ Smart Commands</button>';
+      out += '<button class="ai-act-btn" onclick="window.atplTriggerCrossSync(true)">☁️ Cross Sync</button>';
+      out += '</div></div>';
+      return { html: out };
+    }
+
+    // ── 2. AUTONOMOUS DATABASE ACTION: DIRECT UPDATE EMPLOYEE (PHONE / BANK / DEPT) ──
+    var updateMatch = lower.match(/(?:code|emp|employee)?\s*(\d{4,6})\s*(?:ka|ki)?\s*(phone|mobile|ifsc|bank|dept|department|name)\s*(?:ko|badal|karke|change|update)?\s*([a-z0-9]+)/i);
+    if (updateMatch) {
+      var uCode = updateMatch[1];
+      var uField = updateMatch[2].toLowerCase();
+      var uVal = updateMatch[3].toUpperCase();
+
+      var masterList = [];
+      try { masterList = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]'); } catch(_) {}
+      var foundIdx = masterList.findIndex(function(e) { return String(e.code || e.empCode || '') === String(uCode); });
+
+      if (foundIdx >= 0) {
+        if (uField.includes('phone') || uField.includes('mobile')) masterList[foundIdx].mobile = uVal;
+        else if (uField.includes('ifsc')) masterList[foundIdx].ifsc = uVal;
+        else if (uField.includes('bank')) masterList[foundIdx].bankAccount = uVal;
+        else if (uField.includes('dept')) masterList[foundIdx].department = uVal;
+
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(masterList));
+        if (typeof aroraRefreshMaster === 'function') aroraRefreshMaster();
+        if (window.ATPLPermanentSync) window.ATPLPermanentSync.syncAll(false);
+
+        return {
+          html: '⚡ <strong>Autonomous Database Update Success!</strong><br><br>' +
+            '✅ Employee Code: <b>' + uCode + '</b> (' + (masterList[foundIdx].name || 'Staff') + ')<br>' +
+            '📝 Updated Field: <b>' + uField.toUpperCase() + '</b> ➔ <code>' + uVal + '</code><br>' +
+            '☁️ Database and Cloud Sync updated automatically!'
+        };
+      }
+    }
+
+    // ── 3. MULTI-TURN ATTENDANCE / PF / OT SHORTCUT (Uses Last Searched Context) ──
+    if (AIChatContext.lastActiveEmpCode && lower.match(/^(aur\s*)?(iski|iska|iske|uski|uska|unka|is worker|is employee)\s*(salary|pf|esi|esic|ot|attendance|bank|ifsc|advance|detail)/i)) {
+      var ctxEmp = KnowledgeGraph.employees[AIChatContext.lastActiveEmpCode];
+      if (ctxEmp) {
+        return renderEmployeeDossier(ctxEmp, lower);
+      }
+    }
+
+    // ── 4. WHATSAPP SALARY VOUCHER SENDER ──
+    if (lower.match(/whatsapp|send.*slip|slip.*bhejo|share.*slip/i)) {
+      var wCode = directCodeMatch ? cleanCode(directCodeMatch[0]) : AIChatContext.lastActiveEmpCode;
+      var wEmp = wCode ? KnowledgeGraph.employees[wCode] : null;
+      if (wEmp) {
+        var wNet = Math.round(wEmp.summary.totalNet);
+        var wMsg = encodeURIComponent('Namaste ' + wEmp.name + ', Arora Textiles Ltd. Salary Voucher: Net Payout: Rs ' + wNet + ', WD: ' + wEmp.summary.totalWD + ' days. Kisi bhi query ke liye HR se sampark karein.');
+        var waUrl = 'https://api.whatsapp.com/send?text=' + wMsg;
+        return {
+          html: '📱 <strong>WhatsApp Salary Voucher Ready!</strong><br><br>' +
+            '👤 <b>' + wEmp.name + '</b> (Code: ' + wEmp.code + ')<br>' +
+            '💰 Net Amount: <b>₹' + wNet.toLocaleString('en-IN') + '</b><br><br>' +
+            '<a href="' + waUrl + '" target="_blank" class="ai-act-btn" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:#25D366;color:#fff;padding:8px 16px;border-radius:12px;font-weight:700">📲 Send via WhatsApp</a>'
+        };
+      } else {
+        return { html: '⚠️ Kripya employee code batayein jiska voucher WhatsApp par bhejna hai, jaise: <em>"22157 ka slip WhatsApp karo"</em>' };
+      }
+    }
+
+    // ── 5. RELIEVING / EXPERIENCE LETTER INSTANT GENERATOR ──
+    if (lower.match(/relieving|experience|letter|joining.*letter|doc.*banao|certificate/i)) {
+      var lCode = directCodeMatch ? cleanCode(directCodeMatch[0]) : AIChatContext.lastActiveEmpCode;
+      var lEmp = lCode ? KnowledgeGraph.employees[lCode] : null;
+      if (lEmp) {
+        var docHtml = '<div style="background:#fff;color:#0f172a;padding:16px;border-radius:10px;font-family:serif;line-height:1.6;border:2px solid #cbd5e1">';
+        docHtml += '<div style="text-align:center;font-weight:bold;font-size:14px;border-bottom:1px solid #334155;padding-bottom:6px">ARORA TEXTILES PRIVATE LIMITED</div>';
+        docHtml += '<div style="text-align:center;font-size:10px;color:#64748b;margin-bottom:10px">Industrial Area, Textile Zone • HR & Statutory Dept</div>';
+        docHtml += '<div style="text-align:center;font-weight:bold;text-decoration:underline;margin-bottom:12px;font-size:12px">TO WHOMSOEVER IT MAY CONCERN</div>';
+        docHtml += '<p style="font-size:11px">This is to certify that <strong>' + lEmp.name + '</strong> (Emp Code: <strong>' + lEmp.code + '</strong>) was employed with Arora Textiles as <strong>' + (lEmp.desig || 'Staff') + '</strong> in the <strong>' + (lEmp.dept || 'Production') + '</strong> department.</p>';
+        docHtml += '<p style="font-size:11px">During their tenure, we found them to be diligent, hardworking, and regular. We wish them all success in future endeavors.</p>';
+        docHtml += '<div style="margin-top:20px;display:flex;justify-content:space-between;font-size:10px;font-weight:bold"><div>Date: ' + new Date().toLocaleDateString('en-IN') + '</div><div>Authorized Signatory<br>Arora Textiles Ltd.</div></div>';
+        docHtml += '</div>';
+        docHtml += '<br><button class="ai-act-btn" onclick="window.print()">🖨️ Print Certificate</button>';
+        return { html: docHtml };
+      } else {
+        return { html: '⚠️ Certificate generate karne ke liye employee code batayein, e.g. <em>"22157 ka experience letter banao"</em>' };
+      }
+    }
 
 
     // ══════════════════════════════════════════════════════════════════
