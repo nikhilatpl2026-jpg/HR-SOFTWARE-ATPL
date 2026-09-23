@@ -907,7 +907,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="logo-sub">Excel Commander v2 · Hindi · English · Hinglish</div>
   </div>
   <div class="header-right">
-    <button onclick="goPage('test')" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
+    <button onclick="window.AroraAICommander.open()" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
     <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync / restore karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Cross-Browser Sync</span></button>
     <button onclick="toggleDeepScan()" id="dsBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818CF8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" onmouseover="this.style.background='rgba(129,140,248,0.25)'" onmouseout="this.style.background='rgba(129,140,248,0.15)'">
       <span style="font-size:14px">🔬</span> Deep Scan
@@ -1212,7 +1212,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div style="margin:10px 18px 0;background:linear-gradient(90deg,rgba(99,102,241,0.2),rgba(56,189,248,0.2));border:1px solid rgba(129,140,248,0.4);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="goPage('test')">
         <span style="font-size:18px">🧪</span>
         <div>
-          <span style="font-size:13px;font-weight:800;color:#38bdf8">bhai google ai studio ne kiyta test</span>
+          <span style="font-size:13px;font-weight:800;color:#38bdf8">🤖 Arora AI Commander v10 (Click to Open AI)</span>
           <span style="font-size:11px;color:#94a3b8;margin-left:8px">➔ Click to open Test Feature</span>
         </div>
       </div>
@@ -5201,133 +5201,13 @@ function dvDownload() {
 var AI_OPEN = false;
 
 function toggleAIChat() {
+  if (window.AroraAICommander && typeof window.AroraAICommander.toggle === "function") {
+    window.AroraAICommander.toggle();
+    return;
+  }
   AI_OPEN = !AI_OPEN;
-  var box = document.getElementById('aiChatBox');
-  var btn = document.getElementById('aiChatBtn');
-  if (!box || !btn) return;
-  box.style.display = AI_OPEN ? 'flex' : 'none';
-  btn.innerHTML = AI_OPEN ? '✕' : '🤖';
-  btn.style.background = AI_OPEN
-    ? 'linear-gradient(135deg,#EF4444,#F87171)'
-    : 'linear-gradient(135deg,#4F46E5,#818CF8)';
-  if (AI_OPEN) setTimeout(function(){ var inp=document.getElementById('aiInput'); if(inp)inp.focus(); }, 100);
-}
-
-function aiQuick(msg) {
-  var inp = document.getElementById('aiInput');
-  if (inp) inp.value = msg;
-  sendAIMsg();
-}
-
-function addAIMsg(text, isUser) {
-  var msgs = document.getElementById('aiMessages');
-  if (!msgs) return;
-  var div = document.createElement('div');
-  div.className = 'ai-msg ' + (isUser ? 'ai-user' : 'ai-bot');
-  div.innerHTML = '<div class="ai-bubble">' + text + '</div>';
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function addAITyping() {
-  var msgs = document.getElementById('aiMessages');
-  if (!msgs) return;
-  var div = document.createElement('div');
-  div.className = 'ai-msg ai-bot'; div.id = 'aiTyping';
-  div.innerHTML = '<div class="ai-bubble ai-typing"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div></div>';
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-function removeAITyping() {
-  var t = document.getElementById('aiTyping');
-  if (t) t.remove();
-}
-
-function sendAIMsg() {
-  var input = document.getElementById('aiInput');
-  if (!input) return;
-  var msg = input.value.trim();
-  if (!msg) return;
-  input.value = '';
-  addAIMsg(msg, true);
-  addAITyping();
-  callClaudeAPI(msg);
-}
-
-async function callClaudeAPI(userMsg) {
-  // Build context from loaded files
-  var fileContext = '';
-  if (FILES.length) {
-    var mN=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    var fileList = FILES.map(function(f,i){
-      var o=exMonthOrder(f.name),m=o%100,y=Math.floor(o/100);
-      return (m>=1&&m<=12?mN[m]+' '+y:f.name.substring(0,20));
-    }).join(', ');
-    fileContext = FILES.length + ' salary files loaded: ' + fileList + '. ';
-
-    // Quick scan for issues
-    var issueCount = 0;
-    var sampleData = [];
-    FILES.slice(0,3).forEach(function(f){
-      var ws = findFormulaSheet(f);
-      if(!ws) return;
-      var rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
-      if(!rows.length) return;
-      var cols = detectSalaryCols(rows[0]||[]);
-      var empCount = rows.slice(1).filter(function(r){return String(r[cols.empCode>=0?cols.empCode:0]||'').match(/\d{4,}/);}).length;
-      sampleData.push(f.name.substring(0,20)+': '+empCount+' employees');
-      rows.slice(1,10).forEach(function(r){
-        var gross = cols.gross>=0?sflt(r[cols.gross]):0;
-        var esic = cols.esic>=0?sflt(r[cols.esic]):0;
-        if(gross>0&&gross<=21000&&esic===0) issueCount++;
-      });
-    });
-    if(sampleData.length) fileContext += 'Sample: ' + sampleData.join('; ') + '. ';
-    if(issueCount>0) fileContext += issueCount + ' potential ESIC issues detected. ';
-  } else {
-    fileContext = 'No salary files loaded yet. ';
-  }
-
-  var systemPrompt = 'You are Arora AI, a smart HR and salary management assistant for Arora Textiles Pvt. Ltd. ' +
-    'You help with: DOL (Date of Leaving) verification, ESIC checks, PF calculations, salary audits, and Excel file analysis. ' +
-    'Context: ' + fileContext +
-    'Rules: ' +
-    '1. Answer in Hinglish (mix of Hindi and English) — friendly and helpful tone. ' +
-    '2. For salary formulas: PF=Basic×12%, ESIC=NetEarning×0.75% (gross≤21000), Bonus=EarnBasicDA×8.33%, DOL=last month where Manual Amount > 0. ' +
-    '3. If asked to run a scan or check, give specific actionable guidance. ' +
-    '4. Keep answers concise and formatted with bullet points when listing things. ' +
-    '5. Always be accurate — never guess salary amounts. ' +
-    '6. If user asks about a specific employee, say you need the salary files to check.';
-
-  try {
-    var response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMsg }]
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('API error: ' + response.status);
-    }
-
-    var data = await response.json();
-    var reply = data.content && data.content[0] ? data.content[0].text : '⚠️ Response nahi mila.';
-    // Convert newlines to <br> for HTML display
-    reply = reply.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/•/g, '•');
-    removeAITyping();
-    addAIMsg(reply, false);
-  } catch(err) {
-    // Fallback to local processing if API fails
-    removeAITyping();
-    var fallback = processAIQuery(userMsg);
-    addAIMsg(fallback + '<br><br><span style="font-size:10px;color:#94a3b8;font-style:italic">(AI offline — local mode)</span>', false);
-  }
+  var box = document.getElementById("aiChatBox");
+  if (box) box.style.display = AI_OPEN ? "flex" : "none";
 }
 
 function processAIQuery(msg) {
@@ -9463,7 +9343,7 @@ else AInit();
 <script src="hr-workplace.js?v=20260919-fast10"></script>
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
-<script src="hr-ai-lazy-loader.js?v=20260912-13"></script>
+<!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=20260923-v10"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>

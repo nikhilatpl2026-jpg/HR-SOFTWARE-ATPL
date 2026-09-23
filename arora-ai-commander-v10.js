@@ -827,6 +827,7 @@
       '.ai-table { width:100%;border-collapse:collapse;font-size:11px;margin-top:6px; }',
       '.ai-table th, .ai-table td { padding:5px 7px;border:1px solid rgba(255,255,255,0.1);text-align:left; }',
       '.ai-table th { background:rgba(255,255,255,0.07);color:#94a3b8;font-weight:700; }',
+      '@media (max-width: 600px) { #atplAiContainer { bottom: 0 !important; right: 0 !important; left: 0 !important; width: 100vw !important; height: 92vh !important; border-radius: 20px 20px 0 0 !important; } }',
       '.ai-dossier-card { background:rgba(30,41,59,0.7);border:1px solid rgba(129,140,248,0.3);border-radius:12px;padding:12px;margin:4px 0; }',
       '.ai-dossier-head { display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px;margin-bottom:8px; }',
       '.ai-dossier-badge { font-size:10px;font-weight:800;background:rgba(99,102,241,0.25);color:#a5b4fc;padding:2px 8px;border-radius:10px; }',
