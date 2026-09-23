@@ -3,7 +3,36 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Arora Textiles — Excel AI Commander v2</title>
+<title>ATPL HR & Payroll Software</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e1b4b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ATPL HR">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+  // Register Auto-Updating Service Worker for PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('sw.js').then(function(reg) {
+        // Check for updates on every page load
+        reg.update();
+        reg.onupdatefound = function() {
+          var installingWorker = reg.installing;
+          installingWorker.onstatechange = function() {
+            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('New update available from GitHub! Auto-refreshing...');
+              window.location.reload();
+            }
+          };
+        };
+      }).catch(function(err) {
+        console.warn('SW registration failed:', err);
+      });
+    });
+  }
+</script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
