@@ -42,8 +42,8 @@ function parseText(t){
   throw new Error('INVALID_RESPONSE')
 }
 function timeoutFor(action,asked){
+  if(action==='login')return Math.max(24000,Number(asked)||24000);
   if(asked&&asked>0)return Math.max(3000,Math.min(30000,asked));
-  if(action==='login')return 12000;
   if(action==='getSystemRecords')return 24000;
   if(action==='getDOLRecords'||action==='searchDOLIndex'||action==='getDOLFileInfo'||action==='getDOLFileChunk')return 22000;
   if(action==='listComplianceCalendar')return 15000;
@@ -51,7 +51,8 @@ function timeoutFor(action,asked){
   return 22000
 }
 function attemptsFor(action,asked){
-  if(asked!=null)return Math.max(1,Math.min(2,Number(asked)||1));
+  if(action==='login'||action==='ping')return Math.max(2,Number(asked)||2);
+  if(asked!=null)return Math.max(1,Math.min(3,Number(asked)||1));
   return 1
 }
 function invalidate(action){
@@ -64,7 +65,7 @@ function jsonp(params,timeout){
     function finish(){if(done)return;done=true;root.clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}
     root[cb]=function(data){finish();resolve(data||{})};
     var p=Object.assign({},cleanParams(params),{callback:cb,_ts:now()});
-    s.async=true;s.referrerPolicy='no-referrer';s.onerror=function(){finish();reject(new Error('CLOUD_NETWORK'))};
+    s.async=true;s.onerror=function(){finish();reject(new Error('CLOUD_NETWORK'))};
     s.src=API+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
   })
 }
@@ -95,7 +96,7 @@ async function transport(params,opts){
   }
   // JSONP is the canonical Apps Script transport. Do not start a second long
   // CORS/fetch request after a read timeout unless a caller explicitly asks for it.
-  if(opts.fetchFallback===true&&READ_ACTIONS[action]){
+  if((opts.fetchFallback===true||action==='login'||action==='ping')&&READ_ACTIONS[action]){
     try{
       var d=await fetchFallback(params,Math.max(3000,Math.min(timeout,7000)));
       health.ok++;health.lastOk=now();health.lastError='';return d
