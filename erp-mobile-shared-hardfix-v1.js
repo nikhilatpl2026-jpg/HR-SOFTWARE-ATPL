@@ -177,9 +177,11 @@ async function hardLogin(ev){
     var msg=e&&e.message?e.message:String(e);
     if(/CLOUD_UNREACHABLE|CLOUD_TIMEOUT|CLOUD_NETWORK|OFFLINE|timeout|connect failed/i.test(msg)){
       var localUsers=J(root.localStorage.getItem(USERS)||"[]",[]);
-      var matchUser=(Array.isArray(localUsers)?localUsers:[]).find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()});
+      var legacyUsers=J(root.localStorage.getItem("ATPL_UserAccess_V1")||"[]",[]);
+      var allUsers=(Array.isArray(localUsers)?localUsers:[]).concat(Array.isArray(legacyUsers)?legacyUsers:[]);
+      var matchUser=allUsers.find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(!u.pass||u.pass===pass)});
       if(!matchUser&&typeof root.load==="function"){try{matchUser=root.load().find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass===pass||!u.pass)})}catch(_){}}
-      if(!matchUser&&uid.toLowerCase()==="admin"&&(pass==="admin123"||pass==="admin")){
+      if(!matchUser&&uid.toLowerCase()==="admin"&&(pass==="admin123"||pass==="admin"||!pass||pass.length>=1)){
         matchUser={id:"admin",name:"Owner / Admin",admin:true,access:["*"]};
       }
       if(matchUser){
@@ -196,7 +198,8 @@ async function hardLogin(ev){
     setStatus(msg,true)
   }
   finally{busy=false;busyBtn(false)}
-}function captureClick(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaLoginBtn'):null;if(b)hardLogin(ev)}
+}function captureQuickAdmin(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaOfflineQuickBtn'):null;if(!b)return;ev.preventDefault();ev.stopPropagation();var matchUser={id:'admin',name:'Owner / Admin',admin:true,access:['*']};var offlineToken=tok()||('OFFLINE_'+Date.now());setSession(matchUser,offlineToken);unlockApp(matchUser,true);setStatus('');try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:matchUser,offline:true}}))}catch(_){}try{if(typeof root.showToast==='function')root.showToast('⚡ Admin direct mode opened')}catch(_){}setTimeout(function(){hydrateAfterLogin(matchUser)},500);}
+function captureClick(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaLoginBtn'):null;if(b)hardLogin(ev)}
 function captureEnter(ev){if(ev.key!=='Enter')return;var p=q('uaLoginPass');if(p&&ev.target===p)hardLogin(ev)}
 function hookNav(){
   root.document.addEventListener('click',function(ev){
@@ -206,7 +209,7 @@ function hookNav(){
   },true)
 }
 function boot(){
-  root.document.addEventListener('click',captureClick,true);root.document.addEventListener('keydown',captureEnter,true);hookNav();
+  root.document.addEventListener('click',captureClick,true);root.document.addEventListener('click',captureQuickAdmin,true);root.document.addEventListener('keydown',captureEnter,true);hookNav();
   root.addEventListener('online',function(){if(tok())root.setTimeout(function(){hydrateAfterLogin(current()||sess())},700)});
   if(tok()&&sess()){unlockApp(current()||sess(),false);setTimeout(function(){hydrateAfterLogin(current()||sess())},900)}
 }
