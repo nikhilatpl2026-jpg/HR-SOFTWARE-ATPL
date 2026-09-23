@@ -848,58 +848,105 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
 /* ════════════ MOBILE APP RESPONSIVE OPTIMIZATIONS ════════════ */
 @media (max-width: 768px) {
-  /* Prevent horizontal cutoffs and scrolling glitches */
-  body, html {
-    overflow-x: hidden !important;
-    width: 100% !important;
-    font-size: 13px !important;
+  /* Show hamburger button on mobile */
+  #mNavToggleBtn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
   }
-  
-  /* Header adjustments on phone */
+
+  /* Header stays neat on single line with horizontal scroll for action buttons if needed */
   .header {
-    height: auto !important;
-    min-height: 48px !important;
-    padding: 6px 10px !important;
-    flex-wrap: wrap !important;
-    gap: 6px !important;
+    height: 54px !important;
+    padding: 0 10px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    align-items: center !important;
   }
-  
-  /* Layout stacks cleanly on mobile instead of squeezing */
+  .header .logo-sub {
+    display: none !important;
+  }
+  .header .logo-name {
+    font-size: 14px !important;
+    white-space: nowrap !important;
+  }
+  .header-right {
+    display: flex !important;
+    gap: 6px !important;
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+  }
+  .header-right button {
+    padding: 5px 9px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+  }
+  .storage-badge {
+    display: none !important;
+  }
+
+  /* MAIN LAYOUT: Do not squash! Keep full width */
+  #mainLayout {
+    position: relative !important;
+    width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  /* NAVIGATION DRAWER: Opens as slide-out overlay instead of taking 50% screen! */
+  #vnav {
+    position: fixed !important;
+    top: 54px !important;
+    bottom: 0 !important;
+    left: -280px !important;
+    width: 270px !important;
+    z-index: 99999 !important;
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 10px 0 30px rgba(0,0,0,0.6) !important;
+    background: #0F172A !important;
+  }
+  #vnav.open-mobile {
+    left: 0 !important;
+  }
+
+  /* Backdrop overlay when menu is open */
+  #mNavBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    top: 54px;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(2px);
+    z-index: 99998;
+  }
+  #mNavBackdrop.active {
+    display: block !important;
+  }
+
+  /* SIDEBAR (Upload & Saved files): Stack properly or full-width */
   .layout {
     flex-direction: column !important;
+    width: 100% !important;
     height: auto !important;
     overflow-y: auto !important;
   }
-  
-  /* Sidebar behaves as compact drawer/top bar on phone */
   .sidebar {
     width: 100% !important;
-    max-height: 260px !important;
-    overflow-y: auto !important;
+    max-height: none !important;
     border-right: none !important;
-    border-bottom: 2px solid var(--border) !important;
+    border-bottom: 2px solid #E2E8F0 !important;
+    flex-shrink: 0 !important;
   }
-  
-  /* Main workspace gets full width */
-  .main, .workspace, #page-cmd, #page-audit, #page-master, #page-dol, #page-hrdocs {
-    width: 100% !important;
-    padding: 8px !important;
-    overflow-x: auto !important;
-  }
-  
-  /* Tables allow smooth horizontal swipe without breaking page width */
-  table, .table-wrap, .data-table {
-    display: block !important;
-    max-width: 100% !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-  }
-  
-  /* Touch target sizes for phone buttons */
-  button, select, input[type="button"], input[type="submit"] {
-    min-height: 38px !important;
+
+  /* Workspace / Pages: 100% full width, beautiful touch padding */
+  .main, .workspace, #page-cmd, #page-audit, #page-master, #page-dol, #page-hrdocs, #page-test {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    padding: 10px 8px !important;
+    box-sizing: border-box !important;
   }
 }
+
 </style>
 </head>
 <body>
@@ -985,6 +1032,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
 <!-- HEADER -->
 <div class="header" style="background:#0F172A;border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:none;height:56px">
+  <button id="mNavToggleBtn" onclick="toggleMobileNav()" style="display:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:8px;padding:6px 10px;font-size:16px;cursor:pointer;margin-right:8px;z-index:999">☰</button>
   <div class="logo-box">📊</div>
   <div>
     <div class="logo-name">Arora Textiles <span>AI</span></div>
@@ -1143,6 +1191,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 <!-- LAYOUT -->
 <div id="mainLayout" style="display:flex;flex:1;overflow:hidden">
 
+<div id="mNavBackdrop" onclick="toggleMobileNav()"></div>
 <!-- VERTICAL NAV inside layout -->
 <div id="vnav" style="width:200px;flex-shrink:0;background:#0F172A;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;z-index:50">
 
@@ -9583,5 +9632,36 @@ window.atplImportAllData = function(input) {
   reader.readAsText(file);
 };
 </script>
+
+<script>
+window.toggleMobileNav = function() {
+  var nav = document.getElementById('vnav');
+  var bdrop = document.getElementById('mNavBackdrop');
+  var btn = document.getElementById('mNavToggleBtn');
+  if (!nav) return;
+  var isOpen = nav.classList.contains('open-mobile');
+  if (isOpen) {
+    nav.classList.remove('open-mobile');
+    if (bdrop) bdrop.classList.remove('active');
+    if (btn) btn.innerHTML = '☰';
+  } else {
+    nav.classList.add('open-mobile');
+    if (bdrop) bdrop.classList.add('active');
+    if (btn) btn.innerHTML = '✕';
+  }
+};
+// Close drawer when menu item is clicked on phone
+document.addEventListener('click', function(e) {
+  if (window.innerWidth <= 768 && e.target && e.target.closest && (e.target.closest('.vnav-item') || e.target.closest('.vnav-sub-item'))) {
+    var nav = document.getElementById('vnav');
+    var bdrop = document.getElementById('mNavBackdrop');
+    var btn = document.getElementById('mNavToggleBtn');
+    if (nav) nav.classList.remove('open-mobile');
+    if (bdrop) bdrop.classList.remove('active');
+    if (btn) btn.innerHTML = '☰';
+  }
+});
+</script>
+
 </body>
 </html>
