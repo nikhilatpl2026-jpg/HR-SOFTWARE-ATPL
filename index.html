@@ -847,36 +847,51 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 @media(max-width:650px){.hr-doc-form{grid-template-columns:1fr}.hr-doc-field.full{grid-column:auto}}
 
 
-/* ════════════ MOBILE APP RESPONSIVE OPTIMIZATIONS (WHATSAPP APP STYLE) ════════════ */
+
+/* ════════════ NATIVE ERP APP ARCHITECTURE (INSPIRATION MATCHED) ════════════ */
+.m-drawer-top-bar {
+  display: none;
+}
+.m-erp-hamburger {
+  display: none;
+}
+
 @media (max-width: 768px) {
+  /* Prevent horizontal stretch & body zoom */
   html, body {
     overflow-x: hidden !important;
     width: 100% !important;
-    background: #0B141B !important;
-    color: #E9EDEF !important;
+    position: relative !important;
   }
 
-  /* WhatsApp Style Top App Bar */
+  /* 1. TOP APP BAR (Just like screenshot 23:24) */
+  .m-erp-hamburger {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    color: #fff !important;
+    padding: 8px !important;
+    cursor: pointer !important;
+    margin-right: 6px !important;
+  }
+
   .header {
-    height: 56px !important;
-    padding: 0 16px !important;
+    height: 54px !important;
+    padding: 0 12px !important;
     display: flex !important;
     align-items: center !important;
-    background: #1F2C34 !important;
-    border-bottom: 1px solid #2A3942 !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
     position: sticky !important;
     top: 0 !important;
-    z-index: 9999 !important;
+    z-index: 1000 !important;
   }
   .header .logo-box {
     display: none !important;
   }
   .header .logo-name {
-    font-size: 18px !important;
-    font-weight: 700 !important;
-    color: #E9EDEF !important;
-    letter-spacing: 0.2px !important;
+    font-size: 16px !important;
+    font-weight: 800 !important;
   }
   .header .logo-sub {
     display: none !important;
@@ -884,251 +899,198 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   .header-right {
     margin-left: auto !important;
     display: flex !important;
-    gap: 8px !important;
+    gap: 6px !important;
   }
   .header-right button {
-    border-radius: 20px !important;
+    padding: 5px 10px !important;
     font-size: 11px !important;
-    padding: 6px 12px !important;
+    border-radius: 8px !important;
+  }
+  .storage-badge {
+    display: none !important;
   }
 
-  /* Bottom Navigation Bar (WhatsApp style) */
-  #mobileAppBottomBar {
-    display: flex !important;
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    height: 64px !important;
-    background: #1F2C34 !important;
-    border-top: 1px solid #2A3942 !important;
-    z-index: 99990 !important;
-    justify-content: space-around !important;
-    align-items: center !important;
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.4) !important;
-    padding-bottom: env(safe-area-inset-bottom, 4px) !important;
-  }
-  .m-bottom-item {
+  /* 2. SLIDE-IN SIDEBAR DRAWER (Exact Match to Screenshot 23:24:48) */
+  #mainLayout {
     display: flex !important;
     flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  #vnav {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: -82% !important;
+    width: 80% !important;
+    max-width: 320px !important;
+    background: #FFFFFF !important; /* Clean white drawer like ERP screenshot */
+    border-right: 1px solid #E2E8F0 !important;
+    z-index: 999999 !important;
+    transition: left 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    box-shadow: 4px 0 25px rgba(0,0,0,0.3) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+  #vnav.open-mobile {
+    left: 0 !important;
+  }
+
+  /* Drawer Top: ATPL with ✕ button */
+  .m-drawer-top-bar {
+    display: flex !important;
     align-items: center !important;
-    justify-content: center !important;
-    gap: 3px !important;
-    cursor: pointer !important;
-    color: #8696A0 !important;
-    flex: 1 !important;
-    transition: color 0.15s ease !important;
+    justify-content: space-between !important;
+    padding: 16px 18px !important;
+    border-bottom: 1px solid #E2E8F0 !important;
+    background: #FAFAFA !important;
   }
-  .m-bottom-item.active {
-    color: #00A884 !important; /* WhatsApp Green Accent */
-  }
-  .m-bottom-item.active .m-icon-wrap {
-    background: rgba(0, 168, 132, 0.18) !important;
-    border-radius: 16px !important;
-  }
-  .m-icon-wrap {
+  .m-drawer-brand {
     font-size: 20px !important;
-    line-height: 1 !important;
-    padding: 4px 16px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+    letter-spacing: 0.5px !important;
+  }
+  .m-drawer-close-btn {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 50% !important;
+    border: 1px solid #E2E8F0 !important;
+    background: #FFFFFF !important;
+    color: #475569 !important;
+    font-size: 16px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    cursor: pointer !important;
   }
-  .m-bottom-item span {
-    font-size: 11px !important;
+
+  /* Drawer Categories & Items */
+  #vnav .vnav-cat {
+    color: #1E293B !important;
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    padding: 14px 18px !important;
+    border-bottom: 1px solid #F1F5F9 !important;
+  }
+  #vnav .vnav-sub {
+    background: #FFFFFF !important;
+    padding: 4px 0 8px 12px !important;
+  }
+  #vnav .vitem {
+    color: #475569 !important;
     font-weight: 600 !important;
+    font-size: 13px !important;
+    padding: 10px 16px !important;
+    border-radius: 8px !important;
+    margin: 2px 8px !important;
+  }
+  #vnav .vitem.active {
+    background: #EEF2FF !important;
+    color: #4F46E5 !important;
+    font-weight: 700 !important;
   }
 
-  /* Padding at bottom so content is not covered by bottom bar */
-  .layout, .main, #mainLayout, .workspace, #page-cmd, #page-audit, #page-master, #page-empmaster, #page-dol, #page-hrdocs {
-    padding-bottom: 74px !important;
+  /* Backdrop Dimmer */
+  #mNavBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 999990;
+  }
+  #mNavBackdrop.active {
+    display: block !important;
   }
 
-  /* Hide the old big desktop sidebar by default on mobile */
+  /* 3. ERP DATA ROWS / LIST TABLE (Exact Match to Screenshot 23:24:51) */
+  /* Clean border-bottom partitioned rows with Code, Company/Dept, Specs */
   .sidebar {
     display: none !important;
   }
-
-  /* Float bot icon nicely above bottom bar */
-  #aiFloatBtn, .arora-ai-trigger-btn {
-    bottom: 76px !important;
-    right: 18px !important;
-    z-index: 99995 !important;
+  .layout {
+    width: 100% !important;
+    overflow-x: hidden !important;
   }
-
-  /* Card layouts for Employee Master and Salary lists instead of cramped squished tables */
-  .ds-card, .hr-doc-card, .landing-card {
-    border-radius: 14px !important;
-    border-color: #2A3942 !important;
-  }
-
-  /* Employee master table container enables smooth horizontal swipe with nice scrollbar */
-  #empMasterTableWrap, #empTableWrap, .emp-table-container {
+  .main, .workspace, #page-cmd, #page-audit, #page-master, #page-empmaster, #page-dol, #page-hrdocs {
     width: 100vw !important;
     max-width: 100vw !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    margin: 0 -8px !important;
-    padding: 0 8px !important;
+    padding: 8px !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
   }
-}
-@media (min-width: 769px) {
-  #mobileAppBottomBar {
-    display: none !important;
-  }
-}
 
-
-/* ── MOBILE EMP CARDS STYLES ── */
-.mobile-only-cards-container {
-  display: none;
-}
-.desktop-only-table-wrap {
-  display: flex;
-}
-
-@media (max-width: 768px) {
-  .mobile-only-cards-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 8px;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-y: auto;
-  }
+  /* Clean ERP Table Grid */
   .desktop-only-table-wrap {
     display: none !important;
   }
-  
-  /* WhatsApp / Native Mobile Card UI */
-  .m-emp-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: #111B21;
-    border: 1px solid #202C33;
-    border-radius: 12px;
-    padding: 12px 10px;
-    transition: background 0.15s;
-    cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  }
-  .m-emp-card:active {
-    background: #182229;
-  }
-  .m-emp-avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    color: #fff;
-    font-weight: 700;
-    font-size: 15px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-  }
-  .m-emp-info {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .m-emp-name-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .m-emp-name {
-    font-size: 14px;
-    font-weight: 700;
-    color: #E9EDEF;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .m-emp-code {
-    font-size: 11px;
-    font-weight: 700;
-    color: #8696A0;
-    font-family: monospace;
-  }
-  .m-emp-dup {
-    background: #7f1d1d;
-    color: #fca5a5;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 9px;
-    font-weight: 700;
-  }
-  .m-emp-sub {
-    font-size: 12px;
-    color: #8696A0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .m-emp-badges {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    margin-top: 4px;
-  }
-  .m-badge-pf, .m-badge-esi, .m-badge-bank {
-    font-size: 10px;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: 600;
-  }
-  .m-badge-pf {
-    background: rgba(16, 185, 129, 0.15);
-    color: #34D399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
-  }
-  .m-badge-esi {
-    background: rgba(59, 130, 246, 0.15);
-    color: #60A5FA;
-    border: 1px solid rgba(59, 130, 246, 0.3);
-  }
-  .m-badge-bank {
-    background: rgba(245, 158, 11, 0.15);
-    color: #FBBF24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-  }
-  .m-emp-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .m-act-btn {
-    border: none;
-    background: #202C33;
-    border-radius: 8px;
-    padding: 6px 8px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .m-act-btn:active {
-    background: #2A3942;
+  .mobile-only-cards-container {
+    display: flex !important;
+    flex-direction: column !important;
+    background: #FFFFFF !important;
+    border: 1px solid #E2E8F0 !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    margin-top: 8px !important;
   }
 
-  /* Employee top stats and buttons wrap cleanly on phone */
-  #page-empmaster .header-stat-row, #page-empmaster > div > div > div {
-    flex-wrap: wrap !important;
+  /* Matches screenshot row: Left ID + ℹ️, Center Name/Dept, Right Details */
+  .m-emp-card {
+    display: grid !important;
+    grid-template-columns: 80px 1fr auto !important;
+    align-items: center !important;
+    padding: 12px 14px !important;
+    border-bottom: 1px solid #E2E8F0 !important;
+    background: #FFFFFF !important;
+    border-radius: 0 !important;
+    gap: 10px !important;
+    cursor: pointer !important;
   }
-  #emStatTotal, #emStatPF, #emStatESI {
+  .m-emp-card:last-child {
+    border-bottom: none !important;
+  }
+  .m-emp-card:active {
+    background: #F8FAFC !important;
+  }
+  .m-emp-avatar {
+    display: none !important;
+  }
+  .m-emp-name-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+  }
+  .m-emp-name {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #0F172A !important;
+  }
+  .m-emp-code {
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    color: #0F172A !important;
+  }
+  .m-emp-sub {
     font-size: 11px !important;
+    color: #64748b !important;
   }
-  #page-empmaster button {
-    padding: 6px 10px !important;
-    font-size: 11px !important;
+  .m-emp-badges {
+    display: flex !important;
+    gap: 4px !important;
+    margin-top: 2px !important;
   }
-  #emSearch {
-    max-width: 100% !important;
+  .m-act-btn {
+    background: #F1F5F9 !important;
+    border: 1px solid #CBD5E1 !important;
+    color: #334155 !important;
+  }
+
+  /* Bottom spacing */
+  .layout, .main, #mainLayout {
+    padding-bottom: 24px !important;
   }
 }
 
@@ -1217,7 +1179,9 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
 <!-- HEADER -->
 <div class="header" style="background:#0F172A;border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:none;height:56px">
-  <button id="mNavToggleBtn" onclick="toggleMobileNav()" style="display:none;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:8px;padding:6px 10px;font-size:16px;cursor:pointer;margin-right:8px;z-index:999">☰</button>
+  <button id="mNavToggleBtn" onclick="toggleMobileNav()" aria-label="Toggle Menu" class="m-erp-hamburger">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+  </button>
   <div class="logo-box">📊</div>
   <div>
     <div class="logo-name">Arora Textiles <span>AI</span></div>
@@ -1378,7 +1342,14 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
 <div id="mNavBackdrop" onclick="toggleMobileNav()"></div>
 <!-- VERTICAL NAV inside layout -->
-<div id="vnav" style="width:200px;flex-shrink:0;background:#0F172A;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;z-index:50">
+<div id="vnav"
+
+    <!-- DRAWER MOBILE HEADER (Matches ERP Screenshot) -->
+    <div class="m-drawer-top-bar">
+      <div class="m-drawer-brand">ATPL</div>
+      <button class="m-drawer-close-btn" onclick="toggleMobileNav()" aria-label="Close Menu">✕</button>
+    </div>
+ style="width:200px;flex-shrink:0;background:#0F172A;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;z-index:50">
 
   <!-- Logo area in nav -->
   <div style="padding:16px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.06)">
@@ -9853,29 +9824,7 @@ document.addEventListener('click', function(e) {
 </script>
 
 
-<!-- MOBILE WHATSAPP-STYLE BOTTOM NAVIGATION BAR -->
-<div id="mobileAppBottomBar">
-  <div class="m-bottom-item active" id="mTab-cmd" onclick="switchMobileAppTab('cmd')">
-    <div class="m-icon-wrap">⚡</div>
-    <span>Commands</span>
-  </div>
-  <div class="m-bottom-item" id="mTab-empmaster" onclick="switchMobileAppTab('empmaster')">
-    <div class="m-icon-wrap">👥</div>
-    <span>Employees</span>
-  </div>
-  <div class="m-bottom-item" id="mTab-audit" onclick="switchMobileAppTab('audit')">
-    <div class="m-icon-wrap">💰</div>
-    <span>Salary</span>
-  </div>
-  <div class="m-bottom-item" id="mTab-hrdocs" onclick="switchMobileAppTab('hrdocs')">
-    <div class="m-icon-wrap">📚</div>
-    <span>Docs</span>
-  </div>
-  <div class="m-bottom-item" id="mTab-menu" onclick="toggleMobileNav()">
-    <div class="m-icon-wrap">☰</div>
-    <span>More</span>
-  </div>
-</div>
+
 
 </body>
 </html>
