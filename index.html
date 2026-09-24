@@ -7432,41 +7432,50 @@ function emRenderTable() {
       tblHtml += '</td>';
       tblHtml += '</tr>';
 
-      // 2. Mobile Responsive Card
-      cardHtml += '<div class="m-emp-card-item" style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.3)">';
-      cardHtml += '  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
-      cardHtml += '    <div style="display:flex;align-items:center;gap:6px">';
-      cardHtml += '      <span style="font-family:monospace;font-weight:800;color:#818cf8;font-size:12px;background:rgba(99,102,241,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(99,102,241,0.3)">#'+(e.emp_id||'')+'</span>';
+      // 2. Mobile Responsive Card (Executive 2026 Mobile UI)
+      var initials = (e.name||'').trim().split(/\s+/).slice(0,2).map(function(w){return w[0]?w[0].toUpperCase():''}).join('') || 'EM';
+      var avatarColors = ['#4f46e5','#0891b2','#059669','#d97706','#7c3aed','#db2777','#2563eb'];
+      var colorIdx = Math.abs((e.name||'').split('').reduce(function(a,c){return a+c.charCodeAt(0)},0)) % avatarColors.length;
+      var avBg = avatarColors[colorIdx];
+
+      cardHtml += '<div class="m-emp-card-item" style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);position:relative;overflow:hidden">';
+      cardHtml += '  <div style="display:flex;align-items:center;gap:12px">';
+      cardHtml += '    <div style="width:42px;height:42px;border-radius:12px;background:'+avBg+';color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:0.5px;box-shadow:0 4px 12px rgba(0,0,0,0.3);flex-shrink:0">'+initials+'</div>';
+      cardHtml += '    <div style="flex:1;min-width:0">';
+      cardHtml += '      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+      cardHtml += '        <div style="font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:0.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.name||'—')+'</div>';
+      cardHtml += '        <div>'+statusBadge+'</div>';
+      cardHtml += '      </div>';
+      cardHtml += '      <div style="display:flex;align-items:center;gap:6px;margin-top:2px">';
+      cardHtml += '        <span style="font-family:monospace;font-weight:800;color:#818cf8;font-size:11px;background:rgba(99,102,241,0.15);padding:1px 6px;border-radius:4px;border:1px solid rgba(99,102,241,0.3)">#'+(e.emp_id||'')+'</span>';
       if(isDup) cardHtml += '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:800">DUP</span>';
-      cardHtml += '      <span style="background:#1e3a5f;color:#60a5fa;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700">'+(e.cat2||e.cat1||'EMPLOYEE')+'</span>';
+      cardHtml += '        <span style="color:#94a3b8;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.dept||'General')+'</span>';
+      cardHtml += '      </div>';
       cardHtml += '    </div>';
-      cardHtml += '    <div>'+statusBadge+'</div>';
       cardHtml += '  </div>';
-      cardHtml += '  <div>';
-      cardHtml += '    <div style="font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:0.2px">'+(e.name||'—')+'</div>';
-      cardHtml += '    <div style="font-size:11px;color:#94a3b8;margin-top:2px">Father: <span style="color:#cbd5e1;font-weight:600">'+(e.father||'—')+'</span></div>';
-      cardHtml += '  </div>';
-      cardHtml += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:rgba(15,23,42,0.6);border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:11px">';
+      if(e.father) {
+        cardHtml += '  <div style="font-size:11px;color:#94a3b8;padding:0 2px">Father: <span style="color:#cbd5e1;font-weight:600">'+(e.father||'—')+'</span></div>';
+      }
+      cardHtml += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:rgba(15,23,42,0.6);border:1px solid #334155;border-radius:10px;padding:8px 12px;font-size:11px">';
       cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">Department</span><span style="color:#e2e8f0;font-weight:600">'+(e.dept||'—')+'</span></div>';
       cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">DOJ</span><span style="color:#e2e8f0;font-family:monospace;font-weight:600">'+(e.doj||'—')+'</span></div>';
       cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">PF NO</span><span style="color:#6ee7b7;font-family:monospace;font-weight:700">'+(hasPF?e.pf_no:'NA')+'</span></div>';
       cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">ESI NO</span><span style="color:#93c5fd;font-family:monospace;font-weight:700">'+(hasESI?e.esi_no:'NA')+'</span></div>';
       cardHtml += '  </div>';
       if(e.bank_name||e.account_no||e.gross){
-        cardHtml += '  <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;padding:2px 4px">';
+        cardHtml += '  <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8;padding:2px 4px">';
         cardHtml += '    <div>🏦 <span style="color:#cbd5e1;font-weight:600">'+(e.bank_name||'Bank')+'</span>: <span style="font-family:monospace">'+(e.account_no?('...'+String(e.account_no).slice(-4)):'—')+'</span></div>';
-        if(e.gross) cardHtml += '<div style="color:#34d399;font-weight:700">₹'+Number(e.gross).toLocaleString('en-IN')+'</div>';
+        if(e.gross) cardHtml += '<div style="color:#34d399;font-weight:800;font-size:12px">₹'+Number(e.gross).toLocaleString('en-IN')+'</div>';
         cardHtml += '  </div>';
       }
-      cardHtml += '  <div style="display:flex;gap:6px;margin-top:2px">';
-      cardHtml += '    <button onclick="emOpenEdit('+realIdx+')" style="flex:1;padding:8px 0;background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✏️ Edit</button>';
-      cardHtml += '    <button onclick="emViewEmp('+realIdx+')" style="flex:1;padding:8px 0;background:#022c22;border:1px solid #059669;color:#6ee7b7;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">👁 View</button>';
-      cardHtml += '    <button onclick="emDeleteRow('+realIdx+')" style="padding:8px 12px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>';
+      cardHtml += '  <div style="display:flex;gap:8px;margin-top:2px">';
+      cardHtml += '    <button onclick="emOpenEdit('+realIdx+')" style="flex:1;padding:9px 0;background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px">✏️ Edit</button>';
+      cardHtml += '    <button onclick="emViewEmp('+realIdx+')" style="flex:1;padding:9px 0;background:#022c22;border:1px solid #059669;color:#6ee7b7;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px">👁 View</button>';
+      cardHtml += '    <button onclick="emDeleteRow('+realIdx+')" style="padding:9px 14px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>';
       cardHtml += '  </div>';
       cardHtml += '</div>';
     });
   }
-
   if (tableBody) tableBody.innerHTML = tblHtml;
   if (mobileCardContainer) mobileCardContainer.innerHTML = cardHtml;
 
