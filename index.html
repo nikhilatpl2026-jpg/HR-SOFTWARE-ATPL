@@ -2117,6 +2117,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
         <!-- Stats row -->
         <div style="display:flex;gap:8px;margin-top:12px">
           <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#fff" id="emStatTotal">—</span> Total</div>
+          <div style="padding:7px 14px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;font-size:11px;color:#a7f3d0;cursor:pointer" onclick="emSetStatusFilter('active')"><span style="font-weight:800;color:#34d399" id="emStatActive">—</span> Active</div>
+          <div style="padding:7px 14px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:11px;color:#fecaca;cursor:pointer" onclick="emSetStatusFilter('left')"><span style="font-weight:800;color:#f87171" id="emStatLeft">—</span> Exited / DOL</div>
           <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#6ee7b7" id="emStatPF">—</span> PF Members</div>
           <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#93c5fd" id="emStatESI">—</span> ESI Members</div>
           <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#fca5a5" id="emStatDup">—</span> Duplicate Codes</div>
@@ -2138,6 +2140,18 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           <option value="">All Departments</option>
         </select>
         <!-- Filter PF/ESI -->
+        <!-- Active vs Left Status Toggle -->
+        <div id="emStatusToggleGroup" style="display:inline-flex;background:#0f172a;border:1.5px solid #334155;border-radius:8px;padding:3px;gap:3px;align-items:center">
+          <button type="button" id="emTabAll" onclick="emSetStatusFilter('all')" style="padding:6px 12px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <span>👥 All</span> <span id="emCountAll" style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+          </button>
+          <button type="button" id="emTabActive" onclick="emSetStatusFilter('active')" style="padding:6px 12px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <span>🟢 Active</span> <span id="emCountActive" style="background:rgba(16,185,129,0.2);color:#34d399;padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+          </button>
+          <button type="button" id="emTabLeft" onclick="emSetStatusFilter('left')" style="padding:6px 12px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
+            <span>🔴 Exited / DOL</span> <span id="emCountLeft" style="background:rgba(239,68,68,0.2);color:#f87171;padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+          </button>
+        </div>
         <select id="emPFFilter" onchange="emFilter()" style="padding:8px 12px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer">
           <option value="">All Members</option>
           <option value="pf">PF Members</option>
@@ -6740,6 +6754,7 @@ var EM = {
   sortKey: '',
   sortDir: 1,
   editIdx: -1,
+  statusFilter: 'all', // 'all' | 'active' | 'left'
   selectedRows: new Set()
 };
 
@@ -6750,6 +6765,8 @@ var EM_FIELDS = [
   {key:'father',   label:"Father's Name",      type:'text',   wide:true,  required:false},
   {key:'dob',      label:'Date of Birth (DD-MM-YYYY)', type:'text', wide:false, required:false},
   {key:'doj',      label:'Date of Joining (DD-MM-YYYY)', type:'text', wide:false, required:false},
+  {key:'status',   label:'Employment Status',   type:'select', wide:false, required:false, options:['ACTIVE','LEFT']},
+  {key:'dol',      label:'Date of Leaving / DOL (DD-MM-YYYY)', type:'text', wide:false, required:false},
   {key:'pf_no',    label:'PF Number',          type:'text',   wide:false, required:false},
   {key:'esi_no',   label:'ESI / IP Number',    type:'text',   wide:false, required:false},
   {key:'bank_name',label:'Bank Name',          type:'text',   wide:false, required:false},
@@ -6822,13 +6839,19 @@ function emFilter() {
   var pfF = document.getElementById('emPFFilter').value;
 
   EM.filtered = EM.data.filter(function(e){
+    var isLeft = emIsLeft(e);
+    if (EM.statusFilter === 'active' && isLeft) return false;
+    if (EM.statusFilter === 'left' && !isLeft) return false;
+
     var matchQ = !q ||
       (e.name||'').toLowerCase().indexOf(q)>=0 ||
       String(e.emp_id||'').indexOf(q)>=0 ||
       (e.esi_no||'').indexOf(q)>=0 ||
       (e.pf_no||'').indexOf(q)>=0 ||
       (e.father||'').toLowerCase().indexOf(q)>=0 ||
-      (e.account_no||'').indexOf(q)>=0;
+      (e.account_no||'').indexOf(q)>=0 ||
+      (e.dol||'').toLowerCase().indexOf(q)>=0 ||
+      (e.status||'').toLowerCase().indexOf(q)>=0;
 
     var matchDept = !dept || e.dept===dept;
 
@@ -6900,9 +6923,15 @@ function emRenderTable() {
     // Card tag
     html += '<span style="background:#1e3a5f;color:#60a5fa;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:600">'+(e.cat2||e.cat1||'—')+'</span>';
     html += '</div></td>';
-    // Name with status dot
-    html += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px">';
-    html += '<span style="font-weight:700;color:#f1f5f9;font-size:12px">'+e.name+'</span>';
+    // Name with Active / Left status badge
+    var isEmpLeft = emIsLeft(e);
+    var statusBadge = isEmpLeft 
+      ? '<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🔴 LEFT' + (e.dol ? ' ('+e.dol+')' : '') + '</span>'
+      : '<span style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🟢 ACTIVE</span>';
+
+    html += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+    html += '<span style="font-weight:700;color:#f1f5f9;font-size:12px">'+e.name+'</span> ';
+    html += statusBadge;
     html += '</div></td>';
     // Father
     html += '<td style="padding:8px 10px;color:#94a3b8;font-size:11px">'+(e.father||'—')+'</td>';

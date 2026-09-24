@@ -450,6 +450,48 @@
       };
     }
 
+    // ── ACTIVE VS LEFT WORKER INTELLIGENT QUERY ──
+    if (lower.match(/(?:active|left|exited|working|chhod|chhodne|dol)s*(?:worker|staff|employee|log|kitne|list|count|status)/i) ||
+        lower.match(/(?:kitne|kaun)s*(?:active|left|exited|chhod)/i)) {
+      if (typeof window.goPage === 'function') window.goPage('empmaster');
+      
+      var isAskingLeft = Boolean(lower.match(/left|exited|chhod|dol/i));
+      if (typeof window.emSetStatusFilter === 'function') {
+        window.emSetStatusFilter(isAskingLeft ? 'left' : 'active');
+      }
+
+      var totList = [];
+      try {
+        if (window.EM && Array.isArray(window.EM.data)) totList = window.EM.data;
+        else totList = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]');
+      } catch(_) {}
+
+      var leftW = totList.filter(function(e) {
+        var s = String(e.status || '').toUpperCase().trim();
+        if (s === 'LEFT' || s === 'EXITED' || s === 'DOL') return true;
+        var dol = String(e.dol || e.leaving_date || e.date_of_leaving || '').trim();
+        return Boolean(dol && dol !== 'NA' && dol !== '-');
+      });
+      var activeW = totList.length - leftW.length;
+
+      var targetMsg = isAskingLeft 
+        ? '🔴 <strong>Exited / Left Employees Filter Active Ho Gaya Hai!</strong><br><br>' +
+          '• Total Exited/Left Staff: <b>' + leftW.length + '</b><br>' +
+          '• Total Active Staff: <b>' + activeW + '</b><br>' +
+          '• Employee Master table me ab sirf left employees dikh rahe hain.'
+        : '🟢 <strong>Active Employees Filter Active Ho Gaya Hai!</strong><br><br>' +
+          '• Currently Active Staff: <b>' + activeW + '</b><br>' +
+          '• Exited/Left Staff: <b>' + leftW.length + '</b><br>' +
+          '• Employee Master table me ab sirf currently working staff dikh raha hai.';
+
+      return {
+        html: targetMsg + '<br><br>' +
+          '<button class="ai-act-btn" onclick="window.emSetStatusFilter(\'all\')">👥 Show All (' + totList.length + ')</button> ' +
+          '<button class="ai-act-btn" onclick="window.emSetStatusFilter(\'active\')" style="background:#059669">🟢 Show Active (' + activeW + ')</button> ' +
+          '<button class="ai-act-btn" onclick="window.emSetStatusFilter(\'left\')" style="background:#dc2626">🔴 Show Left (' + leftW.length + ')</button>'
+      };
+    }
+
     // ── 1. OWNER / EXECUTIVE 1-PAGE SUMMARY ──
     if (lower.match(/owner|malik|executive|summary|profit|loss|overall|dashboard.*view|company.*status/i)) {
       var totEmployees = Object.keys(KnowledgeGraph.employees).length;
