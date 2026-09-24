@@ -802,6 +802,10 @@ td.blank-val { color: var(--muted); font-style: italic; }
 }
 #sidebarToggle:hover { color:rgba(255,255,255,0.7); }
 
+/* Mobile cards vs Desktop table display */
+.mobile-only-cards-container { display: none; }
+.desktop-only-table-wrap { display: block; }
+
 /* ── EMPLOYEE MASTER FULL SCREEN ─────────────── */
 #page-empmaster { display:none; }
 #page-empmaster.active { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; inset:0 !important; z-index:200 !important; flex-direction:column !important; overflow:hidden !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; background:#0f172a !important; }
@@ -1022,19 +1026,46 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     overflow-x: hidden !important;
   }
 
-  /* Clean ERP Table Grid */
+  /* Mobile Employee Master & Responsive Cards */
+  #page-empmaster.active, #page-hrdocs.active {
+    position: fixed !important;
+    top: 54px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: calc(100dvh - 54px) !important;
+    z-index: 500 !important;
+  }
+  .desktop-only-btn {
+    display: none !important;
+  }
   .desktop-only-table-wrap {
     display: none !important;
   }
   .mobile-only-cards-container {
     display: flex !important;
     flex-direction: column !important;
-    background: #FFFFFF !important;
-    border: 1px solid #E2E8F0 !important;
-    border-radius: 8px !important;
-    overflow: hidden !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
-    margin-top: 8px !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    background: #0b1120 !important;
+    padding: 10px !important;
+    gap: 10px !important;
+    border: none !important;
+    margin-top: 0 !important;
+  }
+  #page-empmaster.em-force-table-view .desktop-only-table-wrap {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    flex: 1 !important;
+  }
+  #page-empmaster.em-force-table-view .mobile-only-cards-container {
+    display: none !important;
   }
 
   /* Matches screenshot row: Left ID + ℹ️, Center Name/Dept, Right Details */
@@ -2098,78 +2129,88 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
     <!-- ══ PAGE: EMPLOYEE MASTER DATABASE ══ -->
     <div class="page" id="page-empmaster" style="flex-direction:column;overflow:hidden">
-
       <!-- TOP BAR -->
-      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-bottom:2px solid #6366f1;padding:14px 20px;flex-shrink:0">
-        <div style="display:flex;align-items:center;gap:14px">
+      <div style="background:linear-gradient(135deg,#1e1b4b,#312e81);border-bottom:2px solid #6366f1;padding:12px 16px;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button onclick="goPage('cmd')" style="padding:6px 12px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px">
+            ← Back
+          </button>
           <div>
-            <div style="font-size:16px;font-weight:800;color:#fff">🗂️ Employee Master Database</div>
-            <div style="font-size:11px;color:#a5b4fc;margin-top:2px">Saare employees ki complete info — edit karo, add karo, Excel mein download karo</div>
+            <div style="font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px">
+              <span>🗂️ Employee Master</span>
+              <span style="padding:3px 10px;background:rgba(99,102,241,0.3);border:1px solid #6366f1;border-radius:20px;font-size:11px;color:#c7d2fe;font-weight:700" id="emTotalBadge">— Employees</span>
+            </div>
+            <div style="font-size:10px;color:#a5b4fc;margin-top:2px">Complete Employee Data • Search, Edit, Excel Export</div>
           </div>
-          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-            <div style="padding:5px 14px;background:rgba(99,102,241,0.3);border:1px solid #6366f1;border-radius:20px;font-size:11px;color:#c7d2fe;font-weight:700" id="emTotalBadge">— Employees</div>
-            <button onclick="emOpenAdd()" style="padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">➕ Add Employee</button>
-            <button onclick="emDownloadExcel()" style="padding:8px 16px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">⬇ Download Excel</button>
-            <button id="emMinimizeBtn" onclick="emToggleWindow()" style="padding:8px 14px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">↙ Minimize</button>
+          <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button onclick="emOpenAdd()" style="padding:7px 12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">➕ Add</button>
+            <button onclick="emDownloadExcel()" style="padding:7px 12px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">⬇ Excel</button>
+            <button id="emMinimizeBtn" onclick="emToggleWindow()" class="desktop-only-btn" style="padding:7px 12px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">↙ Minimize</button>
           </div>
         </div>
 
-        <!-- Stats row -->
-        <div style="display:flex;gap:8px;margin-top:12px">
-          <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#fff" id="emStatTotal">—</span> Total</div>
-          <div style="padding:7px 14px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;font-size:11px;color:#a7f3d0;cursor:pointer" onclick="emSetStatusFilter('active')"><span style="font-weight:800;color:#34d399" id="emStatActive">—</span> Active</div>
-          <div style="padding:7px 14px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:11px;color:#fecaca;cursor:pointer" onclick="emSetStatusFilter('left')"><span style="font-weight:800;color:#f87171" id="emStatLeft">—</span> Exited / DOL</div>
-          <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#6ee7b7" id="emStatPF">—</span> PF Members</div>
-          <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#93c5fd" id="emStatESI">—</span> ESI Members</div>
-          <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#fca5a5" id="emStatDup">—</span> Duplicate Codes</div>
-          <div style="padding:7px 14px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff"><span style="font-weight:800;color:#fcd34d" id="emStatDepts">—</span> Departments</div>
+        <!-- Stats row with smooth scroll on mobile -->
+        <div style="display:flex;gap:8px;margin-top:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px">
+          <div style="padding:6px 12px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff;white-space:nowrap;flex-shrink:0"><span style="font-weight:800;color:#fff" id="emStatTotal">—</span> Total</div>
+          <div style="padding:6px 12px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);border-radius:8px;font-size:11px;color:#a7f3d0;cursor:pointer;white-space:nowrap;flex-shrink:0" onclick="emSetStatusFilter('active')"><span style="font-weight:800;color:#34d399" id="emStatActive">—</span> Active</div>
+          <div style="padding:6px 12px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:11px;color:#fecaca;cursor:pointer;white-space:nowrap;flex-shrink:0" onclick="emSetStatusFilter('left')"><span style="font-weight:800;color:#f87171" id="emStatLeft">—</span> Exited / DOL</div>
+          <div style="padding:6px 12px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff;white-space:nowrap;flex-shrink:0"><span style="font-weight:800;color:#6ee7b7" id="emStatPF">—</span> PF</div>
+          <div style="padding:6px 12px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff;white-space:nowrap;flex-shrink:0"><span style="font-weight:800;color:#93c5fd" id="emStatESI">—</span> ESI</div>
+          <div style="padding:6px 12px;background:rgba(255,255,255,0.08);border-radius:8px;font-size:11px;color:#e0e7ff;white-space:nowrap;flex-shrink:0"><span style="font-weight:800;color:#fcd34d" id="emStatDepts">—</span> Depts</div>
         </div>
       </div>
 
       <!-- TOOLBAR -->
-      <div style="padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <div style="padding:8px 14px;background:#1e293b;border-bottom:1px solid #334155;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         <!-- Search -->
-        <div style="position:relative;flex:1;max-width:320px">
-          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:14px;color:#64748b;pointer-events:none">🔍</span>
-          <input type="text" id="emSearch" placeholder="Naam, Code, ESI No, PF No se dhundho..." oninput="emFilter()"
-            style="width:100%;padding:8px 12px 8px 34px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none"
+        <div style="position:relative;flex:1;min-width:200px">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:#64748b;pointer-events:none">🔍</span>
+          <input type="text" id="emSearch" placeholder="Naam, Code, ESI No, PF No..." oninput="emFilter()"
+            style="width:100%;padding:7px 10px 7px 32px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none"
             onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#334155'">
         </div>
-        <!-- Filter by dept -->
-        <select id="emDeptFilter" onchange="emFilter()" style="padding:8px 12px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer">
-          <option value="">All Departments</option>
-        </select>
-        <!-- Filter PF/ESI -->
-        <!-- Active vs Left Status Toggle -->
-        <div id="emStatusToggleGroup" style="display:inline-flex;background:#0f172a;border:1.5px solid #334155;border-radius:8px;padding:3px;gap:3px;align-items:center">
-          <button type="button" id="emTabAll" onclick="emSetStatusFilter('all')" style="padding:6px 12px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
-            <span>👥 All</span> <span id="emCountAll" style="background:rgba(255,255,255,0.2);padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+
+        <!-- Status Toggle Group -->
+        <div id="emStatusToggleGroup" style="display:inline-flex;background:#0f172a;border:1.5px solid #334155;border-radius:8px;padding:2px;gap:2px;align-items:center">
+          <button type="button" id="emTabAll" onclick="emSetStatusFilter('all')" style="padding:5px 10px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+            <span>👥 All</span> <span id="emCountAll" style="background:rgba(255,255,255,0.2);padding:1px 5px;border-radius:10px;font-size:10px">—</span>
           </button>
-          <button type="button" id="emTabActive" onclick="emSetStatusFilter('active')" style="padding:6px 12px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
-            <span>🟢 Active</span> <span id="emCountActive" style="background:rgba(16,185,129,0.2);color:#34d399;padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+          <button type="button" id="emTabActive" onclick="emSetStatusFilter('active')" style="padding:5px 10px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+            <span>🟢 Active</span> <span id="emCountActive" style="background:rgba(16,185,129,0.2);color:#34d399;padding:1px 5px;border-radius:10px;font-size:10px">—</span>
           </button>
-          <button type="button" id="emTabLeft" onclick="emSetStatusFilter('left')" style="padding:6px 12px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .15s">
-            <span>🔴 Exited / DOL</span> <span id="emCountLeft" style="background:rgba(239,68,68,0.2);color:#f87171;padding:1px 6px;border-radius:10px;font-size:10px">—</span>
+          <button type="button" id="emTabLeft" onclick="emSetStatusFilter('left')" style="padding:5px 10px;background:transparent;color:#94a3b8;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+            <span>🔴 Left</span> <span id="emCountLeft" style="background:rgba(239,68,68,0.2);color:#f87171;padding:1px 5px;border-radius:10px;font-size:10px">—</span>
           </button>
         </div>
-        <select id="emPFFilter" onchange="emFilter()" style="padding:8px 12px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer">
+
+        <!-- Filter by Dept -->
+        <select id="emDeptFilter" onchange="emFilter()" style="padding:7px 10px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:11px;outline:none;cursor:pointer">
+          <option value="">All Depts</option>
+        </select>
+
+        <!-- Filter PF/ESI -->
+        <select id="emPFFilter" onchange="emFilter()" style="padding:7px 10px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:11px;outline:none;cursor:pointer">
           <option value="">All Members</option>
-          <option value="pf">PF Members</option>
-          <option value="esi">ESI Members</option>
-          <option value="both">PF + ESI Both</option>
+          <option value="pf">PF Only</option>
+          <option value="esi">ESI Only</option>
+          <option value="both">PF + ESI</option>
           <option value="none">No PF/ESI</option>
         </select>
-        <!-- Rows per page -->
-        <select id="emRowsPerPage" onchange="emGoPage(1)" style="padding:8px 12px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer">
+
+        <!-- Mobile View Toggle (Cards vs Table) -->
+        <button id="emViewToggleBtn" type="button" onclick="emToggleMobileView()" style="padding:6px 12px;background:#1e3a5f;color:#60a5fa;border:1px solid #3b82f6;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px">
+          📱 Cards
+        </button>
+
+        <select id="emRowsPerPage" onchange="emGoPage(1)" style="padding:7px 8px;background:#0f172a;border:1.5px solid #334155;border-radius:8px;color:#f1f5f9;font-size:11px;outline:none;cursor:pointer">
+          <option value="25">25 rows</option>
           <option value="50" selected>50 rows</option>
           <option value="100">100 rows</option>
-          <option value="200">200 rows</option>
           <option value="9999">All</option>
         </select>
-        <div style="margin-left:auto;font-size:11px;color:#64748b" id="emShowingInfo"></div>
-      </div>
 
-      <!-- TABLE AREA (Desktop table + Mobile cards) -->
+        <div style="margin-left:auto;font-size:11px;color:#64748b;white-space:nowrap" id="emShowingInfo"></div>
+      </div>
       <div id="emMobileCardsWrap" class="mobile-only-cards-container"></div>
       <div id="emDesktopTableWrap" class="desktop-only-table-wrap" style="flex:1;overflow:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">
@@ -4475,6 +4516,14 @@ function swOut(name) {
 }
 
 function goPage(name) {
+  if (window.innerWidth <= 768) {
+    var mNav = document.getElementById('vnav');
+    var mBdrop = document.getElementById('mNavBackdrop');
+    var mBtn = document.getElementById('mNavToggleBtn');
+    if (mNav) mNav.classList.remove('open-mobile');
+    if (mBdrop) mBdrop.classList.remove('active');
+    if (mBtn) mBtn.innerHTML = '☰';
+  }
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   var pg = document.getElementById('page-'+name);
   if(pg) pg.classList.add('active');
@@ -6782,43 +6831,104 @@ var EM_FIELDS = [
   {key:'gross',    label:'Gross Salary (₹)',   type:'number', wide:false, required:false},
 ];
 
-// ── Init ──
+// ── Init & Logic ──
+function emIsLeft(e) {
+  if (!e) return false;
+  var s = String(e.status || '').toUpperCase().trim();
+  if (s === 'LEFT' || s === 'EXITED' || s === 'RESIGNED' || s === 'TERMINATED' || s === 'DOL' || s === 'INACTIVE') return true;
+  var dol = String(e.dol || e.leaving_date || e.dolField || e.date_of_leaving || '').trim();
+  if (dol && dol !== 'NA' && dol !== '-' && dol !== '—') return true;
+  return false;
+}
+
+window.emSetStatusFilter = function(filterMode) {
+  EM.statusFilter = filterMode || 'all';
+  var btnAll = document.getElementById('emTabAll');
+  var btnActive = document.getElementById('emTabActive');
+  var btnLeft = document.getElementById('emTabLeft');
+  
+  if (btnAll) {
+    btnAll.style.background = filterMode === 'all' ? '#6366f1' : 'transparent';
+    btnAll.style.color = filterMode === 'all' ? '#fff' : '#94a3b8';
+  }
+  if (btnActive) {
+    btnActive.style.background = filterMode === 'active' ? '#059669' : 'transparent';
+    btnActive.style.color = filterMode === 'active' ? '#fff' : '#94a3b8';
+  }
+  if (btnLeft) {
+    btnLeft.style.background = filterMode === 'left' ? '#dc2626' : 'transparent';
+    btnLeft.style.color = filterMode === 'left' ? '#fff' : '#94a3b8';
+  }
+  emFilter();
+};
+
+window.emToggleMobileView = function() {
+  var pg = document.getElementById('page-empmaster');
+  var btn = document.getElementById('emViewToggleBtn');
+  if (!pg) return;
+  var isTable = pg.classList.toggle('em-force-table-view');
+  if (btn) {
+    btn.innerHTML = isTable ? '📊 Table' : '📱 Cards';
+    btn.style.color = isTable ? '#34d399' : '#60a5fa';
+    btn.style.borderColor = isTable ? '#059669' : '#3b82f6';
+  }
+};
+
 function emInit() {
-  if(!document.getElementById('emTableBody')) return;
-
-  // Ensure bank/ifsc/account fields exist
-  EM.data.forEach(function(e){
-    if(!e.bank_name) e.bank_name = '';
-    if(!e.ifsc)      e.ifsc = '';
-    if(!e.account_no) e.account_no = '';
-  });
-
-  EM.filtered = EM.data.slice();
-  emBuildDeptFilter();
-  emUpdateStats();
-  emRenderTable();
-  var emMasterBadge=document.getElementById('emMasterBadge');if(emMasterBadge)emMasterBadge.textContent=EM.data.length;
+  try {
+    if (!EM.data || !Array.isArray(EM.data) || EM.data.length === 0) {
+      if (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) {
+        EM.data = window.EMP_MASTER_DATA;
+      } else {
+        try {
+          var saved = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]');
+          if (Array.isArray(saved) && saved.length > 0) EM.data = saved;
+        } catch(_) {}
+      }
+    }
+    // Ensure bank/ifsc/account fields exist
+    EM.data.forEach(function(e){
+      if(!e.bank_name) e.bank_name = '';
+      if(!e.ifsc)      e.ifsc = '';
+      if(!e.account_no) e.account_no = '';
+    });
+    EM.filtered = EM.data.slice();
+    emBuildDeptFilter();
+    emUpdateStats();
+    emRenderTable();
+    var emMasterBadge = document.getElementById('emMasterBadge');
+    if (emMasterBadge) emMasterBadge.textContent = EM.data.length;
+  } catch(err) {
+    console.error('Error during emInit:', err);
+  }
 }
 
 // ── Stats ──
 function emUpdateStats() {
+  var total = EM.data.length;
+  var leftCount = EM.data.filter(function(e){ return emIsLeft(e); }).length;
+  var activeCount = total - leftCount;
   var pf    = EM.data.filter(function(e){return e.pf_no&&e.pf_no!=='NA'&&e.pf_no!=='';}).length;
   var esi   = EM.data.filter(function(e){return e.esi_no&&e.esi_no!=='NA'&&e.esi_no!=='';}).length;
   var codes = EM.data.map(function(e){return String(e.emp_id).replace(/^0+/,'');});
   var dups  = codes.filter(function(c,i){return codes.indexOf(c)!==i;}).length;
   var depts = new Set(EM.data.map(function(e){return e.dept||''})).size;
-
   [
-    ['emStatTotal', EM.data.length],
+    ['emStatTotal', total],
+    ['emStatActive', activeCount],
+    ['emStatLeft', leftCount],
+    ['emCountAll', total],
+    ['emCountActive', activeCount],
+    ['emCountLeft', leftCount],
     ['emStatPF', pf],
     ['emStatESI', esi],
     ['emStatDup', dups],
     ['emStatDepts', depts],
-    ['emTotalBadge', EM.data.length + ' Employees'],
-    ['emMasterBadge', EM.data.length]
+    ['emTotalBadge', total + ' Employees (' + activeCount + ' Active, ' + leftCount + ' Left)'],
+    ['emMasterBadge', total]
   ].forEach(function(item){
-    var el=document.getElementById(item[0]);
-    if(el) el.textContent=item[1];
+    var el = document.getElementById(item[0]);
+    if (el) el.textContent = item[1];
   });
 }
 
@@ -6826,10 +6936,12 @@ function emUpdateStats() {
 function emBuildDeptFilter() {
   var depts = [...new Set(EM.data.map(function(e){return e.dept||'';}).filter(Boolean))].sort();
   var sel = document.getElementById('emDeptFilter');
-  sel.innerHTML = '<option value="">All Departments</option>';
-  depts.forEach(function(d){
-    sel.innerHTML += '<option value="'+d+'">'+d+'</option>';
-  });
+  if (sel) {
+    sel.innerHTML = '<option value="">All Depts</option>';
+    depts.forEach(function(d){
+      sel.innerHTML += '<option value="'+d+'">'+d+'</option>';
+    });
+  }
 }
 
 // ── Filter ──
@@ -6863,7 +6975,6 @@ function emFilter() {
 
     return matchQ && matchDept && matchPF;
   });
-
   emGoPage(1);
 }
 
@@ -6883,114 +6994,142 @@ function emGoPage(p) {
   var rpp = parseInt(document.getElementById('emRowsPerPage').value)||50;
   EM.rowsPerPage = rpp;
   var total = EM.filtered.length;
-  var pages = Math.ceil(total/rpp);
+  var pages = Math.max(1, Math.ceil(total/rpp));
   EM.currentPage = Math.max(1,Math.min(p,pages));
   emRenderTable();
 }
 
-// ── Render Table ──
+// ── Render Table & Mobile Cards ──
 function emRenderTable() {
   var rpp   = EM.rowsPerPage;
   var total = EM.filtered.length;
   var pages = Math.max(1,Math.ceil(total/rpp));
   var start = (EM.currentPage-1)*rpp;
   var slice = EM.filtered.slice(start, start+rpp);
-  
-  var isMobile = window.innerWidth <= 768;
-  var mobileCardContainer = document.getElementById('emMobileCardsWrap');
 
-  // Find duplicates in ALL data (not just filtered)
+  var mobileCardContainer = document.getElementById('emMobileCardsWrap');
+  var tableBody = document.getElementById('emTableBody');
+
+  // Find duplicates in ALL data
   var allCodes = EM.data.map(function(e){return String(e.emp_id).replace(/^0+/,'');});
   var dupCodes = new Set(allCodes.filter(function(c,i){return allCodes.indexOf(c)!==i;}));
 
-  var html = '';
-  slice.forEach(function(e, si) {
-    var realIdx = EM.data.indexOf(e);
-    var isDup = dupCodes.has(String(e.emp_id).replace(/^0+/,''));
-    var hasPF  = e.pf_no&&e.pf_no!=='NA'&&e.pf_no!=='';
-    var hasESI = e.esi_no&&e.esi_no!=='NA'&&e.esi_no!=='';
-    var rowBg = si%2===0 ? 'background:#111827' : 'background:#0f172a';
-    var selected = EM.selectedRows.has(realIdx);
-    if(selected) rowBg = 'background:#1e1b4b';
+  var tblHtml = '';
+  var cardHtml = '';
 
-    html += '<tr style="'+rowBg+';border-bottom:1px solid #1e293b;transition:background .1s" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\''+(selected?'#1e1b4b':si%2===0?'#111827':'#0f172a')+'\'">';
-    html += '<td style="padding:8px 10px"><input type="checkbox" '+(selected?'checked':'')+' onchange="emToggleRow('+realIdx+',this)" style="cursor:pointer"></td>';
-    html += '<td style="padding:8px 10px;font-size:10px;color:#475569">'+(start+si+1)+'</td>';
-    // EMP ID with dup badge
-    html += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:5px">';
-    html += '<span style="font-family:monospace;font-weight:700;color:#6366f1;font-size:11px">'+e.emp_id+'</span>';
-    if(isDup) html += '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:700">DUP</span>';
-    // Card tag
-    html += '<span style="background:#1e3a5f;color:#60a5fa;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:600">'+(e.cat2||e.cat1||'—')+'</span>';
-    html += '</div></td>';
-    // Name with Active / Left status badge
-    var isEmpLeft = emIsLeft(e);
-    var statusBadge = isEmpLeft 
-      ? '<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🔴 LEFT' + (e.dol ? ' ('+e.dol+')' : '') + '</span>'
-      : '<span style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);padding:1px 6px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🟢 ACTIVE</span>';
+  if (slice.length === 0) {
+    tblHtml = '<tr><td colspan="16" style="padding:40px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🔍</div><div style="font-size:14px;font-weight:700;color:#f1f5f9">Koi Employee Record Nahi Mila</div><div style="font-size:12px;margin-top:4px">Kripya filter ya search query change karein.</div></td></tr>';
+    cardHtml = '<div style="padding:40px 20px;text-align:center;color:#94a3b8;background:#1e293b;border-radius:12px;border:1px dashed #334155"><div style="font-size:36px;margin-bottom:8px">🔍</div><div style="font-size:15px;font-weight:700;color:#f1f5f9">Koi Employee Record Nahi Mila</div><div style="font-size:12px;margin-top:4px">Kripya filter ya search query change karein.</div></div>';
+  } else {
+    slice.forEach(function(e, si) {
+      var realIdx = EM.data.indexOf(e);
+      var isDup = dupCodes.has(String(e.emp_id).replace(/^0+/,''));
+      var hasPF  = Boolean(e.pf_no&&e.pf_no!=='NA'&&e.pf_no!=='');
+      var hasESI = Boolean(e.esi_no&&e.esi_no!=='NA'&&e.esi_no!=='');
+      var rowBg = si%2===0 ? 'background:#111827' : 'background:#0f172a';
+      var selected = EM.selectedRows.has(realIdx);
+      if(selected) rowBg = 'background:#1e1b4b';
 
-    html += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
-    html += '<span style="font-weight:700;color:#f1f5f9;font-size:12px">'+e.name+'</span> ';
-    html += statusBadge;
-    html += '</div></td>';
-    // Father
-    html += '<td style="padding:8px 10px;color:#94a3b8;font-size:11px">'+(e.father||'—')+'</td>';
-    // DOB
-    html += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.dob||'—')+'</td>';
-    // DOJ
-    html += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.doj||'—')+'</td>';
-    // PF
-    html += '<td style="padding:8px 10px">';
-    if(hasPF) html += '<span style="font-family:monospace;font-size:10px;color:#6ee7b7">'+e.pf_no+'</span>';
-    else       html += '<span style="color:#475569;font-size:10px">NA</span>';
-    html += '</td>';
-    // ESI
-    html += '<td style="padding:8px 10px">';
-    if(hasESI) html += '<span style="font-family:monospace;font-size:10px;color:#93c5fd">'+e.esi_no+'</span>';
-    else        html += '<span style="color:#475569;font-size:10px">NA</span>';
-    html += '</td>';
-    // Bank
-    html += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8">'+(e.bank_name||'—')+'</td>';
-    // IFSC
-    html += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.ifsc||'—')+'</td>';
-    // Account
-    html += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.account_no||'—')+'</td>';
-    // Gender
-    html += '<td style="padding:8px 10px;font-size:10px;color:'+(e.gender==='FEMALE'?'#f9a8d4':'#93c5fd')+';font-weight:600">'+(e.gender||'—')+'</td>';
-    // Dept
-    html += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.dept||'—')+'</td>';
-    // Category
-    html += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8">'+(e.cat1||'—')+'</td>';
-    // Actions
-    html += '<td style="padding:8px 10px;text-align:center;white-space:nowrap">';
-    html += '<button onclick="emOpenEdit('+realIdx+')" title="Edit" style="padding:4px 8px;background:#1e3a5f;border:1px solid #3b82f6;color:#60a5fa;border-radius:5px;cursor:pointer;font-size:11px;margin-right:3px">✏️</button>';
-    html += '<button onclick="emViewEmp('+realIdx+')" title="View" style="padding:4px 8px;background:#022c22;border:1px solid #059669;color:#34d399;border-radius:5px;cursor:pointer;font-size:11px;margin-right:3px">👁</button>';
-    html += '<button onclick="emDeleteRow('+realIdx+')" title="Delete" style="padding:4px 8px;background:#450a0a;border:1px solid #dc2626;color:#f87171;border-radius:5px;cursor:pointer;font-size:11px">🗑</button>';
-    html += '</td>';
-    html += '</tr>';
-  });
+      var isEmpLeft = emIsLeft(e);
+      var statusBadge = isEmpLeft 
+        ? '<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🔴 LEFT' + (e.dol ? ' ('+e.dol+')' : '') + '</span>'
+        : '<span style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🟢 ACTIVE</span>';
 
-  document.getElementById('emTableBody').innerHTML = html;
+      // 1. Desktop Table Row
+      tblHtml += '<tr style="'+rowBg+';border-bottom:1px solid #1e293b;transition:background .1s" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\''+(selected?'#1e1b4b':si%2===0?'#111827':'#0f172a')+'\'">';
+      tblHtml += '<td style="padding:8px 10px"><input type="checkbox" '+(selected?'checked':'')+' onchange="emToggleRow('+realIdx+',this)" style="cursor:pointer"></td>';
+      tblHtml += '<td style="padding:8px 10px;font-size:10px;color:#475569">'+(start+si+1)+'</td>';
+      tblHtml += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:5px">';
+      tblHtml += '<span style="font-family:monospace;font-weight:700;color:#6366f1;font-size:11px">'+(e.emp_id||'')+'</span>';
+      if(isDup) tblHtml += '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:700">DUP</span>';
+      tblHtml += '<span style="background:#1e3a5f;color:#60a5fa;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:600">'+(e.cat2||e.cat1||'—')+'</span>';
+      tblHtml += '</div></td>';
+      tblHtml += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:700;color:#f1f5f9;font-size:12px">'+(e.name||'')+'</span> '+statusBadge+'</div></td>';
+      tblHtml += '<td style="padding:8px 10px;color:#94a3b8;font-size:11px">'+(e.father||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.dob||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.doj||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px">';
+      if(hasPF) tblHtml += '<span style="font-family:monospace;font-size:10px;color:#6ee7b7">'+e.pf_no+'</span>';
+      else       tblHtml += '<span style="color:#475569;font-size:10px">NA</span>';
+      tblHtml += '</td>';
+      tblHtml += '<td style="padding:8px 10px">';
+      if(hasESI) tblHtml += '<span style="font-family:monospace;font-size:10px;color:#93c5fd">'+e.esi_no+'</span>';
+      else        tblHtml += '<span style="color:#475569;font-size:10px">NA</span>';
+      tblHtml += '</td>';
+      tblHtml += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8">'+(e.bank_name||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.ifsc||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.account_no||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-size:10px;color:'+(e.gender==='FEMALE'?'#f9a8d4':'#93c5fd')+';font-weight:600">'+(e.gender||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.dept||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;font-size:10px;color:#94a3b8">'+(e.cat1||'—')+'</td>';
+      tblHtml += '<td style="padding:8px 10px;text-align:center;white-space:nowrap">';
+      tblHtml += '<button onclick="emOpenEdit('+realIdx+')" title="Edit" style="padding:4px 8px;background:#1e3a5f;border:1px solid #3b82f6;color:#60a5fa;border-radius:5px;cursor:pointer;font-size:11px;margin-right:3px">✏️</button>';
+      tblHtml += '<button onclick="emViewEmp('+realIdx+')" title="View" style="padding:4px 8px;background:#022c22;border:1px solid #059669;color:#34d399;border-radius:5px;cursor:pointer;font-size:11px;margin-right:3px">👁</button>';
+      tblHtml += '<button onclick="emDeleteRow('+realIdx+')" title="Delete" style="padding:4px 8px;background:#450a0a;border:1px solid #dc2626;color:#f87171;border-radius:5px;cursor:pointer;font-size:11px">🗑</button>';
+      tblHtml += '</td>';
+      tblHtml += '</tr>';
+
+      // 2. Mobile Responsive Card
+      cardHtml += '<div class="m-emp-card-item" style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.3)">';
+      cardHtml += '  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+      cardHtml += '    <div style="display:flex;align-items:center;gap:6px">';
+      cardHtml += '      <span style="font-family:monospace;font-weight:800;color:#818cf8;font-size:12px;background:rgba(99,102,241,0.15);padding:2px 8px;border-radius:6px;border:1px solid rgba(99,102,241,0.3)">#'+(e.emp_id||'')+'</span>';
+      if(isDup) cardHtml += '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:800">DUP</span>';
+      cardHtml += '      <span style="background:#1e3a5f;color:#60a5fa;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700">'+(e.cat2||e.cat1||'EMPLOYEE')+'</span>';
+      cardHtml += '    </div>';
+      cardHtml += '    <div>'+statusBadge+'</div>';
+      cardHtml += '  </div>';
+      cardHtml += '  <div>';
+      cardHtml += '    <div style="font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:0.2px">'+(e.name||'—')+'</div>';
+      cardHtml += '    <div style="font-size:11px;color:#94a3b8;margin-top:2px">Father: <span style="color:#cbd5e1;font-weight:600">'+(e.father||'—')+'</span></div>';
+      cardHtml += '  </div>';
+      cardHtml += '  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;background:rgba(15,23,42,0.6);border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:11px">';
+      cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">Department</span><span style="color:#e2e8f0;font-weight:600">'+(e.dept||'—')+'</span></div>';
+      cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">DOJ</span><span style="color:#e2e8f0;font-family:monospace;font-weight:600">'+(e.doj||'—')+'</span></div>';
+      cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">PF NO</span><span style="color:#6ee7b7;font-family:monospace;font-weight:700">'+(hasPF?e.pf_no:'NA')+'</span></div>';
+      cardHtml += '    <div><span style="color:#64748b;font-size:9px;text-transform:uppercase;font-weight:700;display:block">ESI NO</span><span style="color:#93c5fd;font-family:monospace;font-weight:700">'+(hasESI?e.esi_no:'NA')+'</span></div>';
+      cardHtml += '  </div>';
+      if(e.bank_name||e.account_no||e.gross){
+        cardHtml += '  <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#94a3b8;padding:2px 4px">';
+        cardHtml += '    <div>🏦 <span style="color:#cbd5e1;font-weight:600">'+(e.bank_name||'Bank')+'</span>: <span style="font-family:monospace">'+(e.account_no?('...'+String(e.account_no).slice(-4)):'—')+'</span></div>';
+        if(e.gross) cardHtml += '<div style="color:#34d399;font-weight:700">₹'+Number(e.gross).toLocaleString('en-IN')+'</div>';
+        cardHtml += '  </div>';
+      }
+      cardHtml += '  <div style="display:flex;gap:6px;margin-top:2px">';
+      cardHtml += '    <button onclick="emOpenEdit('+realIdx+')" style="flex:1;padding:8px 0;background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">✏️ Edit</button>';
+      cardHtml += '    <button onclick="emViewEmp('+realIdx+')" style="flex:1;padding:8px 0;background:#022c22;border:1px solid #059669;color:#6ee7b7;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">👁 View</button>';
+      cardHtml += '    <button onclick="emDeleteRow('+realIdx+')" style="padding:8px 12px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">🗑</button>';
+      cardHtml += '  </div>';
+      cardHtml += '</div>';
+    });
+  }
+
+  if (tableBody) tableBody.innerHTML = tblHtml;
+  if (mobileCardContainer) mobileCardContainer.innerHTML = cardHtml;
 
   // Showing info
-  document.getElementById('emShowingInfo').textContent =
-    'Showing '+(total===0?0:start+1)+'-'+Math.min(start+rpp,total)+' of '+total+' employees (Total: '+EM.data.length+')';
-
-  document.getElementById('emPagInfo').textContent =
-    'Page '+EM.currentPage+' of '+pages;
+  var showInfo = document.getElementById('emShowingInfo');
+  if (showInfo) {
+    showInfo.textContent = 'Showing '+(total===0?0:start+1)+'-'+Math.min(start+rpp,total)+' of '+total+' employees (Total: '+EM.data.length+')';
+  }
+  var pagInfo = document.getElementById('emPagInfo');
+  if (pagInfo) {
+    pagInfo.textContent = 'Page '+EM.currentPage+' of '+pages;
+  }
 
   // Pagination buttons
   var phtml = '';
-  phtml += '<button onclick="emGoPage('+(EM.currentPage-1)+')" '+(EM.currentPage<=1?'disabled':'')+' style="padding:5px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">← Prev</button>';
-
+  phtml += '<button onclick="emGoPage('+(EM.currentPage-1)+')" '+(EM.currentPage<=1?'disabled':'')+' style="padding:6px 14px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">← Prev</button>';
   var startP = Math.max(1,EM.currentPage-2), endP = Math.min(pages, startP+4);
   for(var pp=startP;pp<=endP;pp++){
     var isActive = pp===EM.currentPage;
-    phtml += '<button onclick="emGoPage('+pp+')" style="padding:5px 10px;background:'+(isActive?'#6366f1':'#1e293b')+';border:1px solid '+(isActive?'#6366f1':'#334155')+';color:'+(isActive?'#fff':'#94a3b8')+';border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">'+pp+'</button>';
+    phtml += '<button onclick="emGoPage('+pp+')" style="padding:6px 12px;background:'+(isActive?'#6366f1':'#1e293b')+';border:1px solid '+(isActive?'#6366f1':'#334155')+';color:'+(isActive?'#fff':'#94a3b8')+';border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">'+pp+'</button>';
   }
-  phtml += '<button onclick="emGoPage('+(EM.currentPage+1)+')" '+(EM.currentPage>=pages?'disabled':'')+' style="padding:5px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">Next →</button>';
-  document.getElementById('emPagBtns').innerHTML = phtml;
+  phtml += '<button onclick="emGoPage('+(EM.currentPage+1)+')" '+(EM.currentPage>=pages?'disabled':'')+' style="padding:6px 14px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">Next →</button>';
+  var pagBtns = document.getElementById('emPagBtns');
+  if (pagBtns) pagBtns.innerHTML = phtml;
 }
+
 
 // ── Select All ──
 function emToggleAll(cb) {
@@ -9917,13 +10056,16 @@ window.toggleMobileNav = function() {
 };
 // Close drawer when menu item is clicked on phone
 document.addEventListener('click', function(e) {
-  if (window.innerWidth <= 768 && e.target && e.target.closest && (e.target.closest('.vnav-item') || e.target.closest('.vnav-sub-item'))) {
-    var nav = document.getElementById('vnav');
-    var bdrop = document.getElementById('mNavBackdrop');
-    var btn = document.getElementById('mNavToggleBtn');
-    if (nav) nav.classList.remove('open-mobile');
-    if (bdrop) bdrop.classList.remove('active');
-    if (btn) btn.innerHTML = '☰';
+  if (window.innerWidth <= 768 && e.target && e.target.closest) {
+    var clickedItem = e.target.closest('.vitem') || e.target.closest('.vcat-sub a') || e.target.closest('[onclick*="goPage"]') || e.target.closest('#mNavBackdrop');
+    if (clickedItem) {
+      var nav = document.getElementById('vnav');
+      var bdrop = document.getElementById('mNavBackdrop');
+      var btn = document.getElementById('mNavToggleBtn');
+      if (nav) nav.classList.remove('open-mobile');
+      if (bdrop) bdrop.classList.remove('active');
+      if (btn) btn.innerHTML = '☰';
+    }
   }
 });
 </script>
