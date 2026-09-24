@@ -744,6 +744,138 @@
       return renderStatutoryAdvisory(lower);
     }
 
+    // ── SPECIFIC SALARY AUDIT / SALARY CHANGE TIMELINE SCANNER ──
+    // e.g. "26448 ki manual salary sheet me dekh ke batao kab change hui"
+    var salChangeMatch = lower.match(/(?:salary|vetan|payout|rate|basic|gross|manual)s*(?:kab|change|badli|increase|difference|hike|history|history|badha|ghata)|(?:kab|change|badli|badha|ghata).*?(?:salary|vetan|rate|amount)/i);
+    var targetCodeForSal = directCodeMatch ? cleanCode(directCodeMatch[0]) : AIChatContext.lastActiveEmpCode;
+
+    if (salChangeMatch && targetCodeForSal) {
+      var foundEmp = KnowledgeGraph.employees[targetCodeForSal];
+      var empHistory = foundEmp && foundEmp.monthlyHistory ? foundEmp.monthlyHistory : [];
+
+      // Also do deep-scan of ALL files directly in window.FILES if monthlyHistory is sparse
+      var scannedHistory = [];
+      var filesList = Array.isArray(window.FILES) ? window.FILES : [];
+
+      filesList.forEach(function(f, fIdx) {
+        var fTitle = f.name || ('File ' + (fIdx + 1));
+        var sheets = f.sheets || {};
+        Object.keys(sheets).forEach(function(sn) {
+          var rows = Array.isArray(sheets[sn]) ? sheets[sn] : [];
+          if (!rows.length) return;
+
+          // Header search
+          var hIdx = -1, cMap = {};
+          for (var r = 0; r < Math.min(25, rows.length); r++) {
+            if (!Array.isArray(rows[r])) continue;
+            rows[r].forEach(function(cell, cIdx) {
+              var s = String(cell || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (s.includes('code') || s.includes('empid') || s.includes('token')) cMap.code = cIdx;
+              if (s.includes('gross') || s.includes('earning') || s.includes('rate')) cMap.gross = cIdx;
+              if (s.includes('basic') || s.includes('bpay')) cMap.basic = cIdx;
+              if (s.includes('net') || s.includes('payment') || s.includes('manual')) cMap.net = cIdx;
+            });
+            if (cMap.code != null && (cMap.gross != null || cMap.net != null || cMap.basic != null)) {
+              hIdx = r; break;
+            }
+          }
+
+          if (hIdx >= 0) {
+            for (var ri = hIdx + 1; ri < rows.length; ri++) {
+              var row = rows[ri];
+              if (!Array.isArray(row)) continue;
+              var curCode = String(row[cMap.code] || '').trim().replace(/\D/g, '');
+              if (curCode === targetCodeForSal || (foundEmp && foundEmp.name && String(row[cMap.code + 1] || '').toLowerCase().includes(foundEmp.normName))) {
+                var pGross = cMap.gross != null ? cleanNum(row[cMap.gross]) : 0;
+                var pBasic = cMap.basic != null ? cleanNum(row[cMap.basic]) : 0;
+                var pNet = cMap.net != null ? cleanNum(row[cMap.net]) : 0;
+                var pVal = pGross > 0 ? pGross : (pBasic > 0 ? pBasic : pNet);
+                scannedHistory.push({
+                  file: fTitle,
+                  sheet: sn,
+                  period: parseMonthYear(fTitle) ? parseMonthYear(fTitle).label : (parseMonthYear(sn) ? parseMonthYear(sn).label : fTitle),
+                  gross: pGross,
+                  basic: pBasic,
+                  net: pNet,
+                  effectiveAmount: pVal,
+                  rowNum: ri + 1
+                });
+              }
+            }
+          }
+        });
+      });
+
+      // Combine both scanned and cached histories
+      var effectiveHist = scannedHistory.length ? scannedHistory : empHistory;
+      var empDisplayName = foundEmp ? (foundEmp.name || ('Worker ' + targetCodeForSal)) : ('Worker ' + targetCodeForSal);
+
+      if (effectiveHist.length > 0) {
+        var out = '<div style="background:linear-gradient(135deg,#0f172a,#1e1b4b);border:1px solid #38bdf8;border-radius:14px;padding:16px;box-shadow:0 8px 25px rgba(0,0,0,0.4)">';
+        out += '<div style="font-size:15px;font-weight:800;color:#38bdf8;margin-bottom:8px;display:flex;align-items:center;gap:8px">';
+        out += '📈 <strong>Salary Change Audit & Timeline: [' + targetCodeForSal + '] ' + empDisplayName + '</strong>';
+        out += '</div>';
+
+        // Check if there was an actual salary change
+        var changesDetected = [];
+        for (var hi = 1; hi < effectiveHist.length; hi++) {
+          var prev = effectiveHist[hi - 1];
+          var curr = effectiveHist[hi];
+          var prevAmt = prev.effectiveAmount || prev.gross || prev.net;
+          var currAmt = curr.effectiveAmount || curr.gross || curr.net;
+          if (prevAmt > 0 && currAmt > 0 && prevAmt !== currAmt) {
+            var diff = currAmt - prevAmt;
+            var pct = Math.round((diff / prevAmt) * 100);
+            var isHike = diff > 0;
+            changesDetected.push({
+              fromPeriod: prev.period || prev.monthLabel || prev.file,
+              toPeriod: curr.period || curr.monthLabel || curr.file,
+              oldAmt: prevAmt,
+              newAmt: currAmt,
+              diff: diff,
+              pct: pct,
+              isHike: isHike
+            });
+          }
+        }
+
+        if (changesDetected.length > 0) {
+          out += '<div style="background:rgba(56,189,248,0.1);border-left:4px solid #38bdf8;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;color:#f8fafc">';
+          changesDetected.forEach(function(ch) {
+            out += '⚡ <strong>Salary Change Detected:</strong> <code>' + ch.fromPeriod + '</code> se <code>' + ch.toPeriod + '</code> ke beech salary <strong>' + (ch.isHike ? 'badh kar (Hike)' : 'kam hokar') + '</strong> ₹' + ch.oldAmt.toLocaleString('en-IN') + ' se <strong>₹' + ch.newAmt.toLocaleString('en-IN') + '</strong> hui (' + (ch.isHike ? '+' : '') + '₹' + Math.abs(ch.diff) + ' ya ' + ch.pct + '%).<br>';
+          });
+          out += '</div>';
+        } else {
+          out += '<div style="background:rgba(34,197,94,0.1);border-left:4px solid #22c55e;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;color:#f8fafc">';
+          out += '✅ <strong>Salary Constant Rahi Hai:</strong> Uploaded sheets ke mutabiq worker ki salary fixed <strong>₹' + (effectiveHist[0].effectiveAmount || effectiveHist[0].gross || effectiveHist[0].net).toLocaleString('en-IN') + '</strong> chali aa rahi hai (koi rate badlav nahi hua).';
+          out += '</div>';
+        }
+
+        // Full month-by-month table
+        out += '<div style="font-size:11px;font-weight:700;color:#94a3b8;margin-bottom:6px;text-transform:uppercase">Uploaded Sheet-Wise Breakdown:</div>';
+        out += '<table style="width:100%;border-collapse:collapse;font-size:11px;color:#e2e8f0;text-align:left;background:rgba(0,0,0,0.2);border-radius:8px;overflow:hidden">';
+        out += '<thead style="background:#1e293b;color:#94a3b8;font-size:10px"><tr><th style="padding:7px 10px">Month / Sheet</th><th style="padding:7px 10px">Gross / Rate</th><th style="padding:7px 10px">Basic</th><th style="padding:7px 10px">Net Payout</th><th style="padding:7px 10px">Source File</th></tr></thead><tbody>';
+
+        effectiveHist.forEach(function(row) {
+          out += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">';
+          out += '<td style="padding:6px 10px;font-weight:700;color:#38bdf8">' + (row.period || row.monthLabel || row.sheet) + '</td>';
+          out += '<td style="padding:6px 10px;font-weight:700">₹' + (row.gross || row.effectiveAmount || 0).toLocaleString('en-IN') + '</td>';
+          out += '<td style="padding:6px 10px">₹' + (row.basic || 0).toLocaleString('en-IN') + '</td>';
+          out += '<td style="padding:6px 10px;color:#4ade80">₹' + (row.net || 0).toLocaleString('en-IN') + '</td>';
+          out += '<td style="padding:6px 10px;color:#64748b;font-size:10px">' + (row.file || row.sourceFile || 'Sheet') + '</td>';
+          out += '</tr>';
+        });
+
+        out += '</tbody></table>';
+        out += '</div>';
+        return { html: out };
+      } else {
+        return {
+          html: '🔍 Worker Code <strong>[' + targetCodeForSal + ']</strong> ke liye manual/uploaded sheets scan ki gayi, lekin is code ke multiple months ka salary record nahi mila.<br><br>💡 <em>Tip: Alag-alag mahino ki (jaise July, August, etc.) sheets upload karein, AI turant compare karke bata dega ki salary kab aur kitni change hui!</em>'
+        };
+      }
+    }
+
     // ── GENERAL INTELLIGENT SEARCH (OPEN-ENDED) ──
     return renderOpenSearch(raw);
   }
