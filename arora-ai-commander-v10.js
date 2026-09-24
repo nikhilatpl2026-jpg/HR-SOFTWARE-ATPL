@@ -436,6 +436,20 @@
       AIChatContext.lastActiveEmpCode = cleanCode(directCodeMatch[0]);
     }
 
+    // ── 0. DIRECT STATUTORY CHALLAN / ECR TRIGGER ──
+    if (lower.match(/challan|ecr|pf.*return|esic.*return|pf.*file|esic.*file|portal.*upload/i)) {
+      if (typeof window.goPage === 'function') window.goPage('challan');
+      return {
+        html: '🏛️ <strong>EPFO ECR & ESIC Monthly Challan Hub Open Ho Gaya Hai!</strong><br><br>' +
+          '✅ Aapki uploaded salary sheet se direct:<br>' +
+          '• <strong>EPFO ECR Text File (#~# delimiter)</strong> ready hai.<br>' +
+          '• <strong>ESIC Monthly Contribution Template (.xlsx)</strong> ready hai.<br>' +
+          '• Account 1, 2, 10, 21, 22 ka exact bifurcation calculate ho gaya hai.<br><br>' +
+          '<button class="ai-act-btn" onclick="window.downloadEpfoEcrTextFile()">⬇ Download EPFO ECR File</button> ' +
+          '<button class="ai-act-btn" onclick="window.downloadEsicUploadExcel()" style="background:#16a34a">⬇ Download ESIC Excel</button>'
+      };
+    }
+
     // ── 1. OWNER / EXECUTIVE 1-PAGE SUMMARY ──
     if (lower.match(/owner|malik|executive|summary|profit|loss|overall|dashboard.*view|company.*status/i)) {
       var totEmployees = Object.keys(KnowledgeGraph.employees).length;

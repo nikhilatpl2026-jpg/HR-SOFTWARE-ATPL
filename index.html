@@ -1094,6 +1094,24 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   }
 }
 
+
+  .challan-tab-btn {
+    padding: 9px 18px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .challan-tab-btn.active {
+    color: #38bdf8;
+    border-bottom-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    border-radius: 8px 8px 0 0;
+  }
 </style>
 </head>
 <body>
@@ -1374,6 +1392,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-sal">      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
+      <div class="vitem" id="vn-challan" onclick="goPage('challan')" style="background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
 
@@ -1915,6 +1934,27 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
 
     <!-- ══ PAGE: COMPLIANCE CALCULATOR ══ -->
+    <!-- ═══════════════ PF & ESIC STATUTORY CHALLAN / ECR PAGE ═══════════════ -->
+    <div class="page" id="page-challan" style="flex-direction:column;overflow-y:auto;padding:24px;background:#0b0f19;color:#e2e8f0;min-height:100%">
+      <div class="page-top" style="background:linear-gradient(135deg,#0c4a6e,#082f49);border-bottom:2px solid #0284c7;padding:18px 24px;border-radius:14px;margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+          <div>
+            <div class="page-title" style="color:#38bdf8;font-size:22px;font-weight:800;display:flex;align-items:center;gap:10px">
+              🏛️ <span>EPFO & ESIC 100% Guaranteed Challan Hub</span>
+            </div>
+            <div class="page-sub" style="color:#bae6fd;margin-top:4px;font-size:12px">
+              Sheet upload karte hi direct EPFO Official ECR (#~# format) aur ESIC Monthly Return upload template generate karein — Zero Portal Rejection!
+            </div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button onclick="if(window.initStatutoryChallanTab) window.initStatutoryChallanTab()" style="padding:8px 16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">🔄 Refresh Challan</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="challanMainApp"></div>
+    </div>
+
     <div class="page" id="page-compliance">
       <div class="page-top" style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border-bottom:2px solid #a5d6a7">
         <div class="page-title" style="color:#1b5e20">⚖️ Salary Compliance Calculator</div>
@@ -4432,7 +4472,7 @@ function goPage(name) {
   // Auto-expand the parent category of active item
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -4446,6 +4486,7 @@ function goPage(name) {
     }
   }
   if(name==='compliance') populateCompFileSelect();
+  if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
   if(name==='files') renderAllFilesPage();
   if(name==='newjoin') populateNJSelects();
   if(name==='empmaster') {
@@ -9669,6 +9710,7 @@ else AInit();
 <script src="hr-workplace.js?v=20260919-fast10"></script>
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
+<script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1"></script>
 <script src="atpl-permanent-sync-v1.js?v=20260923-live1"></script>
 <!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=1790186846404"></script>
