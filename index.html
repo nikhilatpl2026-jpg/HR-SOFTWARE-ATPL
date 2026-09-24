@@ -866,9 +866,14 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     overflow-x: hidden !important;
     width: 100% !important;
     position: relative !important;
+    -webkit-text-size-adjust: 100% !important;
   }
 
-  /* 1. TOP APP BAR (Just like screenshot 23:24) */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* 1. TOP APP BAR */
   .m-erp-hamburger {
     display: inline-flex !important;
     align-items: center;
@@ -876,26 +881,29 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     background: transparent !important;
     border: none !important;
     color: #fff !important;
-    padding: 8px !important;
+    padding: 6px !important;
     cursor: pointer !important;
-    margin-right: 6px !important;
+    margin-right: 4px !important;
+    flex-shrink: 0 !important;
   }
-
   .header {
-    height: 54px !important;
-    padding: 0 12px !important;
+    height: 52px !important;
+    padding: 0 8px !important;
     display: flex !important;
     align-items: center !important;
     position: sticky !important;
     top: 0 !important;
     z-index: 1000 !important;
+    gap: 6px !important;
   }
   .header .logo-box {
     display: none !important;
   }
   .header .logo-name {
-    font-size: 16px !important;
+    font-size: 14px !important;
     font-weight: 800 !important;
+    white-space: nowrap !important;
+    color: #fff !important;
   }
   .header .logo-sub {
     display: none !important;
@@ -903,24 +911,42 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   .header-right {
     margin-left: auto !important;
     display: flex !important;
-    gap: 6px !important;
+    align-items: center !important;
+    gap: 4px !important;
+    flex-shrink: 0 !important;
   }
   .header-right button {
-    padding: 5px 10px !important;
-    font-size: 11px !important;
-    border-radius: 8px !important;
+    padding: 4px 8px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
+    white-space: nowrap !important;
+    height: 30px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+  #crossSyncBtnLbl {
+    display: none !important;
+  }
+  #crossSyncBtn::after {
+    content: 'Sync' !important;
+  }
+  #dsBtn span:first-child {
+    font-size: 12px !important;
   }
   .storage-badge {
     display: none !important;
   }
 
-  /* 2. SLIDE-IN SIDEBAR DRAWER (Exact Match to Screenshot 23:24:48) */
+  /* 2. SLIDE-IN SIDEBAR DRAWER */
   #mainLayout {
     display: flex !important;
     flex-direction: column !important;
     width: 100% !important;
+    height: calc(100dvh - 52px) !important;
+    overflow: hidden !important;
   }
-
   #vnav {
     position: fixed !important;
     top: 0 !important;
@@ -928,7 +954,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     left: -82% !important;
     width: 80% !important;
     max-width: 320px !important;
-    background: #FFFFFF !important; /* Clean white drawer like ERP screenshot */
+    background: #FFFFFF !important;
     border-right: 1px solid #E2E8F0 !important;
     z-index: 999999 !important;
     transition: left 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -940,8 +966,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   #vnav.open-mobile {
     left: 0 !important;
   }
-
-  /* Drawer Top: ATPL with ✕ button */
   .m-drawer-top-bar {
     display: flex !important;
     align-items: center !important;
@@ -969,8 +993,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     justify-content: center !important;
     cursor: pointer !important;
   }
-
-  /* Drawer Categories & Items */
   #vnav .vnav-cat {
     color: #1E293B !important;
     font-weight: 700 !important;
@@ -995,8 +1017,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     color: #4F46E5 !important;
     font-weight: 700 !important;
   }
-
-  /* Backdrop Dimmer */
   #mNavBackdrop {
     display: none;
     position: fixed;
@@ -1009,33 +1029,378 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     display: block !important;
   }
 
-  /* 3. ERP DATA ROWS / LIST TABLE (Exact Match to Screenshot 23:24:51) */
-  /* Clean border-bottom partitioned rows with Code, Company/Dept, Specs */
+  /* 3. CORE LAYOUT & SCROLL RESILIENCE */
   .sidebar {
     display: none !important;
   }
   .layout {
     width: 100% !important;
-    overflow-x: hidden !important;
-  }
-  .main, .workspace, #page-cmd, #page-audit, #page-master, #page-empmaster, #page-dol, #page-hrdocs {
-    width: 100vw !important;
     max-width: 100vw !important;
-    padding: 8px !important;
-    box-sizing: border-box !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+  }
+  .content {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
     overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    min-height: 0 !important;
+  }
+  .page {
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    min-height: 0 !important;
+  }
+  .page.active {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 
-  /* Mobile Employee Master & Responsive Cards */
+  /* 4. PAGE HEADERS & TOP BARS (No text collision) */
+  .page-top {
+    padding: 12px 14px !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .page-title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    line-height: 1.3 !important;
+    word-break: break-word !important;
+    margin-bottom: 4px !important;
+  }
+  .page-sub {
+    font-size: 11px !important;
+    line-height: 1.45 !important;
+    color: #64748b !important;
+    margin-bottom: 10px !important;
+    word-break: break-word !important;
+  }
+  .month-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+  .month-row > * {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .month-sel {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding: 9px 11px !important;
+    font-size: 12px !important;
+  }
+  .action-btn {
+    width: 100% !important;
+    padding: 10px 14px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-align: center !important;
+    justify-content: center !important;
+    display: flex !important;
+    align-items: center !important;
+  }
+  .days-badge {
+    text-align: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 7px 10px !important;
+  }
+
+  /* 5. SPLIT PANELS (Stacked into Clean Mobile View) */
+  #page-misspunch > div[style*="display:flex"],
+  #page-formula > div[style*="display:flex"],
+  #page-dolverify > div[style*="display:flex"],
+  #page-compliance > div[style*="display:flex"] {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    padding: 10px 12px !important;
+    gap: 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #page-misspunch > div[style*="display:flex"] > div,
+  #page-formula > div[style*="display:flex"] > div,
+  #page-dolverify > div[style*="display:flex"] > div,
+  #page-compliance > div[style*="display:flex"] > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+    border-right: none !important;
+  }
+  #mpResults, #frmResults, #dvResults, #compResultsArea {
+    min-height: 260px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #ffCodesList, #dvCodes, #compInput, #mpSearch {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #page-ff .page-top > div[style*="display:flex"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  #page-ff .page-top > div[style*="display:flex"] > div {
+    width: 100% !important;
+  }
+  #ffMonthSel {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #njOldFile, #njNewFile {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  #page-compliance .page-top > div[style*="display:flex"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  #page-compliance .page-top > div[style*="display:flex"] > div {
+    width: 100% !important;
+  }
+  #compSundays, #compHD, #compEsicLimit, #compMonth {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #compDivisorBadge {
+    text-align: center !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 6. SUMMARY CARDS & STATS */
+  .cards {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+    width: 100% !important;
+  }
+  .card {
+    padding: 10px 8px !important;
+    border-radius: 10px !important;
+  }
+  .card-val {
+    font-size: 18px !important;
+    line-height: 1.2 !important;
+    margin-bottom: 2px !important;
+    word-break: break-all !important;
+  }
+  .card-lbl {
+    font-size: 9px !important;
+    letter-spacing: 0.5px !important;
+    line-height: 1.2 !important;
+  }
+  #hrDocStats {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  #hrDocSearch {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+  #hrDocStatusFilter, #hrDocTypeFilter {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 7. SMART COMMANDS PAGE */
+  #page-cmd > div:first-child {
+    margin: 8px 10px 0 !important;
+    padding: 8px 12px !important;
+    border-radius: 8px !important;
+    flex-wrap: wrap !important;
+  }
+  #page-cmd > div:first-child div {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+  }
+  #page-cmd > div:first-child span:nth-child(2) {
+    margin-left: 0 !important;
+  }
+  .cmd-file-filter {
+    padding: 6px 10px !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .cmd-bar {
+    padding: 8px 12px !important;
+  }
+  .cmd-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .cmd-input {
+    width: 100% !important;
+    min-height: 52px !important;
+    font-size: 13px !important;
+    box-sizing: border-box !important;
+  }
+  .run-btn {
+    width: 100% !important;
+    height: 44px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+  }
+  .stats {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 4px !important;
+    padding: 6px 8px !important;
+    overflow-x: auto !important;
+  }
+  .stat {
+    padding: 5px 3px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    min-width: 52px !important;
+  }
+  .stat-val {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.1 !important;
+  }
+  .stat-lbl {
+    font-size: 8px !important;
+    letter-spacing: 0.3px !important;
+    line-height: 1.1 !important;
+  }
+  .out-tabs {
+    padding: 0 10px !important;
+  }
+  .out-tab {
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+  .log-scroll, .tbl-scroll, .results-scroll {
+    padding: 10px 12px !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  .dl-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    padding: 8px 12px !important;
+  }
+  .dl-btn {
+    width: 100% !important;
+    padding: 9px 12px !important;
+    text-align: center !important;
+    font-size: 12px !important;
+  }
+  .dl-info {
+    text-align: center !important;
+    font-size: 10px !important;
+  }
+
+  /* 8. TABLE DATA OVERFLOW RESILIENCE */
+  table, .atable {
+    width: max-content !important;
+    min-width: 100% !important;
+  }
+  th, td, .atable th, .atable td {
+    white-space: nowrap !important;
+    font-size: 11px !important;
+    padding: 6px 8px !important;
+    word-break: normal !important;
+  }
+  .audit-block {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  /* 9. TEST & CHALLAN PAGES */
+  #page-test {
+    padding: 12px 14px !important;
+  }
+  #page-test > div {
+    padding: 14px !important;
+    border-radius: 12px !important;
+    margin-bottom: 12px !important;
+  }
+  #page-challan {
+    padding: 10px 12px !important;
+  }
+  #page-challan .page-top {
+    padding: 12px 14px !important;
+    border-radius: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* 10. MODALS & OVERLAYS */
+  #emModal, #emDlModal, .hr-doc-modal, .file-viewer-overlay {
+    padding: 8px !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  #emModal > div, #emDlModal > div, .hr-doc-modal-box, .file-viewer {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    max-height: 92vh !important;
+    margin: 0 !important;
+    border-radius: 12px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+  }
+
+  /* 11. EMPLOYEE MASTER & RESPONSIVE CARDS */
   #page-empmaster.active, #page-hrdocs.active {
     position: fixed !important;
-    top: 54px !important;
+    top: 52px !important;
     left: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
     width: 100vw !important;
     max-width: 100vw !important;
-    height: calc(100dvh - 54px) !important;
+    height: calc(100dvh - 52px) !important;
     z-index: 500 !important;
   }
   .desktop-only-btn {
@@ -1067,8 +1432,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   #page-empmaster.em-force-table-view .mobile-only-cards-container {
     display: none !important;
   }
-
-  /* Matches screenshot row: Left ID + ℹ️, Center Name/Dept, Right Details */
   .m-emp-card {
     display: grid !important;
     grid-template-columns: 80px 1fr auto !important;
@@ -1121,7 +1484,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
   /* Bottom spacing */
   .layout, .main, #mainLayout {
-    padding-bottom: 24px !important;
+    padding-bottom: 20px !important;
   }
 }
 
