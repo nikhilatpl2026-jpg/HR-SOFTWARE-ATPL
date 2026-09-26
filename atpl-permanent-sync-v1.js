@@ -71,26 +71,29 @@
         // 5. Ensure IndexedDB Files are hydrated
         if (typeof window.loadAllFromDB === "function") {
           window.loadAllFromDB(function(saved) {
-            if (saved && saved.length) {
-              window.FILES = saved.map(function(s) {
-                var wb = typeof parseWB === 'function' ? parseWB(s.buf) : null;
-                return {
-                  name: s.name,
-                  wb: wb,
-                  sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : [],
-                  buf: s.buf,
-                  savedAt: s.saved
-                };
-              });
+            var tombstones = {};
+            try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+            saved = (saved || []).filter(function(s) {
+              return s && s.name && !tombstones[String(s.name).toLowerCase()];
+            });
+            window.FILES = saved.map(function(s) {
+              var wb = typeof parseWB === 'function' ? parseWB(s.buf) : null;
+              return {
+                name: s.name,
+                wb: wb,
+                sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : [],
+                buf: s.buf,
+                savedAt: s.saved
+              };
+            });
 
-              if (typeof renderFiles === 'function') renderFiles();
-              if (typeof renderSheets === 'function') renderSheets();
-              if (typeof updStats === 'function') updStats();
-              if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+            if (typeof renderFiles === 'function') renderFiles();
+            if (typeof renderSheets === 'function') renderSheets();
+            if (typeof updStats === 'function') updStats();
+            if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
 
-              var sl = document.getElementById("storageLbl");
-              if (sl) sl.textContent = window.FILES.length + " files saved";
-            }
+            var sl = document.getElementById("storageLbl");
+            if (sl) sl.textContent = window.FILES.length + " files saved";
           });
         }
 

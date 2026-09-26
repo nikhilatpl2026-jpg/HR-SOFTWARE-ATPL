@@ -2848,6 +2848,12 @@ function restoreSavedFilesIncremental() {
         while (at < saved.length && processed < 1) {
           var f = saved[at++]; processed++;
           try {
+            var tombstones = {};
+            try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+            if (f && f.name && tombstones[String(f.name).toLowerCase()]) {
+              deleteFromDB(f.name);
+              continue;
+            }
             // If user already loaded a newer copy while restore was running, never overwrite it.
             var live = FILES.find(function(x){return x && x.name === f.name && !x.fromDB;});
             if (!live) {

@@ -108,7 +108,7 @@
    var metas=(records||[]).filter(function(r){return r&&r._atpl_kind==='meta'&&r.object_kind==='salary_file'&&r.deleted!==true}),remoteBy={};
    metas.forEach(function(m){remoteBy[String(m.name||m.key_text||'').toLowerCase()]=m});
 
-   var local=await salaryRows(),pushed=0,failed=0;
+   var local=await salaryRows(),pushed=0,failed=0,cloudAuthoritative=(Array.isArray(records)&&records.length>0);
    for(var i=0;i<local.length;i++){
      var row=local[i];if(!row||!row.name||!row.buf)continue;
      var key=String(row.name).toLowerCase();
@@ -118,7 +118,14 @@
        continue;
      }
      var m=remoteBy[key],localTs=dateMs(row.saved),remoteTs=dateMs(m&&m.saved_at);
+     if(cloudAuthoritative&&!m){
+       console.log('[Auto-Delete] Purging tombstoned local file instead of re-pushing:',row.name);
+       await deleteSalaryFromDb(row.name);
+       saveLocalSalaryTombstone(row.name);
+       continue;
+     }
      if(m&&remoteTs>=localTs)continue;
+     if(!row._justUploaded&&!m)continue;
      try{
        var payload=workbookPayload(row.name,row.buf);
        await saveObject('salary_file',row.name,payload,{name:row.name,saved_at:row.saved||new Date().toISOString()});
@@ -166,23 +173,27 @@
    return changed;
  }
 
- function refreshSalaryUi(){
+ async function refreshSalaryUi(){
    try{
-     if(typeof root.loadAllFromDB==='function'&&typeof root.parseWB==='function'&&typeof root.wbToSheets==='function'){
-       root.loadAllFromDB(function(rows){
-         try{
-           root.FILES=(rows||[]).map(function(r){
-             var wb=root.parseWB(r.buf);
-             return{name:r.name,wb:wb,sheets:root.wbToSheets(wb),buf:r.buf,savedAt:r.saved};
-           });
-           ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects'].forEach(function(n){
-             if(typeof root[n]==='function')root[n]();
-           });
-           storageLabel(root.FILES.length+' files saved · 🔥 Realtime Sync');
-         }catch(_){}
+     var rows = await salaryRows();
+     var tombs = getLocalSalaryTombstones();
+     rows = (rows || []).filter(function(r){ return r && r.name && !tombs[String(r.name).toLowerCase()]; });
+     if(typeof root.parseWB==='function' && typeof root.wbToSheets==='function'){
+       root.FILES = rows.map(function(r){
+         var wb = root.parseWB(r.buf);
+         return {name:r.name, wb:wb, sheets:root.wbToSheets(wb), buf:r.buf, savedAt:r.saved};
        });
+       ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects'].forEach(function(n){
+         try{ if(typeof root[n]==='function') root[n](); }catch(_){}
+       });
+       storageLabel(root.FILES.length+' files saved · 🔥 Realtime Sync');
+       var cnt = root.document ? root.document.getElementById('fileCount') : null;
+       if(cnt) cnt.textContent = '(' + root.FILES.length + ')';
      }
-   }catch(_){}
+     if(typeof root.loadAllFromDB==='function'){
+       try{ root.loadAllFromDB(function(){}); }catch(_){}
+     }
+   }catch(e){ console.warn('refreshSalaryUi failed', e); }
  }
 
  function refreshHrUi(){
@@ -219,6 +230,10 @@
      if(isExplicitRemoved||isNotPresentInCloud){
        console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
        await deleteSalaryFromDb(row.name);
+       saveLocalSalaryTombstone(row.name);
+       if(typeof root.deleteFromDB==='function'&&root.deleteFromDB.__original){
+         try{root.deleteFromDB.__original(row.name)}catch(_){}
+       }
        if(Array.isArray(root.FILES)){
          root.FILES=root.FILES.filter(function(f){return !f||String(f.name||'').toLowerCase()!==lk});
        }
@@ -258,6 +273,36 @@
    storageLabel(remoteList.length+' files saved · 🔥 Realtime');
  }
 
+ var firebaseTombUnsubscribe=null;
+ async function handleFirebaseTombstonesUpdate(tombstonesList){
+   if(!Array.isArray(tombstonesList)||!tombstonesList.length)return;
+   var local=await salaryRows(),changed=0;
+   var tombMap={};
+   tombstonesList.forEach(function(t){
+     if(t&&t.name){
+       var k=String(t.name).toLowerCase();
+       tombMap[k]=true;
+       saveLocalSalaryTombstone(t.name);
+     }
+   });
+   for(var j=0;j<local.length;j++){
+     var row=local[j],lk=String(row.name||'').toLowerCase();
+     if(tombMap[lk]){
+       console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
+       await deleteSalaryFromDb(row.name);
+       saveLocalSalaryTombstone(row.name);
+       if(typeof root.deleteFromDB==='function'&&root.deleteFromDB.__original){
+         try{root.deleteFromDB.__original(row.name)}catch(_){}
+       }
+       if(Array.isArray(root.FILES)){
+         root.FILES=root.FILES.filter(function(f){return !f||String(f.name||'').toLowerCase()!==lk});
+       }
+       changed++;
+     }
+   }
+   if(changed)refreshSalaryUi();
+ }
+
  function startFirebaseListener(){
    if(!root.ATPLFirebase||typeof root.ATPLFirebase.subscribeSalaryFiles!=='function')return false;
    if(firebaseUnsubscribe)return true;
@@ -268,6 +313,15 @@
        console.warn('Firebase subscription warning',err);
        setBadge('bad','🔥 Firebase offline');
      });
+
+     if(typeof root.ATPLFirebase.subscribeTombstones==='function'){
+       firebaseTombUnsubscribe=root.ATPLFirebase.subscribeTombstones(function(tombs){
+         handleFirebaseTombstonesUpdate(tombs).catch(function(e){console.error('Firebase tombstone error',e)});
+       },function(err){
+         console.warn('Firebase tombstone subscription warning',err);
+       });
+     }
+
      console.log('[ATPL-Storage] Realtime Firebase Firestore listener connected');
      setBadge('ok','🔥 Firebase Live');
      return true;
@@ -521,6 +575,18 @@
 
    // Start Firebase Realtime Listener
    startFirebaseListener();
+
+   // Proactive instant fetch on boot for immediate 0ms sync
+   if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllSalaryFiles==='function'){
+     root.ATPLFirebase.fetchAllSalaryFiles().then(function(fbFiles){
+       handleFirebaseFilesUpdate({all:fbFiles,removedNames:[]});
+     }).catch(function(){});
+   }
+   if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllTombstones==='function'){
+     root.ATPLFirebase.fetchAllTombstones().then(function(tombs){
+       handleFirebaseTombstonesUpdate(tombs);
+     }).catch(function(){});
+   }
 
    [400,1200,3000].forEach(function(ms){
      setTimeout(function(){
