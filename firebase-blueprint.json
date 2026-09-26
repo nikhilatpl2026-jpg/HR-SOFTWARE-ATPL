@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "SalaryFile": {
+      "title": "SalaryFile",
+      "description": "Shared Excel Salary/Mam workbook records across all devices",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the Excel file",
+          "maxLength": 255
+        },
+        "sheets": {
+          "type": "string",
+          "description": "JSON stringified or compressed sheet array data"
+        },
+        "sheets_count": {
+          "type": "integer",
+          "description": "Number of sheets in the workbook"
+        },
+        "rows_count": {
+          "type": "integer",
+          "description": "Total rows count in the workbook"
+        },
+        "uploaded_at": {
+          "type": "string",
+          "description": "Timestamp when uploaded"
+        },
+        "uploaded_by": {
+          "type": "string",
+          "description": "User identifier who uploaded the file"
+        },
+        "saved_at": {
+          "type": "string",
+          "description": "Original file save timestamp"
+        }
+      },
+      "required": ["name", "sheets"]
+    },
+    "SalaryTombstone": {
+      "title": "SalaryTombstone",
+      "description": "Tombstone record for cross-device strict auto-deletion",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the deleted file"
+        },
+        "deleted_at": {
+          "type": "string",
+          "description": "Timestamp when deleted"
+        },
+        "deleted_by": {
+          "type": "string",
+          "description": "User identifier who deleted the file"
+        }
+      },
+      "required": ["name", "deleted_at"]
+    }
+  },
+  "firestore": {
+    "/salary_files/{fileId}": {
+      "schema": "SalaryFile",
+      "description": "Collection of all active synchronized salary workbook files"
+    },
+    "/salary_tombstones/{fileId}": {
+      "schema": "SalaryTombstone",
+      "description": "Collection of tombstoned deleted salary workbook files"
+    }
+  }
+}

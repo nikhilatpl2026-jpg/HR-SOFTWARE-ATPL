@@ -163,12 +163,12 @@ function getSystemRecords_(p){
 function systemKindAllowed_(u,kind){
   kind=String(kind||'').toLowerCase();
   if(u.admin)return true;
-  if(kind==='hr_doc')return hasFeature_(u,'hrdocs');
+  if(kind==='hr_doc'||kind.indexOf('hr_doc')>=0)return hasFeature_(u,'hrdocs');
   if(kind==='bank_ref_v3'||kind==='bank_work_v4')return hasFeature_(u,'bankverify');
   if(kind==='esic_dol_v2'||kind.indexOf('esic')>=0)return hasFeature_(u,'esictodol');
   if(kind==='pf_dol_v2'||kind.indexOf('pf_dol')>=0)return hasFeature_(u,'pftodol');
-  if(kind==='durable_state')return true;
-  if(kind==='salary_file')return ['cmd','files','audit','machineaudit','mamsalary','dolverify','ff'].some(function(f){return hasFeature_(u,f)});
+  if(kind==='durable_state'||kind==='tombstone')return true;
+  if(kind==='salary_file'||kind.indexOf('salary_file')>=0)return ['cmd','files','audit','machineaudit','mamsalary','dolverify','ff'].some(function(f){return hasFeature_(u,f)});
   return false;
 }
 

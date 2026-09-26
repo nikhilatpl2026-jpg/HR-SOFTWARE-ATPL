@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ATPL HR & Payroll Software</title>
+<meta name="description" content="ATPL HR, Payroll, Statutory Compliance, and Workforce Management System.">
+<meta property="og:title" content="ATPL HR & Payroll Software">
+<meta property="og:description" content="ATPL HR, Payroll, Statutory Compliance, and Workforce Management System.">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1e1b4b">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,36 +15,51 @@
 <meta name="apple-mobile-web-app-title" content="ATPL HR">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script>
-  // Register Auto-Updating Service Worker for PWA
-  if ('serviceWorker' in navigator) {
+  // Global error safety shield for iframe and cross-origin environments
+  window.addEventListener('error', function(event) {
+    if (event.message === 'Script error.' || !event.filename) {
+      if (event.preventDefault) event.preventDefault();
+      return true;
+    }
+  }, true);
+
+  window.addEventListener('unhandledrejection', function(event) {
+    if (event.reason && (event.reason.message === 'Script error.' || String(event.reason).indexOf('Script error') !== -1)) {
+      if (event.preventDefault) event.preventDefault();
+    }
+  });
+
+  // Register Auto-Updating Service Worker for PWA (only when top-level)
+  var isIframe = false;
+  try { isIframe = window.self !== window.top; } catch(e) { isIframe = true; }
+  if ('serviceWorker' in navigator && !isIframe) {
     window.addEventListener('load', function() {
       navigator.serviceWorker.register('sw.js').then(function(reg) {
-        // Check for updates on every page load
-        reg.update();
+        try {
+          if (reg && typeof reg.update === 'function') {
+            reg.update().catch(function(){});
+          }
+        } catch(e) {}
         reg.onupdatefound = function() {
           var installingWorker = reg.installing;
+          if (!installingWorker) return;
           installingWorker.onstatechange = function() {
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('New update available from GitHub! Auto-refreshing...');
-              window.location.reload();
+              console.log('New update available! Auto-refreshing...');
+              try { window.location.reload(); } catch(e) {}
             }
           };
         };
       }).catch(function(err) {
-        console.warn('SW registration failed:', err);
+        console.warn('SW registration bypassed:', err);
       });
     });
   }
 </script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-
-
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-
-
+<script defer src="xlsx.full.min.js"></script>
+<script defer src="pako.min.js"></script>
 <script>
 (function(){
   var loads={};
@@ -49,10 +67,12 @@
     if(loads[key])return loads[key];
     loads[key]=new Promise(function(resolve,reject){
       var sc=document.createElement('script'),done=false;
-      var tm=setTimeout(function(){if(done)return;done=true;if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;reject(new Error(key+' load timeout'));},7000);
-      sc.async=true;sc.src=url;
+      var tm=setTimeout(function(){if(done)return;done=true;if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;resolve(false);},7000);
+      sc.async=true;
+      sc.crossOrigin='anonymous';
+      sc.src=url;
       sc.onload=function(){if(done)return;done=true;clearTimeout(tm);resolve(true)};
-      sc.onerror=function(){if(done)return;done=true;clearTimeout(tm);if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;reject(new Error(key+' load failed'))};
+      sc.onerror=function(){if(done)return;done=true;clearTimeout(tm);if(sc.parentNode)sc.parentNode.removeChild(sc);loads[key]=null;resolve(false)};
       (document.head||document.documentElement).appendChild(sc);
     });
     return loads[key];
@@ -2909,10 +2929,14 @@ function renderFiles() {
 }
 
 function rmFile(i) {
-  var name = FILES[i].name;
+  var f = FILES[i];
+  if (!f) return;
+  var name = f.name;
+  if (!confirm('Kya aap file "' + name + '" ko delete karna chahte hain?\nYe file cloud storage aur sabhi phones/browsers se permanent delete ho jayegi.')) return;
   FILES.splice(i, 1);
   deleteFromDB(name, function() {
-    document.getElementById('storageLbl').textContent = FILES.length + ' files saved';
+    var lbl = document.getElementById('storageLbl');
+    if (lbl) lbl.textContent = FILES.length + ' files saved';
   });
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
 }
@@ -3000,15 +3024,16 @@ function renderViewerSheet(fi, si) {
 function renderAllFilesPage() {
   var area = document.getElementById('allFilesArea');
   if (!FILES.length) {
-    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo</span></div></div>';
+    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:9px 18px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Cloud Se Refresh Karo</button></div></div>';
     return;
   }
-  var html = '<div style="display:flex;gap:12px;margin-bottom:16px">';
+  var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
   var totalSheets = 0, totalRows = 0;
   FILES.forEach(function(f) { totalSheets += f.wb.SheetNames.length; Object.values(f.sheets).forEach(function(r) { totalRows += Math.max(0, r.length - 1); }); });
-  html += '<div class="card info" style="flex:1"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + FILES.length + '</div><div class="card-lbl">Total Files</div></div>';
-  html += '<div class="card safe" style="flex:1"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
-  html += '<div class="card warn" style="flex:1"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
+  html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + FILES.length + '</div><div class="card-lbl">Total Files</div></div>';
+  html += '<div class="card safe" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
+  html += '<div class="card warn" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
+  html += '<div><button onclick="if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:12px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(79,70,229,0.3)">🔄 Cloud Sync Now</button></div>';
   html += '</div>';
 
   FILES.forEach(function(f, i) {
@@ -3020,8 +3045,10 @@ function renderAllFilesPage() {
     html += '<div style="font-size:20px">📊</div>';
     html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.name + '</div>';
     html += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px">' + f.wb.SheetNames.length + ' sheets • ' + rows + ' rows' + (savedAt?' • '+savedAt:'') + '</div></div>';
+    html += '<div style="display:flex;gap:8px;align-items:center">';
     html += '<button onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
-    html += '</div>';
+    html += '<button onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
+    html += '</div></div>';
     // Sheet tabs
     html += '<div style="padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #EEF2FF;background:#F8FAFF">';
     f.wb.SheetNames.forEach(function(sn, si) {
@@ -10257,7 +10284,8 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20260919-stability1"></script>
+<script src="atpl-firebase-bundle.js?v=20260926-firebase-v1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260926-firebase-v1"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10"></script>

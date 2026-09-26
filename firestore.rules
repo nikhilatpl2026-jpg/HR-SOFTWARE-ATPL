@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    match /salary_files/{fileId} {
+      allow read: if true;
+      allow write: if isValidId(fileId);
+    }
+
+    match /salary_tombstones/{fileId} {
+      allow read: if true;
+      allow write: if isValidId(fileId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

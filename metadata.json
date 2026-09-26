@@ -1,0 +1,6 @@
+{
+  "name": "ATPL HR & Payroll Software",
+  "description": "ATPL HR, Payroll, Statutory Compliance, and Workforce Management System.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
