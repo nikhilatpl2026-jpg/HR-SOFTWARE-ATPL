@@ -229,13 +229,19 @@
    // 2. Load or update files from Firebase
    for(var i=0;i<remoteList.length;i++){
      var doc=remoteList[i];
-     if(!doc||!doc.name||!doc.sheets)continue;
+     if(!doc||!doc.name||(!doc.sheets&&!doc.sheets_b64&&!doc.is_gzip))continue;
      var rk=String(doc.name).toLowerCase();
      var old=local.find(function(x){return String(x.name||'').toLowerCase()===rk});
      if(old&&dateMs(old.saved)>=dateMs(doc.saved_at||doc.uploaded_at))continue;
 
      try{
-       var sheetData=typeof doc.sheets==='string'?J(doc.sheets,null):doc.sheets;
+       var sheetData=null;
+       if(root.ATPLFirebase&&typeof root.ATPLFirebase.decodeDocPayload==='function'){
+         sheetData=await root.ATPLFirebase.decodeDocPayload(doc);
+       }
+       if(!sheetData&&doc.sheets){
+         sheetData=typeof doc.sheets==='string'?J(doc.sheets,null):doc.sheets;
+       }
        if(sheetData){
          var p={v:1,name:doc.name,sheets:Array.isArray(sheetData.sheets)?sheetData.sheets:sheetData};
          var buf=payloadBuffer(p);
@@ -450,7 +456,12 @@
    function wrapped(cb){
      var files=Array.isArray(root.FILES)?root.FILES.slice():[];
      return old.call(this,function(){
-       try{if(cb)cb()}finally{files.forEach(function(f){if(f&&f.name)cloudDeleteSalary(f.name)})}
+       try{if(cb)cb()}finally{
+         if(root.ATPLFirebase&&typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
+           root.ATPLFirebase.clearAllSalaryFiles(user()?user().id:'admin').catch(function(){});
+         }
+         files.forEach(function(f){if(f&&f.name)cloudDeleteSalary(f.name)});
+       }
      });
    }
    wrapped.__atplCloudShared=true;

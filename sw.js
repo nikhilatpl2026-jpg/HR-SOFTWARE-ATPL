@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v2';
+const CACHE_NAME = 'atpl-cache-v3-firebase-realtime';
 const ASSETS = [
   './',
   './index.html',

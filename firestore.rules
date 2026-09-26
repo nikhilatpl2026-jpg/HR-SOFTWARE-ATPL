@@ -8,6 +8,10 @@ service cloud.firestore {
     match /salary_files/{fileId} {
       allow read: if true;
       allow write: if isValidId(fileId);
+
+      match /chunks/{chunkId} {
+        allow read, write: if true;
+      }
     }
 
     match /salary_tombstones/{fileId} {

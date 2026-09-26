@@ -1,3 +1,4 @@
+import * as pako from 'pako';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, 
@@ -33,28 +34,71 @@ export function initFirebase() {
   return { app, db };
 }
 
-function safeKey(name) {
+export function safeKey(name) {
   return 'sf_' + encodeURIComponent(String(name || '').trim().toLowerCase())
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 120);
 }
 
+function uint8ToBase64(u8) {
+  if (typeof Buffer !== 'undefined') return Buffer.from(u8).toString('base64');
+  let bin = '';
+  const len = u8.length;
+  const step = 0x8000;
+  for (let i = 0; i < len; i += step) {
+    bin += String.fromCharCode.apply(null, Array.prototype.slice.call(u8, i, Math.min(i + step, len)));
+  }
+  return btoa(bin);
+}
+
+function base64ToUint8(b64) {
+  if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(b64, 'base64'));
+  const bin = atob(b64);
+  const len = bin.length;
+  const u8 = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    u8[i] = bin.charCodeAt(i);
+  }
+  return u8;
+}
+
+const CHUNK_SIZE = 700000;
+
 export async function saveSalaryFile(name, payload, meta) {
   const { db } = initFirebase();
   const key = safeKey(name);
   const docRef = doc(db, 'salary_files', key);
-  const data = {
+
+  const jsonStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const compressedBytes = pako.gzip(jsonStr);
+  const b64 = uint8ToBase64(compressedBytes);
+
+  const totalChunks = Math.ceil(b64.length / CHUNK_SIZE);
+
+  if (totalChunks > 1) {
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkStr = b64.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+      const chunkRef = doc(db, 'salary_files', key, 'chunks', 'c_' + i);
+      await setDoc(chunkRef, { index: i, data: chunkStr });
+    }
+  }
+
+  const metaData = {
     name: String(name),
-    sheets: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    is_gzip: true,
+    chunks_count: totalChunks,
+    b64_size: b64.length,
+    sheets_b64: totalChunks === 1 ? b64 : '',
     sheets_count: Number(meta && meta.sheets_count || (payload && payload.sheets ? payload.sheets.length : 1)),
     rows_count: Number(meta && meta.rows_count || 0),
     uploaded_at: new Date().toISOString(),
     uploaded_by: String(meta && meta.uploaded_by || 'admin'),
     saved_at: String(meta && meta.saved_at || new Date().toISOString())
   };
-  await setDoc(docRef, data);
 
-  // Also remove from tombstones if it was previously tombstoned
+  await setDoc(docRef, metaData);
+
+  // Remove tombstone if it was previously tombstoned
   try {
     const tombRef = doc(db, 'salary_tombstones', key);
     await deleteDoc(tombRef);
@@ -63,11 +107,52 @@ export async function saveSalaryFile(name, payload, meta) {
   return true;
 }
 
+export async function decodeDocPayload(docData) {
+  if (!docData) return null;
+  // Case 1: single document compressed gzip
+  if (docData.is_gzip && docData.chunks_count === 1 && docData.sheets_b64) {
+    const bytes = base64ToUint8(docData.sheets_b64);
+    const unzipped = pako.ungzip(bytes);
+    const text = new TextDecoder().decode(unzipped);
+    return JSON.parse(text);
+  }
+  // Case 2: multiple chunks in subcollection
+  if (docData.is_gzip && docData.chunks_count > 1) {
+    const { db } = initFirebase();
+    const key = safeKey(docData.name);
+    let fullB64 = '';
+    for (let i = 0; i < docData.chunks_count; i++) {
+      const chunkSnap = await getDoc(doc(db, 'salary_files', key, 'chunks', 'c_' + i));
+      if (chunkSnap.exists() && chunkSnap.data().data) {
+        fullB64 += chunkSnap.data().data;
+      }
+    }
+    const bytes = base64ToUint8(fullB64);
+    const unzipped = pako.ungzip(bytes);
+    const text = new TextDecoder().decode(unzipped);
+    return JSON.parse(text);
+  }
+  // Case 3: legacy uncompressed string/json
+  if (docData.sheets) {
+    return typeof docData.sheets === 'string' ? JSON.parse(docData.sheets) : docData.sheets;
+  }
+  return null;
+}
+
 export async function deleteSalaryFile(name, deletedBy) {
   const { db } = initFirebase();
   const key = safeKey(name);
   const docRef = doc(db, 'salary_files', key);
   const tombRef = doc(db, 'salary_tombstones', key);
+
+  try {
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists() && docSnap.data().chunks_count > 1) {
+      for (let i = 0; i < docSnap.data().chunks_count; i++) {
+        await deleteDoc(doc(db, 'salary_files', key, 'chunks', 'c_' + i));
+      }
+    }
+  } catch (_) {}
 
   // 1. Delete from active files
   await deleteDoc(docRef);
@@ -79,6 +164,16 @@ export async function deleteSalaryFile(name, deletedBy) {
     deleted_by: String(deletedBy || 'admin')
   });
 
+  return true;
+}
+
+export async function clearAllSalaryFiles(deletedBy) {
+  const all = await fetchAllSalaryFiles();
+  for (const f of all) {
+    if (f && f.name) {
+      await deleteSalaryFile(f.name, deletedBy);
+    }
+  }
   return true;
 }
 
@@ -142,6 +237,8 @@ if (typeof window !== 'undefined') {
     init: initFirebase,
     saveSalaryFile,
     deleteSalaryFile,
+    clearAllSalaryFiles,
+    decodeDocPayload,
     fetchAllSalaryFiles,
     fetchAllTombstones,
     subscribeSalaryFiles,
