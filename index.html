@@ -2773,6 +2773,7 @@ function initDB(cb) {
 }
 
 function saveFileToDB(name, arrayBuf, cb) {
+  try { var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}'); if(ts[String(name).toLowerCase()]) { delete ts[String(name).toLowerCase()]; localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(ts)); } } catch(_) {}
   if (!DB) { cb && cb(); return; }
   var tx = DB.transaction(DB_STORE, 'readwrite');
   tx.objectStore(DB_STORE).put({ name: name, buf: arrayBuf, saved: new Date().toISOString() });
@@ -8437,8 +8438,8 @@ function hrDocToggleWindow(){
   'use strict';
   var DB_NAME='AroraTextilesHRDocs',DB_VER=1,STORE='documents',DB=null,DOCS=[];
   function openDB(cb){if(DB){cb();return;}try{var r=indexedDB.open(DB_NAME,DB_VER);r.onupgradeneeded=function(e){if(!e.target.result.objectStoreNames.contains(STORE))e.target.result.createObjectStore(STORE,{keyPath:'id'});};r.onsuccess=function(e){DB=e.target.result;cb();};r.onerror=function(){console.warn('HR Documents storage unavailable');cb();};}catch(e){console.warn(e);cb();}}
-  function load(cb){openDB(function(){if(!DB){DOCS=[];cb();return;}var r=DB.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=function(){var raw=r.result||[];var tombs={};try{tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');}catch(_){}DOCS=raw.filter(function(x){return x&&x.id&&!tombs[String(x.id).toLowerCase()];});cb();};r.onerror=function(){DOCS=[];cb();};});}
-  function put(d,cb){openDB(function(){if(!DB){alert('⚠️ Browser storage unavailable.');return;}var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).put(d);t.oncomplete=function(){cb();};t.onerror=function(){alert('⚠️ Document save error.');};});}
+  function load(cb){openDB(function(){if(!DB){DOCS=[];cb();return;}var r=DB.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=function(){var raw=r.result||[];var tombs={};try{tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');}catch(_){}DOCS=raw.filter(function(x){if(!x||!x.id)return false;var tb=tombs[String(x.id).toLowerCase()];if(!tb)return true;var tt=typeof tb==='string'?Date.parse(tb):0,dt=x.updated_at?Date.parse(x.updated_at):0;if(dt&&isFinite(dt)&&isFinite(tt)&&dt>=tt){delete tombs[String(x.id).toLowerCase()];try{localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));}catch(_){}return true;}return false;});cb();};r.onerror=function(){DOCS=[];cb();};});}
+  function put(d,cb){try{var ts=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');if(d&&d.id&&ts[String(d.id).toLowerCase()]){delete ts[String(d.id).toLowerCase()];localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(ts));}}catch(_){}openDB(function(){if(!DB){alert('⚠️ Browser storage unavailable.');return;}var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).put(d);t.oncomplete=function(){cb();};t.onerror=function(){alert('⚠️ Document save error.');};});}
   function del(id,cb){try{var tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');tombs[String(id).toLowerCase()]=new Date().toISOString();localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));}catch(_){}openDB(function(){if(!DB)return;var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=function(){if(cb)cb();};});}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function dateText(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?esc(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();}

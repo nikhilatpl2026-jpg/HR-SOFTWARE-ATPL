@@ -81,7 +81,19 @@
             var tombstones = {};
             try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
             saved = (saved || []).filter(function(s) {
-              return s && s.name && !tombstones[String(s.name).toLowerCase()];
+              if (!s || !s.name) return false;
+              var tomb = tombstones[String(s.name).toLowerCase()];
+              if (!tomb) return true;
+              var tombTime = typeof tomb === 'string' ? Date.parse(tomb) : (tomb === true ? Infinity : 0);
+              var fileTime = s.saved ? Date.parse(s.saved) : 0;
+              if (fileTime && isFinite(fileTime) && isFinite(tombTime) && fileTime >= tombTime) {
+                try {
+                  delete tombstones[String(s.name).toLowerCase()];
+                  localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombstones));
+                } catch(_) {}
+                return true;
+              }
+              return false;
             });
             var oldFiles = Array.isArray(window.FILES) ? window.FILES : [];
             var changed = oldFiles.length !== saved.length;
