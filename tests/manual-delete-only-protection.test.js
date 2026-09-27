@@ -24,4 +24,8 @@ test('Manual Delete Only and Anti-Hang Sync Protection', () => {
 
   // 5. saveFileToDB in index.html clears stale tombstones
   assert.ok(indexHtml.includes('localStorage.getItem(\'ATPL_SALARY_TOMBSTONES_V2\')'), 'saveFileToDB must clear stale tombstone on save');
+
+  // 6. Clear all files records timestamp so cloud sync never resurrects deleted files
+  assert.ok(storageCode.includes('ATPL_ALL_SALARY_CLEARED_AT'), 'storage must check ATPL_ALL_SALARY_CLEARED_AT to prevent resurrecting cleared files');
+  assert.ok(indexHtml.includes('ATPL_ALL_SALARY_CLEARED_AT'), 'clearAllFiles must record ATPL_ALL_SALARY_CLEARED_AT');
 });

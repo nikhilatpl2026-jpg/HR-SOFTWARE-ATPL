@@ -2946,12 +2946,30 @@ function rmFile(i) {
 
 function clearAllFiles() {
   if (!confirm('Saari ' + FILES.length + ' files delete karna chahte ho?')) return;
+  var filesToDelete = Array.isArray(FILES) ? FILES.slice() : [];
   FILES = [];
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  
+  var now = new Date().toISOString();
+  try {
+    localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT', now);
+    var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+    filesToDelete.forEach(function(f) {
+      if (f && f.name) tombs[String(f.name).toLowerCase()] = now;
+    });
+    localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+  } catch(_) {}
+
   clearDB(function() {
     document.getElementById('storageLbl').textContent = 'IndexedDB Ready';
-    renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
     lg('info', '🗑 Saari files clear ho gayi');
   });
+
+  if (window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
+    window.ATPLFirebase.clearAllSalaryFiles(typeof user === 'function' && user() ? user().id : 'admin').catch(function(e) {
+      console.warn('Firebase clear all warning', e);
+    });
+  }
 }
 
 function renderSheets() {

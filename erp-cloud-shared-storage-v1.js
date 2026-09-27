@@ -290,10 +290,16 @@
      }
 
      // Load or update files from Firebase if remote has newer files
+     var allClearedAt=dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
      for(var i=0;i<remoteList.length;i++){
        var doc=remoteList[i];
        if(!doc||!doc.name||(!doc.sheets&&!doc.sheets_b64&&!doc.is_gzip))continue;
+       var docTime=dateMs(doc.saved_at||doc.uploaded_at);
+       if(allClearedAt&&allClearedAt>=docTime)continue; // User cleared files; do not resurrect!
        var rk=String(doc.name).toLowerCase();
+       var tombVal=tombs[rk];
+       var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
+       if(tombTime&&tombTime>=docTime)continue; // User deleted this file; do not resurrect!
        var old=local.find(function(x){return String(x.name||'').toLowerCase()===rk});
        if(old&&dateMs(old.saved)>=dateMs(doc.saved_at||doc.uploaded_at))continue;
 
@@ -605,6 +611,13 @@
    var old=root.clearDB;
    function wrapped(cb){
      var files=Array.isArray(root.FILES)?root.FILES.slice():[];
+     var now=new Date().toISOString();
+     try{
+       root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',now);
+       var tombs=getLocalSalaryTombstones();
+       files.forEach(function(f){if(f&&f.name)tombs[String(f.name).toLowerCase()]=now});
+       root.localStorage.setItem(TOMB_STORAGE_KEY,JSON.stringify(tombs));
+     }catch(_){}
      return old.call(this,function(){
        try{if(cb)cb()}finally{
          if(root.ATPLFirebase&&typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
