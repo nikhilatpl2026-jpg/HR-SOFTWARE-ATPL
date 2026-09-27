@@ -286,8 +286,6 @@
      var local=await salaryRows();
      var changed=0;
 
-     // User Rule: local files in browser are NEVER deleted automatically based on other browsers.
-     var allowAutoCrossBrowserDelete=false;
      var tombs=getLocalSalaryTombstones();
      for(var j=0;j<local.length;j++){
        var row=local[j];
@@ -296,7 +294,7 @@
        var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
        var fileTime=dateMs(row.saved);
        var isTomb=tombTime>fileTime;
-       if(allowAutoCrossBrowserDelete && isTomb){
+       if(isTomb){
          console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
          await deleteSalaryFromDb(row.name);
          saveLocalSalaryTombstone(row.name);
@@ -304,9 +302,24 @@
        }else if(tombVal){
          clearLocalSalaryTombstone(row.name);
        }
-       if(!remoteByName[lk] && row.buf && !row._inFlight && (Date.now() - (row._lastBackup||0) > 60000)){
+       if(!isTomb && !remoteByName[lk] && row.buf && !row._inFlight && (Date.now() - (row._lastBackup||0) > 60000)){
          row._lastBackup = Date.now();
          console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
+       }
+     }
+
+     // Live cross-browser delete propagation from Firestore removed doc changes
+     if(Array.isArray(payload.removedNames) && payload.removedNames.length){
+       for(var r=0; r<payload.removedNames.length; r++){
+         var remName=payload.removedNames[r];
+         var remLk=String(remName).toLowerCase();
+         var had=local.some(function(x){return String(x.name||'').toLowerCase()===remLk});
+         if(had){
+           console.log('[Firebase Cross-Browser Delete] Purging removed file:', remName);
+           await deleteSalaryFromDb(remName);
+           saveLocalSalaryTombstone(remName);
+           changed++;
+         }
        }
      }
 
@@ -384,31 +397,62 @@
  }
 
  async function handleFirebaseHrTombstonesUpdate(tombstonesList){
-   if(!Array.isArray(tombstonesList)||!tombstonesList.length)return;
-   var allowAutoCrossBrowserDelete=false; // Protected against accidental multi-browser auto wipe
-   var local=await hrRows(),changed=0;
-   var tombMap={};
-   tombstonesList.forEach(function(t){
-     if(t&&t.id){
-       var k=String(t.id).toLowerCase();
-       tombMap[k]=true;
-     }
-   });
-   for(var j=0;j<local.length;j++){
-     var doc=local[j],lid=String(doc.id||'').toLowerCase();
-     if(allowAutoCrossBrowserDelete && tombMap[lid]){
-       console.log('[Firebase HR Auto-Delete] Purging removed HR doc:',doc.document_name||doc.id);
-       await deleteHrDocFromDb(doc.id);
-       changed++;
-     }
-   }
-   if(changed>0)refreshHrUi();
- }
- async function handleFirebaseTombstonesUpdate(tombstonesList){
-   // User rule: local files are NEVER deleted automatically based on remote tombstones.
-   // Files remain permanent until user manually deletes them in this browser.
-   return;
- }
+    if(!Array.isArray(tombstonesList)||!tombstonesList.length)return;
+    var local=await hrRows(),changed=0;
+    var tombMap={};
+    tombstonesList.forEach(function(t){
+      if(t&&t.id){
+        var k=String(t.id).toLowerCase();
+        tombMap[k]=t.deleted_at||new Date().toISOString();
+      }
+    });
+    for(var j=0;j<local.length;j++){
+      var doc=local[j],lid=String(doc.id||'').toLowerCase();
+      var tTime=tombMap[lid]?dateMs(tombMap[lid]):0;
+      var docTime=dateMs(doc.updated_at||doc.created_at);
+      if(tTime && tTime >= docTime){
+        console.log('[Firebase HR Auto-Delete] Purging removed HR doc across browsers:',doc.document_name||doc.id);
+        await deleteHrDocFromDb(doc.id);
+        changed++;
+      }
+    }
+    if(changed>0)refreshHrUi();
+  }
+  async function handleFirebaseTombstonesUpdate(tombstonesList){
+    if(!Array.isArray(tombstonesList)||!tombstonesList.length)return;
+    var local=await salaryRows(),changed=0;
+    var tombs=getLocalSalaryTombstones();
+    var now=new Date().toISOString();
+    tombstonesList.forEach(function(t){
+      if(t&&t.name){
+        var k=String(t.name).toLowerCase();
+        var tTime=t.deleted_at||now;
+        tombs[k]=tTime;
+        if(t.name==='__ALL__' && t.cleared_at){
+          try{ root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT', t.cleared_at); }catch(_){}
+        }
+      }
+    });
+    try{ root.localStorage.setItem(TOMB_STORAGE_KEY, JSON.stringify(tombs)); }catch(_){}
+
+    var allClearedAt = dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
+    for(var j=0;j<local.length;j++){
+      var row=local[j];
+      var lk=String(row.name||'').toLowerCase();
+      var tombVal=tombs[lk];
+      var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
+      var fileTime=dateMs(row.saved);
+      var isTomb=tombTime>fileTime;
+      if(isTomb || (allClearedAt && allClearedAt >= fileTime)){
+        console.log('[Firebase Cross-Browser Tombstone Sync] Removing deleted file across browsers:', row.name);
+        await deleteSalaryFromDb(row.name);
+        changed++;
+      }
+    }
+    if(changed>0){
+      refreshSalaryUi();
+    }
+  }
 
  function startFirebaseListener(){
    if(!root.ATPLFirebase||typeof root.ATPLFirebase.subscribeSalaryFiles!=='function')return false;
