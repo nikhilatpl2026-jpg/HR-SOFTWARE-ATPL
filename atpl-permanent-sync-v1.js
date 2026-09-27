@@ -78,10 +78,11 @@
         // 5. Ensure IndexedDB Files are hydrated without blocking CPU (Reuse cached workbooks)
         if (typeof window.loadAllFromDB === "function") {
           window.loadAllFromDB(function(saved) {
-            var tombstones = {};
-            try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+            // User rule: local browser files in IndexedDB are permanent and never deleted automatically
             saved = (saved || []).filter(function(s) {
-              if (!s || !s.name) return false;
+              if (!s || !s.name || !s.buf) return false;
+              var tombstones = {};
+              try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
               var tomb = tombstones[String(s.name).toLowerCase()];
               if (!tomb) return true;
               var tombTime = typeof tomb === 'string' ? Date.parse(tomb) : (tomb === true ? Infinity : 0);
@@ -91,9 +92,8 @@
                   delete tombstones[String(s.name).toLowerCase()];
                   localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombstones));
                 } catch(_) {}
-                return true;
               }
-              return false;
+              return true; // Local browser file is permanent until user manually deletes it
             });
             var oldFiles = Array.isArray(window.FILES) ? window.FILES : [];
             var changed = oldFiles.length !== saved.length;

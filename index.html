@@ -2849,12 +2849,8 @@ function restoreSavedFilesIncremental() {
         while (at < saved.length && processed < 1) {
           var f = saved[at++]; processed++;
           try {
-            var tombstones = {};
-            try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
-            if (f && f.name && tombstones[String(f.name).toLowerCase()]) {
-              deleteFromDB(f.name);
-              continue;
-            }
+            // User rule: local files in browser must never be deleted automatically by tombstones or other browsers
+            // Files remain permanent until user clicks delete in this browser
             // If already loaded or parsed with valid workbook, never re-parse or overwrite it
             var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
             if (!live) {
