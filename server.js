@@ -33,18 +33,19 @@ app.post('/api/hr-docs/analyze', async (req, res) => {
     const prompt = `You are an expert HR, Legal Compliance, and Statutory Document Analyst for Arora Textiles Private Limited (ATPL).
 Analyze this uploaded document (PDF or scanned image) with 100% precision.
 Extract and identify the following fields:
-1. document_name: Exact official title (e.g., 'Fire NOC / Fire Safety Certificate', 'Factory Inspectorate License Renewal', 'First Aid Training Certificate', 'Standing Orders', 'POSH Policy', 'ESI / PF Statutory Return', 'Pollution Control Board Consent').
+1. document_name: Exact official title (e.g., 'Fire NOC / Fire Safety Certificate', 'Factory License Renewal', 'First Aid Training Certificate', 'Standing Orders', 'POSH Policy', 'Pollution Control Board Consent', 'Electrical Safety Certificate').
 2. doc_type: Must be one of: 'Legal / Compliance', 'Certificate / License', 'Training Record', 'HR Policy', 'Fire NOC', or 'Other'.
 3. holder: Company name or individual holder mentioned (e.g. 'Arora Textiles Private Limited', or Employee Name).
 4. reference_no: Application, acknowledgment, or file reference number (e.g. 'LSG/BIKANER/FIRENOC/2024-25/34493').
 5. certificate_no: Certificate, registration, or license number if distinct.
 6. issuing_authority: Department, Council, Municipal Corporation, Inspectorate, or training agency (e.g., 'Municipal Corporation Bikaner / Fire Department', 'Directorate of Factories and Boilers').
-7. issue_date: Date of issue / training in YYYY-MM-DD format. If none, return empty string.
-8. expiry_date: Expiration / validity date in YYYY-MM-DD format. If permanent or no expiry, return empty string.
-9. retraining_date: Next re-training or renewal due date in YYYY-MM-DD format.
-10. validity_period: Duration mentioned (e.g., '1 Year', '3 Years', 'Permanent', 'Annual').
-11. location: Factory / Unit / Site / Department mentioned (e.g. 'Bikaner Unit / Weaving Section').
-12. remarks: Concise summary of key details, trainer name, employee ID if applicable, or conditions.
+7. issue_date: Original date of initial issue or initial certificate creation in YYYY-MM-DD format. If none, return empty string.
+8. last_renewal_date: Date when this document/license/certificate was most recently renewed (e.g., 'Last Renewal Date', 'Renewed on', 'Date of Renewal', 'नवीनीकरण दिनांक', 'अंतिम नवीनीकरण'). Return in YYYY-MM-DD format. If this is an original newly issued document with no prior renewal, return empty string.
+9. expiry_date: Expiration, valid till, or next renewal due date in YYYY-MM-DD format (e.g., 'Valid Till', 'Valid Upto', 'वैधता दिनांक', 'समाप्ति दिनांक'). If permanent or no expiry, return empty string.
+10. retraining_date: Next re-training or periodic renewal / inspection due date in YYYY-MM-DD format.
+11. validity_period: Duration mentioned (e.g., '1 Year', '3 Years', '5 Years', 'Permanent', 'Annual').
+12. location: Factory / Unit / Site / Department mentioned (e.g. 'Bikaner Unit / Weaving Section').
+13. remarks: Concise summary of key details, trainer name, employee ID if applicable, conditions, or renewal endorsement notes.
 
 Return strictly valid JSON matching the schema.`;
 
@@ -71,6 +72,7 @@ Return strictly valid JSON matching the schema.`;
             certificate_no: { type: 'STRING' },
             issuing_authority: { type: 'STRING' },
             issue_date: { type: 'STRING' },
+            last_renewal_date: { type: 'STRING' },
             expiry_date: { type: 'STRING' },
             retraining_date: { type: 'STRING' },
             validity_period: { type: 'STRING' },
