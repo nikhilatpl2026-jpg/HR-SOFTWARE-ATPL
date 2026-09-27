@@ -78,22 +78,24 @@
         // 5. Ensure IndexedDB Files are hydrated without blocking CPU (Reuse cached workbooks)
         if (typeof window.loadAllFromDB === "function") {
           window.loadAllFromDB(function(saved) {
-            // User rule: local browser files in IndexedDB are permanent and never deleted automatically
+            var allClearedAt = 0;
+            try { allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0; } catch(_) {}
+            var tombstones = {};
+            try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+
             saved = (saved || []).filter(function(s) {
               if (!s || !s.name || !s.buf) return false;
-              var tombstones = {};
-              try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+              var fileTime = s.saved ? (Date.parse(s.saved) || 0) : 0;
+              if (allClearedAt && allClearedAt >= fileTime) return false;
               var tomb = tombstones[String(s.name).toLowerCase()];
-              if (!tomb) return true;
-              var tombTime = typeof tomb === 'string' ? Date.parse(tomb) : (tomb === true ? Infinity : 0);
-              var fileTime = s.saved ? Date.parse(s.saved) : 0;
-              if (fileTime && isFinite(fileTime) && isFinite(tombTime) && fileTime >= tombTime) {
-                try {
-                  delete tombstones[String(s.name).toLowerCase()];
-                  localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombstones));
-                } catch(_) {}
+              if (tomb) {
+                var tombTime = typeof tomb === 'string' ? (Date.parse(tomb) || 0) : (tomb === true ? Infinity : 0);
+                if (fileTime && isFinite(fileTime) && isFinite(tombTime) && fileTime >= tombTime) {
+                  return true;
+                }
+                return false;
               }
-              return true; // Local browser file is permanent until user manually deletes it
+              return true;
             });
             var oldFiles = Array.isArray(window.FILES) ? window.FILES : [];
             var changed = oldFiles.length !== saved.length;

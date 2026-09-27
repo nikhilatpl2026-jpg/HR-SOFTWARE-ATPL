@@ -195,10 +195,11 @@
 
  var isRefreshingUi=false;
  var lastRefreshTime=0;
- async function refreshSalaryUi(){
+ async function refreshSalaryUi(force){
    var allClearedAt = dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
    var now=Date.now();
-   if(isRefreshingUi || (now - lastRefreshTime < 1200)) return;
+   if(isRefreshingUi) return;
+   if(!force && (now - lastRefreshTime < 1200)) return;
    isRefreshingUi = true;
    try{
      var rows = await salaryRows();
@@ -287,28 +288,29 @@
      var changed=0;
 
      var tombs=getLocalSalaryTombstones();
-     for(var j=0;j<local.length;j++){
-       var row=local[j];
-       var lk=String(row.name||'').toLowerCase();
-       var tombVal=tombs[lk];
-       var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
-       var fileTime=dateMs(row.saved);
-       var isTomb=tombTime>fileTime;
-       if(isTomb){
-         console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
-         await deleteSalaryFromDb(row.name);
-         saveLocalSalaryTombstone(row.name);
-         changed++;
-       }else if(tombVal){
-         clearLocalSalaryTombstone(row.name);
-       }
-       if(!isTomb && !remoteByName[lk] && row.buf && !row._inFlight && (Date.now() - (row._lastBackup||0) > 60000)){
-         row._lastBackup = Date.now();
-         console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
-       }
-     }
+      var allClearedAt=dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
 
-     // Live cross-browser delete propagation from Firestore removed doc changes
+      for(var j=0;j<local.length;j++){
+        var row=local[j];
+        var lk=String(row.name||'').toLowerCase();
+        var tombVal=tombs[lk];
+        var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
+        var fileTime=dateMs(row.saved);
+        var isTomb=tombTime>fileTime;
+        var wasCleared=allClearedAt && allClearedAt >= fileTime;
+        var isRecentlyUploaded = (Date.now() - fileTime < 15000);
+
+        if(isTomb || wasCleared || (!remoteByName[lk] && !isRecentlyUploaded && !row._inFlight)){
+          console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
+          await deleteSalaryFromDb(row.name);
+          saveLocalSalaryTombstone(row.name);
+          changed++;
+        } else if(!isTomb && !wasCleared && row.buf && !row._inFlight && !remoteByName[lk] && isRecentlyUploaded){
+          console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
+        }
+      }
+
+      // Live cross-browser delete propagation from Firestore removed doc changes
      if(Array.isArray(payload.removedNames) && payload.removedNames.length){
        for(var r=0; r<payload.removedNames.length; r++){
          var remName=payload.removedNames[r];
@@ -377,12 +379,17 @@
      if(d&&d.id)remoteById[String(d.id).toLowerCase()]=d;
    });
    for(var j=0;j<local.length;j++){
-     var doc=local[j],lid=String(doc.id||'').toLowerCase();
-     if(!remoteById[lid] && !doc._inFlight && (Date.now() - (doc._lastBackup||0) > 60000)){
-       doc._lastBackup = Date.now();
-       console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
-     }
-   }
+      var doc=local[j],lid=String(doc.id||'').toLowerCase();
+      var docTime=dateMs(doc.updated_at||doc.created_at);
+      var isRecent=(Date.now() - docTime < 15000);
+      if(!remoteById[lid] && !doc._inFlight && !isRecent){
+        console.log('[Firebase HR Sync] Purging HR doc not in cloud:', doc.document_name||doc.id);
+        await deleteHrDocFromDb(doc.id);
+        changed++;
+      } else if(!remoteById[lid] && (doc._inFlight || isRecent)){
+        console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
+      }
+    }
    var activeIds=Object.keys(remoteById);
    for(var i=0;i<activeIds.length;i++){
      var rem=remoteById[activeIds[i]],lid=activeIds[i];

@@ -168,12 +168,22 @@ export async function deleteSalaryFile(name, deletedBy) {
 }
 
 export async function clearAllSalaryFiles(deletedBy) {
+  const { db } = initFirebase();
   const all = await fetchAllSalaryFiles();
   for (const f of all) {
     if (f && f.name) {
       await deleteSalaryFile(f.name, deletedBy);
     }
   }
+  try {
+    const allTomb = doc(db, 'salary_tombstones', 'ts_all_cleared');
+    await setDoc(allTomb, {
+      name: '__ALL__',
+      cleared_at: new Date().toISOString(),
+      deleted_at: new Date().toISOString(),
+      deleted_by: String(deletedBy || 'admin')
+    });
+  } catch (_) {}
   return true;
 }
 
