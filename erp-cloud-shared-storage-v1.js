@@ -49,6 +49,17 @@
  async function salaryRows(){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return await new Promise(function(ok){var r=d.transaction(SALARY_STORE,'readonly').objectStore(SALARY_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
  async function putSalary(name,buf,saved){var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return new Promise(function(ok,no){var t=d.transaction(SALARY_STORE,'readwrite');t.objectStore(SALARY_STORE).put({name:name,buf:buf,saved:saved||new Date().toISOString()});t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
  async function deleteSalaryFromDb(name){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return new Promise(function(ok){var t=d.transaction(SALARY_STORE,'readwrite');t.objectStore(SALARY_STORE).delete(name);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){d.close();ok(false)}})}catch(_){return false}}
+ async function clearSalaryDb(){
+   try{
+     var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');
+     return new Promise(function(ok){
+       var t=d.transaction(SALARY_STORE,'readwrite');
+       t.objectStore(SALARY_STORE).clear();
+       t.oncomplete=function(){d.close();ok(true)};
+       t.onerror=function(){d.close();ok(false)};
+     });
+   }catch(_){return false}
+ }
  async function hrRows(){try{var d=await openDb(HR_DB,HR_VER,HR_STORE,'id');return await new Promise(function(ok){var r=d.transaction(HR_STORE,'readonly').objectStore(HR_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
  async function putHrDoc(doc){var d=await openDb(HR_DB,HR_VER,HR_STORE,'id');return new Promise(function(ok,no){var t=d.transaction(HR_STORE,'readwrite');t.objectStore(HR_STORE).put(doc);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){var e=t.error;d.close();no(e)}})}
  async function deleteHrDocFromDb(id){try{var d=await openDb(HR_DB,HR_VER,HR_STORE,'id');return new Promise(function(ok){var t=d.transaction(HR_STORE,'readwrite');t.objectStore(HR_STORE).delete(id);t.oncomplete=function(){d.close();ok(true)};t.onerror=function(){d.close();ok(false)}})}catch(_){return false}}
@@ -185,12 +196,18 @@
  var isRefreshingUi=false;
  var lastRefreshTime=0;
  async function refreshSalaryUi(){
+   var allClearedAt = dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
    var now=Date.now();
    if(isRefreshingUi || (now - lastRefreshTime < 1200)) return;
    isRefreshingUi = true;
    try{
      var rows = await salaryRows();
-     rows = (rows || []).filter(function(r){ return r && r.name && r.buf; });
+     rows = (rows || []).filter(function(r){
+       if (!r || !r.name || !r.buf) return false;
+       var rTime = dateMs(r.saved);
+       if (allClearedAt && allClearedAt >= rTime) return false;
+       return true;
+     });
      if(typeof root.parseWB==='function' && typeof root.wbToSheets==='function'){
        var curFiles = Array.isArray(root.FILES) ? root.FILES : [];
        var changed = false;
@@ -615,6 +632,7 @@
    var old=root.clearDB;
    function wrapped(cb){
      var files=Array.isArray(root.FILES)?root.FILES.slice():[];
+     root.FILES = [];
      var now=new Date().toISOString();
      try{
        root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',now);
@@ -622,12 +640,18 @@
        files.forEach(function(f){if(f&&f.name)tombs[String(f.name).toLowerCase()]=now});
        root.localStorage.setItem(TOMB_STORAGE_KEY,JSON.stringify(tombs));
      }catch(_){}
+     clearSalaryDb().catch(function(){});
+     if(root.ATPLFirebase&&typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
+       root.ATPLFirebase.clearAllSalaryFiles(user()?user().id:'admin').catch(function(){});
+     }
      return old.call(this,function(){
        try{if(cb)cb()}finally{
-         if(root.ATPLFirebase&&typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
-           root.ATPLFirebase.clearAllSalaryFiles(user()?user().id:'admin').catch(function(){});
-         }
-         files.forEach(function(f){if(f&&f.name)cloudDeleteSalary(f.name)});
+         storageLabel('0 files saved · Clean');
+         var cnt=root.document?root.document.getElementById('fileCount'):null;
+         if(cnt)cnt.textContent='(0)';
+         ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects'].forEach(function(n){
+           try{if(typeof root[n]==='function')root[n]()}catch(_){}
+         });
        }
      });
    }

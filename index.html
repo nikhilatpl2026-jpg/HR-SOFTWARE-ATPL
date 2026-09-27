@@ -11,6 +11,9 @@
 <meta name="theme-color" content="#1e1b4b">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ATPL HR">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -2830,28 +2833,37 @@ var MONTH_DAYS = {'1':31,'2':28,'2L':29,'3':31,'4':30,'5':31,'6':30,'7':31,'8':3
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
+var isRestoringAborted = false;
 function restoreSavedFilesIncremental() {
+  isRestoringAborted = false;
   initDB(function() {
     loadAllFromDB(function(saved) {
+      if (isRestoringAborted) return;
       saved = Array.isArray(saved) ? saved.slice() : [];
       if (!saved.length) return;
       var at = 0, loaded = 0, failed = 0;
       var lbl = document.getElementById('storageLbl');
       if (lbl) lbl.textContent = 'Restoring '+saved.length+' saved files…';
       function finishRestore() {
+        if (isRestoringAborted) return;
         renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
         if (lbl) lbl.textContent = FILES.length + ' files saved';
         lg('info', '💾 ' + loaded + ' saved file(s) restored in background' + (failed ? ' · '+failed+' skipped' : ''));
         try { document.dispatchEvent(new CustomEvent('atpl-local-files-restored',{detail:{loaded:loaded,failed:failed}})); } catch(_) {}
       }
       function step(deadline) {
+        if (isRestoringAborted) return;
+        var allClearedAt = 0;
+        try { allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0; } catch(_) {}
         var processed = 0;
         while (at < saved.length && processed < 1) {
           var f = saved[at++]; processed++;
           try {
-            // User rule: local files in browser must never be deleted automatically by tombstones or other browsers
-            // Files remain permanent until user clicks delete in this browser
-            // If already loaded or parsed with valid workbook, never re-parse or overwrite it
+            var fileSavedAt = f && f.saved ? (Date.parse(f.saved) || 0) : 0;
+            if (allClearedAt && allClearedAt >= fileSavedAt) {
+              // File was saved before user clicked Clear All -> skip!
+              continue;
+            }
             var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
             if (!live) {
               var wb = parseWB(f.buf);
@@ -2861,6 +2873,7 @@ function restoreSavedFilesIncremental() {
             }
           } catch(e) { failed++; console.warn('Could not parse saved file:', f && f.name, e); }
         }
+        if (isRestoringAborted) return;
         if (lbl) lbl.textContent = 'Restoring saved files '+at+' / '+saved.length+'…';
         if (at >= saved.length) { finishRestore(); return; }
         if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:500});
@@ -2946,6 +2959,7 @@ function rmFile(i) {
 
 function clearAllFiles() {
   if (!confirm('Saari ' + FILES.length + ' files delete karna chahte ho?')) return;
+  isRestoringAborted = true; // Stop any ongoing restore immediately!
   var filesToDelete = Array.isArray(FILES) ? FILES.slice() : [];
   FILES = [];
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
@@ -2960,8 +2974,22 @@ function clearAllFiles() {
     localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
   } catch(_) {}
 
+  // Explicitly clear IndexedDB directly
+  try {
+    var req = indexedDB.open('AroraTextiles', 1);
+    req.onsuccess = function(e) {
+      var db = e.target.result;
+      if (db.objectStoreNames.contains('salaryFiles')) {
+        var tx = db.transaction('salaryFiles', 'readwrite');
+        tx.objectStore('salaryFiles').clear();
+        tx.oncomplete = function() { db.close(); };
+      }
+    };
+  } catch(_) {}
+
   clearDB(function() {
-    document.getElementById('storageLbl').textContent = 'IndexedDB Ready';
+    var lbl = document.getElementById('storageLbl');
+    if (lbl) lbl.textContent = '0 files saved · Clean';
     lg('info', '🗑 Saari files clear ho gayi');
   });
 
@@ -2970,6 +2998,12 @@ function clearAllFiles() {
       console.warn('Firebase clear all warning', e);
     });
   }
+
+  // Force UI clean state
+  FILES = [];
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  var cnt = document.getElementById('fileCount');
+  if (cnt) cnt.textContent = '(0)';
 }
 
 function renderSheets() {
@@ -10406,14 +10440,14 @@ else AInit();
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1"></script>
-<script src="atpl-permanent-sync-v1.js?v=20260923-live1"></script>
+<script src="atpl-permanent-sync-v1.js?v=20260927-v4-clear-lock"></script>
 <!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=1790186846404"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
 <script src="atpl-firebase-bundle.js?v=20260926-firebase-v2-gzip-chunked"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20260926-firebase-v2-gzip-chunked"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260927-v4-clear-lock"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10"></script>
