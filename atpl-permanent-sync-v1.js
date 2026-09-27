@@ -8,6 +8,13 @@
 (function() {
   'use strict';
 
+  // Request non-evictable persistent browser storage
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().then(function(persistent) {
+      if (persistent) console.log('[ATPL-PermanentSync] Persistent browser storage active.');
+    }).catch(function(){});
+  }
+
   var SYNC_KEY_MASTER = 'AroraTextilesEmployeeMasterV3';
   var SYNC_KEY_USERS = 'ATPL_UserAccess_V1';
   var SYNC_KEY_DOL = 'ATPL_DOL_Persistence_v1';
@@ -41,7 +48,7 @@
       if (this.isSyncing) return;
       this.isSyncing = true;
       var btnLbl = document.getElementById("crossSyncBtnLbl");
-      if (btnLbl) btnLbl.textContent = "Syncing...";
+      if (isManual && btnLbl) btnLbl.textContent = "Syncing...";
 
       try {
         var jobs = [];
@@ -68,7 +75,7 @@
 
         await Promise.allSettled(jobs);
 
-        // 5. Ensure IndexedDB Files are hydrated
+        // 5. Ensure IndexedDB Files are hydrated without blocking CPU (Reuse cached workbooks)
         if (typeof window.loadAllFromDB === "function") {
           window.loadAllFromDB(function(saved) {
             var tombstones = {};
@@ -76,7 +83,14 @@
             saved = (saved || []).filter(function(s) {
               return s && s.name && !tombstones[String(s.name).toLowerCase()];
             });
+            var oldFiles = Array.isArray(window.FILES) ? window.FILES : [];
+            var changed = oldFiles.length !== saved.length;
             window.FILES = saved.map(function(s) {
+              var existing = oldFiles.find(function(f) {
+                return f && f.name === s.name && f.savedAt === s.saved && f.wb;
+              });
+              if (existing) return existing;
+              changed = true;
               var wb = typeof parseWB === 'function' ? parseWB(s.buf) : null;
               return {
                 name: s.name,
@@ -87,10 +101,12 @@
               };
             });
 
-            if (typeof renderFiles === 'function') renderFiles();
-            if (typeof renderSheets === 'function') renderSheets();
-            if (typeof updStats === 'function') updStats();
-            if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+            if (changed) {
+              if (typeof renderFiles === 'function') renderFiles();
+              if (typeof renderSheets === 'function') renderSheets();
+              if (typeof updStats === 'function') updStats();
+              if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+            }
 
             var sl = document.getElementById("storageLbl");
             if (sl) sl.textContent = window.FILES.length + " files saved";
@@ -103,18 +119,20 @@
         }
 
         this.lastSyncTime = Date.now();
-        if (btnLbl) btnLbl.textContent = "Sync Complete ✓";
+        if (isManual && btnLbl) btnLbl.textContent = "Sync Complete ✓";
         if (isManual && window.showToast) {
           window.showToast("✅ Cross-Browser data 100% sync ho gaya!");
         }
       } catch (err) {
         console.warn("Sync warning:", err);
-        if (btnLbl) btnLbl.textContent = "Sync Error";
+        if (isManual && btnLbl) btnLbl.textContent = "Sync Error";
       } finally {
         this.isSyncing = false;
-        setTimeout(function() {
-          if (btnLbl) btnLbl.textContent = "Cross-Browser Sync";
-        }, 3500);
+        if (isManual && btnLbl) {
+          setTimeout(function() {
+            if (btnLbl) btnLbl.textContent = "Cross-Browser Sync";
+          }, 3000);
+        }
       }
     }
   };

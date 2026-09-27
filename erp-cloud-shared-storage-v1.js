@@ -2,6 +2,12 @@
    Cross-user/device sharing for Salary/Mam saved workbooks and HR Document records.
    Powered by Firebase Firestore Real-Time Cloud Engine + Resilient Local Fallback. */
 (function(root){'use strict';
+ // Request non-evictable persistent browser storage
+ if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+   navigator.storage.persist().then(function(persistent) {
+     if (persistent) console.log('[ATPL-Storage] Browser granted permanent non-evictable storage protection.');
+   }).catch(function(){});
+ }
  var BUILD='2026.09.26-firebase-realtime-cross-sync-v1';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
@@ -119,15 +125,8 @@
        continue;
      }
      var m=remoteBy[key],localTs=dateMs(row.saved),remoteTs=dateMs(m&&m.saved_at);
-     if(cloudAuthoritative&&!m){
-       console.log('[Auto-Delete] Purging tombstoned local file instead of re-pushing:',row.name);
-       await deleteSalaryFromDb(row.name);
-       saveLocalSalaryTombstone(row.name);
-       continue;
-     }
      if(m&&remoteTs>=localTs)continue;
-     if(!row._justUploaded&&!m)continue;
-     try{
+       try{
        var payload=workbookPayload(row.name,row.buf);
        await saveObject('salary_file',row.name,payload,{name:row.name,saved_at:row.saved||new Date().toISOString()});
        clearLocalSalaryTombstone(row.name);
@@ -154,8 +153,9 @@
 
    for(var j=0;j<local.length;j++){
      var doc=local[j],hk=String(doc.id||'').toLowerCase();
-     var isTomb=!!tombstones[hk],isMissing=cloudAuthoritative&&!remoteBy[hk];
-     if(isTomb||isMissing){
+     var isTomb=!!tombstones[hk];
+     if(isTomb){
+       console.log('[Auto-Delete] Purging tombstoned HR doc:',doc.document_name||doc.id);
        await deleteHrDocFromDb(doc.id);
        changed++;
      }
@@ -180,7 +180,12 @@
      var tombs = getLocalSalaryTombstones();
      rows = (rows || []).filter(function(r){ return r && r.name && !tombs[String(r.name).toLowerCase()]; });
      if(typeof root.parseWB==='function' && typeof root.wbToSheets==='function'){
+       var curFiles = Array.isArray(root.FILES) ? root.FILES : [];
        root.FILES = rows.map(function(r){
+         var existing = curFiles.find(function(f){
+           return f && f.name === r.name && f.savedAt === r.saved && f.wb;
+         });
+         if(existing) return existing;
          var wb = root.parseWB(r.buf);
          return {name:r.name, wb:wb, sheets:root.wbToSheets(wb), buf:r.buf, savedAt:r.saved};
        });
@@ -230,13 +235,14 @@
    var local=await salaryRows();
    var changed=0;
 
-   // 1. Strict Auto-Delete: Remove local files that were deleted in Firebase
+   // 1. Strict Auto-Delete: Only remove local files that are explicitly tombstoned or removed
+   var tombs = getLocalSalaryTombstones();
    for(var j=0;j<local.length;j++){
      var row=local[j];
      var lk=String(row.name||'').toLowerCase();
      var isExplicitRemoved=removedNames.indexOf(lk)>=0;
-     var isNotPresentInCloud=!remoteByName[lk];
-     if(isExplicitRemoved||isNotPresentInCloud){
+     var isTomb=!!tombs[lk];
+     if(isExplicitRemoved||isTomb){
        console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
        await deleteSalaryFromDb(row.name);
        saveLocalSalaryTombstone(row.name);
@@ -247,6 +253,12 @@
          root.FILES=root.FILES.filter(function(f){return !f||String(f.name||'').toLowerCase()!==lk});
        }
        changed++;
+       continue;
+     }
+     // 2. Zero-Loss Auto Backup: If local file is not in cloud and not tombstoned, auto-upload to Firestore
+     if(!remoteByName[lk] && row.buf){
+       console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
+       cloudSaveSalary(row.name, row.buf, row.saved).catch(function(e){console.warn('Auto backup failed', row.name, e)});
      }
    }
 
@@ -301,12 +313,19 @@
      var lid=String(doc.id||'').toLowerCase();
      var isExplicitRemoved=removedIds.indexOf(lid)>=0;
      var isTomb=!!tombs[lid];
-     var isNotPresentInCloud=!remoteById[lid];
-     if(isExplicitRemoved||isTomb||isNotPresentInCloud){
+     if(isExplicitRemoved||isTomb){
        console.log('[Firebase HR Auto-Delete] Purging removed HR doc:',doc.document_name||doc.id);
        await deleteHrDocFromDb(doc.id);
        saveLocalHrTombstone(doc.id);
        changed++;
+       continue;
+     }
+     // Zero-Loss Auto Backup: If local HR doc is not in cloud and not tombstoned, auto-upload to Firestore
+     if(!remoteById[lid]){
+       console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
+       if(root.ATPLFirebase && typeof root.ATPLFirebase.saveHrDoc==='function'){
+         root.ATPLFirebase.saveHrDoc(doc).catch(function(e){console.warn('Auto backup HR doc failed', doc.id, e)});
+       }
      }
    }
 

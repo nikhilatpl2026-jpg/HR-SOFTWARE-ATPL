@@ -2854,8 +2854,8 @@ function restoreSavedFilesIncremental() {
               deleteFromDB(f.name);
               continue;
             }
-            // If user already loaded a newer copy while restore was running, never overwrite it.
-            var live = FILES.find(function(x){return x && x.name === f.name && !x.fromDB;});
+            // If already loaded or parsed with valid workbook, never re-parse or overwrite it
+            var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
             if (!live) {
               var wb = parseWB(f.buf);
               FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
