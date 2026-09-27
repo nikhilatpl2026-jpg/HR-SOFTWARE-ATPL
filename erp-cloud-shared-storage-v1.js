@@ -262,6 +262,10 @@
    isHandlingFirebaseFiles=true;
    try{
      var remoteList=payload.all||[];
+     var remoteByName={};
+     remoteList.forEach(function(doc){
+       if(doc&&doc.name)remoteByName[String(doc.name).toLowerCase()]=doc;
+     });
      var local=await salaryRows();
      var changed=0;
 
