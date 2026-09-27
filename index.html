@@ -19,16 +19,32 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <script>
   // Global error safety shield for iframe and cross-origin environments
+  window.onerror = function(msg, url, line, col, err) {
+    if (!msg || msg === 'Script error.' || !url || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
+      return true; // Cancels and suppresses cross-origin Script error in iframe
+    }
+    if (typeof msg === 'string' && (msg.indexOf('ResizeObserver') !== -1 || msg.indexOf('Non-Error promise rejection') !== -1)) {
+      return true;
+    }
+    return false;
+  };
+
   window.addEventListener('error', function(event) {
-    if (event.message === 'Script error.' || !event.filename) {
+    var msg = event ? (event.message || (event.error && event.error.message)) : '';
+    if (!msg || msg === 'Script error.' || !event.filename || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
       if (event.preventDefault) event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       return true;
     }
   }, true);
 
   window.addEventListener('unhandledrejection', function(event) {
-    if (event.reason && (event.reason.message === 'Script error.' || String(event.reason).indexOf('Script error') !== -1)) {
+    var reason = event ? event.reason : null;
+    var msg = reason ? (reason.message || String(reason)) : '';
+    if (!msg || msg === 'Script error.' || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
       if (event.preventDefault) event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      return true;
     }
   });
 
