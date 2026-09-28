@@ -26,7 +26,7 @@ test('Supabase adapter is authoritative for list upload delete and files', () =>
   assert.match(adapter, /action:'list'/);
   assert.match(adapter, /action:'delete'/);
   assert.match(adapter, /action:'file'/);
-  assert.match(adapter, /action:'upload'/);
+  assert.match(adapter, /form\.append\('action','upload'\)/);
   assert.match(adapter, /atpl-dol-sync-v2/);
   assert.match(adapter, /warmAuth/);
 });
