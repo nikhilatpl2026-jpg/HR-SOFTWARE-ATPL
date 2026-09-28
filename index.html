@@ -2928,6 +2928,18 @@ var MONTH_DAYS = {'1':31,'2':28,'2L':29,'3':31,'4':30,'5':31,'6':30,'7':31,'8':3
 // ═══════════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════════════
+// Deletion barriers survive refresh and apply to every restore source.
+function atplSalaryRestoreAllowed(name, saved) {
+  try {
+    var stamp = Date.parse(saved || '') || 0;
+    var cleared = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0;
+    var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+    var tomb = tombs[String(name || '').toLowerCase()];
+    var deleted = tomb === true ? Infinity : (Date.parse(tomb || '') || 0);
+    return !(cleared && stamp <= cleared) && !(deleted && stamp <= deleted);
+  } catch (_) { return false; }
+}
+
 var isRestoringAborted = false;
 function restoreSavedFilesIncremental() {
   isRestoringAborted = false;
@@ -2958,7 +2970,7 @@ function restoreSavedFilesIncremental() {
           var f = saved[at++]; processed++;
           try {
             var fileSavedAt = f && f.saved ? (Date.parse(f.saved) || 0) : 0;
-            if (allClearedAt && fileSavedAt && allClearedAt > fileSavedAt) {
+            if (!atplSalaryRestoreAllowed(f.name, f.saved)) {
               // File was saved before user clicked Clear All -> skip!
               continue;
             }
@@ -3120,22 +3132,17 @@ async function atplDirectServerSync(force) {
       var sf = serverMap[sk];
       if (!sf || !sf.name) continue;
       // If server explicitly tombstoned/deleted this file, skip
-      if (serverTombs[sk]) continue;
+      if (serverTombs[sk] || !atplSalaryRestoreAllowed(sf.name, sf.saved)) continue;
 
       var curLocal = localMap[sk];
       if (!curLocal) {
         toDownload.push(sf);
-        // Clear any stale local tombstone for this active server file
-        if (localTombs[sk]) {
-          delete localTombs[sk];
-          try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch(_) {}
-        }
+
       }
     }
 
     if (toDownload.length > 0) {
-      // Clear stale all-cleared flag since active server files are incoming!
-      try { localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT'); } catch(_) {}
+      // Keep deletion barriers: a server snapshot can predate Clear All.
       window.updateRealtimeCloudBadge(window.FILES ? window.FILES.length : 0, 'syncing');
 
       for (var dIdx = 0; dIdx < toDownload.length; dIdx++) {
@@ -3146,12 +3153,12 @@ async function atplDirectServerSync(force) {
             try {
               var fRes = await fetch('/api/sync/salary-file/' + encodeURIComponent(targetFile.name));
               var fJson = await fRes.json();
-              if (fJson && fJson.ok && fJson.file && fJson.file.buf) {
+              if (fJson && fJson.ok && fJson.file && fJson.file.buf && atplSalaryRestoreAllowed(fileName, fJson.file.saved || itemData.saved)) {
                 rawBuf = fJson.file.buf;
               }
             } catch (_) {}
           }
-          if (rawBuf) {
+          if (rawBuf && atplSalaryRestoreAllowed(targetFile.name, targetFile.saved)) {
             var buf = typeof rawBuf === 'string' ? atplB64ToBuf(rawBuf) : rawBuf;
             if (buf) {
               var wb = parseWB(buf);
@@ -3189,7 +3196,7 @@ async function atplDirectServerSync(force) {
     for (var myk in localMap) {
       if (!serverMap[myk] && !serverTombs[myk]) {
         var myf = localMap[myk];
-        if (myf && myf.buf) {
+        if (myf && myf.buf && atplSalaryRestoreAllowed(myf.name, myf.savedAt)) {
           var myB64 = atplBufToB64(myf.buf);
           if (myB64) {
             try {
@@ -3271,6 +3278,9 @@ if (typeof window.EventSource !== 'undefined') {
         var payload = JSON.parse(ev.data || '{}');
         var delName = payload.data && payload.data.name;
         if (delName) {
+          var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+          tombs[String(delName).toLowerCase()] = (payload.data && payload.data.deleted_at) || new Date().toISOString();
+          localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
           window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(delName).toLowerCase(); });
           if (DB) {
             try {
@@ -11078,3 +11088,4 @@ document.addEventListener('click', function(e) {
 
 </body>
 </html>
+
