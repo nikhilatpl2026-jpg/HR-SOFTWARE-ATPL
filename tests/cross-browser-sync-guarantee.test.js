@@ -39,6 +39,7 @@ test('Cross-Browser Real-Time Sync & Refresh Persistence Guarantee', () => {
   assert.ok(empSaveCode.includes("postMessage({type:'employee_master_saved'"), 'Employee Master save must broadcast');
   assert.ok(empGuardCode.includes("type==='employee_master_saved'"), 'Employee Master guard must receive broadcast updates');
 
-  // 6. SaveFileToDB clears stale clear markers so fresh files are never skipped on refresh
-  assert.ok(indexHtml.includes("localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT')"), 'saveFileToDB must clear stale cleared marker');
+  // 6. A new upload must not revive unrelated older cleared files
+  assert.ok(!indexHtml.includes("localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT')"), 'saveFileToDB must preserve the global deletion cutoff');
 });
+

@@ -51,12 +51,12 @@
       if (isManual && btnLbl) btnLbl.textContent = "Syncing...";
 
       try {
-        var jobs = [];
+        var jobs = [],salaryConfirmed=true;
 
         // 1. Primary: Bi-Directional Server Sync for Files
         if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
           try {
-            await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
+            salaryConfirmed=await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
           } catch(e) {}
         } else if (typeof window.atplForceSyncAllFiles === 'function') {
           try {
@@ -135,6 +135,7 @@
           aroraRefreshMaster();
         }
 
+        if(window.ATPLCloudSharedStorageV1 && window.ATPLCloudSharedStorageV1.status().salaryAuthority==='apps-script' && salaryConfirmed!==true)throw new Error('Shared files pending: cloud confirmation unavailable');
         this.lastSyncTime = Date.now();
         var fCount = (window.FILES && window.FILES.length) || 0;
         if (isManual && btnLbl) btnLbl.textContent = "Sync Complete ✓ (" + fCount + ")";
@@ -160,3 +161,4 @@
     window.ATPLPermanentSync.syncAll(manual);
   };
 })();
+
