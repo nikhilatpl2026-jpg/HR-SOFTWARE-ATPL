@@ -1,0 +1,31 @@
+name: DOL Permanent Authority Regression
+on:
+  push:
+    branches:
+      - fix/dol-supabase-permanent-20260928
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check changed JavaScript syntax
+        run: |
+          node --check compliance-dol-supabase-v2.js
+          node --check compliance-dol-rebuild-v2.js
+      - name: Run repository tests
+        run: node --test tests/*.test.js
+      - name: Install browser smoke dependency
+        run: npm install --no-save puppeteer-core@24
+      - name: Run browser runtime smoke
+        run: |
+          python3 -m http.server 4173 >/tmp/atpl-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+          sleep 1
+          node tests/browser-runtime-smoke.js
