@@ -2792,7 +2792,14 @@ function initDB(cb) {
 }
 
 function saveFileToDB(name, arrayBuf, cb) {
-  try { var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}'); if(ts[String(name).toLowerCase()]) { delete ts[String(name).toLowerCase()]; localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(ts)); } } catch(_) {}
+  try {
+    var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}');
+    if(ts[String(name).toLowerCase()]) {
+      delete ts[String(name).toLowerCase()];
+      localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(ts));
+    }
+    localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+  } catch(_) {}
   if (!DB) { cb && cb(); return; }
   var tx = DB.transaction(DB_STORE, 'readwrite');
   tx.objectStore(DB_STORE).put({ name: name, buf: arrayBuf, saved: new Date().toISOString() });
@@ -2876,7 +2883,7 @@ function restoreSavedFilesIncremental() {
           var f = saved[at++]; processed++;
           try {
             var fileSavedAt = f && f.saved ? (Date.parse(f.saved) || 0) : 0;
-            if (allClearedAt && allClearedAt >= fileSavedAt) {
+            if (allClearedAt && fileSavedAt && allClearedAt > fileSavedAt) {
               // File was saved before user clicked Clear All -> skip!
               continue;
             }

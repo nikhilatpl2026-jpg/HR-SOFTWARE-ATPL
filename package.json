@@ -9,7 +9,7 @@
     "preview": "node server.js",
     "clean": "rm -rf dist",
     "lint": "node --check server.js",
-    "test": "node tests/final-hard-stability-regression.test.js && node tests/production-v5-regression.test.js && node tests/ui-control-data-safety-audit.test.js && node tests/cross-device-file-sync.test.js && node tests/hr-docs-cross-browser-sync.test.js && node tests/zero-data-loss-and-speed.test.js && node tests/hr-doc-ai-read.test.js && node tests/manual-delete-only-protection.test.js"
+    "test": "node tests/final-hard-stability-regression.test.js && node tests/production-v5-regression.test.js && node tests/ui-control-data-safety-audit.test.js && node tests/cross-device-file-sync.test.js && node tests/hr-docs-cross-browser-sync.test.js && node tests/zero-data-loss-and-speed.test.js && node tests/hr-doc-ai-read.test.js && node tests/manual-delete-only-protection.test.js && node tests/cross-browser-sync-guarantee.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

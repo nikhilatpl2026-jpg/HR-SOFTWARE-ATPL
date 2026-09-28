@@ -55,6 +55,25 @@ function boot(){
   hydrate();wrapSave();
   document.addEventListener('visibilitychange',function(){if(document.hidden)persist()});
   g.addEventListener('beforeunload',persist);
+  if(g.BroadcastChannel){
+    try{
+      var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
+      bc.addEventListener('message',function(ev){
+        if(ev&&ev.data&&ev.data.type==='employee_master_saved'&&Array.isArray(ev.data.records)){
+          if(g.EM&&Array.isArray(g.EM.data)){
+            g.EM.data=ev.data.records.slice();
+          }
+          if(Array.isArray(g.EMP_MASTER_DATA)){
+            g.EMP_MASTER_DATA.length=0;
+            Array.prototype.push.apply(g.EMP_MASTER_DATA,ev.data.records);
+          }
+          localStorage.setItem(KEY,JSON.stringify(ev.data.records));
+          if(typeof g.emFilter==='function')g.emFilter();
+          if(typeof g.emUpdateStats==='function')g.emUpdateStats();
+        }
+      });
+    }catch(_){}
+  }
   setTimeout(function(){hydrate();wrapSave()},500);
 }
 g.ATPLEmployeeMasterPersistenceV1={hydrate:hydrate,persist:persist};

@@ -300,13 +300,14 @@
         var wasCleared=allClearedAt && allClearedAt >= fileTime;
         var isRecentlyUploaded = (Date.now() - fileTime < 15000);
 
-        if(isTomb || wasCleared || (!remoteByName[lk] && !isRecentlyUploaded && !row._inFlight)){
+        if(isTomb || wasCleared){
           console.log('[Firebase Auto-Delete] Purging removed file:',row.name);
           await deleteSalaryFromDb(row.name);
           saveLocalSalaryTombstone(row.name);
           changed++;
-        } else if(!isTomb && !wasCleared && row.buf && !row._inFlight && !remoteByName[lk] && isRecentlyUploaded){
+        } else if(!isTomb && !wasCleared && row.buf && !row._inFlight && !remoteByName[lk]){
           console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
+          cloudSaveSalary(row.name, row.buf, row.saved).catch(function(){});
         }
       }
 
@@ -381,13 +382,20 @@
    for(var j=0;j<local.length;j++){
       var doc=local[j],lid=String(doc.id||'').toLowerCase();
       var docTime=dateMs(doc.updated_at||doc.created_at);
-      var isRecent=(Date.now() - docTime < 15000);
-      if(!remoteById[lid] && !doc._inFlight && !isRecent){
-        console.log('[Firebase HR Sync] Purging HR doc not in cloud:', doc.document_name||doc.id);
+      var hrTombs=getLocalHrTombstones();
+      var hrTombVal=hrTombs[lid];
+      var hrTombTime=typeof hrTombVal==='string'?dateMs(hrTombVal):(hrTombVal===true?Infinity:0);
+      var isHrTomb=hrTombTime>docTime;
+      if(isHrTomb){
+        console.log('[Firebase HR Auto-Delete] Purging removed HR doc:', doc.document_name||doc.id);
         await deleteHrDocFromDb(doc.id);
         changed++;
-      } else if(!remoteById[lid] && (doc._inFlight || isRecent)){
+      } else if(!remoteById[lid] && !doc._inFlight){
         console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
+        cloudSaveHr(doc).catch(function(){});
+        if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveHrDoc==='function'){
+          root.ATPLFirebase.saveHrDoc(doc).catch(function(){});
+        }
       }
     }
    var activeIds=Object.keys(remoteById);
@@ -396,7 +404,12 @@
      var old=local.find(function(x){return String(x.id||'').toLowerCase()===lid});
      if(old&&dateMs(old.updated_at)>=dateMs(rem.updated_at||rem.created_at))continue;
      try{
-       await putHrDoc(rem);
+       var fullDoc=rem;
+       if(root.ATPLFirebase&&typeof root.ATPLFirebase.decodeHrPayload==='function'){
+         var decoded=await root.ATPLFirebase.decodeHrPayload(rem);
+         if(decoded)fullDoc=decoded;
+       }
+       await putHrDoc(fullDoc);
        changed++;
      }catch(e){console.warn('Firebase HR doc save warning',rem.id,e)}
    }
@@ -539,6 +552,15 @@
    clearLocalSalaryTombstone(name);
    var p=workbookPayload(name,buf);
 
+   // 0. Server Sync
+   try{
+     fetch('/api/sync/salary-file',{
+       method:'POST',
+       headers:{'Content-Type':'application/json'},
+       body:JSON.stringify({name:name,buf:buf,sheets:p&&p.sheets,saved:savedTs,uploaded_by:user()?user().id:'admin'})
+     }).catch(function(){});
+   }catch(_){}
+
    // 1. Primary: Save directly to Firebase Firestore
    if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveSalaryFile==='function'){
      try{
@@ -587,6 +609,11 @@
    refreshSalaryUi();
    storageLabel('Deleting from cloud · '+name);
 
+   // Server Sync delete
+   try{
+     fetch('/api/sync/salary-file/'+encodeURIComponent(name),{method:'DELETE'}).catch(function(){});
+   }catch(_){}
+
    // 1. Delete local from IndexedDB
    await deleteSalaryFromDb(name);
 
@@ -632,6 +659,9 @@
  }
 
  async function cloudSaveHr(doc){
+   try{
+     fetch('/api/sync/hr-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(doc)}).catch(function(){});
+   }catch(_){}
    try{
      return await saveObject('hr_doc',doc.id,doc,{name:doc.document_name||doc.id,saved_at:doc.updated_at||new Date().toISOString()});
    }catch(e){
@@ -692,6 +722,7 @@
        root.localStorage.setItem(TOMB_STORAGE_KEY,JSON.stringify(tombs));
      }catch(_){}
      clearSalaryDb().catch(function(){});
+     try{fetch('/api/sync/salary-clear-all',{method:'POST'}).catch(function(){});}catch(_){}
      if(root.ATPLFirebase&&typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
        root.ATPLFirebase.clearAllSalaryFiles(user()?user().id:'admin').catch(function(){});
      }
@@ -720,6 +751,7 @@
          try{if(cb)cb()}finally{
            if(d&&d.id){
              clearLocalHrTombstone(d.id);
+             try{fetch('/api/sync/hr-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}catch(_){}
              if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveHrDoc==='function'){
                root.ATPLFirebase.saveHrDoc(d).catch(function(e){console.warn('Firebase HR save failed',e)});
              }
@@ -741,6 +773,7 @@
      var d=typeof root.hrDocGetDocs==='function'?(root.hrDocGetDocs()||[]).find(function(x){return x.id===id}):null;
      var docName=d?d.document_name:id;
      saveLocalHrTombstone(id);
+     try{fetch('/api/sync/hr-doc/'+encodeURIComponent(id),{method:'DELETE'}).catch(function(){});}catch(_){}
      if(root.ATPLFirebase&&typeof root.ATPLFirebase.deleteHrDoc==='function'){
        root.ATPLFirebase.deleteHrDoc(id,docName,user()?user().id:'admin').catch(function(e){console.warn('Firebase HR delete failed',e)});
      }
@@ -778,9 +811,138 @@
    root.hrDocDelete=del;
  }
 
+ function startServerSyncListener(){
+   if(typeof root.EventSource==='undefined')return;
+   try{
+     fetch('/api/sync/state').then(function(r){return r.json()}).then(async function(st){
+       if(!st||!st.ok)return;
+       var localFiles=await salaryRows();
+       var localNames={};
+       (localFiles||[]).forEach(function(f){if(f&&f.name)localNames[String(f.name).toLowerCase()]=f});
+       var changedSalary=false;
+       if(Array.isArray(st.salary_files)){
+         for(var i=0;i<st.salary_files.length;i++){
+           var sf=st.salary_files[i];
+           if(!sf||!sf.name)continue;
+           var sfk=String(sf.name).toLowerCase();
+           if(!localNames[sfk]&&sf.buf){
+             await putSalary(sf.name,sf.buf,sf.saved);
+             changedSalary=true;
+           }
+         }
+       }
+       if(changedSalary)refreshSalaryUi();
+
+       var localHr=await hrRows();
+       var localHrIds={};
+       (localHr||[]).forEach(function(h){if(h&&h.id)localHrIds[String(h.id).toLowerCase()]=h});
+       var changedHr=false;
+       if(Array.isArray(st.hr_docs)){
+         for(var j=0;j<st.hr_docs.length;j++){
+           var hd=st.hr_docs[j];
+           if(!hd||!hd.id)continue;
+           var hdk=String(hd.id).toLowerCase();
+           if(!localHrIds[hdk]){
+             await putHrDoc(hd);
+             changedHr=true;
+           }
+         }
+       }
+       if(changedHr)refreshHrUi();
+
+       if(Array.isArray(st.employee_master)&&st.employee_master.length){
+         var curEm=(root.EM&&Array.isArray(root.EM.data))?root.EM.data:[];
+         if(!curEm.length){
+           if(root.EM)root.EM.data=st.employee_master.slice();
+           if(Array.isArray(root.EMP_MASTER_DATA)){
+             root.EMP_MASTER_DATA.length=0;
+             Array.prototype.push.apply(root.EMP_MASTER_DATA,st.employee_master);
+           }
+           root.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(st.employee_master));
+           if(typeof root.emFilter==='function')root.emFilter();
+           if(typeof root.emUpdateStats==='function')root.emUpdateStats();
+         }
+       }
+     }).catch(function(){});
+
+     var es=new root.EventSource('/api/sync/events');
+     es.addEventListener('salary_file_saved',async function(e){
+       try{
+         var item=JSON.parse(e.data);
+         var d=item.data;
+         if(!d||!d.name)return;
+         clearLocalSalaryTombstone(d.name);
+         if(d.buf){
+           await putSalary(d.name,d.buf,d.saved);
+           refreshSalaryUi();
+         }else{
+           syncNow(true);
+         }
+       }catch(_){}
+     });
+     es.addEventListener('salary_file_deleted',async function(e){
+       try{
+         var item=JSON.parse(e.data);
+         var d=item.data;
+         if(!d||!d.name)return;
+         saveLocalSalaryTombstone(d.name);
+         await deleteSalaryFromDb(d.name);
+         if(Array.isArray(root.FILES)){
+           root.FILES=root.FILES.filter(function(f){return !f||String(f.name).toLowerCase()!==String(d.name).toLowerCase()});
+         }
+         refreshSalaryUi();
+       }catch(_){}
+     });
+     es.addEventListener('salary_clear_all',async function(e){
+       try{
+         var item=JSON.parse(e.data);
+         root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',(item.data&&item.data.cleared_at)||new Date().toISOString());
+         root.FILES=[];
+         await clearSalaryDb();
+         refreshSalaryUi();
+       }catch(_){}
+     });
+     es.addEventListener('hr_doc_saved',async function(e){
+       try{
+         var item=JSON.parse(e.data);
+         var doc=item.data;
+         if(!doc||!doc.id)return;
+         await putHrDoc(doc);
+         refreshHrUi();
+       }catch(_){}
+     });
+     es.addEventListener('hr_doc_deleted',async function(e){
+       try{
+         var item=JSON.parse(e.data);
+         var d=item.data;
+         if(!d||!d.id)return;
+         saveLocalHrTombstone(d.id);
+         await deleteHrDocFromDb(d.id);
+         refreshHrUi();
+       }catch(_){}
+     });
+     es.addEventListener('employee_master_updated',function(e){
+       try{
+         var item=JSON.parse(e.data);
+         var recs=item.data&&item.data.records;
+         if(Array.isArray(recs)&&recs.length){
+           if(root.EM&&Array.isArray(root.EM.data)){root.EM.data=recs.slice();}
+           if(Array.isArray(root.EMP_MASTER_DATA)){root.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(root.EMP_MASTER_DATA,recs);}
+           root.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(recs));
+           if(typeof root.emFilter==='function')root.emFilter();
+           if(typeof root.emUpdateStats==='function')root.emUpdateStats();
+         }
+       }catch(_){}
+     });
+   }catch(err){
+     console.warn('Server sync error',err);
+   }
+ }
+
  function boot(){
    setBadge('ok','🔥 Firebase Connecting…');
    hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
+   startServerSyncListener();
 
    // Start Firebase Realtime Listener
    startFirebaseListener();

@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
@@ -11,6 +12,225 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Initialize GoogleGenAI client (automatically loads process.env.GEMINI_API_KEY)
 const ai = new GoogleGenAI();
+
+// ═══════════════════════════════════════════════════════════════
+// IN-MEMORY & DISK PERSISTENT REAL-TIME SYNC STORE
+// ═══════════════════════════════════════════════════════════════
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
+}
+
+function readJsonFile(filename, fallback) {
+  try {
+    const p = path.join(DATA_DIR, filename);
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
+    }
+  } catch (err) {
+    console.warn('[Sync-Store] Read warning for', filename, err.message);
+  }
+  return fallback;
+}
+
+function writeJsonFile(filename, data) {
+  try {
+    const p = path.join(DATA_DIR, filename);
+    fs.writeFileSync(p, JSON.stringify(data), 'utf8');
+  } catch (err) {
+    console.warn('[Sync-Store] Write warning for', filename, err.message);
+  }
+}
+
+// Store caches
+let syncSalaryFiles = readJsonFile('salary_files.json', {});
+let syncSalaryTombstones = readJsonFile('salary_tombstones.json', {});
+let syncHrDocs = readJsonFile('hr_docs.json', {});
+let syncHrTombstones = readJsonFile('hr_tombstones.json', {});
+let syncEmployeeMaster = readJsonFile('employee_master.json', []);
+
+// Active Server-Sent Events (SSE) connections for cross-browser live updates
+const sseClients = new Set();
+
+function broadcastEvent(eventType, payload) {
+  const data = JSON.stringify({ type: eventType, data: payload, timestamp: Date.now() });
+  const msg = `event: ${eventType}\ndata: ${data}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(msg);
+    } catch (_) {
+      sseClients.delete(client);
+    }
+  }
+}
+
+// ── SSE Endpoint for Real-Time Cross-Browser Updates ──
+app.get('/api/sync/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.write('event: connected\ndata: {"status":"connected"}\n\n');
+  sseClients.add(res);
+
+  // Send heartbeat keepalive every 20 seconds
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(': keepalive\n\n');
+    } catch (_) {
+      clearInterval(keepAlive);
+      sseClients.delete(res);
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
+  });
+});
+
+// ── Full System Sync State ──
+app.get('/api/sync/state', (req, res) => {
+  return res.json({
+    ok: true,
+    salary_files: Object.values(syncSalaryFiles),
+    salary_tombstones: syncSalaryTombstones,
+    hr_docs: Object.values(syncHrDocs),
+    hr_tombstones: syncHrTombstones,
+    employee_master: syncEmployeeMaster
+  });
+});
+
+// ── Salary File Upload / Save ──
+app.post('/api/sync/salary-file', (req, res) => {
+  try {
+    const { name, buf, sheets, saved, uploaded_by } = req.body || {};
+    if (!name) return res.status(400).json({ ok: false, error: 'File name required' });
+
+    const key = String(name).toLowerCase();
+    const item = {
+      name: String(name),
+      buf: buf || null,
+      sheets: sheets || null,
+      saved: saved || new Date().toISOString(),
+      uploaded_by: uploaded_by || 'user'
+    };
+
+    syncSalaryFiles[key] = item;
+    delete syncSalaryTombstones[key];
+
+    writeJsonFile('salary_files.json', syncSalaryFiles);
+    writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
+
+    broadcastEvent('salary_file_saved', item);
+    return res.json({ ok: true, saved: true, name });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Salary File Delete ──
+app.delete('/api/sync/salary-file/:name', (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name || '');
+    if (!name) return res.status(400).json({ ok: false, error: 'Name required' });
+
+    const key = name.toLowerCase();
+    delete syncSalaryFiles[key];
+    const now = new Date().toISOString();
+    syncSalaryTombstones[key] = { name: name, deleted_at: now, deleted_by: req.query.user || 'user' };
+
+    writeJsonFile('salary_files.json', syncSalaryFiles);
+    writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
+
+    broadcastEvent('salary_file_deleted', { name: name, deleted_at: now });
+    return res.json({ ok: true, deleted: true, name });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Salary Clear All ──
+app.post('/api/sync/salary-clear-all', (req, res) => {
+  try {
+    const now = new Date().toISOString();
+    Object.keys(syncSalaryFiles).forEach(k => {
+      syncSalaryTombstones[k] = { name: syncSalaryFiles[k].name, deleted_at: now, deleted_by: 'user' };
+    });
+    syncSalaryFiles = {};
+
+    writeJsonFile('salary_files.json', syncSalaryFiles);
+    writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
+
+    broadcastEvent('salary_clear_all', { cleared_at: now });
+    return res.json({ ok: true, cleared_at: now });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── HR Doc Save / Upload ──
+app.post('/api/sync/hr-doc', (req, res) => {
+  try {
+    const doc = req.body || {};
+    if (!doc || !doc.id) return res.status(400).json({ ok: false, error: 'Document id required' });
+
+    const key = String(doc.id).toLowerCase();
+    syncHrDocs[key] = doc;
+    delete syncHrTombstones[key];
+
+    writeJsonFile('hr_docs.json', syncHrDocs);
+    writeJsonFile('hr_tombstones.json', syncHrTombstones);
+
+    broadcastEvent('hr_doc_saved', doc);
+    return res.json({ ok: true, saved: true, id: doc.id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── HR Doc Delete ──
+app.delete('/api/sync/hr-doc/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    if (!id) return res.status(400).json({ ok: false, error: 'ID required' });
+
+    const key = id.toLowerCase();
+    delete syncHrDocs[key];
+    const now = new Date().toISOString();
+    syncHrTombstones[key] = { id: id, deleted_at: now };
+
+    writeJsonFile('hr_docs.json', syncHrDocs);
+    writeJsonFile('hr_tombstones.json', syncHrTombstones);
+
+    broadcastEvent('hr_doc_deleted', { id: id, deleted_at: now });
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Employee Master State & Save ──
+app.get('/api/sync/employee-master', (req, res) => {
+  return res.json({ ok: true, records: syncEmployeeMaster });
+});
+
+app.post('/api/sync/employee-master', (req, res) => {
+  try {
+    const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
+    if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
+
+    syncEmployeeMaster = records;
+    writeJsonFile('employee_master.json', syncEmployeeMaster);
+
+    broadcastEvent('employee_master_updated', { records: syncEmployeeMaster });
+    return res.json({ ok: true, saved: true, count: syncEmployeeMaster.length });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // AI HR Document Analysis API endpoint using gemini-3.8-flash
 app.post('/api/hr-docs/analyze', async (req, res) => {

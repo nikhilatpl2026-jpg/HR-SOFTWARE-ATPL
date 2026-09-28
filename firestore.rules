@@ -19,8 +19,16 @@ service cloud.firestore {
       allow write: if isValidId(fileId);
     }
 
+    match /employee_master/{docId} {
+      allow read, write: if true;
+    }
+
+    match /atpl_sync/{docId} {
+      allow read, write: if true;
+    }
+
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

@@ -48,7 +48,17 @@ function syncLegacyArray(){
 }
 function persistConfirmed(){
   var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
-  syncLegacyArray()
+  syncLegacyArray();
+  try{
+    if(g.EM&&Array.isArray(g.EM.data)){
+      fetch('/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
+      if(g.BroadcastChannel){
+        var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
+        bc.postMessage({type:'employee_master_saved',records:g.EM.data});
+        bc.close();
+      }
+    }
+  }catch(_){}
 }
 function fieldsToEmployee(){
   var out={},valid=true,cols=Array.isArray(g.EM_COLS)?g.EM_COLS:[];
