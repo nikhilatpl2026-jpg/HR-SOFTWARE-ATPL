@@ -8,7 +8,7 @@
      if (persistent) console.log('[ATPL-Storage] Browser granted permanent non-evictable storage protection.');
    }).catch(function(){});
  }
- var BUILD='2026.09.28-authenticated-salary-authority';
+ var BUILD='2026.09.28-permanent-cross-browser-delete-v2';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -119,7 +119,7 @@
    metas.forEach(function(m){var k=String(m.name||m.key_text||'').toLowerCase();if(!tombstones[k])remoteBy[k]=m});
 
    var local=await salaryRows(),changed=0;
-   var allowAutoCrossBrowserDelete=false; // Protected against accidental multi-browser auto wipe
+   var allowAutoCrossBrowserDelete=true; // PERMANENT FIX: Admin delete must purge on ALL browsers
    for(var j=0;j<local.length;j++){
      var row=local[j],lk=String(row.name||'').toLowerCase();
      var tombVal=tombstones[lk];
@@ -1226,17 +1226,28 @@
    if(!result||!result.ok||!Array.isArray(result.records))throw new Error(result&&result.error||'Shared salary read failed');
    return result.records.filter(function(r){return r&&r.object_kind==='salary_file'});
  }
- async function applySalarySnapshot(records){
-   mergeSalaryDeletes(records);
-   var rows=await salaryRows(),by={};
-   for(var row of rows){
-     if(!salaryRestoreAllowed(row.name,row.saved)){
-       if(!await deleteSalaryFromDb(row.name))throw new Error('Local delete failed: '+row.name);
-     }else by[String(row.name).toLowerCase()]=row;
-   }
-   // Only explicit tombstones remove files. An empty successful snapshot does not erase local work.
-   if(Array.isArray(root.FILES))root.FILES=root.FILES.filter(function(f){return f&&salaryRestoreAllowed(f.name,f.savedAt)});
-   var metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.deleted!==true});
+async function applySalarySnapshot(records){
+  mergeSalaryDeletes(records);
+  var rows=await salaryRows(),by={},purged=0;
+  for(var row of rows){
+    if(!salaryRestoreAllowed(row.name,row.saved)){
+      console.log('[Permanent Sync] Auto-deleting cloud-tombstoned file across browsers:', row.name);
+      if(!await deleteSalaryFromDb(row.name))throw new Error('Local delete failed: '+row.name);
+      purged++;
+    }else by[String(row.name).toLowerCase()]=row;
+  }
+  // Only explicit tombstones remove files. An empty successful snapshot does not erase local work.
+  if(Array.isArray(root.FILES)){
+    var beforeLen=root.FILES.length;
+    root.FILES=root.FILES.filter(function(f){return f&&salaryRestoreAllowed(f.name,f.savedAt||f.saved)});
+    if(root.FILES.length!==beforeLen)purged+=(beforeLen-root.FILES.length);
+  }
+  if(purged>0){
+    try{if(typeof root.renderFiles==='function')root.renderFiles()}catch(_){}
+    try{if(typeof root.renderAllFilesPage==='function')root.renderAllFilesPage()}catch(_){}
+    try{if(typeof root.updStats==='function')root.updStats()}catch(_){}
+  }
+  var metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.deleted!==true});
    for(var meta of metas){
      var name=meta.name||meta.key_text,stamp=meta.saved_at||meta.uploaded_at;
      if(!salaryRestoreAllowed(name,stamp))continue;
