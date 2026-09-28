@@ -287,6 +287,28 @@
      var local=await salaryRows();
      var changed=0;
 
+     // FIX: merge Firestore-side tombstones BEFORE the Data Safety Guard runs, so a browser that still
+     // holds a stale local copy never re-uploads a file that was deleted elsewhere.
+     var removedSet={};
+     (payload.removedNames||[]).forEach(function(n){removedSet[String(n).toLowerCase()]=true});
+     try{
+       if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllTombstones==='function'){
+         var fbTombs=await root.ATPLFirebase.fetchAllTombstones();
+         var mergedTombs=getLocalSalaryTombstones(),touched=false;
+         (fbTombs||[]).forEach(function(t){
+           if(!t||!t.name)return;
+           if(t.name==='__ALL__'){
+             var ca=t.cleared_at||t.deleted_at;
+             if(ca&&dateMs(ca)>dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'))){try{root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',ca)}catch(_){}}
+             return;
+           }
+           var tk=String(t.name).toLowerCase(),tv=t.deleted_at||new Date().toISOString();
+           if(!mergedTombs[tk]||dateMs(tv)>dateMs(mergedTombs[tk])){mergedTombs[tk]=tv;touched=true}
+         });
+         if(touched){try{root.localStorage.setItem(TOMB_STORAGE_KEY,JSON.stringify(mergedTombs))}catch(_){}}
+       }
+     }catch(tombErr){console.warn('Tombstone pre-check warning',tombErr)}
+
      var tombs=getLocalSalaryTombstones();
       var allClearedAt=dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
 
@@ -305,7 +327,7 @@
           await deleteSalaryFromDb(row.name);
           saveLocalSalaryTombstone(row.name);
           changed++;
-        } else if(!isTomb && !wasCleared && row.buf && !row._inFlight && !remoteByName[lk]){
+        } else if(!isTomb && !wasCleared && !removedSet[lk] && row.buf && !row._inFlight && !remoteByName[lk]){
           console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
           cloudSaveSalary(row.name, row.buf, row.saved).catch(function(){});
         }
@@ -379,6 +401,19 @@
    remoteList.forEach(function(d){
      if(d&&d.id)remoteById[String(d.id).toLowerCase()]=d;
    });
+   // FIX: merge Firestore-side HR tombstones first so a stale local copy is purged, not re-uploaded.
+   try{
+     if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllHrTombstones==='function'){
+       var fbHrT=await root.ATPLFirebase.fetchAllHrTombstones();
+       var mergedHr=getLocalHrTombstones(),hrTouched=false;
+       (fbHrT||[]).forEach(function(t){
+         if(!t||!t.id)return;
+         var hk=String(t.id).toLowerCase(),hv=t.deleted_at||new Date().toISOString();
+         if(!mergedHr[hk]||dateMs(hv)>dateMs(mergedHr[hk])){mergedHr[hk]=hv;hrTouched=true}
+       });
+       if(hrTouched){try{root.localStorage.setItem(HR_TOMB_KEY,JSON.stringify(mergedHr))}catch(_){}}
+     }
+   }catch(hrTombErr){console.warn('HR tombstone pre-check warning',hrTombErr)}
    for(var j=0;j<local.length;j++){
       var doc=local[j],lid=String(doc.id||'').toLowerCase();
       var docTime=dateMs(doc.updated_at||doc.created_at);
