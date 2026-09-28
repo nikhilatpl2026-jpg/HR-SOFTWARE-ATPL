@@ -1,8 +1,10 @@
 name: DOL Permanent Authority Regression
+# Covers permanent delete, cross-browser authority and legacy original vault repair.
 on:
   push:
     branches:
       - fix/dol-supabase-permanent-20260928
+      - fix/dol-original-vault-recovery-20260928
   workflow_dispatch:
 
 jobs:

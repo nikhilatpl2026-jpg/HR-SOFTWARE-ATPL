@@ -38,6 +38,13 @@ test('DOL UI does not render browser cache as authority in Supabase mode', () =>
   assert.match(rebuild, /directPurged/);
 });
 
+test('old migrated metadata can repair a missing Supabase original from the verified upload browser', () => {
+  assert.match(rebuild, /await getStoredBlob\(rec\)/);
+  assert.match(rebuild, /findRecoverableLocalOriginal\(type,rec\)/);
+  assert.match(rebuild, /var repaired=await v\.upload\(repairRec,repairBuf,progress\)/);
+  assert.match(rebuild, /Supabase original repair did not confirm shared file storage/);
+});
+
 test('server prevents deleted challan resurrection and caches verified ERP auth', () => {
   assert.match(edge, /const TOMBSTONES = "dol_tombstones"/);
   assert.match(edge, /const AUTH_SESSIONS = "dol_auth_sessions"/);
