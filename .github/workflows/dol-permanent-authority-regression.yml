@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - fix/dol-supabase-permanent-20260928
+      - fix/dol-original-vault-recovery-20260928
   workflow_dispatch:
 
 jobs:
