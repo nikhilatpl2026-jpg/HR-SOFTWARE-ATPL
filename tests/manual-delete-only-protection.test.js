@@ -13,7 +13,8 @@ test('Manual Delete Only and Anti-Hang Sync Protection', () => {
 
   // 2. Tombstone deletion requires tombstone timestamp to be strictly newer than file saved time
   assert.ok(storageCode.includes('isTomb=tombTime>fileTime;'), 'isTomb must compare tombTime > fileTime');
-  assert.ok(storageCode.includes('clearLocalSalaryTombstone(row.name);'), 'must clear local salary tombstone on re-save/load');
+  assert.ok(storageCode.includes('clearLocalSalaryTombstone(name);'), 'explicit salary save can clear a superseded tombstone');
+  // A background restore must preserve deletion history; exercise actual races below.
 
   // 3. Concurrency lock and debounce in Firebase listener to prevent infinite CPU hang loops
   assert.ok(storageCode.includes('var isHandlingFirebaseFiles=false;'), 'must have concurrency lock flag');
@@ -29,3 +30,5 @@ test('Manual Delete Only and Anti-Hang Sync Protection', () => {
   assert.ok(storageCode.includes('ATPL_ALL_SALARY_CLEARED_AT'), 'storage must check ATPL_ALL_SALARY_CLEARED_AT to prevent resurrecting cleared files');
   assert.ok(indexHtml.includes('ATPL_ALL_SALARY_CLEARED_AT'), 'clearAllFiles must record ATPL_ALL_SALARY_CLEARED_AT');
 });
+
+require('./salary-delete-restore-barrier.test.cjs');
