@@ -1,4 +1,5 @@
 name: DOL Permanent Authority Regression
+# Covers permanent delete, cross-browser authority and legacy original vault repair.
 on:
   push:
     branches:
