@@ -1,0 +1,75 @@
+name: Supabase DOL PR 9 live preview
+
+on:
+  push:
+    branches:
+      - supabase-dol-single-authority
+    paths:
+      - .github/workflows/supabase-dol-live-preview.yml
+      - .github/dol-preview-mode.txt
+      - index.html
+      - compliance-dol-supabase-v1.js
+      - compliance-dol-rebuild-v2.js
+      - compliance-dol-cloud-v4.js
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pr-9-preview
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out preview controls
+        uses: actions/checkout@v4
+        with:
+          ref: supabase-dol-single-authority
+          path: control
+
+      - name: Check out unchanged live root
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-src
+
+      - name: Check out PR 9 branch
+        uses: actions/checkout@v4
+        with:
+          ref: supabase-dol-single-authority
+          path: preview-src
+
+      - name: Assemble isolated same-origin preview
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="$(tr -d '\r\n ' < control/.github/dol-preview-mode.txt)"
+          mkdir -p public
+          rsync -a --exclude='.git/' main-src/ public/
+          if [ "$mode" = "preview" ]; then
+            mkdir -p public/pr-9
+            rsync -a --exclude='.git/' preview-src/ public/pr-9/
+          elif [ "$mode" != "main-only" ]; then
+            echo "Unsupported preview mode: $mode" >&2
+            exit 1
+          fi
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
