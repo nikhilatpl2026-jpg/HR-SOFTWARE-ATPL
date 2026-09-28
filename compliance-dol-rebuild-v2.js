@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.28-production-v21-supabase-permanent-authority';
+var BUILD='2026.09.28-production-v22-supabase-original-repair';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
@@ -350,7 +350,34 @@ async function recordBlob(type,rec,progress){
   if(v&&v.authority==='supabase'&&typeof v.fileBlob==='function'){
     try{blob=await bounded(v.fileBlob(rec,progress),65000,'Supabase original challan download')}catch(e){
       if(!/not found|unavailable|missing/i.test(String(e&&e.message||e||'')))throw e;
-      return null
+      // A migrated metadata row may pre-date the shared file vault. If this
+      // browser still has the verified original, repair Supabase Storage once
+      // instead of leaving Open/Download permanently broken.
+      try{blob=await getStoredBlob(rec)}catch(_){blob=null}
+      if(!blob){
+        try{recovered=await findRecoverableLocalOriginal(type,rec)}catch(_){recovered=null}
+        if(recovered&&recovered.blob)blob=recovered.blob
+      }
+      if(!blob)return null;
+      if(typeof v.upload!=='function')throw new Error('Supabase original repair upload unavailable');
+      var repairBase=recovered&&recovered.record?Object.assign({},rec,recovered.record):Object.assign({},rec);
+      var repairHash=String(rec.hash||rec.fileHash||rec.fingerprint||repairBase.hash||repairBase.fileHash||repairBase.fingerprint||'').toLowerCase();
+      if(!repairHash)throw new Error('Cannot repair shared original because SHA-256 is missing');
+      var repairBuf=await blob.arrayBuffer();
+      var repairRec=Object.assign({},repairBase,{
+        type:type,
+        hash:repairHash,
+        fileHash:repairHash,
+        ids:recordIds(repairBase),
+        contributions:Array.isArray(repairBase.contributions)?repairBase.contributions:[],
+        mime:String(repairBase.mime||rec.mime||fileMime(repairBase.name||rec.name)),
+        size:Number(repairBase.size||blob.size||repairBuf.byteLength)||repairBuf.byteLength,
+        name:String(repairBase.name||rec.name||'challan')
+      });
+      var repaired=await v.upload(repairRec,repairBuf,progress);
+      if(!repaired||!repaired.record||!repaired.record.hasOriginalFile)throw new Error('Supabase original repair did not confirm shared file storage');
+      rec=Object.assign({},rec,repaired.record,{hash:repairHash,sharedAuthoritative:true,sharedSource:'dedicated'});
+      try{cloudLastSync[type]=0}catch(_){}
     }
     if(!blob)return null;
     var authoritativeLocal=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false,sharedAuthoritative:true,sharedSource:'dedicated'});
