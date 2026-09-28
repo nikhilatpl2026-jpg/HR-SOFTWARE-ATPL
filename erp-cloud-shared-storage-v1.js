@@ -8,7 +8,7 @@
      if (persistent) console.log('[ATPL-Storage] Browser granted permanent non-evictable storage protection.');
    }).catch(function(){});
  }
- var BUILD='2026.09.26-firebase-realtime-cross-sync-v1';
+ var BUILD='2026.09.28-salary-delete-restore-barrier';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -56,7 +56,11 @@
  function payloadBuffer(p){if(!root.XLSX||!p||!Array.isArray(p.sheets))throw new Error('Shared workbook invalid');var wb=root.XLSX.utils.book_new();p.sheets.forEach(function(s){var ws=root.XLSX.utils.aoa_to_sheet(Array.isArray(s.rows)?s.rows:[]);root.XLSX.utils.book_append_sheet(wb,ws,String(s.name||'Sheet').slice(0,31)||'Sheet')});return root.XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true})}
  function openDb(name,ver,store,keyPath){return new Promise(function(ok,no){try{var r=indexedDB.open(name,ver);r.onupgradeneeded=function(){if(!r.result.objectStoreNames.contains(store))r.result.createObjectStore(store,keyPath?{keyPath:keyPath}:undefined)};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}}catch(e){no(e)}})}
  async function salaryRows(){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return await new Promise(function(ok){var r=d.transaction(SALARY_STORE,'readonly').objectStore(SALARY_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
+ function salaryRestoreAllowed(name,saved){
+   return typeof root.atplSalaryRestoreAllowed==='function' && root.atplSalaryRestoreAllowed(name,saved);
+ }
  async function putSalary(name,buf,saved){
+    if(!salaryRestoreAllowed(name,saved))return false;
     var actualBuf = buf;
     if(typeof buf==='string'){
       try{
@@ -65,6 +69,7 @@
       }catch(_){}
     }
     var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');
+    if(!salaryRestoreAllowed(name,saved)){d.close();return false;}
     return new Promise(function(ok,no){
       var t=d.transaction(SALARY_STORE,'readwrite');
       t.objectStore(SALARY_STORE).put({name:name,buf:actualBuf,saved:saved||new Date().toISOString()});
@@ -155,7 +160,7 @@
 
    var local=await salaryRows(),pushed=0,failed=0,cloudAuthoritative=(Array.isArray(records)&&records.length>0);
    for(var i=0;i<local.length;i++){
-     var row=local[i];if(!row||!row.name||!row.buf)continue;
+     var row=local[i];if(!row||!row.name||!row.buf||!salaryRestoreAllowed(row.name,row.saved))continue;
      var key=String(row.name).toLowerCase();
      var tombVal=tombstones[key];
      var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
@@ -165,14 +170,14 @@
        await deleteSalaryFromDb(row.name);
        continue;
      }else if(tombVal){
-       clearLocalSalaryTombstone(row.name);
+       // Preserve deletion history during background migration.
      }
      var m=remoteBy[key],localTs=dateMs(row.saved),remoteTs=dateMs(m&&m.saved_at);
      if(m&&remoteTs>=localTs)continue;
        try{
        var payload=workbookPayload(row.name,row.buf);
        await saveObject('salary_file',row.name,payload,{name:row.name,saved_at:row.saved||new Date().toISOString()});
-       clearLocalSalaryTombstone(row.name);
+       // Preserve deletion history during background migration.
        pushed++;
      }catch(e){failed++;console.warn('Existing local file cloud migration failed',row.name,e)}
      if(i%2===1)await new Promise(function(r){setTimeout(r,0)});
@@ -230,7 +235,7 @@
      rows = (rows || []).filter(function(r){
        if (!r || !r.name || !r.buf) return false;
        var rTime = dateMs(r.saved);
-       if (allClearedAt && allClearedAt >= rTime) return false;
+       if (!salaryRestoreAllowed(r.name,r.saved)) return false;
        return true;
      });
      if(typeof root.parseWB==='function' && typeof root.wbToSheets==='function'){
@@ -384,7 +389,7 @@
        if(!doc||!doc.name||(!doc.sheets&&!doc.sheets_b64&&!doc.is_gzip))continue;
        var rk=String(doc.name).toLowerCase();
        var docTime=dateMs(doc.saved_at||doc.uploaded_at);
-       clearLocalSalaryTombstone(doc.name);
+       if(!salaryRestoreAllowed(doc.name,doc.saved_at||doc.uploaded_at))continue;
        var old=local.find(function(x){return String(x.name||'').toLowerCase()===rk});
        if(old&&dateMs(old.saved)>=docTime&&old.buf)continue;
 
@@ -616,6 +621,7 @@
 
  async function cloudSaveSalary(name,buf,saved){
    var savedTs=saved||new Date().toISOString();
+   if(!salaryRestoreAllowed(name,savedTs))return false;
    clearLocalSalaryTombstone(name);
 
    // 0. Server Sync
@@ -923,7 +929,7 @@
      validLocal.forEach(function(f){ localMap[String(f.name).toLowerCase()] = f; });
      if(Array.isArray(root.FILES)){
        root.FILES.forEach(function(rf){
-         if(rf && rf.name && rf.buf){
+         if(rf && rf.name && rf.buf && salaryRestoreAllowed(rf.name,rf.savedAt)){
            var rk = String(rf.name).toLowerCase();
            if(!localMap[rk]){
              localMap[rk] = { name: rf.name, buf: rf.buf, saved: rf.savedAt || new Date().toISOString() };
@@ -972,7 +978,7 @@
          var sfk = String(sf.name).toLowerCase();
          serverMap[sfk] = sf;
          var sTombs = st.salary_tombstones || {};
-         if(sTombs[sfk]) continue;
+         if(sTombs[sfk] || !salaryRestoreAllowed(sf.name,sf.saved)) continue;
 
          var localFile = localMap[sfk];
          if(!localFile || (dateMs(sf.saved) > dateMs(localFile.saved))){
@@ -989,7 +995,7 @@
                var dec = typeof sBuf === 'string' ? b64ToBuf(sBuf) : sBuf;
                if(dec){
                  await putSalary(sf.name, dec, sf.saved);
-                 clearLocalSalaryTombstone(sf.name);
+                 // Remote snapshots never erase local deletion barriers.
                  changedSalary = true;
                }
              }
@@ -1006,6 +1012,7 @@
      for(var j=0; j<localList.length; j++){
        var lf = localList[j];
        var lk = String(lf.name).toLowerCase();
+       if(!salaryRestoreAllowed(lf.name,lf.saved) || (st.salary_tombstones||{})[lk])continue;
        var sFile = serverMap[lk];
        if(!sFile || !sFile.buf || dateMs(lf.saved) > dateMs(sFile.saved)){
          try {
@@ -1091,7 +1098,7 @@
          var item=JSON.parse(e.data);
          var d=item.data;
          if(!d||!d.name)return;
-         clearLocalSalaryTombstone(d.name);
+         if(!salaryRestoreAllowed(d.name,d.saved))return;
          if(d.buf){
            var realBuf = typeof d.buf === 'string' ? b64ToBuf(d.buf) : d.buf;
            await putSalary(d.name,realBuf,d.saved);
@@ -1279,3 +1286,4 @@
 
  if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
+
