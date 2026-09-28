@@ -6,7 +6,7 @@ for(const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)){
 }
 new vm.Script(storage);
 const helper=html.slice(html.indexOf('function atplSalaryRestoreAllowed('),html.indexOf('var isRestoringAborted = false;'));
-const direct=html.slice(html.indexOf('async function atplDirectServerSync('),html.indexOf('// Background sync loop - ultra lightweight'));
+const direct=html.slice(html.indexOf('function atplUsesSharedSalaryCloud('),html.indexOf('// Background sync loop - ultra lightweight'));
 function context(){
  const values=new Map(),writes=[];
  const c={Date,JSON,console,Promise,Uint8Array,setTimeout,FILES:[],isAtplDirectSyncing:false,

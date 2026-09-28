@@ -8,7 +8,7 @@
      if (persistent) console.log('[ATPL-Storage] Browser granted permanent non-evictable storage protection.');
    }).catch(function(){});
  }
- var BUILD='2026.09.28-salary-delete-restore-barrier';
+ var BUILD='2026.09.28-authenticated-salary-authority';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
@@ -17,12 +17,16 @@
  var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3,lastPull=0,pulling=null,remoteRecords=[];
  var TOMB_STORAGE_KEY='ATPL_SALARY_TOMBSTONES_V2',HR_TOMB_KEY='ATPL_HR_TOMBSTONES_V2';
  var firebaseUnsubscribe=null;
+ var sharedSalaryAuthority=!!(root.location && /(^|\.)github\.io$/i.test(root.location.hostname));
+ var salarySyncFlight=null, salarySyncAt=0, salaryWriteFlight=null;
+ var SALARY_OUTBOX='ATPL_SALARY_OUTBOX_V1', SALARY_CLEAR_KEY='__ALL_SALARY__';
+
 
  function text(v){return v==null?'':String(v).trim()}
  function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
  function token(){try{return root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||''}catch(_){return''}}
  function user(){try{var s=J(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);return s&&s.id?{id:String(s.id),name:String(s.name||s.id)}:null}catch(_){return null}}
- function api(params,timeout){if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(params,{timeout:timeout,source:'shared-files'});return new Promise(function(resolve,reject){var cb='__atpl_store_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Shared storage timeout'))},timeout||18000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}root[cb]=function(data){finish();resolve(data||{})};params=Object.assign({},params||{},{callback:cb,_ts:Date.now()});var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Shared storage connect failed'))};s.async=true;s.src=API+'?'+qs;(root.document.head||root.document.documentElement).appendChild(s)})}
+ function api(params,timeout){if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(params,{timeout:timeout,source:'shared-files',cacheMs:params&&params.action==='getSystemRecords'?0:undefined});return new Promise(function(resolve,reject){var cb='__atpl_store_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Shared storage timeout'))},timeout||18000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}root[cb]=function(data){finish();resolve(data||{})};params=Object.assign({},params||{},{callback:cb,_ts:Date.now()});var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Shared storage connect failed'))};s.async=true;s.src=API+'?'+qs;(root.document.head||root.document.documentElement).appendChild(s)})}
  function fnv(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return('00000000'+(h>>>0).toString(16)).slice(-8)}
  function safeKey(kind,key){return kind.slice(0,2).toUpperCase()+'_'+fnv(String(key||'').toLowerCase())}
  function metaId(k){return SYS+'META__'+k}
@@ -44,16 +48,16 @@
  async function upsert(id,record,attempt){var tk=token();if(!tk)throw new Error('Login token missing');var d=await api({action:'upsertEmployeeMaster',token:tk,emp_id:id,record_json:JSON.stringify(Object.assign({emp_id:id,_atpl_system:true},record))},20000);if(d&&d.ok)return true;if(!attempt){await new Promise(function(r){setTimeout(r,700)});return upsert(id,record,1)}throw new Error(d&&d.error||'Cloud record save failed')}
  async function remove(id){var tk=token();if(!tk)return false;try{var d=await api({action:'deleteEmployeeMaster',token:tk,emp_id:id},16000);return !!(d&&d.ok)}catch(_){return false}}
  async function pool(tasks,limit){var at=0,failed=null;async function worker(){while(!failed){var i=at++;if(i>=tasks.length)return;try{await tasks[i]()}catch(e){failed=e;return}}}var ws=[];for(var n=0;n<Math.min(limit,tasks.length);n++)ws.push(worker());await Promise.all(ws);if(failed)throw failed}
- function setBadge(state,msg){try{if(typeof root.updateRealtimeCloudBadge==='function'){var count=Array.isArray(root.FILES)?root.FILES.length:0;root.updateRealtimeCloudBadge(count,state==='busy'?'syncing':'ok');return}var id='atplCloudFilesBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:10px;padding:4px 9px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}var cnt=Array.isArray(root.FILES)?root.FILES.length:0;b.textContent=msg||('☁️ Realtime Cloud ('+cnt+' files)');if(state==='bad'){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else if(state==='busy'){b.style.background='#fff7ed';b.style.color='#c2410c';b.style.borderColor='#fed7aa'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
+ function setBadge(state,msg){try{if(typeof root.updateRealtimeCloudBadge==='function'){var count=Array.isArray(root.FILES)?root.FILES.length:0;root.updateRealtimeCloudBadge(count,state==='busy'?'syncing':state==='bad'?'error':'ok',msg);return}var id='atplCloudFilesBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:10px;padding:4px 9px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}var cnt=Array.isArray(root.FILES)?root.FILES.length:0;b.textContent=msg||('☁️ Realtime Cloud ('+cnt+' files)');if(state==='bad'){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else if(state==='busy'){b.style.background='#fff7ed';b.style.color='#c2410c';b.style.borderColor='#fed7aa'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
  function storageLabel(msg){try{var x=root.document.getElementById('storageLbl');if(x&&msg)x.textContent=msg}catch(_){}}
  function isSystem(r){return !!r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)}
  async function fetchRemote(force){if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}d=await api({action:'getEmployeeMaster',token:token()},22000);if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Shared records unavailable');remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}
  function recordsFor(records,key){var meta=null,chunks={};(records||[]).forEach(function(r){if(r&&r.object_key===key&&r._atpl_kind==='meta')meta=r;else if(r&&r.object_key===key&&r._atpl_kind==='chunk')chunks[Number(r.index)]=String(r.data||'')});return{meta:meta,chunks:chunks}}
  async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Cloud copy is too large for current shared bridge ('+parts.length+' chunks).');var k=safeKey(kind,key),u=user()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});setBadge('busy','☁ Saving '+text(info&&info.name||kind)+'…');await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});remoteRecords=[];lastPull=0;setBadge('ok','🔥 Firebase Live');return true}
- async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records,meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
+ async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records.filter(function(r){return r._atpl_kind!=='chunk'||String(r.generation||'')===String(meta.generation||'')}),meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
  function trimRows(rows){rows=(rows||[]).map(function(r){r=Array.isArray(r)?r.slice():[];while(r.length&&String(r[r.length-1]==null?'':r[r.length-1]).trim()==='')r.pop();return r});while(rows.length&&(!rows[rows.length-1]||!rows[rows.length-1].some(function(v){return String(v==null?'':v).trim()!==''})))rows.pop();return rows}
  function workbookPayload(name,buf){if(!root.XLSX)throw new Error('Excel engine unavailable');var wb=root.XLSX.read(buf,{type:'array',cellDates:false,cellText:true});return{v:1,name:name,sheets:wb.SheetNames.map(function(sn){var rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});return{name:sn,rows:trimRows(rows)}})}}
- function payloadBuffer(p){if(!root.XLSX||!p||!Array.isArray(p.sheets))throw new Error('Shared workbook invalid');var wb=root.XLSX.utils.book_new();p.sheets.forEach(function(s){var ws=root.XLSX.utils.aoa_to_sheet(Array.isArray(s.rows)?s.rows:[]);root.XLSX.utils.book_append_sheet(wb,ws,String(s.name||'Sheet').slice(0,31)||'Sheet')});return root.XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true})}
+ function payloadBuffer(p){if(p&&p.original_b64)return b64ToBuf(p.original_b64);if(!root.XLSX||!p||!Array.isArray(p.sheets))throw new Error('Shared workbook invalid');var wb=root.XLSX.utils.book_new();p.sheets.forEach(function(s){var ws=root.XLSX.utils.aoa_to_sheet(Array.isArray(s.rows)?s.rows:[]);root.XLSX.utils.book_append_sheet(wb,ws,String(s.name||'Sheet').slice(0,31)||'Sheet')});return root.XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true})}
  function openDb(name,ver,store,keyPath){return new Promise(function(ok,no){try{var r=indexedDB.open(name,ver);r.onupgradeneeded=function(){if(!r.result.objectStoreNames.contains(store))r.result.createObjectStore(store,keyPath?{keyPath:keyPath}:undefined)};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}}catch(e){no(e)}})}
  async function salaryRows(){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return await new Promise(function(ok){var r=d.transaction(SALARY_STORE,'readonly').objectStore(SALARY_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
  function salaryRestoreAllowed(name,saved){
@@ -245,7 +249,7 @@
        for(var i=0; i<rows.length; i++){
          var r = rows[i];
          var existing = curFiles.find(function(f){
-           return f && f.name === r.name && f.wb;
+           return f && f.name === r.name && f.wb && dateMs(f.savedAt) === dateMs(r.saved);
          });
          if(existing){
            nextFiles.push(existing);
@@ -541,6 +545,7 @@
   }
 
  function startFirebaseListener(){
+   if(sharedSalaryAuthority)return false;
    if(root.__atplFirebaseQuotaExhausted) return false;
    if(!root.ATPLFirebase||typeof root.ATPLFirebase.subscribeSalaryFiles!=='function')return false;
    if(firebaseUnsubscribe)return true;
@@ -591,6 +596,7 @@
  }
 
  async function syncNow(force){
+   if(sharedSalaryAuthority)return syncSharedSalary(force);
    if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllSalaryFiles==='function'){
      try{
        var fbFiles=await root.ATPLFirebase.fetchAllSalaryFiles();
@@ -620,6 +626,7 @@
  }
 
  async function cloudSaveSalary(name,buf,saved){
+   if(sharedSalaryAuthority)return queueSharedSalary('save',name,saved||new Date().toISOString());
    var savedTs=saved||new Date().toISOString();
    if(!salaryRestoreAllowed(name,savedTs))return false;
    clearLocalSalaryTombstone(name);
@@ -689,6 +696,7 @@
  }
 
  async function cloudDeleteSalary(name){
+   if(sharedSalaryAuthority)return queueSharedSalary('delete',name,new Date().toISOString());
    saveLocalSalaryTombstone(name);
    var k=safeKey('salary_file',name);
    if(Array.isArray(root.FILES)){
@@ -803,6 +811,11 @@
    if(typeof root.clearDB!=='function'||root.clearDB.__atplCloudShared)return false;
    var old=root.clearDB;
    function wrapped(cb){
+     if(sharedSalaryAuthority){
+       var cleared=root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT')||new Date().toISOString();
+       queueSharedSalary('clear',SALARY_CLEAR_KEY,cleared);
+       return old.call(this,cb);
+     }
      var files=Array.isArray(root.FILES)?root.FILES.slice():[];
      root.FILES = [];
      var now=new Date().toISOString();
@@ -905,6 +918,7 @@
  var isReconcilingServer = false;
  var lastServerSync = 0;
  async function syncWithServer(force){
+   if(sharedSalaryAuthority)return syncSharedSalary(force);
    if(isReconcilingServer) return;
    var now = Date.now();
    if(!force && (now - lastServerSync < 4000)) return;
@@ -1077,6 +1091,11 @@
  }
 
  function startServerSyncListener(){
+   if(sharedSalaryAuthority){
+     syncSharedSalary(false);
+     setInterval(function(){if(!root.document.hidden)syncSharedSalary(false)},7000);
+     return;
+   }
    if(typeof root.EventSource==='undefined')return;
    try{
      // Immediate initial bidirectional sync
@@ -1183,6 +1202,138 @@
    }
  }
 
+
+ // Static GitHub Pages uses the authenticated shared bridge, never /api or repository snapshots.
+ function outboxKey(){var u=user();return SALARY_OUTBOX+'_'+(u?u.id:'signed-out')}
+ function readSalaryOutbox(){return J(root.localStorage.getItem(outboxKey())||'{}',{})}
+ function putSalaryOperation(op){var q=readSalaryOutbox();q[String(op.name).toLowerCase()]=op;root.localStorage.setItem(outboxKey(),JSON.stringify(q))}
+ function ackSalaryOperation(op){var q=readSalaryOutbox(),k=String(op.name).toLowerCase();if(q[k]&&q[k].id===op.id){delete q[k];root.localStorage.setItem(outboxKey(),JSON.stringify(q))}}
+ function salaryPending(){return Object.keys(readSalaryOutbox()).length}
+ function mergeSalaryDeletes(records){
+   var tombs=getLocalSalaryTombstones(),clear=dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
+   records.forEach(function(r){
+     if(!r||r._atpl_kind!=='tombstone'||r.object_kind!=='salary_file')return;
+     var stamp=dateMs(r.deleted_at),name=String(r.key_text||r.name||'').toLowerCase();
+     if(name===SALARY_CLEAR_KEY.toLowerCase()){clear=Math.max(clear,stamp);return}
+     if(name && stamp>dateMs(tombs[name]))tombs[name]=r.deleted_at;
+   });
+   root.localStorage.setItem(TOMB_STORAGE_KEY,JSON.stringify(tombs));
+   if(clear)root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',new Date(clear).toISOString());
+ }
+ async function salarySnapshot(){
+   if(!token())throw new Error('Sign in to sync files');
+   var result=await api({action:'getSystemRecords',kind:'salary_file',token:token()},22000);
+   if(!result||!result.ok||!Array.isArray(result.records))throw new Error(result&&result.error||'Shared salary read failed');
+   return result.records.filter(function(r){return r&&r.object_kind==='salary_file'});
+ }
+ async function applySalarySnapshot(records){
+   mergeSalaryDeletes(records);
+   var rows=await salaryRows(),by={};
+   for(var row of rows){
+     if(!salaryRestoreAllowed(row.name,row.saved)){
+       if(!await deleteSalaryFromDb(row.name))throw new Error('Local delete failed: '+row.name);
+     }else by[String(row.name).toLowerCase()]=row;
+   }
+   // Only explicit tombstones remove files. An empty successful snapshot does not erase local work.
+   if(Array.isArray(root.FILES))root.FILES=root.FILES.filter(function(f){return f&&salaryRestoreAllowed(f.name,f.savedAt)});
+   var metas=records.filter(function(r){return r._atpl_kind==='meta'&&r.deleted!==true});
+   for(var meta of metas){
+     var name=meta.name||meta.key_text,stamp=meta.saved_at||meta.uploaded_at;
+     if(!salaryRestoreAllowed(name,stamp))continue;
+     var old=by[String(name).toLowerCase()];
+     if(old&&dateMs(old.saved)>=dateMs(stamp))continue;
+     var matching=meta.generation?records.filter(function(r){return r._atpl_kind!=='chunk'||r.generation===meta.generation}):records;
+     var payload=await loadObject(matching,meta);
+     await putSalary(name,payloadBuffer(payload),stamp);
+   }
+   await refreshSalaryUi(true);
+ }
+ async function writeSalaryOperation(op){
+   if(op.type==='delete'||op.type==='clear'){
+     var prior=(await salarySnapshot()).find(function(r){return r._atpl_kind==='tombstone'&&String(r.key_text).toLowerCase()===String(op.name).toLowerCase()});
+     if(prior&&dateMs(prior.deleted_at)>=dateMs(op.at))return;
+     // Tombstone is the commit. Leave old chunks intact so an overlapping new upload cannot be deleted.
+     await upsert(tombId(safeKey('salary_file',op.name)),{
+       _atpl_kind:'tombstone',object_kind:'salary_file',object_key:safeKey('salary_file',op.name),
+       key_text:op.name,deleted:true,deleted_at:op.at,deleted_by:(user()||{}).id||''
+     });
+     return;
+   }
+   if(!salaryRestoreAllowed(op.name,op.at))return;
+   var rows=await salaryRows(),row=rows.find(function(r){return String(r.name).toLowerCase()===String(op.name).toLowerCase()});
+   if(!row||!row.buf)throw new Error('Upload bytes unavailable locally: '+op.name);
+   var current=readSalaryOutbox()[String(op.name).toLowerCase()];
+   if(current&&current.id!==op.id)return; // A later operation owns this filename.
+   op.at=row.saved||op.at;
+   if(!salaryRestoreAllowed(op.name,op.at))return;
+   var payload={v:2,name:row.name,original_b64:bufToB64(row.buf)},packed=await encodeObject(payload);
+   var parts=[];for(var at=0;at<packed.data.length;at+=CHUNK)parts.push(packed.data.slice(at,at+CHUNK));
+   var key=safeKey('salary_file',row.name),generation=op.id;
+   var tasks=parts.map(function(data,index){return async function(){
+     if(!salaryRestoreAllowed(op.name,op.at))throw new Error('Upload superseded by delete');
+     await upsert(chunkId(key+'_'+generation,index),{_atpl_kind:'chunk',object_kind:'salary_file',object_key:key,generation:generation,index:index,data:data});
+   }});
+   await pool(tasks,CONCURRENCY);
+   if(!salaryRestoreAllowed(op.name,op.at))return;
+   var latest=await salarySnapshot();mergeSalaryDeletes(latest);
+   if(!salaryRestoreAllowed(op.name,op.at))return;
+   var newer=latest.find(function(r){return r._atpl_kind==='meta'&&r.object_key===key&&dateMs(r.saved_at)>dateMs(op.at)});
+   if(newer)return;
+   await upsert(metaId(key),{_atpl_kind:'meta',object_kind:'salary_file',object_key:key,key_text:row.name,name:row.name,
+     generation:generation,saved_at:op.at,uploaded_at:new Date().toISOString(),uploaded_by:(user()||{}).id||'',
+     encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});
+ }
+ async function flushSalaryOutbox(){
+   if(salaryWriteFlight)return salaryWriteFlight;
+   salaryWriteFlight=(async function(){
+     if(!token())throw new Error('Sign in to sync files');
+     var q=readSalaryOutbox(),ops=Object.keys(q).map(function(k){return q[k]});
+     ops.sort(function(a,b){return (a.type==='save'?1:0)-(b.type==='save'?1:0)||dateMs(a.at)-dateMs(b.at)});
+     for(var op of ops){await writeSalaryOperation(op);ackSalaryOperation(op)}
+   })();
+   try{await salaryWriteFlight}finally{salaryWriteFlight=null}
+ }
+ async function queueSharedSalary(type,name,at){
+   var op={type:type,name:name,at:at,id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)};
+   try{
+     putSalaryOperation(op);
+     if(type==='delete')saveLocalSalaryTombstone(name);
+     if(type==='clear')root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',at);
+     storageLabel('Cloud sync pending · '+name);setBadge('busy','Cloud sync pending');
+     // Pull tombstones first, including deletes performed on another device while this one was offline.
+     return await syncSharedSalary(true);
+   }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud sync pending');return false}
+ }
+ async function syncSharedSalary(force){
+   if(salarySyncFlight)return salarySyncFlight;
+   if(!token()){setBadge('bad','Sign in to sync files');return false}
+   if(!force&&Date.now()-salarySyncAt<6500)return !salaryPending();
+   salarySyncFlight=(async function(){
+     try{
+       setBadge('busy','Checking shared files…');
+       var records=await salarySnapshot();
+       await applySalarySnapshot(records);
+       // Reconcile existing local uploads once against real shared records, never static JSON.
+       var rows=await salaryRows(),remote={};
+       records.forEach(function(r){if(r._atpl_kind==='meta')remote[String(r.name||r.key_text).toLowerCase()]=r});
+       var q=readSalaryOutbox();
+       rows.forEach(function(row){
+         var key=String(row.name).toLowerCase(),m=remote[key];
+         if(!q[key]&&salaryRestoreAllowed(row.name,row.saved)&&(!m||dateMs(row.saved)>dateMs(m.saved_at))){
+           putSalaryOperation({type:'save',name:row.name,at:row.saved||new Date(0).toISOString(),id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)});
+         }
+       });
+       var hadPending=salaryPending();
+       await flushSalaryOutbox();
+       if(hadPending)await applySalarySnapshot(await salarySnapshot());
+       salarySyncAt=Date.now();
+       if(salaryPending()){storageLabel('Changes queued · cloud sync pending');setBadge('busy','Cloud sync pending');return false}
+       storageLabel(root.FILES.length+' files · cloud confirmed');setBadge('ok','Shared files synced');return true;
+     }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud unavailable · retry pending');return false}
+   })();
+   try{return await salarySyncFlight}finally{salarySyncFlight=null}
+ }
+
  function boot(){
    setBadge('ok','🔥 Firebase Connecting…');
    hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
@@ -1275,15 +1426,17 @@
  root.atplForceSyncAllFiles=function(){return syncWithServer(true);};
 
  root.ATPLCloudSharedStorageV1={
+   clearSalary:function(){return queueSharedSalary('clear',SALARY_CLEAR_KEY,new Date().toISOString())},
    syncNow:function(f){return syncNow(!!f)},
    forceSyncAllFiles:function(){return syncWithServer(true);},
    saveSalary:cloudSaveSalary,
    deleteSalary:cloudDeleteSalary,
    saveHrDoc:cloudSaveHr,
    startFirebaseListener:startFirebaseListener,
-   status:function(){return{build:BUILD,lastPull:lastPull,remoteSystemRecords:remoteRecords.length,token:!!token(),firebase:!!root.ATPLFirebase,files:Array.isArray(root.FILES)?root.FILES.length:0}}
+   status:function(){return{build:BUILD,lastPull:lastPull,remoteSystemRecords:remoteRecords.length,token:!!token(),salaryAuthority:sharedSalaryAuthority?'apps-script':'legacy',salaryPending:sharedSalaryAuthority?salaryPending():0,firebase:!!root.ATPLFirebase,files:Array.isArray(root.FILES)?root.FILES.length:0}}
  };
 
  if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);
+
 

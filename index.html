@@ -2828,7 +2828,7 @@ function saveFileToDB(name, arrayBuf, cb) {
       delete ts[String(name).toLowerCase()];
       localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(ts));
     }
-    localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+    // Preserve the clear cutoff; a new upload only supersedes its own older revision.
   } catch(_) {}
   var now = new Date().toISOString();
   if (!DB) { 
@@ -2841,7 +2841,7 @@ function saveFileToDB(name, arrayBuf, cb) {
   // Immediate direct cross-browser sync
   try {
     var b64 = atplBufToB64(arrayBuf);
-    if (b64) {
+    if (b64 && !atplUsesSharedSalaryCloud()) {
       fetch('/api/sync/salary-file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2874,7 +2874,7 @@ function deleteFromDB(name, cb) {
   }
   // Immediate direct cross-browser sync
   try {
-    fetch('/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' }).catch(function(){});
+    if(!atplUsesSharedSalaryCloud())fetch('/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' }).catch(function(){});
   } catch(_) {}
 }
 
@@ -2888,7 +2888,7 @@ function clearDB(cb) {
   }
   // Immediate direct cross-browser sync
   try {
-    fetch('/api/sync/salary-clear-all', { method: 'POST' }).catch(function(){});
+    if(!atplUsesSharedSalaryCloud())fetch('/api/sync/salary-clear-all', { method: 'POST' }).catch(function(){});
   } catch(_) {}
 }
 
@@ -3003,7 +3003,7 @@ else startLocalFileRestore();
 // ═══════════════════════════════════════════════════════════════
 var isAtplDirectSyncing = false;
 
-window.updateRealtimeCloudBadge = function(count, status) {
+window.updateRealtimeCloudBadge = function(count, status, message) {
   var total = typeof count === 'number' ? count : (Array.isArray(window.FILES) ? window.FILES.length : 0);
   var b = document.getElementById('atplCloudFilesBadge');
   if (!b) {
@@ -3016,25 +3016,29 @@ window.updateRealtimeCloudBadge = function(count, status) {
     }
   }
   if (b) {
-    if (status === 'syncing') {
-      b.textContent = '☁️ Syncing (' + total + ' files)...';
+    if (status === 'error') {
+      b.textContent=message||'Cloud sync pending';b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca';
+    } else if (status === 'syncing') {
+      b.textContent = message || '☁️ Syncing (' + total + ' files)...';
       b.style.background = '#fff7ed';
       b.style.color = '#c2410c';
       b.style.borderColor = '#fed7aa';
     } else {
-      b.textContent = '☁️ Realtime Cloud (' + total + ' files)';
+      b.textContent = message || '☁️ Realtime Cloud (' + total + ' files)';
       b.style.background = '#ecfdf5';
       b.style.color = '#047857';
       b.style.borderColor = '#a7f3d0';
     }
   }
   var sl = document.getElementById('storageLbl');
-  if (sl) sl.textContent = total + ' files saved';
+  if (sl) sl.textContent = message || total + ' files saved';
   var fc = document.getElementById('fileCount');
   if (fc) fc.textContent = '(' + total + ')';
 };
 
+function atplUsesSharedSalaryCloud(){return !!(window.location && /(^|\.)github\.io$/i.test(window.location.hostname));}
 async function atplDirectServerSync(force) {
+  if(atplUsesSharedSalaryCloud())return window.ATPLCloudSharedStorageV1?window.ATPLCloudSharedStorageV1.syncNow(!!force):false;
   if (isAtplDirectSyncing) return;
   isAtplDirectSyncing = true;
   try {
@@ -3232,7 +3236,7 @@ setInterval(function(){
   if (!document.hidden) atplDirectServerSync(false);
 }, 6000);
 
-if (typeof window.EventSource !== 'undefined') {
+if (!atplUsesSharedSalaryCloud() && typeof window.EventSource !== 'undefined') {
   try {
     var directEs = new window.EventSource('/api/sync/events');
     directEs.addEventListener('salary_file_saved', async function(ev) {
@@ -3421,10 +3425,10 @@ function clearAllFiles() {
   clearDB(function() {
     var lbl = document.getElementById('storageLbl');
     if (lbl) lbl.textContent = '0 files saved · Clean';
-    lg('info', '🗑 Saari files clear ho gayi');
+    lg('info', atplUsesSharedSalaryCloud() ? 'Local files cleared · cloud confirmation pending' : '🗑 Saari files clear ho gayi');
   });
 
-  if (window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
+  if (!atplUsesSharedSalaryCloud() && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
     window.ATPLFirebase.clearAllSalaryFiles(typeof user === 'function' && user() ? user().id : 'admin').catch(function(e) {
       console.warn('Firebase clear all warning', e);
     });
@@ -10874,14 +10878,14 @@ else AInit();
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1"></script>
-<script src="atpl-permanent-sync-v1.js?v=20260928-v12-bulletproof-crossbrowser"></script>
+<script src="atpl-permanent-sync-v1.js?v=20260928-confirmed-salary"></script>
 <!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=1790186846404"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
 <script src="atpl-firebase-bundle.js?v=20260927-v6-cloud-authoritative"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20260928-delete-restore-barrier"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260928-authenticated-salary-authority"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10"></script>
@@ -10901,7 +10905,7 @@ window.atplTriggerCrossSync = async function(manual) {
   var jobs = [];
   try {
     try {
-      localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+      // Preserve the clear cutoff; a new upload only supersedes its own older revision.
     } catch(_) {}
 
     if (typeof atplDirectServerSync === "function") {
@@ -11088,4 +11092,5 @@ document.addEventListener('click', function(e) {
 
 </body>
 </html>
+
 
