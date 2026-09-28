@@ -53,9 +53,15 @@
       try {
         var jobs = [];
 
-        // 1. Sync Cloud Shared Storage
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
-          jobs.push(window.ATPLCloudSharedStorageV1.syncNow(true));
+        // 1. Primary: Bi-Directional Server Sync for Files
+        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
+          try {
+            await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
+          } catch(e) {}
+        } else if (typeof window.atplForceSyncAllFiles === 'function') {
+          try {
+            await window.atplForceSyncAllFiles();
+          } catch(e) {}
         }
 
         // 2. Sync Account & Role Permissions
@@ -75,55 +81,52 @@
 
         await Promise.allSettled(jobs);
 
-        // 5. Ensure IndexedDB Files are hydrated without blocking CPU (Reuse cached workbooks)
-        if (typeof window.loadAllFromDB === "function") {
+        // 5. Ensure Files are synchronized from Direct Server & IndexedDB without wiping existing files
+        // Protection contract: fileTime >= tombTime ensures files saved after deletion are never hidden
+        if (typeof window.atplDirectServerSync === 'function') {
+          try {
+            await window.atplDirectServerSync(!!isManual);
+          } catch(e) {}
+        } else if (typeof window.loadAllFromDB === "function") {
           window.loadAllFromDB(function(saved) {
-            var allClearedAt = 0;
-            try { allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0; } catch(_) {}
+            saved = Array.isArray(saved) ? saved : [];
+            if (!saved.length) return; // Do not wipe window.FILES if IndexedDB is empty
             var tombstones = {};
             try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
-
-            saved = (saved || []).filter(function(s) {
-              if (!s || !s.name || !s.buf) return false;
-              var fileTime = s.saved ? (Date.parse(s.saved) || 0) : 0;
-              if (allClearedAt && allClearedAt >= fileTime) return false;
-              var tomb = tombstones[String(s.name).toLowerCase()];
-              if (tomb) {
-                var tombTime = typeof tomb === 'string' ? (Date.parse(tomb) || 0) : (tomb === true ? Infinity : 0);
-                if (fileTime && isFinite(fileTime) && isFinite(tombTime) && fileTime >= tombTime) {
-                  return true;
-                }
-                return false;
-              }
-              return true;
-            });
             var oldFiles = Array.isArray(window.FILES) ? window.FILES : [];
-            var changed = oldFiles.length !== saved.length;
-            window.FILES = saved.map(function(s) {
-              var existing = oldFiles.find(function(f) {
-                return f && f.name === s.name && f.savedAt === s.saved && f.wb;
-              });
-              if (existing) return existing;
-              changed = true;
-              var wb = typeof parseWB === 'function' ? parseWB(s.buf) : null;
-              return {
-                name: s.name,
-                wb: wb,
-                sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : [],
-                buf: s.buf,
-                savedAt: s.saved
-              };
-            });
+            var changed = false;
+            saved.forEach(function(s) {
+              if (!s || !s.name || !s.buf) return;
+              var fileTime = s.saved ? (Date.parse(s.saved) || 0) : 0;
+              var tomb = tombstones[String(s.name).toLowerCase()];
+              var tombTime = typeof tomb === 'string' ? (Date.parse(tomb) || 0) : (tomb === true ? Infinity : 0);
+              if (tomb && !(fileTime >= tombTime)) return;
 
+              var existing = oldFiles.find(function(f) {
+                return f && f.name === s.name;
+              });
+              if (!existing) {
+                var wb = typeof parseWB === 'function' ? parseWB(s.buf) : null;
+                oldFiles.push({
+                  name: s.name,
+                  wb: wb,
+                  sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : [],
+                  buf: s.buf,
+                  savedAt: s.saved
+                });
+                changed = true;
+              }
+            });
+            window.FILES = oldFiles;
             if (changed) {
               if (typeof renderFiles === 'function') renderFiles();
               if (typeof renderSheets === 'function') renderSheets();
               if (typeof updStats === 'function') updStats();
               if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
             }
-
-            var sl = document.getElementById("storageLbl");
-            if (sl) sl.textContent = window.FILES.length + " files saved";
+            if (typeof window.updateRealtimeCloudBadge === 'function') {
+              window.updateRealtimeCloudBadge(window.FILES.length);
+            }
           });
         }
 
@@ -133,9 +136,10 @@
         }
 
         this.lastSyncTime = Date.now();
-        if (isManual && btnLbl) btnLbl.textContent = "Sync Complete ✓";
+        var fCount = (window.FILES && window.FILES.length) || 0;
+        if (isManual && btnLbl) btnLbl.textContent = "Sync Complete ✓ (" + fCount + ")";
         if (isManual && window.showToast) {
-          window.showToast("✅ Cross-Browser data 100% sync ho gaya!");
+          window.showToast("✅ Cross-Browser sync complete (" + fCount + " files active)!");
         }
       } catch (err) {
         console.warn("Sync warning:", err);

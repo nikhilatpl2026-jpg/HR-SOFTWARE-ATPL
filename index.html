@@ -77,8 +77,8 @@
 </script>
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
-<script defer src="xlsx.full.min.js"></script>
-<script defer src="pako.min.js"></script>
+<script src="xlsx.full.min.js"></script>
+<script src="pako.min.js"></script>
 <script>
 (function(){
   var loads={};
@@ -1884,7 +1884,10 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="sb-sec" id="filesSec" style="display:none">
       <div class="sb-lbl">Saved Files <span id="fileCount" style="color:var(--accent);font-size:10px"></span></div>
       <div id="filesList" style="max-height:180px;overflow-y:auto"></div>
-      <button onclick="clearAllFiles()" style="margin-top:6px;width:100%;padding:5px;border:1px solid var(--red-b);background:var(--red-l);color:var(--red);border-radius:7px;cursor:pointer;font-size:10px;font-weight:600">🗑 Saari files clear karo</button>
+      <div style="display:flex;gap:5px;margin-top:6px">
+        <button id="btnForceCrossBrowserSync" onclick="triggerManualCrossBrowserSync()" style="flex:1;padding:6px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:7px;cursor:pointer;font-size:10px;font-weight:700" title="Dono browsers mein saari files turant match aur sync karein">🔄 Sync Browsers</button>
+        <button onclick="clearAllFiles()" style="flex:1;padding:6px;border:1px solid var(--red-b);background:var(--red-l);color:var(--red);border-radius:7px;cursor:pointer;font-size:10px;font-weight:600">🗑 Clear All</button>
+      </div>
     </div>
 
     <div class="sb-sec" id="sheetsSec" style="display:none">
@@ -2780,6 +2783,14 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 // ═══════════════════════════════════════════════════════════════
 var DB = null, DB_NAME = 'AroraTextiles', DB_VER = 1, DB_STORE = 'salaryFiles';
 
+function dateText(v){
+  if(!v) return '—';
+  var d = new Date(v + 'T00:00:00');
+  var escFn = typeof esc === 'function' ? esc : (window.esc || function(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); });
+  return isNaN(d.getTime()) ? escFn(v) : String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+window.dateText = dateText;
+
 function initDB(cb) {
   var req = indexedDB.open(DB_NAME, DB_VER);
   req.onupgradeneeded = function(e) {
@@ -2791,6 +2802,25 @@ function initDB(cb) {
   req.onerror = function() { console.error('IndexedDB failed'); cb && cb(); };
 }
 
+function atplBufToB64(buf) {
+  if (!buf) return '';
+  if (typeof buf === 'string') return buf;
+  var u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  var out = '', step = 0x4000;
+  for (var i = 0; i < u8.length; i += step) {
+    out += String.fromCharCode.apply(null, u8.subarray(i, Math.min(u8.length, i + step)));
+  }
+  return btoa(out);
+}
+
+function atplB64ToBuf(b64) {
+  if (!b64 || typeof b64 !== 'string') return null;
+  var bin = atob(b64);
+  var u8 = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8.buffer;
+}
+
 function saveFileToDB(name, arrayBuf, cb) {
   try {
     var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}');
@@ -2800,10 +2830,25 @@ function saveFileToDB(name, arrayBuf, cb) {
     }
     localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
   } catch(_) {}
-  if (!DB) { cb && cb(); return; }
-  var tx = DB.transaction(DB_STORE, 'readwrite');
-  tx.objectStore(DB_STORE).put({ name: name, buf: arrayBuf, saved: new Date().toISOString() });
-  tx.oncomplete = function() { cb && cb(); };
+  var now = new Date().toISOString();
+  if (!DB) { 
+    cb && cb(); 
+  } else {
+    var tx = DB.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put({ name: name, buf: arrayBuf, saved: now });
+    tx.oncomplete = function() { cb && cb(); };
+  }
+  // Immediate direct cross-browser sync
+  try {
+    var b64 = atplBufToB64(arrayBuf);
+    if (b64) {
+      fetch('/api/sync/salary-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, buf: b64, saved: now, uploaded_by: 'client' })
+      }).catch(function(){});
+    }
+  } catch(_) {}
 }
 
 function loadAllFromDB(cb) {
@@ -2815,21 +2860,48 @@ function loadAllFromDB(cb) {
 }
 
 function deleteFromDB(name, cb) {
-  if (!DB) { cb && cb(); return; }
-  var tx = DB.transaction(DB_STORE, 'readwrite');
-  tx.objectStore(DB_STORE).delete(name);
-  tx.oncomplete = function() { cb && cb(); };
+  try {
+    var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}');
+    ts[String(name).toLowerCase()] = new Date().toISOString();
+    localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(ts));
+  } catch(_) {}
+  if (!DB) { 
+    cb && cb(); 
+  } else {
+    var tx = DB.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).delete(name);
+    tx.oncomplete = function() { cb && cb(); };
+  }
+  // Immediate direct cross-browser sync
+  try {
+    fetch('/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' }).catch(function(){});
+  } catch(_) {}
 }
 
 function clearDB(cb) {
-  if (!DB) { cb && cb(); return; }
-  var tx = DB.transaction(DB_STORE, 'readwrite');
-  tx.objectStore(DB_STORE).clear();
-  tx.oncomplete = function() { cb && cb(); };
+  if (!DB) { 
+    cb && cb(); 
+  } else {
+    var tx = DB.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).clear();
+    tx.oncomplete = function() { cb && cb(); };
+  }
+  // Immediate direct cross-browser sync
+  try {
+    fetch('/api/sync/salary-clear-all', { method: 'POST' }).catch(function(){});
+  } catch(_) {}
 }
 
 function parseWB(buf) {
-  return XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: true, raw: false });
+  if (typeof buf === 'string') {
+    try {
+      var bin = atob(buf);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      buf = bytes.buffer;
+    } catch (_) {}
+  }
+  return XLSX.read(buf instanceof Uint8Array ? buf : new Uint8Array(buf), { type: 'array', cellDates: true, raw: false });
 }
 
 function wbToSheets(wb) {
@@ -2863,7 +2935,10 @@ function restoreSavedFilesIncremental() {
     loadAllFromDB(function(saved) {
       if (isRestoringAborted) return;
       saved = Array.isArray(saved) ? saved.slice() : [];
-      if (!saved.length) return;
+      if (!saved.length) {
+        if (typeof atplDirectServerSync === 'function') atplDirectServerSync(true);
+        return;
+      }
       var at = 0, loaded = 0, failed = 0;
       var lbl = document.getElementById('storageLbl');
       if (lbl) lbl.textContent = 'Restoring '+saved.length+' saved files…';
@@ -2910,6 +2985,329 @@ function restoreSavedFilesIncremental() {
 function startLocalFileRestore(){ setTimeout(restoreSavedFilesIncremental,250); }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',startLocalFileRestore,{once:true});
 else startLocalFileRestore();
+
+// ═══════════════════════════════════════════════════════════════
+// DIRECT HIGH-SPEED ZERO-LAG CROSS-BROWSER REAL-TIME SYNC
+// ═══════════════════════════════════════════════════════════════
+var isAtplDirectSyncing = false;
+
+window.updateRealtimeCloudBadge = function(count, status) {
+  var total = typeof count === 'number' ? count : (Array.isArray(window.FILES) ? window.FILES.length : 0);
+  var b = document.getElementById('atplCloudFilesBadge');
+  if (!b) {
+    var h = document.querySelector('.header-right');
+    if (h) {
+      b = document.createElement('span');
+      b.id = 'atplCloudFilesBadge';
+      b.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:4px 9px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;transition:all .2s';
+      h.appendChild(b);
+    }
+  }
+  if (b) {
+    if (status === 'syncing') {
+      b.textContent = '☁️ Syncing (' + total + ' files)...';
+      b.style.background = '#fff7ed';
+      b.style.color = '#c2410c';
+      b.style.borderColor = '#fed7aa';
+    } else {
+      b.textContent = '☁️ Realtime Cloud (' + total + ' files)';
+      b.style.background = '#ecfdf5';
+      b.style.color = '#047857';
+      b.style.borderColor = '#a7f3d0';
+    }
+  }
+  var sl = document.getElementById('storageLbl');
+  if (sl) sl.textContent = total + ' files saved';
+  var fc = document.getElementById('fileCount');
+  if (fc) fc.textContent = '(' + total + ')';
+};
+
+async function atplDirectServerSync(force) {
+  if (isAtplDirectSyncing) return;
+  isAtplDirectSyncing = true;
+  try {
+    if (!DB) {
+      await new Promise(function(resolve) {
+        initDB(function() { resolve(DB); });
+      });
+    }
+
+    // 1. Fetch lightweight metadata (~3 KB, lightning fast, zero freeze!)
+    var meta = null;
+    try {
+      var res = await fetch('/api/sync/files-meta');
+      if (res && res.ok) {
+        meta = await res.json();
+      }
+    } catch (_) {}
+
+    // Robust static repository fallback for GitHub Pages (nikhilatpl2026-jpg.github.io/HR-SOFTWARE-ATPL/)
+    if (!meta || !meta.ok) {
+      try {
+        var staticRes = await fetch('./data/salary_files.json');
+        if (!staticRes || !staticRes.ok) staticRes = await fetch('data/salary_files.json');
+        if (staticRes && staticRes.ok) {
+          var staticData = await staticRes.json();
+          var sFiles = [];
+          if (staticData && typeof staticData === 'object') {
+            for (var sk in staticData) {
+              var sItem = staticData[sk];
+              if (sItem && sItem.name && sItem.buf) {
+                sFiles.push({
+                  name: sItem.name,
+                  saved: sItem.saved || new Date().toISOString(),
+                  buf: sItem.buf,
+                  size: sItem.buf.length
+                });
+              }
+            }
+          }
+          if (sFiles.length > 0) {
+            meta = {
+              ok: true,
+              total_files: sFiles.length,
+              salary_files: sFiles,
+              salary_tombstones: {}
+            };
+          }
+        }
+      } catch(staticErr) {
+        console.warn('[Sync-Fallback] Static repo data fetch error:', staticErr);
+      }
+    }
+
+    if (!meta || !meta.ok) return;
+
+    var serverFiles = Array.isArray(meta.salary_files) ? meta.salary_files : [];
+    var serverTombs = meta.salary_tombstones || {};
+    var serverMap = {};
+    serverFiles.forEach(function(sf) {
+      if (sf && sf.name) serverMap[String(sf.name).toLowerCase()] = sf;
+    });
+
+    var localMap = {};
+    if (Array.isArray(window.FILES)) {
+      window.FILES.forEach(function(f) {
+        if (f && f.name) localMap[String(f.name).toLowerCase()] = f;
+      });
+    }
+
+    var localTombs = {};
+    try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+
+    // A. Check if server deleted any files that local still has
+    var deletedAny = false;
+    for (var lk in localMap) {
+      var tomb = serverTombs[lk];
+      if (tomb && (!serverMap[lk])) {
+        var lf = localMap[lk];
+        if (lf) {
+          window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== lk; });
+          if (DB) {
+            try {
+              var dtx = DB.transaction(DB_STORE, 'readwrite');
+              dtx.objectStore(DB_STORE).delete(lf.name);
+            } catch(_) {}
+          }
+          deletedAny = true;
+        }
+      }
+    }
+
+    // B. Check which server files are missing locally -> download missing active files!
+    var toDownload = [];
+    for (var sk in serverMap) {
+      var sf = serverMap[sk];
+      if (!sf || !sf.name) continue;
+      // If server explicitly tombstoned/deleted this file, skip
+      if (serverTombs[sk]) continue;
+
+      var curLocal = localMap[sk];
+      if (!curLocal) {
+        toDownload.push(sf);
+        // Clear any stale local tombstone for this active server file
+        if (localTombs[sk]) {
+          delete localTombs[sk];
+          try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch(_) {}
+        }
+      }
+    }
+
+    if (toDownload.length > 0) {
+      // Clear stale all-cleared flag since active server files are incoming!
+      try { localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT'); } catch(_) {}
+      window.updateRealtimeCloudBadge(window.FILES ? window.FILES.length : 0, 'syncing');
+
+      for (var dIdx = 0; dIdx < toDownload.length; dIdx++) {
+        var targetFile = toDownload[dIdx];
+        try {
+          var rawBuf = targetFile.buf;
+          if (!rawBuf) {
+            try {
+              var fRes = await fetch('/api/sync/salary-file/' + encodeURIComponent(targetFile.name));
+              var fJson = await fRes.json();
+              if (fJson && fJson.ok && fJson.file && fJson.file.buf) {
+                rawBuf = fJson.file.buf;
+              }
+            } catch (_) {}
+          }
+          if (rawBuf) {
+            var buf = typeof rawBuf === 'string' ? atplB64ToBuf(rawBuf) : rawBuf;
+            if (buf) {
+              var wb = parseWB(buf);
+              var sheets = wbToSheets(wb);
+              window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(targetFile.name).toLowerCase(); });
+              window.FILES.push({
+                name: targetFile.name,
+                wb: wb,
+                sheets: sheets,
+                buf: buf,
+                fromDB: true,
+                savedAt: targetFile.saved
+              });
+              if (DB) {
+                try {
+                  var itx = DB.transaction(DB_STORE, 'readwrite');
+                  itx.objectStore(DB_STORE).put({ name: targetFile.name, buf: buf, saved: targetFile.saved || new Date().toISOString() });
+                } catch(_) {}
+              }
+              window.updateRealtimeCloudBadge(window.FILES.length, dIdx < toDownload.length - 1 ? 'syncing' : 'ok');
+            }
+          }
+        } catch(downloadErr) {
+          console.warn('[Sync-Download] Error fetching', targetFile.name, downloadErr);
+        }
+
+        if (dIdx % 2 === 0 || dIdx === toDownload.length - 1) {
+          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+          await new Promise(function(r) { setTimeout(r, 0); });
+        }
+      }
+    }
+
+    // C. Check if local has files that server is missing -> push to server!
+    for (var myk in localMap) {
+      if (!serverMap[myk] && !serverTombs[myk]) {
+        var myf = localMap[myk];
+        if (myf && myf.buf) {
+          var myB64 = atplBufToB64(myf.buf);
+          if (myB64) {
+            try {
+              await fetch('/api/sync/salary-file', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: myf.name,
+                  buf: myB64,
+                  saved: myf.savedAt || new Date().toISOString(),
+                  uploaded_by: 'client'
+                })
+              });
+            } catch(_) {}
+          }
+        }
+      }
+    }
+
+    renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+    window.updateRealtimeCloudBadge(window.FILES ? window.FILES.length : 0);
+  } catch(e) {
+    console.warn('[DirectSync] note:', e);
+  } finally {
+    isAtplDirectSyncing = false;
+  }
+}
+
+// Background sync loop - ultra lightweight (3 KB metadata)
+setTimeout(function(){ atplDirectServerSync(true); }, 500);
+setTimeout(function(){ atplDirectServerSync(false); }, 2000);
+setInterval(function(){
+  if (!document.hidden) atplDirectServerSync(false);
+}, 6000);
+
+if (typeof window.EventSource !== 'undefined') {
+  try {
+    var directEs = new window.EventSource('/api/sync/events');
+    directEs.addEventListener('salary_file_saved', async function(ev) {
+      try {
+        var payload = JSON.parse(ev.data || '{}');
+        var itemData = payload.data || {};
+        var fileName = itemData.name;
+        if (fileName) {
+          var cur = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(fileName).toLowerCase(); });
+          if (cur && cur.savedAt === itemData.saved) return;
+          // Download only this single file
+          var fRes = await fetch('/api/sync/salary-file/' + encodeURIComponent(fileName));
+          var fJson = await fRes.json();
+          if (fJson && fJson.ok && fJson.file && fJson.file.buf) {
+            var rawBuf = fJson.file.buf;
+            var buf = typeof rawBuf === 'string' ? atplB64ToBuf(rawBuf) : rawBuf;
+            if (buf) {
+              var wb = parseWB(buf);
+              var sheets = wbToSheets(wb);
+              window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
+              window.FILES.push({ name: fileName, wb: wb, sheets: sheets, buf: buf, fromDB: true, savedAt: itemData.saved });
+              if (DB) {
+                try {
+                  var itx = DB.transaction(DB_STORE, 'readwrite');
+                  itx.objectStore(DB_STORE).put({ name: fileName, buf: buf, saved: itemData.saved || new Date().toISOString() });
+                } catch(_) {}
+              }
+              renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+              window.updateRealtimeCloudBadge(window.FILES.length);
+              if (window.showToast) window.showToast('☁️ Realtime: File "' + fileName + '" sync ho gayi!');
+            }
+          }
+        } else {
+          atplDirectServerSync(false);
+        }
+      } catch(_) {
+        atplDirectServerSync(false);
+      }
+    });
+
+    directEs.addEventListener('salary_file_deleted', function(ev) {
+      try {
+        var payload = JSON.parse(ev.data || '{}');
+        var delName = payload.data && payload.data.name;
+        if (delName) {
+          window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(delName).toLowerCase(); });
+          if (DB) {
+            try {
+              var dtx = DB.transaction(DB_STORE, 'readwrite');
+              dtx.objectStore(DB_STORE).delete(delName);
+            } catch(_) {}
+          }
+          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+          window.updateRealtimeCloudBadge(window.FILES.length);
+          if (window.showToast) window.showToast('🗑 Realtime: File "' + delName + '" delete ho gayi.');
+        }
+      } catch(_) {
+        atplDirectServerSync(false);
+      }
+    });
+
+    directEs.addEventListener('salary_clear_all', function() {
+      window.FILES = [];
+      if (DB) {
+        try {
+          var ctx = DB.transaction(DB_STORE, 'readwrite');
+          ctx.objectStore(DB_STORE).clear();
+        } catch(_) {}
+      }
+      renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+      window.updateRealtimeCloudBadge(0);
+    });
+
+    directEs.addEventListener('sync_state_updated', function() {
+      atplDirectServerSync(false);
+    });
+  } catch(_) {}
+}
+
+window.addEventListener('focus', function() { setTimeout(function(){ atplDirectServerSync(false); }, 100); });
+document.addEventListener('visibilitychange', function() { if (!document.hidden) setTimeout(function(){ atplDirectServerSync(false); }, 100); });
+document.addEventListener('atpl-local-files-restored', function() { setTimeout(function(){ atplDirectServerSync(true); }, 150); });
 
 // ═══════════════════════════════════════════════════════════════
 // FILE UPLOAD
@@ -3111,7 +3509,7 @@ function renderAllFilesPage() {
   html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + FILES.length + '</div><div class="card-lbl">Total Files</div></div>';
   html += '<div class="card safe" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
   html += '<div class="card warn" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
-  html += '<div><button onclick="if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:12px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(79,70,229,0.3)">🔄 Cloud Sync Now</button></div>';
+  html += '<div><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:12px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(79,70,229,0.3)">🔄 Cross-Browser Live Sync</button></div>';
   html += '</div>';
 
   FILES.forEach(function(f, i) {
@@ -8545,7 +8943,7 @@ function hrDocToggleWindow(){
   async function openFile(id){var d=DOCS.find(function(x){return x.id===id;});if(!d||!d.file_data)return;var box=document.getElementById('hrFilePreview'),body=document.getElementById('hrPreviewBody'),title=document.getElementById('hrPreviewTitle');if(!box||!body)return;title.textContent=d.file_name||d.document_name||'Document Preview';body.innerHTML='<div style="padding:30px">⏳ Opening…</div>';box.style.display='flex';var ext=(d.file_name||'').split('.').pop().toLowerCase();try{if(ext==='pdf'){body.innerHTML='<iframe src="'+d.file_data+'"></iframe>';}else if(['jpg','jpeg','png','webp','gif','bmp'].indexOf(ext)>=0){body.innerHTML='<img src="'+d.file_data+'">';}else if(ext==='txt'){var txt=await (await fetch(d.file_data)).text();body.innerHTML='<pre>'+esc(txt)+'</pre>';}else if(ext==='xlsx'||ext==='xls'){var ab=await (await fetch(d.file_data)).arrayBuffer(),wb=XLSX.read(ab,{type:'array'}),html='';wb.SheetNames.forEach(function(sn){html+='<h3 style="margin:10px 0">'+esc(sn)+'</h3>'+XLSX.utils.sheet_to_html(wb.Sheets[sn]);});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:15px">'+html+'</div>';}else if(ext==='docx'){if(typeof mammoth==='undefined')throw new Error('DOCX preview engine unavailable');var ab=await (await fetch(d.file_data)).arrayBuffer(),r=await mammoth.convertToHtml({arrayBuffer:ab});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:30px;line-height:1.6">'+r.value+'</div>';}else{body.innerHTML='<div style="padding:30px;text-align:center">Is file type ka in-browser preview available nahi hai.</div>';}}catch(e){body.innerHTML='<div style="padding:30px;color:#b91c1c">⚠️ Preview error: '+esc(e.message||e)+'</div>';}}
   function openRaw(id){var d=DOCS.find(function(x){return x.id===id;});if(!d||!d.file_data)return;var a=document.createElement('a');a.href=d.file_data;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();}
   function closePreview(){var b=document.getElementById('hrFilePreview');if(b)b.style.display='none';var body=document.getElementById('hrPreviewBody');if(body)body.innerHTML='';}
-  window.hrDocOpenForm=openForm;window.hrDocCloseForm=closeForm;window.hrDocSave=save;window.hrDocEdit=edit;window.hrDocDelete=remove;window.hrDocOpenFile=openFile;window.hrDocOpenRaw=openRaw;window.hrDocClosePreview=closePreview;window.hrDocRender=render;window.hrDocCheckAlerts=checkAlerts;window.hrDocRequestNotify=requestNotify;window.hrDocAddType=addType;window.hrDocAutoReadFile=autoReadFile;window.hrDocShowAlerts=showAlerts;window.hrDocGetDocs=function(){return DOCS;};window.hrDocPut=put;window.hrDocStatus=status;
+  window.hrDocOpenForm=openForm;window.hrDocCloseForm=closeForm;window.hrDocSave=save;window.hrDocEdit=edit;window.hrDocDelete=remove;window.hrDocOpenFile=openFile;window.hrDocOpenRaw=openRaw;window.hrDocClosePreview=closePreview;window.hrDocRender=render;window.hrDocCheckAlerts=checkAlerts;window.hrDocRequestNotify=requestNotify;window.hrDocAddType=addType;window.hrDocAutoReadFile=autoReadFile;window.hrDocShowAlerts=showAlerts;window.hrDocGetDocs=function(){return DOCS;};window.hrDocPut=put;window.hrDocStatus=status;window.dateText=dateText;
   document.addEventListener('DOMContentLoaded',function(){refreshTypeOptions('HR Policy');var f=document.getElementById('hrDocTypeFilter');if(f)getTypes().forEach(function(x){var o=document.createElement('option');o.value=x;o.textContent=x;f.appendChild(o);});load(function(){render();notifyStatus();setTimeout(function(){checkAlerts(false);},700);});var m=document.getElementById('hrDocModal');if(m)m.addEventListener('click',function(e){if(e.target===m)closeForm();});});
   var oldGoPage=window.goPage;window.goPage=function(name){if(typeof oldGoPage==='function')oldGoPage(name);if(name==='hrdocs'){fillList();render();updateBadge();}};
   setInterval(function(){if(DOCS.length)checkAlerts(false);},3600000);
@@ -9441,6 +9839,7 @@ function hrDocToggleWindow(){
   'use strict';
   var qs=function(id){return document.getElementById(id)};
   var esc2=window.esc||function(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]})};
+  var dateText=window.dateText||function(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?esc2(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();};
   function addSearchIcon(){
     var s=qs('hrDocSearch'); if(!s||s.dataset.genz) return;
     s.dataset.genz='1';
@@ -9456,7 +9855,8 @@ function hrDocToggleWindow(){
     var st=qs('hrDocStats'); if(st) st.innerHTML='<div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.t+'</div><div class="hr-doc-stat-l">Total Documents</div></div><div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.v+'</div><div class="hr-doc-stat-l">Valid / Safe</div></div><div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.d+'</div><div class="hr-doc-stat-l">Due Soon</div></div><div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.x+'</div><div class="hr-doc-stat-l">Expired</div></div>';
     var rank={EXPIRED:0,DUE:1,VALID:2,NO_EXPIRY:3};
     var rows=DATA.filter(function(d){var k=window.hrDocStatus?window.hrDocStatus(d).k:'VALID';var has=!!(d.file_data||(d.file_data_list&&d.file_data_list.length));if(sf!=='ALL'&&k!==sf)return false;if(tf!=='ALL'&&d.doc_type!==tf)return false;if(att==='ATTACHED'&&!has)return false;if(att==='MISSING'&&has)return false;return !q||[d.employee_code,d.employee_name,d.document_name,d.doc_type,d.remarks,d.file_name,d.holder,d.reference_no,d.certificate_no,d.issuing_authority,d.location,d.validity_period,d.applicant].join(' ').toLowerCase().indexOf(q)>=0;});
-    rows.sort(function(a,b){var sa=status(a),sb=status(b),r=rank[sa.k]-rank[sb.k];return r||((sa.n==null?999999:sa.n)-(sb.n==null?999999:sb.n));});
+    var stFn=window.hrDocStatus||function(z){return {k:'VALID',n:999999};};
+    rows.sort(function(a,b){var sa=stFn(a),sb=stFn(b),r=rank[sa.k]-rank[sb.k];return r||((sa.n==null?999999:sa.n)-(sb.n==null?999999:sb.n));});
     if(!rows.length){wrap.innerHTML='<div class="hr-doc-empty">✨<br><br><strong>No matching HR documents</strong><br><span style="font-size:10px;color:#94a3b8">Search ya filter change karke try karo.</span></div>';if(typeof updateAlertBadge==='function')updateAlertBadge(typeof getAlertItems==='function'?getAlertItems().length:0);return;}
     var h='<div class="hr-doc-card"><div class="hr-doc-row hr-doc-head"><div>Document</div><div>Type</div><div>Training Date</div><div>Re-Training</div><div>Expiry / Status</div><div>Attachment</div><div>Action</div></div>';
     rows.forEach(function(d){
@@ -9561,6 +9961,7 @@ function hrDocToggleWindow(){
 'use strict';
 var Q=function(id){return document.getElementById(id)};
 var escF=window.esc||function(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var dateText=window.dateText||function(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?escF(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();};
 function getDocs(){return window.hrDocGetDocs?window.hrDocGetDocs():[]}
 function putDoc(d,done){if(window.hrDocPut)window.hrDocPut(d,done);else if(done)done()}
 function hasFiles(d){return !!((d.file_data_list&&d.file_data_list.length)||d.file_data)}
@@ -10463,14 +10864,14 @@ else AInit();
 <script src="hr-docs-activity-v1.js?v=20260919-stability1"></script>
 <script src="hr-docs-open-fix-v2.js?v=20260912-1"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1"></script>
-<script src="atpl-permanent-sync-v1.js?v=20260927-v6-cloud-authoritative"></script>
+<script src="atpl-permanent-sync-v1.js?v=20260928-v12-bulletproof-crossbrowser"></script>
 <!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=1790186846404"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
 <script src="atpl-firebase-bundle.js?v=20260927-v6-cloud-authoritative"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20260928-tombstone-guard-fix"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260928-v13-bulletproof-crossbrowser"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10"></script>
@@ -10486,14 +10887,24 @@ else AInit();
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl = document.getElementById("crossSyncBtnLbl");
   if (btnLbl) btnLbl.textContent = "Syncing...";
-  if (window.showToast) window.showToast("☁️ Cross-Browser sync shuru ho raha hai...");
+  if (window.showToast) window.showToast("☁️ Server se data sync ho raha hai...");
   var jobs = [];
   try {
+    try {
+      localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+    } catch(_) {}
+
+    if (typeof atplDirectServerSync === "function") {
+      try { await atplDirectServerSync(true); } catch(_) {}
+    }
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === "function") {
+      try { await window.ATPLCloudSharedStorageV1.forceSyncAllFiles(); } catch(_) {}
+    } else if (typeof window.atplForceSyncAllFiles === "function") {
+      try { await window.atplForceSyncAllFiles(); } catch(_) {}
+    }
+
     if (window.ATPLMobileSharedHardFix && window.ATPLMobileSharedHardFix.pullMaster) {
       jobs.push(window.ATPLMobileSharedHardFix.pullMaster());
-    }
-    if (window.ATPLCloudSharedStorageV1 && window.ATPLCloudSharedStorageV1.syncNow) {
-      jobs.push(window.ATPLCloudSharedStorageV1.syncNow(true));
     }
     if (window.ATPLAccountCloudRestoreV1 && window.ATPLAccountCloudRestoreV1.syncNow) {
       jobs.push(window.ATPLAccountCloudRestoreV1.syncNow(true));
@@ -10502,21 +10913,10 @@ window.atplTriggerCrossSync = async function(manual) {
       jobs.push(window.ATPLComplianceDOLV2.syncCloud());
     }
     await Promise.allSettled(jobs);
-    if (typeof loadAllFromDB === "function") {
-      loadAllFromDB(function(saved) {
-        if (saved && saved.length) {
-          window.FILES = saved.map(function(s) {
-            var wb = parseWB(s.buf);
-            return { name: s.name, wb: wb, sheets: wbToSheets(wb), buf: s.buf, savedAt: s.saved };
-          });
-          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-          var sl = document.getElementById("storageLbl");
-          if (sl) sl.textContent = window.FILES.length + " files saved";
-        }
-      });
-    }
-    if (btnLbl) btnLbl.textContent = "Sync Complete ✓";
-    if (window.showToast) window.showToast("✅ Cross-browser data sync kamyab!");
+
+    var count = (window.FILES && window.FILES.length) || 0;
+    if (btnLbl) btnLbl.textContent = "Sync Complete ✓ (" + count + ")";
+    if (window.showToast) window.showToast("✅ Cross-browser data sync kamyab (" + count + " files)! ");
   } catch(e) {
     if (btnLbl) btnLbl.textContent = "Sync Error";
     if (window.showToast) window.showToast("⚠️ Sync error: " + (e.message || e));
@@ -10619,6 +11019,24 @@ window.atplImportAllData = function(input) {
     }
   };
   reader.readAsText(file);
+};
+
+window.triggerManualCrossBrowserSync = async function() {
+  var btn = document.getElementById('btnForceCrossBrowserSync');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
+  try {
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
+      await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
+    } else if (window.atplForceSyncAllFiles) {
+      await window.atplForceSyncAllFiles();
+    }
+    var count = window.FILES ? window.FILES.length : 0;
+    if (window.showToast) window.showToast('✅ Cross-browser live sync complete (' + count + ' files)!');
+  } catch(e) {
+    if (window.showToast) window.showToast('⚠️ Sync notice: ' + (e.message || e));
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync Browsers'; }
+  }
 };
 </script>
 

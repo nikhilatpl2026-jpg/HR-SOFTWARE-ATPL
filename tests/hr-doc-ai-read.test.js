@@ -25,4 +25,8 @@ test('HR Documents AI Auto-Read and User Confirmation Verification', () => {
   assert.ok(serverCode.includes("last_renewal_date: { type: 'STRING' }"), 'server must support last_renewal_date in schema');
   assert.ok(indexHtml.includes('id="hrDocLastRenewalDate"'), 'index.html must have hrDocLastRenewalDate field');
   assert.ok(indexHtml.includes('last_renewal_date:'), 'index.html must save and display last_renewal_date');
+
+  // 5. Global dateText definition
+  assert.ok(indexHtml.includes('function dateText(v)'), 'index.html must declare dateText function');
+  assert.ok(indexHtml.includes('window.dateText = dateText'), 'index.html must export window.dateText');
 });

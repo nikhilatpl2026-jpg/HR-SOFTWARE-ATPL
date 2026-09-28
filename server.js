@@ -6,6 +6,17 @@ const { GoogleGenAI } = require('@google/genai');
 const app = express();
 const PORT = 3000;
 
+// CORS Support for multi-browser and external origins
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Body parsing with 50MB limit for scanned PDFs and image attachments
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -91,11 +102,51 @@ app.get('/api/sync/events', (req, res) => {
   });
 });
 
-// ── Full System Sync State ──
-app.get('/api/sync/state', (req, res) => {
+// ── Fast Metadata Sync Endpoint (Lightweight, No Lag) ──
+app.get('/api/sync/files-meta', (req, res) => {
+  const meta = Object.values(syncSalaryFiles).map(f => ({
+    name: f.name,
+    saved: f.saved,
+    size: f.buf ? f.buf.length : 0,
+    uploaded_by: f.uploaded_by
+  }));
   return res.json({
     ok: true,
-    salary_files: Object.values(syncSalaryFiles),
+    total_files: meta.length,
+    salary_files: meta,
+    salary_tombstones: syncSalaryTombstones
+  });
+});
+
+// ── Single Salary File Download Endpoint ──
+app.get('/api/sync/salary-file/:name', (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name || '');
+    if (!name) return res.status(400).json({ ok: false, error: 'File name required' });
+    const key = name.toLowerCase();
+    const item = syncSalaryFiles[key];
+    if (!item) return res.status(404).json({ ok: false, error: 'File not found' });
+    return res.json({ ok: true, file: item });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Full System Sync State ──
+app.get('/api/sync/state', (req, res) => {
+  const isSummary = req.query.summary === '1';
+  const salaryFiles = isSummary
+    ? Object.values(syncSalaryFiles).map(f => ({
+        name: f.name,
+        saved: f.saved,
+        size: f.buf ? f.buf.length : 0,
+        uploaded_by: f.uploaded_by
+      }))
+    : Object.values(syncSalaryFiles);
+  return res.json({
+    ok: true,
+    salary_files: salaryFiles,
+    salary_files_count: Object.keys(syncSalaryFiles).length,
     salary_tombstones: syncSalaryTombstones,
     hr_docs: Object.values(syncHrDocs),
     hr_tombstones: syncHrTombstones,
@@ -124,8 +175,68 @@ app.post('/api/sync/salary-file', (req, res) => {
     writeJsonFile('salary_files.json', syncSalaryFiles);
     writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
 
-    broadcastEvent('salary_file_saved', item);
+    broadcastEvent('salary_file_saved', {
+      name: item.name,
+      saved: item.saved,
+      uploaded_by: item.uploaded_by
+    });
     return res.json({ ok: true, saved: true, name });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Batch Reconcile Salary Files (Cross-Browser Bi-directional Sync) ──
+app.post('/api/sync/reconcile-salary-files', (req, res) => {
+  try {
+    const { files } = req.body || {};
+    let newlySaved = 0;
+    if (Array.isArray(files) && files.length > 0) {
+      for (const f of files) {
+        if (!f || !f.name) continue;
+        const key = String(f.name).toLowerCase();
+        const tomb = syncSalaryTombstones[key];
+        const tombTime = tomb && tomb.deleted_at ? Date.parse(tomb.deleted_at) : 0;
+        const fTime = f.saved ? Date.parse(f.saved) : 0;
+
+        // If tombstone exists and is newer than file, skip
+        if (tombTime && tombTime > fTime) continue;
+
+        // If server already has file with buf and newer timestamp, skip
+        const existing = syncSalaryFiles[key];
+        if (existing && existing.buf && Date.parse(existing.saved || 0) >= fTime) continue;
+
+        // Update server cache
+        const item = {
+          name: String(f.name),
+          buf: f.buf || null,
+          sheets: f.sheets || null,
+          saved: f.saved || new Date().toISOString(),
+          uploaded_by: f.uploaded_by || 'reconcile'
+        };
+        syncSalaryFiles[key] = item;
+        delete syncSalaryTombstones[key];
+        newlySaved++;
+        broadcastEvent('salary_file_saved', {
+          name: item.name,
+          saved: item.saved,
+          uploaded_by: item.uploaded_by
+        });
+      }
+
+      if (newlySaved > 0) {
+        writeJsonFile('salary_files.json', syncSalaryFiles);
+        writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
+        broadcastEvent('sync_state_updated', { salary_files_count: Object.keys(syncSalaryFiles).length });
+      }
+    }
+
+    return res.json({
+      ok: true,
+      newly_saved: newlySaved,
+      salary_files: Object.values(syncSalaryFiles),
+      salary_tombstones: syncSalaryTombstones
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
