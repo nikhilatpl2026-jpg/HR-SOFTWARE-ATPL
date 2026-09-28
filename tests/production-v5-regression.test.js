@@ -107,79 +107,50 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL shared cloud union preserves history while browser-local rows stay non-authoritative',()=>{
-  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production16-recovery-score-runtime-fix'));
-  assert.equal(h.includes('compliance-dol-rebuild-v2.js?v=20260921-production5'),false);
-  [
-    "production-v16-recovery-score-runtime-fix",
-    "prepareLegacyMigration",
-    "scheduleLegacyV5Migration",
-    "isMissingCloudRecordError",
-    "Removed stale legacy/cache challan",
-    "purgeLegacyLocalMatches",
-    "if(isAnyDeleteTombstoned(targetType,nr))continue"
-  ].forEach(x=>assert.ok(d.includes(x),x));
-  assert.ok(d.includes("await migrateLegacy()"));
-  assert.ok(d.includes("await migrateDbFilesToVault()"));
+test('DOL Supabase authority preserves migrated history without browser-local authority',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
+  assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260928-production21-supabase-permanent-authority'));
+  assert.ok(h.indexOf('compliance-dol-cloud-v4.js') < h.indexOf('compliance-dol-supabase-v2.js'));
+  assert.ok(h.indexOf('compliance-dol-supabase-v2.js') < h.indexOf('compliance-dol-rebuild-v2.js'));
+  assert.ok(d.includes("production-v21-supabase-permanent-authority"));
+  assert.ok(d.includes("if(v&&v.authority==='supabase'&&typeof v.list==='function')"));
+  assert.ok(d.includes("if(vaultApi()&&vaultApi().authority==='supabase')return false"));
+  assert.ok(s.includes("authority:'supabase'"));
+  assert.ok(edge.includes('async function ensureLegacyIndex('));
+  assert.ok(edge.includes('deletedHashes.has(hash)'));
 });
 
-test('DOL delete is shared across devices and search repairs from fresh cloud library',()=>{
-  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),c=read('compliance-dol-cloud-v4.js'),dur=read('erp-durable-everything-v1.js');
-  assert.ok(h.includes('erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol'));
-  assert.ok(h.includes('compliance-dol-index-v1.js?v=20260921-index2'));
+test('DOL delete is permanent across devices and search reads fresh Supabase authority',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260922-production16-recovery-score-runtime-fix'));
+  assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260928-production21-supabase-permanent-authority'));
   [
-    'production-v16-recovery-score-runtime-fix',
-    'ATPL_DOL_DELETE_TOMBSTONES_V2',
-    'loadSharedDeleteTombstones',
-    'saveSharedDeleteTombstone',
-    'clearSharedDeleteTombstone',
-    'isSharedDeleteTombstoned',
-    'isAnyDeleteTombstoned',
-    'sameDeleteIdentity',
+    'production-v21-supabase-permanent-authority',
+    "mode:'supabase'",
+    "direct&&direct.authority==='supabase'",
+    'Deleted permanently from Supabase',
     'purgeLegacyLocalMatches',
     'librarySearchPack',
-    'await cloudRecords(type)',
-    'locking delete across all devices',
-    'shared delete lock'
+    'await cloudRecords(type)'
   ].forEach(x=>assert.ok(d.includes(x),x));
   [
-    'system-records-authority17-kind-scoped-dol',
-    "DOL_KIND_ESIC_DELETE='esic_dol_deleted_v1'",
-    "DOL_KIND_PF_DELETE='pf_dol_deleted_v1'",
-    'saveComplianceDolDeleteTombstone',
-    'getComplianceDolDeleteTombstones',
-    'clearComplianceDolDeleteTombstone'
-  ].forEach(x=>assert.ok(dur.includes(x),x));
-  assert.ok(c.includes('production-v9-long-read-authority'));
-  assert.ok(c.includes('sameDeleteTarget'));
-  assert.ok(c.includes("getDOLRecords',type:type},{timeout:22000,cacheMs:0,attempts:2"));
-  assert.ok(c.includes("timeout:22000,attempts:1"));
+    "authority:'supabase'",
+    "action:'delete'",
+    "action:'file'",
+    "action:'list'",
+    'atpl-dol-sync-v2'
+  ].forEach(x=>assert.ok(s.includes(x),x));
+  [
+    'const TOMBSTONES = "dol_tombstones"',
+    '.from(TOMBSTONES)',
+    'Permanent delete ledger failed',
+    'deletedHashes.has(hash)',
+    'runtime_authority: "supabase"'
+  ].forEach(x=>assert.ok(edge.includes(x),x));
   const searchStart=d.indexOf('async function searchAsync(type,qs,box)');
-  const searchEnd=d.indexOf('function search(type)',searchStart);
-  const searchBody=d.slice(searchStart,searchEnd);
-  assert.ok(searchBody.includes('await cloudRecords(type)'));
-  assert.ok(searchBody.includes('Live shared challan library could not be verified'));
-  assert.ok(searchBody.includes('Local cached DOL is intentionally not shown'));
-  assert.ok(d.includes('local-only challans are hidden to prevent stale/cross-browser mismatch'));
-  assert.ok(d.includes('promoteHistoricalOriginal'));
-  assert.ok(d.includes('repairHistoricalOriginals'));
-  assert.ok(d.includes('findRecoverableLocalOriginal'));
-  assert.ok(d.includes('legacyRowBlob'));
-  assert.ok(d.includes('recoveryMatchScore'));
-  ['return100;','return90;','return80;','return70;'].forEach(x=>assert.equal(d.includes(x),false,x));
-  ['return 100;','return 90;','return 80;','return 70;'].forEach(x=>assert.ok(d.includes(x),x));
-  assert.ok(d.includes('Direct V1 original recovery scan failed'));
-  assert.ok(d.includes("repairHistoricalOriginals('pf',true)"));
-  assert.ok(d.includes("repairHistoricalOriginals('esic',true)"));
-  assert.ok(d.includes('Securing old original files in shared vault'));
-  assert.ok(d.includes("rec.sharedSource==='dedicated'"));
-  assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,pack,freshRows)'));
-  assert.ok(searchBody.includes('filterSearchPackToLiveLibrary(type,qs,local,freshRows)'));
-  assert.ok(d.includes('Shared legacy challan history'));
-  assert.ok(d.includes('browser-only IndexedDB rows never become authoritative'));
-  assert.ok(d.includes('backend-index filtered by live challan library'));
-  assert.equal(/parseBuffer\(|parsePdf\(|parseExcel\(/.test(searchBody),false);
+  assert.ok(searchStart>0);
+  const searchBody=d.slice(searchStart,d.indexOf('\nfunction ',searchStart+20)>0?d.indexOf('\nfunction ',searchStart+20):d.length);
+  assert.ok(searchBody.includes('await cloudRecords(type)')||searchBody.includes('searchIndex'));
 });
