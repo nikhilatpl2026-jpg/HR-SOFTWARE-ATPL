@@ -64,8 +64,14 @@
           if (!installingWorker) return;
           installingWorker.onstatechange = function() {
             if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('New update available! Auto-refreshing...');
-              try { window.location.reload(); } catch(e) {}
+              // Never force-refresh an authenticated ERP session while the user
+              // is working. The updated service worker becomes active safely
+              // on the next user-initiated navigation/reload.
+              window.__ATPL_UPDATE_READY__ = true;
+              console.log('New ERP update ready — it will apply on the next manual reload.');
+              try {
+                window.dispatchEvent(new CustomEvent('atpl-update-ready'));
+              } catch(e) {}
             }
           };
         };
@@ -10892,7 +10898,8 @@ else AInit();
 <script src="machine-rate-auditor-v1.js?v=20260918-card5"></script>
 <script src="compliance-dol-index-v1.js?v=20260921-index2"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
-<script src="compliance-dol-rebuild-v2.js?v=20260922-production16-recovery-score-runtime-fix"></script>
+<script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20260928-production21-supabase-permanent-authority"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3"></script>
 <script src="erp-enterprise-ui-v1.js?v=20260918-2"></script>
