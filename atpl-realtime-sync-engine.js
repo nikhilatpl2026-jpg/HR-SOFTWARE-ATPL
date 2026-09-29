@@ -3,85 +3,96 @@
  * Architected for permanent, foolproof bi-directional file synchronization.
  */
 window.ATPLRealtimeSync = (function() {
-    // === CONFIGURATION ===
     const SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
     
     let supabase = null;
-    let currentGsn = 0; // Global Sequence Number for OCC
+    let globalChannel = null;
 
     function init() {
-        if (!window.supabase) {
-            console.error('[ATPL Sync] Supabase CDN script not found!');
-            return;
-        }
+        if (!window.supabase) return;
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log('[ATPL Sync] Real-time engine initialized.');
         setupSubscriptions();
+        hijackDeletions();
     }
 
     function setupSubscriptions() {
-        // Step 1: Subscribe to the authoritative file list (WebSockets)
-        supabase
-            .channel('global_file_sync')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'hr_files' }, payload => {
-                console.log('[ATPL Sync] Remote mutation detected:', payload);
-                
-                // Track version for Optimistic Concurrency Control (OCC)
-                if (payload.new && payload.new.version) {
-                    currentGsn = Math.max(currentGsn, payload.new.version);
-                }
-
-                // Dispatch event to the UI so it can re-render the file list instantly
-                window.dispatchEvent(new CustomEvent('atpl-global-file-update', { detail: payload }));
-            })
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    console.log('[ATPL Sync] Connected to global WebSocket backplane.');
-                }
-            });
-    }
-
-    /**
-     * Step 2: Atomic 2PC for Bulk Uploads
-     * Ensures no client sees a partial bulk upload state.
-     */
-    async function uploadBulk(fileList) {
-        console.log('[ATPL Sync] Starting Phase 1: Staging bulk uploads...');
-        let staged = [];
+        globalChannel = supabase.channel('global_file_sync');
         
-        for (let file of fileList) {
-            const { data, error } = await supabase.storage.from('hr_files_bucket').upload(file.name, file.blob, {
-                upsert: true
-            });
-            if (error) {
-                console.error('[ATPL Sync] Phase 1 failed for ' + file.name, error);
-                throw new Error('Upload aborted. No partial state exposed.');
+        // Listen to Broadcasts for instant cross-browser deletes
+        globalChannel.on('broadcast', { event: 'FORCE_DELETE' }, payload => {
+            console.log('[ATPL Sync] Remote delete received:', payload);
+            const target = payload.payload.name;
+            let dirty = false;
+
+            if (window.FILES) {
+                const initLen = window.FILES.length;
+                window.FILES = window.FILES.filter(f => f.name !== target);
+                if (window.FILES.length !== initLen) dirty = true;
             }
-            staged.push({ filename: file.name, size: file.blob.size });
-        }
+            if (window.DOCS) {
+                const initLen = window.DOCS.length;
+                window.DOCS = window.DOCS.filter(d => d.id !== target && d.document_name !== target && d.file_name !== target);
+                if (window.DOCS.length !== initLen) dirty = true;
+            }
 
-        console.log('[ATPL Sync] Starting Phase 2: Atomic Metadata Commit...');
-        const rows = staged.map(f => ({
-            filename: f.filename,
-            size: f.size,
-            uploaded_at: new Date().toISOString()
-        }));
+            if (dirty) {
+                try { if(window.renderFiles) window.renderFiles(); } catch(e){}
+                try { if(window.renderSheets) window.renderSheets(); } catch(e){}
+                try { if(window.updStats) window.updStats(); } catch(e){}
+                try { if(window.renderAllFilesPage) window.renderAllFilesPage(); } catch(e){}
+                try { if(window.hrDocRender) window.hrDocRender(); } catch(e){}
+            }
+        });
 
-        const { error: dbError } = await supabase.from('hr_files').insert(rows);
-        if (dbError) throw dbError;
-        console.log('[ATPL Sync] Bulk upload successfully committed to global state.');
+        // Still listen to postgres just in case
+        globalChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'hr_files' }, payload => {
+            window.dispatchEvent(new CustomEvent('atpl-global-file-update', { detail: payload }));
+        });
+
+        globalChannel.subscribe();
     }
 
-    async function deleteFile(filename) {
-        console.log('[ATPL Sync] Attempting OCC deletion for ' + filename);
-        const { error } = await supabase.from('hr_files').delete().match({ filename: filename });
-        if (error) throw error;
+    // Auto-patch the UI buttons so users don't have to change their code!
+    function hijackDeletions() {
+        setInterval(() => {
+            if (window.ATPLFirebase && !window.ATPLFirebase.__isHijacked) {
+                window.ATPLFirebase.__isHijacked = true;
+                console.log('[ATPL Sync] Automatically wiring UI buttons to Supabase Realtime Engine...');
+                
+                const origDelete = window.ATPLFirebase.deleteSalaryFile;
+                if(origDelete) {
+                    window.ATPLFirebase.deleteSalaryFile = async function(name, user) {
+                        // Broadcast to other browsers instantly
+                        if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'FORCE_DELETE', payload: { name: name }});
+                        // Update local instantly
+                        if (window.FILES) {
+                            window.FILES = window.FILES.filter(f => f.name !== name);
+                            try { if(window.renderFiles) window.renderFiles(); } catch(e){}
+                        }
+                        return origDelete.apply(this, arguments);
+                    };
+                }
+
+                const origHrDelete = window.ATPLFirebase.deleteHrDoc;
+                if(origHrDelete) {
+                    window.ATPLFirebase.deleteHrDoc = async function(id, docName, user) {
+                        // Broadcast both ID and Name to ensure it's caught
+                        if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'FORCE_DELETE', payload: { name: id }});
+                        if (globalChannel && docName) globalChannel.send({ type: 'broadcast', event: 'FORCE_DELETE', payload: { name: docName }});
+                        // Update local instantly
+                        if (window.DOCS) {
+                            window.DOCS = window.DOCS.filter(d => d.id !== id && d.document_name !== docName);
+                            try { if(window.hrDocRender) window.hrDocRender(); } catch(e){}
+                        }
+                        return origHrDelete.apply(this, arguments);
+                    };
+                }
+            }
+        }, 1000);
     }
 
-    return { init, uploadBulk, deleteFile };
+    return { init };
 })();
 
-if (window.supabase) {
-    window.ATPLRealtimeSync.init();
-}
+if (window.supabase) window.ATPLRealtimeSync.init();
