@@ -273,7 +273,7 @@
        }
        root.FILES = nextFiles;
        if(changed || curFiles.length !== nextFiles.length || force){
-         ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects'].forEach(function(n){
+         ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects','initStatutoryChallanTab'].forEach(function(n){
            try{ if(typeof root[n]==='function') root[n](); }catch(_){}
          });
        }
@@ -479,7 +479,8 @@
    for(var i=0;i<activeIds.length;i++){
      var rem=remoteById[activeIds[i]],lid=activeIds[i];
      var old=local.find(function(x){return String(x.id||'').toLowerCase()===lid});
-     if(old&&dateMs(old.updated_at)>=dateMs(rem.updated_at||rem.created_at))continue;
+     var remTime=dateMs(rem.updated_at||rem.saved_at||rem.uploaded_at||rem.created_at);
+     if(old&&dateMs(old.updated_at)>=remTime)continue;
      try{
        var fullDoc=rem;
        if(root.ATPLFirebase&&typeof root.ATPLFirebase.decodeHrPayload==='function'){
@@ -487,6 +488,12 @@
          if(decoded)fullDoc=decoded;
        }
        await putHrDoc(fullDoc);
+       var docsArr = typeof root.hrDocGetDocs === 'function' ? root.hrDocGetDocs() : null;
+       if (Array.isArray(docsArr)) {
+         var existingIdx = docsArr.findIndex(function(x){ return String(x.id).toLowerCase() === lid; });
+         if (existingIdx >= 0) docsArr[existingIdx] = fullDoc;
+         else docsArr.push(fullDoc);
+       }
        changed++;
      }catch(e){console.warn('Firebase HR doc save warning',rem.id,e)}
    }
@@ -510,6 +517,11 @@
       if(tTime && tTime >= docTime){
         console.log('[Firebase HR Auto-Delete] Purging removed HR doc across browsers:',doc.document_name||doc.id);
         await deleteHrDocFromDb(doc.id);
+        var docsArr = typeof root.hrDocGetDocs === 'function' ? root.hrDocGetDocs() : null;
+        if (Array.isArray(docsArr)) {
+          var existingIdx = docsArr.findIndex(function(x){ return String(x.id).toLowerCase() === lid; });
+          if (existingIdx >= 0) docsArr.splice(existingIdx, 1);
+        }
         changed++;
       }
     }

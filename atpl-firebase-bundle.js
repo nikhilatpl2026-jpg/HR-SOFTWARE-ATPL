@@ -233,6 +233,7 @@ async function saveHrDocFb(docObj){
       uploaded_at:new Date().toISOString(),
       uploaded_by:String(docObj.updated_by||"admin"),
       saved_at:String(docObj.updated_at||new Date().toISOString()),
+      updated_at:String(docObj.updated_at||new Date().toISOString()),
       assigned_user_id:String(docObj.assigned_user_id||""),
       assigned_user_name:String(docObj.assigned_user_name||""),
       visibility:String(docObj.visibility||"all")
