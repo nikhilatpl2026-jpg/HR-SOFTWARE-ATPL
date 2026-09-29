@@ -4,9 +4,8 @@
  */
 window.ATPLRealtimeSync = (function() {
     // === CONFIGURATION ===
-    // BRO: Put your Supabase URL and Anon Key here
-    const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
-    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+    const SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
     
     let supabase = null;
     let currentGsn = 0; // Global Sequence Number for OCC
@@ -51,7 +50,6 @@ window.ATPLRealtimeSync = (function() {
         console.log('[ATPL Sync] Starting Phase 1: Staging bulk uploads...');
         let staged = [];
         
-        // Phase 1: Blob Storage (Staging)
         for (let file of fileList) {
             const { data, error } = await supabase.storage.from('hr_files_bucket').upload(file.name, file.blob, {
                 upsert: true
@@ -64,7 +62,6 @@ window.ATPLRealtimeSync = (function() {
         }
 
         console.log('[ATPL Sync] Starting Phase 2: Atomic Metadata Commit...');
-        // Phase 2: Atomic Database Insert
         const rows = staged.map(f => ({
             filename: f.filename,
             size: f.size,
@@ -72,41 +69,19 @@ window.ATPLRealtimeSync = (function() {
         }));
 
         const { error: dbError } = await supabase.from('hr_files').insert(rows);
-        
-        if (dbError) {
-            console.error('[ATPL Sync] Phase 2 Commit Failed. Rolling back...', dbError);
-            throw dbError;
-        }
-        
+        if (dbError) throw dbError;
         console.log('[ATPL Sync] Bulk upload successfully committed to global state.');
     }
 
-    /**
-     * Step 3: Conflict Detection & Deterministic Resolution
-     */
     async function deleteFile(filename) {
-        console.log('[ATPL Sync] Attempting OCC deletion for ' + filename + ' at GSN ' + currentGsn);
-        
-        // Only delete if the file hasn't been mutated by another browser
-        const { error } = await supabase
-            .from('hr_files')
-            .delete()
-            .match({ filename: filename });
-
-        if (error) {
-            console.error('[ATPL Sync] Deletion rejected or failed:', error);
-            throw error;
-        }
+        console.log('[ATPL Sync] Attempting OCC deletion for ' + filename);
+        const { error } = await supabase.from('hr_files').delete().match({ filename: filename });
+        if (error) throw error;
     }
 
-    return {
-        init,
-        uploadBulk,
-        deleteFile
-    };
+    return { init, uploadBulk, deleteFile };
 })();
 
-// Auto-init if Supabase is already loaded
 if (window.supabase) {
     window.ATPLRealtimeSync.init();
 }
