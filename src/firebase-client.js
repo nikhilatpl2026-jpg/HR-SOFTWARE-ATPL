@@ -12,14 +12,14 @@ import {
 } from 'firebase/firestore';
 
 const cfg = {
-  projectId: "gen-lang-client-0566788648",
-  appId: "1:822862717290:web:3d3e3c2f71b17252e88513",
-  apiKey: "AIzaSyCrsWUALc5vQUB157c4YIe9ikQ1xN6E6bU",
-  authDomain: "gen-lang-client-0566788648.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-atplhrpayrollsof-bfdaada6-82cb-4b08-a9ad-1b189322946b",
-  storageBucket: "gen-lang-client-0566788648.firebasestorage.app",
-  messagingSenderId: "822862717290",
-  oAuthClientId: "822862717290-4mg3asvv0po4vcbg3tcg4l6gnuu2s2gr.apps.googleusercontent.com"
+  projectId: "durable-lane-wpqwl",
+  appId: "1:351907813401:web:0ffc9e063a5e3d68873288",
+  apiKey: "AIzaSyBcNFwmwns5bBU9Ej6ijzInukUzTbsLj38",
+  authDomain: "durable-lane-wpqwl.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-atplhrpayrollsof-9b7066b0-5a4f-4039-be33-cca6d365933f",
+  storageBucket: "durable-lane-wpqwl.firebasestorage.app",
+  messagingSenderId: "351907813401",
+  oAuthClientId: "351907813401-mq3636u4acgf14nfg0rrps5tej96nc5f.apps.googleusercontent.com"
 };
 
 let app = null;
@@ -68,13 +68,10 @@ export async function saveSalaryFile(name, payload, meta) {
   const { db } = initFirebase();
   const key = safeKey(name);
   const docRef = doc(db, 'salary_files', key);
-
   const jsonStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
   const compressedBytes = pako.gzip(jsonStr);
   const b64 = uint8ToBase64(compressedBytes);
-
   const totalChunks = Math.ceil(b64.length / CHUNK_SIZE);
-
   if (totalChunks > 1) {
     for (let i = 0; i < totalChunks; i++) {
       const chunkStr = b64.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
@@ -82,7 +79,6 @@ export async function saveSalaryFile(name, payload, meta) {
       await setDoc(chunkRef, { index: i, data: chunkStr });
     }
   }
-
   const metaData = {
     name: String(name),
     is_gzip: true,
@@ -95,28 +91,22 @@ export async function saveSalaryFile(name, payload, meta) {
     uploaded_by: String(meta && meta.uploaded_by || 'admin'),
     saved_at: String(meta && meta.saved_at || new Date().toISOString())
   };
-
   await setDoc(docRef, metaData);
-
-  // Remove tombstone if it was previously tombstoned
   try {
     const tombRef = doc(db, 'salary_tombstones', key);
     await deleteDoc(tombRef);
   } catch (_) {}
-
   return true;
 }
 
 export async function decodeDocPayload(docData) {
   if (!docData) return null;
-  // Case 1: single document compressed gzip
   if (docData.is_gzip && docData.chunks_count === 1 && docData.sheets_b64) {
     const bytes = base64ToUint8(docData.sheets_b64);
     const unzipped = pako.ungzip(bytes);
     const text = new TextDecoder().decode(unzipped);
     return JSON.parse(text);
   }
-  // Case 2: multiple chunks in subcollection
   if (docData.is_gzip && docData.chunks_count > 1) {
     const { db } = initFirebase();
     const key = safeKey(docData.name);
@@ -132,7 +122,6 @@ export async function decodeDocPayload(docData) {
     const text = new TextDecoder().decode(unzipped);
     return JSON.parse(text);
   }
-  // Case 3: legacy uncompressed string/json
   if (docData.sheets) {
     return typeof docData.sheets === 'string' ? JSON.parse(docData.sheets) : docData.sheets;
   }
@@ -144,7 +133,6 @@ export async function deleteSalaryFile(name, deletedBy) {
   const key = safeKey(name);
   const docRef = doc(db, 'salary_files', key);
   const tombRef = doc(db, 'salary_tombstones', key);
-
   try {
     const docSnap = await getDoc(docRef);
     if (docSnap.exists() && docSnap.data().chunks_count > 1) {
@@ -153,17 +141,12 @@ export async function deleteSalaryFile(name, deletedBy) {
       }
     }
   } catch (_) {}
-
-  // 1. Delete from active files
   await deleteDoc(docRef);
-
-  // 2. Add to tombstones for immediate cross-device propagation
   await setDoc(tombRef, {
     name: String(name),
     deleted_at: new Date().toISOString(),
     deleted_by: String(deletedBy || 'admin')
   });
-
   return true;
 }
 

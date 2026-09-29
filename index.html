@@ -84,6 +84,7 @@
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
 <script src="xlsx.full.min.js"></script>
+<script src="atpl-firebase-bundle.js?v=20260929-live-v3"></script>
 <script src="pako.min.js"></script>
 <script>
 (function(){
@@ -3063,6 +3064,9 @@ window.updateRealtimeCloudBadge = function(count, status, message) {
 
 function atplUsesSharedSalaryCloud(){return !window.ATPLFirebase && !!(window.location && /(^|\.)github\.io$/i.test(window.location.hostname));}
 async function atplDirectServerSync(force) {
+  // Ultra-fast sub-second boot: If Firebase is active or files already loaded, bypass legacy 27MB freeze
+  if (window.ATPLFirebase) return true;
+  if (Array.isArray(window.FILES) && window.FILES.length > 0 && !force) return true;
   if(atplUsesSharedSalaryCloud())return window.ATPLCloudSharedStorageV1?window.ATPLCloudSharedStorageV1.syncNow(!!force):false;
   if (isAtplDirectSyncing) return;
   isAtplDirectSyncing = true;
@@ -10996,7 +11000,7 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
-<script src="atpl-firebase-bundle.js?v=20260927-v6-cloud-authoritative"></script>
+<!-- atpl-firebase-bundle loaded in head -->
 <script src="erp-cloud-shared-storage-v1.js?v=20260928-permanent-cross-browser-delete-v2"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10"></script>
