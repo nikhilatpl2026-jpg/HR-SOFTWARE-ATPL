@@ -2960,6 +2960,7 @@ function atplSalaryRestoreAllowed(name, saved) {
     return !(cleared && stamp <= cleared) && !(deleted && stamp <= deleted);
   } catch (_) { return false; }
 }
+window.atplSalaryRestoreAllowed = atplSalaryRestoreAllowed;
 
 var isRestoringAborted = false;
 function restoreSavedFilesIncremental() {
@@ -11228,9 +11229,55 @@ window.triggerManualCrossBrowserSync = async function() {
   var btn = document.getElementById('btnForceCrossBrowserSync');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
-    // 1. Sync Salary Files
+    // 1. Sync Salary Files from Firebase
     if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
       var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
+      if (Array.isArray(fbFiles) && fbFiles.length > 0) {
+        var dirty = false;
+        for (var fDoc of fbFiles) {
+          if (!fDoc || !fDoc.name) continue;
+          var fileName = fDoc.name;
+          var cur = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(fileName).toLowerCase(); });
+          if (cur && cur.savedAt === fDoc.saved_at && cur.buf) continue;
+          try {
+            var payload = await window.ATPLFirebase.decodeDocPayload(fDoc);
+            if (payload) {
+              var rawBuf = payload.original_b64 ? atplB64ToBuf(payload.original_b64) : null;
+              if (!rawBuf && payload.sheets && window.XLSX) {
+                try {
+                  var twb = window.XLSX.utils.book_new();
+                  var sList = Array.isArray(payload.sheets) ? payload.sheets : [];
+                  sList.forEach(function(s){
+                    var rows = Array.isArray(s.rows) ? s.rows : [];
+                    var ws = window.XLSX.utils.aoa_to_sheet(rows);
+                    window.XLSX.utils.book_append_sheet(twb, ws, String(s.name || 'Sheet').slice(0, 31));
+                  });
+                  rawBuf = window.XLSX.write(twb, { type: 'array', bookType: 'xlsx' });
+                } catch(_) {}
+              }
+              if (rawBuf) {
+                var wb = parseWB(rawBuf);
+                var sheets = wbToSheets(wb);
+                window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
+                window.FILES.push({ name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: fDoc.saved_at || new Date().toISOString() });
+                if (DB) {
+                  try {
+                    var itx = DB.transaction(DB_STORE, 'readwrite');
+                    itx.objectStore(DB_STORE).put({ name: fileName, buf: rawBuf, saved: fDoc.saved_at || new Date().toISOString() });
+                  } catch(_) {}
+                }
+                dirty = true;
+              }
+            }
+          } catch(err) {
+            console.warn('Firebase decode error in sync:', err);
+          }
+        }
+        if (dirty) {
+          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+          if (typeof window.updateRealtimeCloudBadge === 'function') window.updateRealtimeCloudBadge(window.FILES.length, 'ok', '🔥 Firebase Live');
+        }
+      }
       if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate === 'function') {
         await window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate({ all: fbFiles, removedNames: [] });
       }
@@ -11246,8 +11293,22 @@ window.triggerManualCrossBrowserSync = async function() {
     if (typeof window.initStatutoryChallanTab === 'function') {
       try { window.initStatutoryChallanTab(); } catch(_) {}
     }
+    // 4. Sync Employee Master
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllEmployeeMaster === 'function') {
+      var emRecs = await window.ATPLFirebase.fetchAllEmployeeMaster();
+      if (Array.isArray(emRecs) && emRecs.length > 0 && window.EM) {
+        window.EM.data = emRecs.slice();
+        if (Array.isArray(window.EMP_MASTER_DATA)) {
+          window.EMP_MASTER_DATA.length = 0;
+          Array.prototype.push.apply(window.EMP_MASTER_DATA, emRecs);
+        }
+        if (typeof window.emFilter === 'function') window.emFilter();
+        if (typeof window.emUpdateStats === 'function') window.emUpdateStats();
+        try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(emRecs)); } catch(_) {}
+      }
+    }
     var count = window.FILES ? window.FILES.length : 0;
-    if (window.showToast) window.showToast('✅ Cross-browser live sync complete (Files + HR + Challans)!');
+    if (window.showToast) window.showToast('✅ Cross-browser live sync complete (' + count + ' Files + HR + Master + Challans)!');
   } catch(e) {
     if (window.showToast) window.showToast('⚠️ Sync notice: ' + (e.message || e));
   } finally {

@@ -57,6 +57,9 @@ function persistConfirmed(){
         bc.postMessage({type:'employee_master_saved',records:g.EM.data});
         bc.close();
       }
+      if(g.ATPLFirebase && typeof g.ATPLFirebase.saveEmployeeMaster === 'function'){
+        g.ATPLFirebase.saveEmployeeMaster(g.EM.data).catch(function(){});
+      }
     }
   }catch(_){}
 }
@@ -124,7 +127,20 @@ function install(){
   if(typeof g.emSaveBulk==='function'&&!g.emSaveBulk.__atplConfirmed){confirmedBulkSave.__atplConfirmed=true;confirmedBulkSave.__original=g.emSaveBulk;g.emSaveBulk=confirmedBulkSave}
   if(typeof g.emDeleteRow==='function'&&!g.emDeleteRow.__atplConfirmed){confirmedDelete.__atplConfirmed=true;confirmedDelete.__original=g.emDeleteRow;g.emDeleteRow=confirmedDelete}
 }
-g.ATPLEmployeeMasterConfirmedSaveV1={install:install,status:function(){return{busy:busy,retry:!!retryFn}},retry:function(){if(retryFn&&!busy)return retryFn()}};
+    if(g.ATPLFirebase && typeof g.ATPLFirebase.subscribeEmployeeMaster === 'function' && !g.__emFbSubscribed){
+      g.__emFbSubscribed = true;
+      g.ATPLFirebase.subscribeEmployeeMaster(function(update){
+        if(!update || !Array.isArray(update.records) || update.records.length === 0) return;
+        if(!g.EM) return;
+        if(JSON.stringify(g.EM.data) !== JSON.stringify(update.records)){
+          g.EM.data = update.records.slice();
+          syncLegacyArray();
+          refreshMasterUi();
+          try{ g.localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(update.records)); }catch(_){}
+        }
+      });
+    }
+  g.ATPLEmployeeMasterConfirmedSaveV1={install:install,status:function(){return{busy:busy,retry:!!retryFn}},retry:function(){if(retryFn&&!busy)return retryFn()}};
 if(g.document.readyState==='loading')g.document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 setTimeout(install,800);
 })(window);
