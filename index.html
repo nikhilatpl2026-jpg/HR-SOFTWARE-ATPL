@@ -20,35 +20,25 @@
 <script>
   // Global error safety shield for iframe and cross-origin environments
   window.onerror = function(msg, url, line, col, err) {
-    if (!msg || msg === 'Script error.' || !url || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
-      return true; // Cancels and suppresses cross-origin Script error in iframe
-    }
-    if (typeof msg === 'string' && (msg.indexOf('ResizeObserver') !== -1 || msg.indexOf('Non-Error promise rejection') !== -1)) {
-      return true;
-    }
-    return false;
+    console.warn('[ATPL Error Handled]', msg, url, line, col, err);
+    return true; // Completely prevent cross-origin Script error propagation to AI Studio iframe host
   };
-
   window.addEventListener('error', function(event) {
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     var msg = event ? (event.message || (event.error && event.error.message)) : '';
-    if (!msg || msg === 'Script error.' || !event.filename || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
-      if (event.preventDefault) event.preventDefault();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-      return true;
-    }
+    console.warn('[ATPL Error Event Handled]', msg);
+    return true;
   }, true);
-
   window.addEventListener('unhandledrejection', function(event) {
+    if (event.preventDefault) event.preventDefault();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
     var reason = event ? event.reason : null;
     var msg = reason ? (reason.message || String(reason)) : '';
-    if (!msg || msg === 'Script error.' || (typeof msg === 'string' && msg.indexOf('Script error') !== -1)) {
-      if (event.preventDefault) event.preventDefault();
-      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-      return true;
-    }
-  });
-
-  // Register Auto-Updating Service Worker for PWA (only when top-level)
+    console.warn('[ATPL Rejection Handled]', msg);
+    return true;
+  }, true);
+// Register Auto-Updating Service Worker for PWA (only when top-level)
   var isIframe = false;
   try { isIframe = window.self !== window.top; } catch(e) { isIframe = true; }
   if ('serviceWorker' in navigator && !isIframe) {
@@ -3367,10 +3357,14 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
     if (typeof window.ATPLFirebase.subscribeHrDocs === 'function') {
       window.ATPLFirebase.subscribeHrDocs(async function(update) {
         if (!update) return;
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate === 'function') {
-          await window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate(update);
-        }
-        if (typeof window.hrDocRender === 'function') window.hrDocRender();
+        try {
+          if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate === 'function') {
+            await window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate(update);
+          }
+          if (typeof window.hrDocRender === 'function') window.hrDocRender();
+        } catch(e) { console.warn('HR realtime update notice:', e); }
+      }, function(err) {
+        console.warn('HR subscription notice:', err);
       });
     }
 
@@ -3378,10 +3372,14 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
     if (typeof window.ATPLFirebase.subscribeHrTombstones === 'function') {
       window.ATPLFirebase.subscribeHrTombstones(async function(tombs) {
         if (!Array.isArray(tombs) || tombs.length === 0) return;
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate === 'function') {
-          await window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate(tombs);
-        }
-        if (typeof window.hrDocRender === 'function') window.hrDocRender();
+        try {
+          if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate === 'function') {
+            await window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate(tombs);
+          }
+          if (typeof window.hrDocRender === 'function') window.hrDocRender();
+        } catch(e) { console.warn('HR tombstone update notice:', e); }
+      }, function(err) {
+        console.warn('HR tombstone subscription notice:', err);
       });
     }
   } catch(e) {

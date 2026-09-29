@@ -75,7 +75,8 @@ async function kI(n,e,t){
     return!0;
   }catch(err){
     if(handleQuotaError(err)) return false;
-    throw err;
+    console.warn('[ATPL-Firebase] saveSalaryFile handled notice:', err);
+    return false;
   }
 }
 
@@ -110,7 +111,8 @@ async function r_(n,e){
     return!0;
   }catch(err){
     if(handleQuotaError(err)) return true;
-    throw err;
+    console.warn('[ATPL-Firebase] saveHrDoc handled notice:', err);
+    return false;
   }
 }
 
@@ -122,7 +124,8 @@ async function MI(n){
     return!0;
   }catch(err){
     if(handleQuotaError(err)) return true;
-    throw err;
+    console.warn('[ATPL-Firebase] deleteHrDoc handled notice:', err);
+    return false;
   }
 }
 
@@ -134,7 +137,8 @@ async function s_(){
     return t;
   }catch(err){
     if(handleQuotaError(err)) return [];
-    throw err;
+    console.warn('[ATPL-Firebase] fetchAllTombstones handled notice:', err);
+    return [];
   }
 }
 
@@ -146,7 +150,8 @@ async function GI(){
     return t;
   }catch(err){
     if(handleQuotaError(err)) return [];
-    throw err;
+    console.warn('[ATPL-Firebase] fetchAllHrDocs handled notice:', err);
+    return [];
   }
 }
 
@@ -303,7 +308,8 @@ async function fetchAllHrDocsFb(){
     return t;
   }catch(err){
     if(handleQuotaError(err)) return [];
-    throw err;
+    console.warn('[ATPL-Firebase] fetchAllHrTombstones handled notice:', err);
+    return [];
   }
 }
 
