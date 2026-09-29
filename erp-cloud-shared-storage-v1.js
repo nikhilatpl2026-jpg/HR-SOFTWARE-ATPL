@@ -17,8 +17,7 @@
  var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3,lastPull=0,pulling=null,remoteRecords=[];
  var TOMB_STORAGE_KEY='ATPL_SALARY_TOMBSTONES_V2',HR_TOMB_KEY='ATPL_HR_TOMBSTONES_V2';
  var firebaseUnsubscribe=null;
- // Firebase Firestore is the real-time cloud authority on all platforms
-var sharedSalaryAuthority=false;
+ var sharedSalaryAuthority=(!root.ATPLFirebase||!!root.__atplFirebaseQuotaExhausted)&&!!(root.location && /(^|\.)github\.io$/i.test(root.location.hostname));
  var salarySyncFlight=null, salarySyncAt=0, salaryWriteFlight=null;
  var SALARY_OUTBOX='ATPL_SALARY_OUTBOX_V1', SALARY_CLEAR_KEY='__ALL_SALARY__';
 
