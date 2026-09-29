@@ -2801,6 +2801,7 @@ function initDB(cb) {
   req.onsuccess = function(e) { DB = e.target.result; cb && cb(); };
   req.onerror = function() { console.error('IndexedDB failed'); cb && cb(); };
 }
+try { initDB(); } catch(_) {}
 
 function atplBufToB64(buf) {
   if (!buf) return '';
@@ -2845,6 +2846,13 @@ function saveFileToDB(name, arrayBuf, cb) {
       window.ATPLFirebase.saveSalaryFile(name, { original_b64: b64Payload, name: name }, { name: name, saved_at: now, uploaded_by: 'admin' }).catch(function(e){ console.warn('Firebase saveSalaryFile error:', e); });
     } catch(_) {}
   }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+      bc.postMessage({ type: 'salary_file_saved', name: name });
+      bc.close();
+    } catch(_) {}
+  }
   // Immediate direct cross-browser sync
   try {
     var b64 = atplBufToB64(arrayBuf);
@@ -2883,6 +2891,13 @@ function deleteFromDB(name, cb) {
   if (window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
     try {
       window.ATPLFirebase.deleteSalaryFile(name, 'admin').catch(function(e){ console.warn('Firebase deleteSalaryFile error:', e); });
+    } catch(_) {}
+  }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+      bc.postMessage({ type: 'salary_file_deleted', name: name });
+      bc.close();
     } catch(_) {}
   }
   // Immediate direct cross-browser sync
@@ -3315,11 +3330,21 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
               var sheets = wbToSheets(wb);
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
               window.FILES.push({ name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: fDoc.saved_at || new Date().toISOString() });
+              var fRec = { name: fileName, buf: rawBuf, saved: fDoc.saved_at || new Date().toISOString() };
               if (DB) {
                 try {
                   var itx = DB.transaction(DB_STORE, 'readwrite');
-                  itx.objectStore(DB_STORE).put({ name: fileName, buf: rawBuf, saved: fDoc.saved_at || new Date().toISOString() });
+                  itx.objectStore(DB_STORE).put(fRec);
                 } catch(_) {}
+              } else {
+                initDB(function() {
+                  if (DB) {
+                    try {
+                      var itx = DB.transaction(DB_STORE, 'readwrite');
+                      itx.objectStore(DB_STORE).put(fRec);
+                    } catch(_) {}
+                  }
+                });
               }
               renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
               if (typeof window.updateRealtimeCloudBadge === 'function') window.updateRealtimeCloudBadge(window.FILES.length, 'ok', '🔥 Firebase Live');

@@ -61,7 +61,7 @@
  function openDb(name,ver,store,keyPath){return new Promise(function(ok,no){try{var r=indexedDB.open(name,ver);r.onupgradeneeded=function(){if(!r.result.objectStoreNames.contains(store))r.result.createObjectStore(store,keyPath?{keyPath:keyPath}:undefined)};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}}catch(e){no(e)}})}
  async function salaryRows(){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return await new Promise(function(ok){var r=d.transaction(SALARY_STORE,'readonly').objectStore(SALARY_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
  function salaryRestoreAllowed(name,saved){
-   return typeof root.atplSalaryRestoreAllowed==='function' && root.atplSalaryRestoreAllowed(name,saved);
+   return typeof root.atplSalaryRestoreAllowed==='function' ? root.atplSalaryRestoreAllowed(name,saved) : true;
  }
  async function putSalary(name,buf,saved){
     if(!salaryRestoreAllowed(name,saved))return false;

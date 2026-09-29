@@ -86,10 +86,17 @@ async function VI(n){
     return JSON.parse(r);
   }
   if(n.is_gzip&&n.chunks_count>1){
-    let{db:e}=Vn(),t=zo(n.name),r="";
+    let{db:e}=Vn(),t=zo(n.name);
+    let chunkPromises=[];
     for(let u=0;u<n.chunks_count;u++){
-      let B=await Gh(ln(e,"salary_files",t,"chunks","c_"+u));
-      B.exists()&&B.data().data&&(r+=B.data().data);
+      chunkPromises.push(Gh(ln(e,"salary_files",t,"chunks","c_"+u)));
+    }
+    let chunkSnaps=await Promise.all(chunkPromises);
+    let r="";
+    for(let B of chunkSnaps){
+      if(B.exists()&&B.data()&&B.data().data){
+        r+=B.data().data;
+      }
     }
     let s=n_(r),i=Gu(s),a=new TextDecoder().decode(i);
     return JSON.parse(a);
@@ -132,7 +139,12 @@ async function s_(){
   if(__fbQuotaExhausted || (typeof window !== "undefined" && window.__atplFirebaseQuotaExhausted)) return [];
   try{
     let{db:n}=Vn(),e=await Hh(Es(n,"salary_files")),t=[];
-    e.forEach(r=>{t.push(r.data())});
+    e.forEach(r=>{
+      let d=r.data();
+      if(d && d.kind!=="hr_doc" && !r.id.startsWith("hrdoc_") && d.name){
+        t.push(d);
+      }
+    });
     return t;
   }catch(err){
     if(handleQuotaError(err)) return [];
