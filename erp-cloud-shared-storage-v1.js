@@ -314,10 +314,12 @@
     ============================================================== */
  var isHandlingFirebaseFiles=false;
  var lastFirebaseSyncTime=0;
+ var queuedFirebasePayload=null;
  async function handleFirebaseFilesUpdate(payload){
-   if(isHandlingFirebaseFiles)return;
-   var now=Date.now();
-   if(now-lastFirebaseSyncTime<1200)return;
+   if(isHandlingFirebaseFiles){
+     queuedFirebasePayload=payload;
+     return;
+   }
    isHandlingFirebaseFiles=true;
    try{
      var remoteList=payload.all||[];
@@ -429,6 +431,11 @@
    }finally{
      isHandlingFirebaseFiles=false;
      lastFirebaseSyncTime=Date.now();
+     if(queuedFirebasePayload){
+       var np=queuedFirebasePayload;
+       queuedFirebasePayload=null;
+       setTimeout(function(){ handleFirebaseFilesUpdate(np); }, 60);
+     }
    }
  }
 

@@ -3513,27 +3513,60 @@ dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.a
 dz.addEventListener('dragleave', function() { dz.classList.remove('over'); });
 dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('over'); handleFiles(Array.from(e.dataTransfer.files)); });
 
-function handleFiles(list) {
-  list.forEach(function(file) {
-    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) { lg('err', '❌ Support nahi: ' + file.name); return; }
-    if (FILES.find(function(f) { return f.name === file.name; })) {
-      lg('info', '⚠️ Already loaded: ' + file.name + ' — overwriting');
+async function handleFiles(list) {
+  var validFiles = (list || []).filter(function(file) {
+    if (!file || !file.name || !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      if (file && file.name) lg('err', '❌ Support nahi: ' + file.name);
+      return false;
     }
-    var r = new FileReader();
-    r.onload = function(e) {
-      var buf = e.target.result;
+    return true;
+  });
+  if (!validFiles.length) return;
+
+  var total = validFiles.length;
+  var lbl = document.getElementById('storageLbl');
+  if (window.showToast) window.showToast('⏳ Uploading ' + total + ' file(s) across all browsers...');
+
+  for (var i = 0; i < total; i++) {
+    var file = validFiles[i];
+    if (lbl) lbl.textContent = 'Saving (' + (i + 1) + '/' + total + '): ' + file.name;
+    try {
+      var buf = await new Promise(function(resolve, reject) {
+        var r = new FileReader();
+        r.onload = function(e) { resolve(e.target.result); };
+        r.onerror = function(err) { reject(err); };
+        r.readAsArrayBuffer(file);
+      });
       var wb = parseWB(buf);
       var sheets = wbToSheets(wb);
-      FILES = FILES.filter(function(f) { return f.name !== file.name; });
-      FILES.push({ name: file.name, wb: wb, sheets: sheets, buf: buf, savedAt: new Date().toISOString() });
-      saveFileToDB(file.name, buf, function() {
-        document.getElementById('storageLbl').textContent = FILES.length + ' files saved';
+      var now = new Date().toISOString();
+
+      FILES = (FILES || []).filter(function(f) { return f && f.name !== file.name; });
+      FILES.push({ name: file.name, wb: wb, sheets: sheets, buf: buf, savedAt: now });
+
+      // Save to IndexedDB
+      await new Promise(function(resolve) {
+        saveFileToDB(file.name, buf, resolve);
       });
-      renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-      lg('ok', '💾 Saved & Loaded: <b>' + file.name + '</b> → ' + wb.SheetNames.length + ' sheets: ' + wb.SheetNames.slice(0,4).join(', ') + (wb.SheetNames.length>4?'...':''));
-    };
-    r.readAsArrayBuffer(file);
-  });
+
+      // Save to Firebase Cloud
+      if (window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+        var b64Payload = atplBufToB64(buf);
+        await window.ATPLFirebase.saveSalaryFile(file.name, { original_b64: b64Payload, name: file.name }, { name: file.name, saved_at: now, uploaded_by: 'admin' });
+      }
+
+      // Small 120ms safety pause so Firestore burst limit is never exceeded
+      await new Promise(function(res) { setTimeout(res, 120); });
+      lg('ok', '💾 (' + (i + 1) + '/' + total + ') Saved & Synced: <b>' + file.name + '</b>');
+    } catch(err) {
+      console.warn('Error saving ' + file.name, err);
+      lg('err', '❌ Error saving: ' + file.name);
+    }
+  }
+
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  if (lbl) lbl.textContent = FILES.length + ' files saved';
+  if (window.showToast) window.showToast('✅ All ' + total + ' files uploaded and synced to all browsers!');
 }
 
 function renderFiles() {

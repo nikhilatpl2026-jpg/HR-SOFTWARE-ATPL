@@ -44,38 +44,35 @@ if (typeof window !== "undefined") {
 }
 
 function isQuotaErr(e) {
-  var s = String(e && (e.message || e.code || e));
-  return /quota|resource-exhausted|exceeded/i.test(s);
+  return false;
 }
 
 function handleQuotaError(e) {
-  if (isQuotaErr(e)) {
-    __fbQuotaExhausted = true;
-    if (typeof window !== "undefined") window.__atplFirebaseQuotaExhausted = true;
-    try { if (typeof localStorage !== "undefined") localStorage.setItem("ATPL_FB_QUOTA_EXHAUSTED", "true"); } catch(_) {}
-    console.warn("[ATPL-Firebase] Firestore daily write quota limit reached. Seamlessly switching to Node.js backend server sync.");
-    return true;
-  }
+  console.warn("[ATPL-Firebase] notice:", e && (e.message || e.code || e));
   return false;
 }
 
 var zh=7e5;
 async function kI(n,e,t){
-  if(__fbQuotaExhausted || (typeof window !== "undefined" && window.__atplFirebaseQuotaExhausted)) return false;
-  try{
-    let{db:r}=Vn(),s=zo(n),i=ln(r,"salary_files",s),a=typeof e=="string"?e:JSON.stringify(e),u=sC(a),B=LI(u),c=Math.ceil(B.length/zh);
-    if(c>1)for(let d=0;d<c;d++){
-      let p=B.slice(d*zh,(d+1)*zh),g=ln(r,"salary_files",s,"chunks","c_"+d);
-      await Ho(g,{index:d,data:p});
+  for(let attempt=0; attempt<3; attempt++){
+    try{
+      let{db:r}=Vn(),s=zo(n),i=ln(r,"salary_files",s),a=typeof e=="string"?e:JSON.stringify(e),u=sC(a),B=LI(u),c=Math.ceil(B.length/zh);
+      if(c>1)for(let d=0;d<c;d++){
+        let p=B.slice(d*zh,(d+1)*zh),g=ln(r,"salary_files",s,"chunks","c_"+d);
+        await Ho(g,{index:d,data:p});
+      }
+      let h={name:String(n),is_gzip:!0,chunks_count:c,b64_size:B.length,sheets_b64:c===1?B:"",sheets_count:Number(t&&t.sheets_count||(e&&e.sheets?e.sheets.length:1)),rows_count:Number(t&&t.rows_count||0),uploaded_at:new Date().toISOString(),uploaded_by:String(t&&t.uploaded_by||"admin"),saved_at:String(t&&t.saved_at||new Date().toISOString())};
+      await Ho(i,h);
+      try{let d=ln(r,"salary_tombstones",s);await Uo(d)}catch{}
+      return true;
+    }catch(err){
+      if(attempt < 2){
+        await new Promise(res => setTimeout(res, 350 * (attempt + 1)));
+      } else {
+        console.warn('[ATPL-Firebase] saveSalaryFile error after retries:', err);
+        return false;
+      }
     }
-    let h={name:String(n),is_gzip:!0,chunks_count:c,b64_size:B.length,sheets_b64:c===1?B:"",sheets_count:Number(t&&t.sheets_count||(e&&e.sheets?e.sheets.length:1)),rows_count:Number(t&&t.rows_count||0),uploaded_at:new Date().toISOString(),uploaded_by:String(t&&t.uploaded_by||"admin"),saved_at:String(t&&t.saved_at||new Date().toISOString())};
-    await Ho(i,h);
-    try{let d=ln(r,"salary_tombstones",s);await Uo(d)}catch{}
-    return!0;
-  }catch(err){
-    if(handleQuotaError(err)) return false;
-    console.warn('[ATPL-Firebase] saveSalaryFile handled notice:', err);
-    return false;
   }
 }
 
