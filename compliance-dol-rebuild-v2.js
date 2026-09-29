@@ -755,13 +755,15 @@ function addCss(){
 }
 function ensureViewer(){
   if($('cd2-viewer'))return;
+  if(!document.body)return;
   var d=document.createElement('div');d.id='cd2-viewer';d.className='cd2-view';d.innerHTML='<div class="cd2-modal"><div class="cd2-vh"><div class="cd2-vtitle"><b id="cd2-vname">Challan</b><span id="cd2-vmeta"></span></div><select id="cd2-vsheet" style="display:none"></select><button id="cd2-vclose">✕ Close</button></div><div id="cd2-vbody" class="cd2-vbody"></div><div id="cd2-vfoot" class="cd2-vfoot" style="display:none"><button id="cd2-vprev">← Prev</button><span id="cd2-vpage">1 / 1</span><button id="cd2-vnext">Next →</button></div></div>';
   document.body.appendChild(d);
-  $('cd2-vclose').onclick=closeViewer;
-  $('cd2-viewer').onclick=function(e){if(e.target===this)closeViewer()};
-  $('cd2-vsheet').onchange=function(){viewer.sheet=Number(this.value)||0;viewer.page=1;renderExcelPage()};
-  $('cd2-vprev').onclick=function(){if(viewer.page>1){viewer.page--;renderExcelPage()}};
-  $('cd2-vnext').onclick=function(){var sh=viewer.sheets&&viewer.sheets[viewer.sheet],pages=Math.max(1,Math.ceil(((sh&&sh.rows)||[]).length/viewer.pageSize));if(viewer.page<pages){viewer.page++;renderExcelPage()}}
+  function safeSet(id, prop, fn){ var el = $(id); if(el) el[prop] = fn; }
+  safeSet('cd2-vclose','onclick',closeViewer);
+  safeSet('cd2-viewer','onclick',function(e){if(e.target===this)closeViewer()});
+  safeSet('cd2-vsheet','onchange',function(){viewer.sheet=Number(this.value)||0;viewer.page=1;renderExcelPage()});
+  safeSet('cd2-vprev','onclick',function(){if(viewer.page>1){viewer.page--;renderExcelPage()}});
+  safeSet('cd2-vnext','onclick',function(){var sh=viewer.sheets&&viewer.sheets[viewer.sheet],pages=Math.max(1,Math.ceil(((sh&&sh.rows)||[]).length/viewer.pageSize));if(viewer.page<pages){viewer.page++;renderExcelPage()}});
 }
 function closeViewer(){
   if(viewer.url){try{URL.revokeObjectURL(viewer.url)}catch(_){}viewer.url=''}

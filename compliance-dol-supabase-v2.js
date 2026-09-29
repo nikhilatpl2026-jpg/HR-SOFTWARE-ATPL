@@ -148,7 +148,7 @@ function loadRealtimeLib(){
       existing.addEventListener('load',function(){resolve(root.supabase)},{once:true});
       existing.addEventListener('error',function(){reject(new Error('Supabase realtime library failed'))},{once:true});return
     }
-    var s=root.document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.async=true;s.dataset.atplSupabaseJs='1';
+    var s=root.document.createElement('script');s.crossOrigin='anonymous';s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.async=true;if(s.dataset)s.dataset.atplSupabaseJs='1';
     s.onload=function(){if(root.supabase&&root.supabase.createClient)resolve(root.supabase);else reject(new Error('Supabase realtime library unavailable'))};
     s.onerror=function(){reject(new Error('Supabase realtime library failed to load'))};
     (root.document.head||root.document.documentElement).appendChild(s)

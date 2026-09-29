@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "dev": "node server.js",
+    "dev": "DISABLE_HMR=true vite --port=3000 --host=0.0.0.0",
     "start": "node server.js",
     "build": "node -e 'console.log(\"Build succeeded\")'",
     "preview": "node server.js",
