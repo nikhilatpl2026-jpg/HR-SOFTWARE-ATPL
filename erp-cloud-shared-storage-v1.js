@@ -17,7 +17,8 @@
  var CHUNK=900,MAX_CHUNKS=450,CONCURRENCY=3,lastPull=0,pulling=null,remoteRecords=[];
  var TOMB_STORAGE_KEY='ATPL_SALARY_TOMBSTONES_V2',HR_TOMB_KEY='ATPL_HR_TOMBSTONES_V2';
  var firebaseUnsubscribe=null;
- var sharedSalaryAuthority=!!(root.location && /(^|\.)github\.io$/i.test(root.location.hostname));
+ // Firebase Firestore is the real-time cloud authority on all platforms
+var sharedSalaryAuthority=false;
  var salarySyncFlight=null, salarySyncAt=0, salaryWriteFlight=null;
  var SALARY_OUTBOX='ATPL_SALARY_OUTBOX_V1', SALARY_CLEAR_KEY='__ALL_SALARY__';
 
@@ -406,10 +407,13 @@
            sheetData=typeof doc.sheets==='string'?J(doc.sheets,null):doc.sheets;
          }
          if(sheetData){
-           var p={v:1,name:doc.name,sheets:Array.isArray(sheetData.sheets)?sheetData.sheets:sheetData};
-           var buf=payloadBuffer(p);
-           await putSalary(doc.name,buf,doc.saved_at||doc.uploaded_at);
-           changed++;
+           var origB64 = sheetData.original_b64 || (sheetData.payload && sheetData.payload.original_b64) || null;
+           var p={v:1,name:doc.name,original_b64:origB64,sheets:Array.isArray(sheetData.sheets)?sheetData.sheets:sheetData};
+           var buf = origB64 ? b64ToBuf(origB64) : payloadBuffer(p);
+           if(buf){
+             await putSalary(doc.name,buf,doc.saved_at||doc.uploaded_at);
+             changed++;
+           }
          }
        }catch(e){console.warn('Firebase parse buffer warning',doc.name,e)}
      }
@@ -652,6 +656,8 @@
 
    var p=null;
    try{ p=workbookPayload(name,buf); }catch(_){}
+   if(!p) p={v:1,name:name};
+   p.original_b64 = bufToB64(buf);
 
    // 1. Primary: Save directly to Firebase Firestore
    if(!root.__atplFirebaseQuotaExhausted && root.ATPLFirebase && typeof root.ATPLFirebase.saveSalaryFile==='function'){
@@ -1091,9 +1097,11 @@
  }
 
  function startServerSyncListener(){
+   if(root.location && /(^|\.)github\.io$/i.test(root.location.hostname)){
+     // On static GitHub Pages, real-time sync is powered exclusively by Firebase WebSocket
+     return;
+   }
    if(sharedSalaryAuthority){
-     syncSharedSalary(false);
-     setInterval(function(){if(!root.document.hidden)syncSharedSalary(false)},7000);
      return;
    }
    if(typeof root.EventSource==='undefined')return;
@@ -1346,7 +1354,7 @@ async function applySalarySnapshot(records){
  }
 
  function boot(){
-   setBadge('ok','🔥 Firebase Connecting…');
+   setBadge('ok','🔥 Firebase Live');
    hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
    startServerSyncListener();
 
