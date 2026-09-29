@@ -2937,6 +2937,8 @@ function wbToSheets(wb) {
   });
   return sheets;
 }
+window.parseWB = parseWB;
+window.wbToSheets = wbToSheets;
 
 // ═══════════════════════════════════════════════════════════════
 // STATE
@@ -3302,6 +3304,18 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
           var payload = await window.ATPLFirebase.decodeDocPayload(fDoc);
           if (payload) {
             var rawBuf = payload.original_b64 ? atplB64ToBuf(payload.original_b64) : null;
+            if (!rawBuf && payload.sheets && window.XLSX) {
+              try {
+                var twb = window.XLSX.utils.book_new();
+                var sList = Array.isArray(payload.sheets) ? payload.sheets : [];
+                sList.forEach(function(s){
+                  var rows = Array.isArray(s.rows) ? s.rows : [];
+                  var ws = window.XLSX.utils.aoa_to_sheet(rows);
+                  window.XLSX.utils.book_append_sheet(twb, ws, String(s.name || 'Sheet').slice(0, 31));
+                });
+                rawBuf = window.XLSX.write(twb, { type: 'array', bookType: 'xlsx' });
+              } catch(_) {}
+            }
             if (rawBuf) {
               var wb = parseWB(rawBuf);
               var sheets = wbToSheets(wb);
@@ -3335,7 +3349,7 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
           dirty = true;
           return;
         }
-        var match = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() !== String(t.name).toLowerCase(); });
+        var match = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(t.name).toLowerCase(); });
         if (match) {
           window.FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== String(t.name).toLowerCase(); });
           if (DB) { try { DB.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(t.name); } catch(_) {} }
@@ -3476,8 +3490,13 @@ function handleFiles(list) {
 function renderFiles() {
   var sec = document.getElementById('filesSec');
   var list = document.getElementById('filesList');
-  if (!FILES.length) { sec.style.display = 'none'; return; }
-  sec.style.display = 'block';
+  if (sec) sec.style.display = 'block';
+  if (!FILES.length) {
+    if (list) list.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:12px 6px;text-align:center">No saved files yet<br><span style="font-size:10px;color:#6366f1">Click Sync Browsers below</span></div>';
+    var fc = document.getElementById('fileCount');
+    if (fc) fc.textContent = '(0)';
+    return;
+  }
   document.getElementById('fileCount').textContent = '(' + FILES.length + ')';
   list.innerHTML = FILES.map(function(f, i) {
     var rows = Object.values(f.sheets).reduce(function(a,r){return a+Math.max(0,r.length-1);},0);
@@ -3630,7 +3649,7 @@ function renderViewerSheet(fi, si) {
 function renderAllFilesPage() {
   var area = document.getElementById('allFilesArea');
   if (!FILES.length) {
-    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:9px 18px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Cloud Se Refresh Karo</button></div></div>';
+    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:10px 20px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Sync Browsers</button></div></div>';
     return;
   }
   var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
@@ -11156,10 +11175,14 @@ window.triggerManualCrossBrowserSync = async function() {
   var btn = document.getElementById('btnForceCrossBrowserSync');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+      var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
+      if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate === 'function') {
+        await window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate({ all: fbFiles, removedNames: [] });
+      }
+    }
     if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
       await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
-    } else if (window.atplForceSyncAllFiles) {
-      await window.atplForceSyncAllFiles();
     }
     var count = window.FILES ? window.FILES.length : 0;
     if (window.showToast) window.showToast('✅ Cross-browser live sync complete (' + count + ' files)!');

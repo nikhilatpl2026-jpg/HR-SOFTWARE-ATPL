@@ -242,7 +242,11 @@
        if (!salaryRestoreAllowed(r.name,r.saved)) return false;
        return true;
      });
-     if(typeof root.parseWB==='function' && typeof root.wbToSheets==='function'){
+     var parseFn = (typeof root.parseWB === 'function' ? root.parseWB : (root.XLSX ? function(b){ return root.XLSX.read(b, {type:'array'}); } : null));
+      var sheetsFn = (typeof root.wbToSheets === 'function' ? root.wbToSheets : (root.XLSX ? function(wb){
+        var sh={}; (wb.SheetNames||[]).forEach(function(sn){ sh[sn]=root.XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:'', raw:false}); }); return sh;
+      } : null));
+      if(parseFn && sheetsFn){
        var curFiles = Array.isArray(root.FILES) ? root.FILES : [];
        var changed = false;
        var nextFiles = [];
@@ -260,8 +264,8 @@
              if (typeof wbBuf === 'string') {
                wbBuf = b64ToBuf(wbBuf) || wbBuf;
              }
-             var wb = root.parseWB(wbBuf);
-             nextFiles.push({name:r.name, wb:wb, sheets:root.wbToSheets(wb), buf:wbBuf, savedAt:r.saved});
+             var wb = parseFn(wbBuf);
+             nextFiles.push({name:r.name, wb:wb, sheets:sheetsFn(wb), buf:wbBuf, savedAt:r.saved});
            } catch(pe) {
              console.warn('Workbook parse failed for', r.name, pe);
            }
@@ -1446,7 +1450,16 @@ async function applySalarySnapshot(records){
  root.ATPLCloudSharedStorageV1={
    clearSalary:function(){return queueSharedSalary('clear',SALARY_CLEAR_KEY,new Date().toISOString())},
    syncNow:function(f){return syncNow(!!f)},
-   forceSyncAllFiles:function(){return syncWithServer(true);},
+   forceSyncAllFiles:async function(){
+     if(root.ATPLFirebase && typeof root.ATPLFirebase.fetchAllSalaryFiles==='function'){
+       try{
+         var fbFiles = await root.ATPLFirebase.fetchAllSalaryFiles();
+         await handleFirebaseFilesUpdate({all:fbFiles, removedNames:[]});
+       }catch(e){console.warn('Firebase forceSync warning',e)}
+     }
+     return syncWithServer(true);
+   },
+   handleFirebaseFilesUpdate:handleFirebaseFilesUpdate,
    saveSalary:cloudSaveSalary,
    deleteSalary:cloudDeleteSalary,
    saveHrDoc:cloudSaveHr,

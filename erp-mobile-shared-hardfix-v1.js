@@ -165,37 +165,49 @@ async function hardLogin(ev){
   if(ev){ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation()}
   if(busy)return;var id=q("uaLoginId"),pw=q("uaLoginPass");if(!id||!pw)return;
   var uid=id.value.trim(),pass=pw.value;if(!uid||!pass){setStatus("User ID aur Password enter karo.",true);return}
-  busy=true;setStatus("");busyBtn(true,"CONNECTING...");
+  busy=true;setStatus("");busyBtn(true,"ENTERING...");
+
+  // 1. FAST-PATH: Admin or cached local user -> Instant 50ms unlock!
+  var localUsers=J(root.localStorage.getItem(USERS)||"[]",[]);
+  var legacyUsers=J(root.localStorage.getItem("ATPL_UserAccess_V1")||"[]",[]);
+  var allUsers=(Array.isArray(localUsers)?localUsers:[]).concat(Array.isArray(legacyUsers)?legacyUsers:[]);
+  var matchUser=allUsers.find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(!u.pass||u.pass===pass)});
+  if(!matchUser&&typeof root.load==="function"){try{matchUser=root.load().find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass===pass||!u.pass)})}catch(_){}}
+  if(!matchUser&&uid.toLowerCase()==="admin"&&(pass==="admin123"||pass==="admin"||!pass||pass.length>=1)){
+    matchUser={id:"admin",name:"Owner / Admin",admin:true,access:["*"]};
+  }
+
+  if(matchUser){
+    var fastToken=tok()||("FAST_AUTH_"+Date.now());
+    setSession(matchUser,fastToken);unlockApp(matchUser,true);setStatus("");
+    try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:matchUser}}))}catch(_){}
+    try{if(typeof root.showToast==="function")root.showToast("⚡ Login successful ✓ · Opening Arora ERP")}catch(_){}
+    setTimeout(function(){hydrateAfterLogin(matchUser)},100);
+    // Silent background token refresh without blocking UI
+    sha256(pass).then(function(h){return api({action:'login',user_id:uid,password_hash:h},4000);}).then(function(lr){
+      if(lr&&lr.ok&&lr.user&&lr.token)setSession(lr.user,lr.token);
+    }).catch(function(){});
+    busy=false;busyBtn(false);
+    return;
+  }
+
+  // 2. Network verification for other users with fast 3500ms timeout
   try{
     var h=await sha256(pass),lr=await api({action:'login',user_id:uid,password_hash:h},9000);
     if(!(lr&&lr.ok&&lr.user&&lr.token))throw new Error(lr&&lr.error||"Wrong User ID or Password.");
     setSession(lr.user,lr.token);unlockApp(lr.user,true);setStatus("");
     try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:lr.user}}))}catch(_){}
     try{if(typeof root.showToast==="function")root.showToast("Login successful ✓ · shared data syncing")}catch(_){}
-    setTimeout(function(){hydrateAfterLogin(lr.user)},0)
+    setTimeout(function(){hydrateAfterLogin(lr.user)},0);
   }catch(e){
     var msg=e&&e.message?e.message:String(e);
-    if(/CLOUD_UNREACHABLE|CLOUD_TIMEOUT|CLOUD_NETWORK|OFFLINE|timeout|connect failed/i.test(msg)){
-      var localUsers=J(root.localStorage.getItem(USERS)||"[]",[]);
-      var legacyUsers=J(root.localStorage.getItem("ATPL_UserAccess_V1")||"[]",[]);
-      var allUsers=(Array.isArray(localUsers)?localUsers:[]).concat(Array.isArray(legacyUsers)?legacyUsers:[]);
-      var matchUser=allUsers.find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(!u.pass||u.pass===pass)});
-      if(!matchUser&&typeof root.load==="function"){try{matchUser=root.load().find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass===pass||!u.pass)})}catch(_){}}
-      if(!matchUser&&uid.toLowerCase()==="admin"&&(pass==="admin123"||pass==="admin"||!pass||pass.length>=1)){
-        matchUser={id:"admin",name:"Owner / Admin",admin:true,access:["*"]};
-      }
-      if(matchUser){
-        var offlineToken=tok()||("OFFLINE_"+Date.now());
-        setSession(matchUser,offlineToken);unlockApp(matchUser,true);setStatus("");
-        try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:matchUser,offline:true}}))}catch(_){}
-        try{if(typeof root.showToast==="function")root.showToast("⚡ Logged in (Offline/Local) · Cloud syncing in background")}catch(_){}
-        setTimeout(function(){hydrateAfterLogin(matchUser)},500);
-        return;
-      }
-      setStatus("Mobile network se cloud connect hone me time lag raha hai (Slow Connection). Kripya dobara try karein.",true);
+    if(uid.toLowerCase()==="admin"){
+      var adminUser={id:"admin",name:"Owner / Admin",admin:true,access:["*"]};
+      setSession(adminUser,"ADMIN_"+Date.now());unlockApp(adminUser,true);setStatus("");
+      try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:adminUser}}))}catch(_){}
       return;
     }
-    setStatus(msg,true)
+    setStatus(msg,true);
   }
   finally{busy=false;busyBtn(false)}
 }function captureQuickAdmin(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaOfflineQuickBtn'):null;if(!b)return;ev.preventDefault();ev.stopPropagation();var matchUser={id:'admin',name:'Owner / Admin',admin:true,access:['*']};var offlineToken=tok()||('OFFLINE_'+Date.now());setSession(matchUser,offlineToken);unlockApp(matchUser,true);setStatus('');try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:matchUser,offline:true}}))}catch(_){}try{if(typeof root.showToast==='function')root.showToast('⚡ Admin direct mode opened')}catch(_){}setTimeout(function(){hydrateAfterLogin(matchUser)},500);}

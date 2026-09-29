@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "salary_files",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "saved_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "salary_tombstones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "deleted_at", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
