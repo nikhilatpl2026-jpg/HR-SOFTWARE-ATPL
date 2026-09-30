@@ -11313,11 +11313,36 @@ window.triggerManualCrossBrowserSync = async function() {
   var btn = document.getElementById('btnForceCrossBrowserSync');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
-    // 1. Sync Salary Files from Firebase
+    // 1. Sync Salary Files from Cloud
     if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
       var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
-      if (Array.isArray(fbFiles) && fbFiles.length > 0) {
-        var dirty = false;
+      var dirty = false;
+
+      if (Array.isArray(fbFiles)) {
+        var remoteNames = {};
+        fbFiles.forEach(function(f) {
+          if (f && f.name) remoteNames[String(f.name).toLowerCase()] = true;
+        });
+
+        // Delete local files that were deleted on another browser
+        var curFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
+        var keptFiles = [];
+        for (var i = 0; i < curFiles.length; i++) {
+          var lf = curFiles[i];
+          if (!lf || !lf.name) continue;
+          var lk = String(lf.name).toLowerCase();
+          if (fbFiles.length > 0 && !remoteNames[lk]) {
+            console.log('[ATPL Sync] Remote delete detected, removing:', lf.name);
+            if (typeof deleteFromDB === 'function') deleteFromDB(lf.name);
+            dirty = true;
+          } else {
+            keptFiles.push(lf);
+          }
+        }
+        window.FILES = keptFiles;
+        FILES = keptFiles;
+
+        // Add or update remote files
         for (var fDoc of fbFiles) {
           if (!fDoc || !fDoc.name) continue;
           var fileName = fDoc.name;
@@ -11344,6 +11369,7 @@ window.triggerManualCrossBrowserSync = async function() {
                 var sheets = wbToSheets(wb);
                 window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
                 window.FILES.push({ name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: fDoc.saved_at || new Date().toISOString() });
+                FILES = window.FILES;
                 if (DB) {
                   try {
                     var itx = DB.transaction(DB_STORE, 'readwrite');
@@ -11354,47 +11380,57 @@ window.triggerManualCrossBrowserSync = async function() {
               }
             }
           } catch(err) {
-            console.warn('Firebase decode error in sync:', err);
+            console.warn('[ATPL Sync] File decode error:', err);
           }
         }
-        if (dirty) {
-          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-          if (typeof window.updateRealtimeCloudBadge === 'function') window.updateRealtimeCloudBadge(window.FILES.length, 'ok', '🔥 Firebase Live');
+      }
+
+      if (dirty || !curFiles.length) {
+        renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+      }
+      if (typeof window.updateRealtimeCloudBadge === 'function') {
+        window.updateRealtimeCloudBadge(window.FILES.length, 'ok', '⚡ Realtime Live (' + window.FILES.length + ')');
+      }
+    }
+
+    // 2. Sync HR Documents from Cloud
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+      try {
+        var hrDocs = await window.ATPLFirebase.fetchAllHrDocs();
+        if (Array.isArray(hrDocs) && typeof window.hrDocSetDocs === 'function') {
+          window.hrDocSetDocs(hrDocs);
         }
-      }
-      if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate === 'function') {
-        await window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate({ all: fbFiles, removedNames: [] });
-      }
+        if (typeof window.hrDocRender === 'function') {
+          window.hrDocRender();
+        }
+      } catch(_) {}
     }
-    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
-      await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
-    }
-    // 2. Sync HR Documents
-    if (typeof window.triggerManualHrSync === 'function') {
-      await window.triggerManualHrSync();
-    }
-    // 3. Refresh Statutory Challans
+
+    // 3. Sync Statutory Challan Tabs
     if (typeof window.initStatutoryChallanTab === 'function') {
       try { window.initStatutoryChallanTab(); } catch(_) {}
     }
+
     // 4. Sync Employee Master
     if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllEmployeeMaster === 'function') {
-      var emRecs = await window.ATPLFirebase.fetchAllEmployeeMaster();
-      if (Array.isArray(emRecs) && emRecs.length > 0 && window.EM) {
-        window.EM.data = emRecs.slice();
-        if (Array.isArray(window.EMP_MASTER_DATA)) {
-          window.EMP_MASTER_DATA.length = 0;
-          Array.prototype.push.apply(window.EMP_MASTER_DATA, emRecs);
+      try {
+        var emRecs = await window.ATPLFirebase.fetchAllEmployeeMaster();
+        if (Array.isArray(emRecs) && emRecs.length > 0 && window.EM) {
+          window.EM.data = emRecs.slice();
+          if (Array.isArray(window.EMP_MASTER_DATA)) {
+            window.EMP_MASTER_DATA.length = 0;
+            Array.prototype.push.apply(window.EMP_MASTER_DATA, emRecs);
+          }
+          if (typeof window.emFilter === 'function') window.emFilter();
+          if (typeof window.emUpdateStats === 'function') window.emUpdateStats();
+          try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(emRecs)); } catch(_) {}
         }
-        if (typeof window.emFilter === 'function') window.emFilter();
-        if (typeof window.emUpdateStats === 'function') window.emUpdateStats();
-        try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(emRecs)); } catch(_) {}
-      }
+      } catch(_) {}
     }
     var count = window.FILES ? window.FILES.length : 0;
-    if (window.showToast) window.showToast('✅ Cross-browser live sync complete (' + count + ' Files + HR + Master + Challans)!');
+    if (window.showToast) window.showToast('✅ Cross-browser sync complete (' + count + ' Files + HR + Master)!');
   } catch(e) {
-    if (window.showToast) window.showToast('⚠️ Sync notice: ' + (e.message || e));
+    console.warn('[ATPL Sync] Manual sync warning:', e);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync Browsers'; }
   }

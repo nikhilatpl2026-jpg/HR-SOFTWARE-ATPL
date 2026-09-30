@@ -28,13 +28,16 @@
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
-    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('run.app') >= 0) {
-      return ''; // Relative URLs hit local Express server
+    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0) {
+      return ''; // Local Express server
     }
-    // Static hosting (e.g. github.io) -> Point to deployed AI Studio backend
+    // On static hosting (like GitHub Pages), there is no Node SSE server; return null to use Cloud DBs
+    if (origin.indexOf('github.io') >= 0 || origin.indexOf('file:') >= 0) {
+      return null;
+    }
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
-    return 'https://ais-pre-jpq6ydqehx3naxdoorqfao-427004433114.asia-southeast1.run.app';
+    return null;
   }
 
   var API_BASE = detectBackendUrl();
@@ -174,6 +177,13 @@
       if (this.eventSource) {
         try { this.eventSource.close(); } catch (_) {}
         this.eventSource = null;
+      }
+
+      if (!this.apiBase && this.apiBase !== '') {
+        // Static cloud mode (GitHub Pages): Supabase + Firebase handle realtime
+        this.connected = true;
+        this.updateSyncBadge('ok', '⚡ Realtime Live');
+        return;
       }
 
       var sseUrl = (this.apiBase || '') + '/api/sync/events';
@@ -485,6 +495,12 @@
     reconcileAll: async function() {
       try {
         this.lastSyncTime = Date.now();
+        if (!this.apiBase && this.apiBase !== '') {
+          if (typeof window.triggerManualCrossBrowserSync === 'function') {
+            await window.triggerManualCrossBrowserSync();
+          }
+          return;
+        }
         var stateRes = await fetch((this.apiBase || '') + '/api/sync/state?summary=1');
         if (!stateRes.ok) return;
         var state = await stateRes.json();
