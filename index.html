@@ -1847,7 +1847,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="vnav-cat" onclick="toggleVcat('cat-tools')">
       <span>🛠️ Tools</span><span class="vnav-arrow" id="arr-tools">▾</span>
     </div>
-    <div class="vnav-sub" id="cat-tools">      <div class="vitem" id="vn-esictodol" onclick="goPage('esictodol')"><span class="vi">🩺</span>ESIC → DOL</div>
+    <div class="vnav-sub" id="cat-tools">
+      <div class="vitem" id="vn-debugger" onclick="window.ATPLCloudDebugger.open()" style="color:#fbbf24;font-weight:bold"><span class="vi">??</span>Cloud Debugger</div>      <div class="vitem" id="vn-esictodol" onclick="goPage('esictodol')"><span class="vi">🩺</span>ESIC → DOL</div>
       <div class="vitem" id="vn-pftodol" onclick="goPage('pftodol')"><span class="vi">🧾</span>PF → DOL</div>
     </div>
   </div>
@@ -11107,7 +11108,7 @@ else AInit();
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
 <!-- ATPL FOOLPROOF REALTIME ENGINE -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="atpl-realtime-sync-engine.js?v=1790773262.08521.85001.55868.37187?v=final"></script>
+<script src="atpl-realtime-sync-engine.js?v=1790773844.80847.08521.85001.55868.37187?v=final"></script>
 <!-- END ENGINE -->
 <!-- atpl-firebase-bundle loaded in head -->
 <script src="erp-cloud-shared-storage-v1.js?v=20260929-firebase-instant-v1"></script>
@@ -11415,6 +11416,7 @@ document.addEventListener('click', function(e) {
 
 
 
+<script src="atpl-cloud-debugger.js?v=1790773844.79887"></script>
 </body>
 </html>
 
