@@ -144,6 +144,36 @@ function incrementVersion() {
   return filesDb.version;
 }
 
+// ── Server-Side Cloud Proxy for Google Apps Script ──
+// Completely bypasses iframe CSP and prevents cross-origin "Script error."
+app.all('/api/cloud-proxy', async (req, res) => {
+  const params = req.method === 'POST' ? req.body : req.query;
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
+  try {
+    const qs = new URLSearchParams(params).toString();
+    const url = APPS_SCRIPT_URL + (qs ? '?' + qs : '');
+    const upstreamRes = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { 'User-Agent': 'ATPL-Cloud-Broker/1.0' }
+    });
+    const text = await upstreamRes.text();
+    try {
+      const json = JSON.parse(text);
+      return res.json(json);
+    } catch (_) {
+      const match = text.match(/^[\w.$]+\s*\(([\s\S]*)\)\s*;?$/);
+      if (match) {
+        return res.json(JSON.parse(match[1]));
+      }
+      return res.send(text);
+    }
+  } catch (err) {
+    console.warn('[Cloud Proxy] Upstream notice:', err.message);
+    return res.status(502).json({ ok: false, error: 'CLOUD_UNREACHABLE', message: err.message });
+  }
+});
+
 // Active Server-Sent Events (SSE) connections for cross-browser live updates
 const sseClients = new Set();
 

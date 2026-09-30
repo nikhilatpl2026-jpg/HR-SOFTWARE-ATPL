@@ -678,7 +678,7 @@ function start(){
   if(UI.profiles.count)setMessage(UI.profiles.count+' saved consultant rules ready hain. Ab Mam sheet upload karein.',false);
 }
 function boot(){
-  if(root.XLSX)return start();const script=document.createElement('script');script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';script.onload=start;script.onerror=()=>console.error('Mam Compliance Generator: Excel library unavailable');document.head.appendChild(script);
+  if(root.XLSX)return start();const script=document.createElement('script');script.src='xlsx.full.min.js';script.onload=start;script.onerror=()=>console.error('Mam Compliance Generator: Excel library unavailable');document.head.appendChild(script);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(typeof window!=='undefined'?window:globalThis);

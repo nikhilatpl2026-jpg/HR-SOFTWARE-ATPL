@@ -205,6 +205,6 @@ function bind(){
 }
 function addNav(){const old=$('vn-mamsalary');if(old)old.remove();const nav=document.createElement('div');nav.id='vn-mamsalary';nav.className='vitem';nav.innerHTML='<span class="vi">🧾</span>Mam → Compliance';nav.onclick=checkAccessAndOpen;nav.setAttribute('onclick',"goPage('mamsalary')");nav.onclick=checkAccessAndOpen;const anchor=$('vn-sync');if(anchor)anchor.parentNode.insertBefore(nav,anchor.nextSibling)}
 function start(){UI.profiles=loadProfiles();UI.employees=employeeMaster();addStyle();addPage();addNav();bind();render();if(UI.profiles.count)setMessage(UI.profiles.count+' saved consultant rules ready. Ab sirf Mam sheet upload karein.',false)}
-function boot(){if(root.XLSX)return start();const script=document.createElement('script');script.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';script.onload=start;script.onerror=()=>console.error('Mam Compliance NEXT: Excel library unavailable');document.head.appendChild(script)}
+function boot(){if(root.XLSX)return start();const script=document.createElement('script');script.src='xlsx.full.min.js';script.onload=start;script.onerror=()=>console.error('Mam Compliance NEXT: Excel library unavailable');document.head.appendChild(script)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(typeof window!=='undefined'?window:globalThis);

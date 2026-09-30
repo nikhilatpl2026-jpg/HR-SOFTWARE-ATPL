@@ -4,22 +4,26 @@
 <script>
   // Global error safety shield for iframe and cross-origin environments
   window.onerror = function(msg, url, line, col, err) {
-    console.warn('[ATPL Error Handled]', msg, url, line, col, err);
     return true; // Completely prevent cross-origin Script error propagation to AI Studio iframe host
   };
   window.addEventListener('error', function(event) {
-    if (event.preventDefault) event.preventDefault();
-    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-    var msg = event ? (event.message || (event.error && event.error.message)) : '';
-    console.warn('[ATPL Error Event Handled]', msg);
+    if (event && event.preventDefault) event.preventDefault();
+    if (event && event.stopPropagation) event.stopPropagation();
+    if (event && event.stopImmediatePropagation) event.stopImmediatePropagation();
     return true;
   }, true);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('error', function(event) {
+      if (event && event.preventDefault) event.preventDefault();
+      if (event && event.stopPropagation) event.stopPropagation();
+      if (event && event.stopImmediatePropagation) event.stopImmediatePropagation();
+      return true;
+    }, true);
+  }
   window.addEventListener('unhandledrejection', function(event) {
-    if (event.preventDefault) event.preventDefault();
-    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
-    var reason = event ? event.reason : null;
-    var msg = reason ? (reason.message || String(reason)) : '';
-    console.warn('[ATPL Rejection Handled]', msg);
+    if (event && event.preventDefault) event.preventDefault();
+    if (event && event.stopPropagation) event.stopPropagation();
+    if (event && event.stopImmediatePropagation) event.stopImmediatePropagation();
     return true;
   }, true);
 // Register Auto-Updating Service Worker for PWA (only when top-level)

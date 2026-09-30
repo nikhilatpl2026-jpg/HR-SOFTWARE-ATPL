@@ -65,9 +65,25 @@ function jsonp(params,timeout){
     function finish(){if(done)return;done=true;root.clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}
     root[cb]=function(data){finish();resolve(data||{})};
     var p=Object.assign({},cleanParams(params),{callback:cb,_ts:now()});
-    s.async=true;s.onerror=function(){finish();reject(new Error('CLOUD_NETWORK'))};
+    s.async=true;
+    s.crossOrigin='anonymous';
+    s.addEventListener('error',function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))},true);
+    s.onerror=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))};
     s.src=API+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
   })
+}
+async function proxyFetch(params,timeout){
+  if(typeof root.fetch!=='function')throw new Error('FETCH_UNAVAILABLE');
+  var ctrl=typeof root.AbortController==='function'?new root.AbortController():null;
+  var t=root.setTimeout(function(){try{if(ctrl)ctrl.abort()}catch(_){}},timeout);
+  try{
+    var p=Object.assign({},cleanParams(params),{_ts:now()});
+    var r=await root.fetch('/api/cloud-proxy?'+qs(p),{
+      method:'GET',headers:{'Accept':'application/json'},signal:ctrl?ctrl.signal:undefined
+    });
+    if(!r.ok)throw new Error('HTTP_'+r.status);
+    return await r.json();
+  }finally{root.clearTimeout(t)}
 }
 async function fetchFallback(params,timeout){
   if(typeof root.fetch!=='function')throw new Error('FETCH_UNAVAILABLE');
@@ -84,23 +100,39 @@ async function fetchFallback(params,timeout){
 async function transport(params,opts){
   var action=String(params&&params.action||'ping'),timeout=timeoutFor(action,opts.timeout),tries=attemptsFor(action,opts.attempts),last;
   if(root.navigator&&root.navigator.onLine===false)throw new Error('OFFLINE');
-  for(var i=0;i<tries;i++){
-    try{
-      var data=await jsonp(params,timeout+(i*3000));
+
+  // 1. Try server-side /api/cloud-proxy first (eliminates iframe CSP blocks and Script error.)
+  try{
+    var dataProxy=await proxyFetch(params,timeout);
+    if(dataProxy&&(dataProxy.ok||typeof dataProxy==='object')){
       health.ok++;health.lastOk=now();health.lastError='';
-      return data
-    }catch(e){
-      last=e;health.fail++;health.lastFail=now();health.lastError=String(e&&e.message||e);
-      if(i+1<tries)await sleep(500+(i*900));
+      return dataProxy;
     }
-  }
-  // JSONP is the canonical Apps Script transport. Do not start a second long
-  // CORS/fetch request after a read timeout unless a caller explicitly asks for it.
-  if((opts.fetchFallback===true||action==='login'||action==='ping')&&READ_ACTIONS[action]){
-    try{
-      var d=await fetchFallback(params,Math.max(3000,Math.min(timeout,7000)));
-      health.ok++;health.lastOk=now();health.lastError='';return d
-    }catch(e){last=e;health.fail++;health.lastFail=now();health.lastError=String(e&&e.message||e)}
+  }catch(e){last=e}
+
+  // 2. Try direct CORS fetch fallback
+  try{
+    var dataFetch=await fetchFallback(params,Math.min(timeout,7000));
+    if(dataFetch){
+      health.ok++;health.lastOk=now();health.lastError='';
+      return dataFetch;
+    }
+  }catch(e){last=e}
+
+  // 3. Fallback to jsonp only when not in an iframe (iframes block Apps Script)
+  var isIframe=false;
+  try{isIframe=root.self!==root.top}catch(_){isIframe=true}
+  if(!isIframe){
+    for(var i=0;i<tries;i++){
+      try{
+        var data=await jsonp(params,timeout+(i*3000));
+        health.ok++;health.lastOk=now();health.lastError='';
+        return data
+      }catch(e){
+        last=e;health.fail++;health.lastFail=now();health.lastError=String(e&&e.message||e);
+        if(i+1<tries)await sleep(500+(i*900));
+      }
+    }
   }
   var err=new Error('CLOUD_UNREACHABLE');err.cause=last;err.action=action;throw err
 }
