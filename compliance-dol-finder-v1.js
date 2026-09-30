@@ -247,7 +247,22 @@ async function openViewer(type,id){
   if(!rec){viewerError('Saved challan record not found.');return}
   q('cdfViewerTitle').querySelector('b').textContent=rec.name||'Challan';
   q('cdfViewerTitle').querySelector('span').textContent=(rec.period?periodLabel(rec.period):'Month not set')+' · '+(rec.fileHash?'SHA-256 '+rec.fileHash.slice(0,16)+'…':'legacy record');
-  if(!rec.buffer){viewerError('Original file bytes are not cached on this device. Re-upload the exact challan once. The SHA-256 duplicate guard will attach the viewer copy to the existing record — no second logical contribution will be created.');return}
+  if(!rec.buffer){
+    if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.getFileContent === 'function') {
+      try {
+        q('cdfViewerExcel').style.display='block';
+        q('cdfViewerExcel').innerHTML='<div style="padding:26px;text-align:center;color:#64748b;font-size:11px;font-weight:700">Downloading original challan from central backend…</div>';
+        rec.buffer = await window.ATPLCentralFileSync.getFileContent(rec.id);
+        await dbPut(rec);
+      } catch(_) {
+        viewerError('Original file bytes are not cached on this device. Re-upload the exact challan once. The SHA-256 duplicate guard will attach the viewer copy to the existing record — no second logical contribution will be created.');
+        return;
+      }
+    } else {
+      viewerError('Original file bytes are not cached on this device. Re-upload the exact challan once. The SHA-256 duplicate guard will attach the viewer copy to the existing record — no second logical contribution will be created.');
+      return;
+    }
+  }
   var ext=((rec.name||'').split('.').pop()||'').toLowerCase();
   if(ext==='pdf'){
     if(!g.pdfjsLib){viewerError('PDF viewer engine unavailable.');return}
@@ -300,6 +315,14 @@ async function pullCloud(type){
     var rr=remote[i],old=by[String(rr.id)];
     if(!old||String(rr.updatedAt||rr.uploadedAt||'')>=String(old.updatedAt||old.uploadedAt||'')){
       rr.buffer=old&&old.buffer?old.buffer:null;rr.viewerSheets=old&&old.viewerSheets?old.viewerSheets:null;rr.cloudConfirmedAt=rr.cloudConfirmedAt||new Date().toISOString();await dbPut(rr)
+    }
+  }
+  // BACKEND AUTHORITY: Purge any local records that were deleted on the remote backend
+  var remoteIds = new Set(remote.map(function(r){ return String(r.id); }));
+  for(var li=0; li<local.length; li++){
+    var lr = local[li];
+    if(lr && lr.type === type && !remoteIds.has(String(lr.id))){
+      await dbDel(lr.id);
     }
   }
   cloudReady[type]=true;return remote
@@ -563,6 +586,14 @@ async function boot(){
     for(var i=0;i<2;i++){var t=i?'pf':'esic';try{var m=await migratePending(t);if(m.migrated)await pullCloud(t);await collapseExactDuplicates(t);await refresh(t)}catch(e){console.warn('Legacy challan idle migration skipped',t,e)}}
   },6500);
   document.addEventListener('atpl-compliance-dol-synced',function(){refresh('esic');refresh('pf')});
+  if (g.ATPLCentralFileSync && typeof g.ATPLCentralFileSync.subscribe === 'function') {
+    g.ATPLCentralFileSync.subscribe('pf', function() {
+      pullCloud('pf').then(function(){ refresh('pf'); }).catch(function(){});
+    });
+    g.ATPLCentralFileSync.subscribe('esic', function() {
+      pullCloud('esic').then(function(){ refresh('esic'); }).catch(function(){});
+    });
+  }
   setTimeout(function(){ensureNav('esic');ensureNav('pf');patchGo()},800);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

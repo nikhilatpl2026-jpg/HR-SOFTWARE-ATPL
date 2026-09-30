@@ -8,7 +8,8 @@ root.__ATPL_DOL_SUPABASE_V2__=BUILD;
 
 var SUPABASE_URL='https://gsbyzddibdjxekutpkip.supabase.co';
 var PUBLISHABLE_KEY='sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
-var EDGE_URL=SUPABASE_URL+'/functions/v1/dol-api';
+var CENTRAL_BASE = (root.ATPLCentralFileSync && root.ATPLCentralFileSync.apiBase != null) ? root.ATPLCentralFileSync.apiBase : (root.location && /(^|\.)github\.io$/i.test(root.location.hostname) ? 'https://ais-pre-jpq6ydqehx3naxdoorqfao-427004433114.asia-southeast1.run.app' : '');
+var EDGE_URL = CENTRAL_BASE + '/functions/v1/dol-api';
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5';
 var legacy=root.ATPLDOLCloudV4||null;
 if(legacy&&!root.ATPLDOLCloudV4Legacy)root.ATPLDOLCloudV4Legacy=legacy;
