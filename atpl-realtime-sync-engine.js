@@ -137,6 +137,20 @@ window.ATPLRealtimeSync = (function() {
         }).subscribe((status) => {
             if(status === 'SUBSCRIBED') console.log('[ATPL Sync] Connected to global WebSocket backplane.');
         });
+        // 3. FOOLPROOF POLLING FALLBACK (In case Supabase WebSockets are blocked/disabled)
+        let lastActive = -1, lastTomb = -1;
+        setInterval(async () => {
+            try {
+                const { count: aCount } = await supabase.from('hr_files').select('*', { count: 'exact', head: true }).eq('doc_type', 'salary');
+                const { count: tCount } = await supabase.from('hr_files').select('*', { count: 'exact', head: true }).eq('doc_type', 'salary_tombstone');
+                if (lastActive !== -1 && (lastActive !== aCount || lastTomb !== tCount)) {
+                    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
+                        window.ATPLCloudSharedStorageV1.syncNow(true);
+                    }
+                }
+                lastActive = aCount; lastTomb = tCount;
+            } catch(e) {}
+        }, 3000);
     }
 
     return { init };
