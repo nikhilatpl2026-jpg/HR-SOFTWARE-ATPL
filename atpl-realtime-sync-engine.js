@@ -4,8 +4,7 @@
  */
 window.ATPLRealtimeSync = (function() {
     const SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
-    // BRO: PUT YOUR REAL ANON KEY HERE (IT STARTS WITH 'eyJ...')
-    const SUPABASE_ANON_KEY = 'YOUR_REAL_ANON_KEY_HERE';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzYnl6ZGRpYmRqeGVrdXRwa2lwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTk1NzcsImV4cCI6MjEwNTYzNTU3N30.Bz5NyhVtuJm1MjljiDsnW4036E3qZWgqyEWll7ZqzcI';
     
     let supabase = null;
     let globalChannel = null;
