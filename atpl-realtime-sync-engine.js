@@ -1,10 +1,11 @@
 /**
- * ATPL Real-Time Sync Engine (Supabase V3)
+ * ATPL Real-Time Sync Engine (Supabase V4 COMPLETE FIREBASE REPLACEMENT)
  * Architected for permanent, foolproof bi-directional file synchronization.
  */
 window.ATPLRealtimeSync = (function() {
     const SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
+    // BRO: PUT YOUR REAL ANON KEY HERE (IT STARTS WITH 'eyJ...')
+    const SUPABASE_ANON_KEY = 'YOUR_REAL_ANON_KEY_HERE';
     
     let supabase = null;
     let globalChannel = null;
@@ -12,67 +13,99 @@ window.ATPLRealtimeSync = (function() {
     function init() {
         if (!window.supabase) return;
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        setupSubscriptions();
-        hijackMutations();
-    }
-
-    function setupSubscriptions() {
-        globalChannel = supabase.channel('global_file_sync');
         
-        // Listen to Broadcasts for instant cross-browser synchronization
+        // 1. COMPLETELY REPLACE BROKEN FIREBASE WITH SUPABASE STORAGE
+        console.log('[ATPL Sync V4] Firebase quota exhausted. Bypassing and using Supabase Native Storage...');
+        
+        window.ATPLFirebase = {
+            fetchAllSalaryFiles: async function() {
+                try {
+                    const { data, error } = await supabase.from('hr_files').select('*').eq('doc_type', 'salary');
+                    if (error) throw error;
+                    return (data || []).map(d => ({
+                        name: d.filename,
+                        original_b64: d.payload || '',
+                        saved_at: d.uploaded_at,
+                        uploaded_by: 'admin'
+                    }));
+                } catch(e) { console.error('Supabase fetchAllSalaryFiles error', e); return []; }
+            },
+            saveSalaryFile: async function(name, payloadObj, meta) {
+                try {
+                    const b64 = payloadObj.original_b64 || '';
+                    // Delete old version if exists
+                    await supabase.from('hr_files').delete().eq('filename', name).eq('doc_type', 'salary');
+                    // Insert new
+                    await supabase.from('hr_files').insert({ 
+                        filename: name, 
+                        payload: b64, 
+                        doc_type: 'salary',
+                        size: b64.length, 
+                        uploaded_at: new Date().toISOString() 
+                    });
+                    
+                    if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
+                    return true;
+                } catch(e) { console.error('Supabase saveSalaryFile error', e); return false; }
+            },
+            deleteSalaryFile: async function(name, user) {
+                try {
+                    await supabase.from('hr_files').delete().eq('filename', name).eq('doc_type', 'salary');
+                    if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
+                    return true;
+                } catch(e) { console.error('Supabase deleteSalaryFile error', e); return false; }
+            },
+            
+            // Do the same for HR Docs
+            fetchAllHrDocs: async function() {
+                try {
+                    const { data, error } = await supabase.from('hr_files').select('*').eq('doc_type', 'hr_doc');
+                    if (error) throw error;
+                    return (data || []).map(d => JSON.parse(d.payload || '{}'));
+                } catch(e) { console.error('Supabase fetchAllHrDocs error', e); return []; }
+            },
+            saveHrDoc: async function(doc) {
+                try {
+                    await supabase.from('hr_files').delete().eq('filename', doc.id).eq('doc_type', 'hr_doc');
+                    await supabase.from('hr_files').insert({ 
+                        filename: doc.id, 
+                        payload: JSON.stringify(doc), 
+                        doc_type: 'hr_doc',
+                        uploaded_at: new Date().toISOString() 
+                    });
+                    if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
+                    return true;
+                } catch(e) { console.error('Supabase saveHrDoc error', e); return false; }
+            },
+            deleteHrDoc: async function(id, name, user) {
+                try {
+                    await supabase.from('hr_files').delete().eq('filename', id).eq('doc_type', 'hr_doc');
+                    if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
+                    return true;
+                } catch(e) { console.error('Supabase deleteHrDoc error', e); return false; }
+            },
+            // Empty stubs for tombstones since we don't need them anymore
+            subscribeSalaryFiles: function(){ return function(){}; },
+            subscribeTombstones: function(){},
+            subscribeHrDocs: function(){},
+            subscribeHrTombstones: function(){},
+            clearAllSalaryFiles: async function() {
+                await supabase.from('hr_files').delete().eq('doc_type', 'salary');
+                if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
+                return true;
+            }
+        };
+
+        // 2. Setup Broadcast listener
+        globalChannel = supabase.channel('global_file_sync');
         globalChannel.on('broadcast', { event: 'TRIGGER_SYNC' }, payload => {
             console.log('[ATPL Sync] Remote mutation detected, syncing PERFECT state...', payload);
-            
-            // Call the robust native sync function to update IndexedDB and UI properly
             if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
                 window.ATPLCloudSharedStorageV1.syncNow(true);
-            } else if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
-                // Fallback
-                window.ATPLFirebase.fetchAllSalaryFiles().then(fbFiles => {
-                    if (window.ATPLCloudSharedStorageV1 && window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate) {
-                        window.ATPLCloudSharedStorageV1.handleFirebaseFilesUpdate({all:fbFiles, removedNames:[]});
-                    }
-                });
             }
+        }).subscribe((status) => {
+            if(status === 'SUBSCRIBED') console.log('[ATPL Sync] Connected to global WebSocket backplane.');
         });
-
-        globalChannel.subscribe();
-    }
-
-    // Auto-patch ALL UI mutations so users don't have to change their code!
-    function hijackMutations() {
-        setInterval(() => {
-            if (window.ATPLFirebase && !window.ATPLFirebase.__isHijackedV3) {
-                window.ATPLFirebase.__isHijackedV3 = true;
-                console.log('[ATPL Sync] Automatically wiring UI buttons to Supabase Realtime Trigger...');
-                
-                const methodsToHijack = ['deleteSalaryFile', 'deleteHrDoc', 'saveSalaryFile', 'saveHrDoc', 'clearAllSalaryFiles'];
-                
-                methodsToHijack.forEach(method => {
-                    const orig = window.ATPLFirebase[method];
-                    if (orig) {
-                        window.ATPLFirebase[method] = async function() {
-                            // 1. Call the original Firebase function
-                            const result = await orig.apply(window.ATPLFirebase, arguments);
-                            
-                            // 2. Broadcast to all other browsers to run syncNow(true)
-                            if (globalChannel) {
-                                globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: { action: method }});
-                            }
-                            
-                            // 3. Force local sync too just to be safe and update IndexedDB correctly
-                            setTimeout(() => {
-                                if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
-                                    window.ATPLCloudSharedStorageV1.syncNow(true);
-                                }
-                            }, 300);
-                            
-                            return result;
-                        };
-                    }
-                });
-            }
-        }, 1000);
     }
 
     return { init };
