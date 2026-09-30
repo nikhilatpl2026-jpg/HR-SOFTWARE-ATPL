@@ -158,7 +158,7 @@ async function startRealtime(){
   if(rtChannel)return true;if(rtStarting)return rtStarting;
   rtStarting=(async function(){
     var lib=await loadRealtimeLib();
-    rtClient=lib.createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+    rtClient=root.__ATPL_SHARED_SUPABASE_CLIENT||(root.__ATPL_SHARED_SUPABASE_CLIENT=lib.createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'sb-atpl-shared-auth-v1'}}));
     rtChannel=rtClient.channel('atpl-dol-sync-v2')
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'dol_sync_events'},function(payload){
         var type=String(payload&&payload.new&&payload.new.challan_type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;

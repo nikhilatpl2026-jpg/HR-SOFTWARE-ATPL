@@ -33,8 +33,7 @@
     }
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
-    // For GitHub Pages or external domains, default to deployed Cloud Run backend
-    return 'https://ais-pre-jiolbcc7lq5ecyqpk3wi6s-318187434838.asia-southeast1.run.app';
+    return ''; // Static hosts like GitHub Pages or preview iframes use relative or direct Supabase
   }
 
   var API_BASE = detectBackendUrl();
@@ -153,9 +152,10 @@
       setTimeout(() => { this.reconcileAll(); }, 300);
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
+          if (this.backendReachable === false && Date.now() - this.lastSyncTime < 15000) return;
           this.reconcileAll();
         }
-      }, 4000);
+      }, 5000);
     },
 
     // Bind window visibility and online events for reconnect recovery
@@ -684,25 +684,31 @@
         var serverFiles = null;
         var serverTombs = {};
 
-        // 1. Fetch from central Express backend
-        try {
-          var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
-            cache: force ? 'no-cache' : 'default',
-            headers: { 'Accept': 'application/json' }
-          });
-          if (res.ok) {
-            var data = await res.json();
-            if (data.ok && Array.isArray(data.files)) {
-              serverFiles = data.files;
-              serverTombs = data.tombstones || {};
-              if (data.version) this.serverStateVersion = data.version;
+        // 1. Fetch from central Express backend (if reachable)
+        if (this.backendReachable !== false) {
+          try {
+            var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
+              cache: force ? 'no-cache' : 'default',
+              headers: { 'Accept': 'application/json' }
+            });
+            if (res.ok) {
+              var data = await res.json();
+              if (data.ok && Array.isArray(data.files)) {
+                serverFiles = data.files;
+                serverTombs = data.tombstones || {};
+                if (data.version) this.serverStateVersion = data.version;
+                this.backendReachable = true;
+              }
+            } else {
+              this.backendReachable = false;
             }
+          } catch (netErr) {
+            // Static host (GitHub Pages) or offline — silently fall back to Supabase/Hybrid
+            this.backendReachable = false;
           }
-        } catch (netErr) {
-          console.warn('[ATPL FileSync] Backend fetch notice:', netErr.message);
         }
 
-        // 2. Dual fallback: Firebase Firestore
+        // 2. Dual fallback: HybridEngine (Firestore + Supabase)
         if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
@@ -719,9 +725,7 @@
                 };
               });
             }
-          } catch (fbErr) {
-            console.warn('[ATPL FileSync] Firestore fetch notice:', fbErr.message);
-          }
+          } catch (_) {}
         }
 
         if (!serverFiles) return;

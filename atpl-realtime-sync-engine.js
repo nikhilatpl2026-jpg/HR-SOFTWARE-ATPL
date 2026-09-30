@@ -24,11 +24,16 @@
 
   function getSupabase() {
     if (supabaseClient) return supabaseClient;
+    if (window.__ATPL_SHARED_SUPABASE_CLIENT) {
+      supabaseClient = window.__ATPL_SHARED_SUPABASE_CLIENT;
+      return supabaseClient;
+    }
     if (window.supabase && typeof window.supabase.createClient === 'function') {
       try {
         supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: { persistSession: false, autoRefreshToken: false }
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'sb-atpl-shared-auth-v1' }
         });
+        window.__ATPL_SHARED_SUPABASE_CLIENT = supabaseClient;
       } catch (e) {
         console.warn('[ATPL Sync] Supabase init warning:', e.message);
       }
@@ -208,8 +213,8 @@
     fetchAllSalaryFiles: async function() {
       var fileMap = {};
 
-      // 1. Fetch from Firestore (Primary source of truth)
-      if (nativeFb && typeof nativeFb.fetchAllSalaryFiles === 'function') {
+      // 1. Fetch from Firestore (Primary source of truth if quota not exhausted)
+      if (!window.__atplFirebaseQuotaExhausted && nativeFb && typeof nativeFb.fetchAllSalaryFiles === 'function') {
         try {
           var fbFiles = await nativeFb.fetchAllSalaryFiles();
           if (Array.isArray(fbFiles)) {
@@ -224,9 +229,34 @@
         }
       }
 
-      // 2. Fetch tombstones from Firestore
+      // 2. Fetch from Supabase PostgreSQL (Dual Authority)
+      var sb = getSupabase();
+      if (sb) {
+        try {
+          var { data: sbData } = await sb.from('hr_files').select('filename, payload, uploaded_at').eq('doc_type', 'salary');
+          if (Array.isArray(sbData)) {
+            sbData.forEach(function(d) {
+              if (d && d.filename) {
+                var k = String(d.filename).toLowerCase();
+                if (!fileMap[k]) {
+                  fileMap[k] = {
+                    name: d.filename,
+                    original_b64: d.payload,
+                    saved_at: d.uploaded_at,
+                    uploaded_by: 'admin'
+                  };
+                }
+              }
+            });
+          }
+        } catch (e) {
+          console.warn('[ATPL Sync] Supabase fetch warning:', e.message);
+        }
+      }
+
+      // 3. Fetch tombstones from Firestore & Supabase
       var remoteTombs = {};
-      if (nativeFb && typeof nativeFb.fetchAllTombstones === 'function') {
+      if (!window.__atplFirebaseQuotaExhausted && nativeFb && typeof nativeFb.fetchAllTombstones === 'function') {
         try {
           var fbTombs = await nativeFb.fetchAllTombstones();
           if (Array.isArray(fbTombs)) {
@@ -236,15 +266,25 @@
           }
         } catch (_) {}
       }
+      if (sb) {
+        try {
+          var { data: tombsData } = await sb.from('hr_files').select('filename, uploaded_at').eq('doc_type', 'salary_tombstone');
+          if (Array.isArray(tombsData)) {
+            tombsData.forEach(function(d) {
+              if (d && d.filename) remoteTombs[String(d.filename).toLowerCase()] = d.uploaded_at || true;
+            });
+          }
+        } catch (_) {}
+      }
 
-      // 3. Filter out any tombstoned files (Local + Remote)
+      // 4. Filter out any tombstoned files (Local + Remote)
       var localTombs = {};
       try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch (_) {}
       var allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '0') || 0;
       var result = [];
 
       Object.keys(fileMap).forEach(function(k) {
-        if (remoteTombs[k]) return; // Tombstoned in Firestore!
+        if (remoteTombs[k]) return; // Tombstoned in Firestore or Supabase!
         var f = fileMap[k];
         var fileTime = Date.parse(f.saved_at || f.uploaded_at || '0') || 0;
         if (allClearedAt && allClearedAt >= fileTime) return;
