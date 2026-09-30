@@ -192,7 +192,7 @@ function HI(n,e){
         if(typeof unsub==="function")try{unsub()}catch(_){}
         return;
       }
-      console.error("[ATPL-Firebase] Listener error:",r);
+      console.warn("[ATPL-Firebase] Listener notice:",r);
       e&&e(r);
     });
     return unsub;
@@ -368,7 +368,7 @@ function subscribeHrDocsFb(n,e){
         if(typeof unsub==="function")try{unsub()}catch(_){}
         return;
       }
-      console.error("[ATPL-Firebase-HR] Listener error:",r);
+      console.warn("[ATPL-Firebase-HR] Listener notice:",r);
       if(e)e(r);
     });
     return unsub;
