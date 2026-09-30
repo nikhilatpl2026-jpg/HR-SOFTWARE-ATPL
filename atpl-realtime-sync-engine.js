@@ -13,7 +13,6 @@ window.ATPLRealtimeSync = (function() {
         if (!window.supabase) return;
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // 1. COMPLETELY REPLACE BROKEN FIREBASE WITH SUPABASE STORAGE
         console.log('[ATPL Sync V4] Firebase quota exhausted. Bypassing and using Supabase Native Storage...');
         
         window.ATPLFirebase = {
@@ -26,20 +25,19 @@ window.ATPLRealtimeSync = (function() {
                         original_b64: d.payload || '',
                         saved_at: d.uploaded_at,
                         uploaded_by: 'admin',
-                        is_gzip: true // Required bypass for legacy ERP handleFirebaseFilesUpdate check
+                        is_gzip: true // Bypass for legacy ERP handleFirebaseFilesUpdate check
                     }));
                 } catch(e) { console.error('Supabase fetchAllSalaryFiles error', e); return []; }
             },
             decodeDocPayload: async function(doc) {
-                // Mock decoder to directly inject the b64 into the legacy parser
                 return { original_b64: doc.original_b64 };
             },
             saveSalaryFile: async function(name, payloadObj, meta) {
                 try {
                     const b64 = payloadObj.original_b64 || '';
-                    // Delete old version if exists
-                    await supabase.from('hr_files').delete().eq('filename', name).eq('doc_type', 'salary');
-                    // Insert new
+                    // First completely remove any existing active or tombstone row
+                    await supabase.from('hr_files').delete().eq('filename', name);
+                    // Insert new active file
                     await supabase.from('hr_files').insert({ 
                         filename: name, 
                         payload: b64, 
@@ -54,10 +52,22 @@ window.ATPLRealtimeSync = (function() {
             },
             deleteSalaryFile: async function(name, user) {
                 try {
-                    await supabase.from('hr_files').delete().eq('filename', name).eq('doc_type', 'salary');
+                    // Soft delete to create a tombstone so Browser B knows to delete it locally
+                    await supabase.from('hr_files').update({ doc_type: 'salary_tombstone', payload: '' }).eq('filename', name).eq('doc_type', 'salary');
                     if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
                     return true;
                 } catch(e) { console.error('Supabase deleteSalaryFile error', e); return false; }
+            },
+            fetchAllTombstones: async function() {
+                try {
+                    // Fetch all soft-deleted files so other browsers know what to remove
+                    const { data, error } = await supabase.from('hr_files').select('filename, uploaded_at').eq('doc_type', 'salary_tombstone');
+                    if (error) throw error;
+                    return (data || []).map(d => ({
+                        name: d.filename,
+                        deleted_at: new Date().toISOString()
+                    }));
+                } catch(e) { console.error('Supabase fetchTombstones error', e); return []; }
             },
             
             // Do the same for HR Docs
@@ -67,7 +77,7 @@ window.ATPLRealtimeSync = (function() {
                     if (error) throw error;
                     return (data || []).map(d => {
                         const parsed = JSON.parse(d.payload || '{}');
-                        parsed.is_gzip = true; // Bypass flag
+                        parsed.is_gzip = true;
                         return parsed;
                     });
                 } catch(e) { console.error('Supabase fetchAllHrDocs error', e); return []; }
@@ -77,7 +87,7 @@ window.ATPLRealtimeSync = (function() {
             },
             saveHrDoc: async function(doc) {
                 try {
-                    await supabase.from('hr_files').delete().eq('filename', doc.id).eq('doc_type', 'hr_doc');
+                    await supabase.from('hr_files').delete().eq('filename', doc.id);
                     await supabase.from('hr_files').insert({ 
                         filename: doc.id, 
                         payload: JSON.stringify(doc), 
@@ -90,18 +100,28 @@ window.ATPLRealtimeSync = (function() {
             },
             deleteHrDoc: async function(id, name, user) {
                 try {
-                    await supabase.from('hr_files').delete().eq('filename', id).eq('doc_type', 'hr_doc');
+                    await supabase.from('hr_files').update({ doc_type: 'hr_doc_tombstone', payload: '' }).eq('filename', id).eq('doc_type', 'hr_doc');
                     if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
                     return true;
                 } catch(e) { console.error('Supabase deleteHrDoc error', e); return false; }
             },
-            // Empty stubs for tombstones since we don't need them anymore
+            fetchAllHrTombstones: async function() {
+                try {
+                    const { data, error } = await supabase.from('hr_files').select('filename').eq('doc_type', 'hr_doc_tombstone');
+                    if (error) throw error;
+                    return (data || []).map(d => ({
+                        id: d.filename,
+                        deleted_at: new Date().toISOString()
+                    }));
+                } catch(e) { console.error('Supabase fetchHrTombstones error', e); return []; }
+            },
             subscribeSalaryFiles: function(){ return function(){}; },
             subscribeTombstones: function(){},
             subscribeHrDocs: function(){},
             subscribeHrTombstones: function(){},
             clearAllSalaryFiles: async function() {
-                await supabase.from('hr_files').delete().eq('doc_type', 'salary');
+                // Bulk soft delete
+                await supabase.from('hr_files').update({ doc_type: 'salary_tombstone', payload: '' }).eq('doc_type', 'salary');
                 if (globalChannel) globalChannel.send({ type: 'broadcast', event: 'TRIGGER_SYNC', payload: {} });
                 return true;
             }
