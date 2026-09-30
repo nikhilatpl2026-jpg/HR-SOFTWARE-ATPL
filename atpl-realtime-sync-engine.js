@@ -25,9 +25,14 @@ window.ATPLRealtimeSync = (function() {
                         name: d.filename,
                         original_b64: d.payload || '',
                         saved_at: d.uploaded_at,
-                        uploaded_by: 'admin'
+                        uploaded_by: 'admin',
+                        is_gzip: true // Required bypass for legacy ERP handleFirebaseFilesUpdate check
                     }));
                 } catch(e) { console.error('Supabase fetchAllSalaryFiles error', e); return []; }
+            },
+            decodeDocPayload: async function(doc) {
+                // Mock decoder to directly inject the b64 into the legacy parser
+                return { original_b64: doc.original_b64 };
             },
             saveSalaryFile: async function(name, payloadObj, meta) {
                 try {
@@ -60,8 +65,15 @@ window.ATPLRealtimeSync = (function() {
                 try {
                     const { data, error } = await supabase.from('hr_files').select('*').eq('doc_type', 'hr_doc');
                     if (error) throw error;
-                    return (data || []).map(d => JSON.parse(d.payload || '{}'));
+                    return (data || []).map(d => {
+                        const parsed = JSON.parse(d.payload || '{}');
+                        parsed.is_gzip = true; // Bypass flag
+                        return parsed;
+                    });
                 } catch(e) { console.error('Supabase fetchAllHrDocs error', e); return []; }
+            },
+            decodeHrPayload: async function(doc) {
+                return doc;
             },
             saveHrDoc: async function(doc) {
                 try {
