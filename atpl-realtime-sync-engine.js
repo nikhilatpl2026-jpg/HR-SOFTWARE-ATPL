@@ -137,18 +137,18 @@ window.ATPLRealtimeSync = (function() {
         }).subscribe((status) => {
             if(status === 'SUBSCRIBED') console.log('[ATPL Sync] Connected to global WebSocket backplane.');
         });
-        // 3. FOOLPROOF POLLING FALLBACK (In case Supabase WebSockets are blocked/disabled)
-        let lastActive = -1, lastTomb = -1;
+                // 3. FOOLPROOF POLLING FALLBACK (In case Supabase WebSockets are blocked/disabled)
+        let lastKnownTime = -1;
         setInterval(async () => {
             try {
-                const { count: aCount } = await supabase.from('hr_files').select('*', { count: 'exact', head: true }).eq('doc_type', 'salary');
-                const { count: tCount } = await supabase.from('hr_files').select('*', { count: 'exact', head: true }).eq('doc_type', 'salary_tombstone');
-                if (lastActive !== -1 && (lastActive !== aCount || lastTomb !== tCount)) {
+                const { data } = await supabase.from('hr_files').select('uploaded_at').order('uploaded_at', { ascending: false }).limit(1);
+                const currentLatest = data && data.length ? data[0].uploaded_at : null;
+                if (lastKnownTime !== -1 && lastKnownTime !== currentLatest) {
                     if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
                         window.ATPLCloudSharedStorageV1.syncNow(true);
                     }
                 }
-                lastActive = aCount; lastTomb = tCount;
+                lastKnownTime = currentLatest;
             } catch(e) {}
         }, 3000);
     }
