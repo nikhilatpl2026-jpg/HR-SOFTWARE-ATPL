@@ -137,20 +137,7 @@ window.ATPLRealtimeSync = (function() {
         }).subscribe((status) => {
             if(status === 'SUBSCRIBED') console.log('[ATPL Sync] Connected to global WebSocket backplane.');
         });
-                // 3. FOOLPROOF POLLING FALLBACK (In case Supabase WebSockets are blocked/disabled)
-        let lastKnownTime = -1;
-        setInterval(async () => {
-            try {
-                const { data } = await supabase.from('hr_files').select('uploaded_at').order('uploaded_at', { ascending: false }).limit(1);
-                const currentLatest = data && data.length ? data[0].uploaded_at : null;
-                if (lastKnownTime !== -1 && lastKnownTime !== currentLatest) {
-                    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
-                        window.ATPLCloudSharedStorageV1.syncNow(true);
-                    }
-                }
-                lastKnownTime = currentLatest;
-            } catch(e) {}
-        }, 3000);
+                        // 3. Removed heavy polling to stop database overload
     }
 
     return { init };
