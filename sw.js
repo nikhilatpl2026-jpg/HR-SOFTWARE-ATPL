@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v3-firebase-realtime';
+const CACHE_NAME = 'atpl-cache-v5-supabase-final-force-clear';
 const ASSETS = [
   './',
   './index.html',
