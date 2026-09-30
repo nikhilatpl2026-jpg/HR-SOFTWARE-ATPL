@@ -3607,6 +3607,17 @@ function rmFile(i) {
     var lbl = document.getElementById('storageLbl');
     if (lbl) lbl.textContent = FILES.length + ' files saved';
   });
+  if (window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
+    window.ATPLFirebase.deleteSalaryFile(name, 'admin').catch(function(){});
+  }
+  if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.deleteSalary === 'function') {
+    try { window.ATPLCloudSharedStorageV1.deleteSalary(name); } catch(_) {}
+  }
+  try {
+    var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+    tombs[String(name).toLowerCase()] = new Date().toISOString();
+    localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+  } catch(_) {}
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
 }
 
