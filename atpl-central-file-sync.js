@@ -13,7 +13,7 @@
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
  *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync (1–3 second cross-browser sync).
  *  3. Permanent Delete Guarantee: Once deleted on backend, no client
- *     cache or offline session can resurrect it.
+ *     cache or offline session can resurrect it. (UUID based)
  *  4. Controlled Bulk Upload Queue: Concurrency limit (3), per-file
  *     status tracking, SHA-256 deduplication.
  *  5. Reconnect Reconciliation: Authoritative fetch after reconnect,
@@ -277,7 +277,7 @@
             window.ATPLFirebase.subscribeTombstones((tombs) => {
               if (Array.isArray(tombs) && tombs.length > 0) {
                 tombs.forEach((t) => {
-                  if (t && t.name) this.handleRemoteFileDeleted({ module: 'salary', name: t.name });
+                  if (t && t.name) this.handleRemoteFileDeleted({ module: 'salary', name: t.name, id: t.id });
                 });
               }
             });
@@ -311,7 +311,7 @@
               var wb = window.parseWB(rawBuf);
               var sheets = window.wbToSheets(wb);
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
-              var item = { name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString() };
+              var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString() };
               window.FILES.push(item);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
               if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
@@ -334,25 +334,41 @@
       }
     },
 
-    // Handle remote file deleted event (PERMANENT DELETE)
+    // Handle remote file deleted event (PERMANENT DELETE VIA UUID & NAME)
     handleRemoteFileDeleted: function(raw) {
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         var info = msg.data || msg;
-        var targetName = String(info.name || info.id || '').toLowerCase();
-        if (!targetName) return;
-        console.log('[ATPL FileSync] Remote file deleted event received:', targetName, 'Module:', info.module);
+        var targetName = String(info.name || '').toLowerCase();
+        var targetId = String(info.id || '').toLowerCase();
+        if (!targetName && !targetId) return;
+        
+        console.log('[ATPL FileSync] Remote file deleted event received:', targetName || targetId, 'Module:', info.module);
         if (msg.version) this.serverStateVersion = msg.version;
 
-        if (info.module === 'salary' || !info.module || (window.FILES || []).some(function(x) { return x && String(x.name).toLowerCase() === targetName; })) {
-          window.FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== targetName; });
+        if (info.module === 'salary' || !info.module) {
+          // Filter out by either ID or Name to guarantee deletion
+          window.FILES = (window.FILES || []).filter(function(x) { 
+            var xName = x && x.name ? String(x.name).toLowerCase() : '';
+            var xId = x && x.id ? String(x.id).toLowerCase() : '';
+            var matchesName = targetName && xName === targetName;
+            var matchesId = targetId && xId === targetId;
+            return !(matchesName || matchesId);
+          });
+          
           if (typeof FILES !== 'undefined') FILES = window.FILES;
-          if (typeof deleteFromDB === 'function') deleteFromDB(info.name || info.id);
+          if (typeof deleteFromDB === 'function') {
+            if (info.name) deleteFromDB(info.name);
+            if (info.id) deleteFromDB(info.id);
+          }
+          
           try {
             var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
-            tombs[targetName] = new Date().toISOString();
+            if (targetName) tombs[targetName] = new Date().toISOString();
+            if (targetId) tombs[targetId] = new Date().toISOString();
             localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
           } catch (_) {}
+          
           if (typeof renderFiles === 'function') renderFiles();
           if (typeof renderSheets === 'function') renderSheets();
           if (typeof updStats === 'function') updStats();
@@ -434,7 +450,7 @@
     listFiles: async function(module = 'all', force = false) {
       var url = (this.apiBase || '') + '/api/sync/files?module=' + encodeURIComponent(module) + '&summary=0';
       var res = await fetch(url, {
-        headers: { 'Accept': 'application/json' },
+        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
         cache: force ? 'no-cache' : 'default'
       });
       if (!res.ok) throw new Error('Failed to list files from backend (' + res.status + ')');
@@ -512,7 +528,7 @@
         // 2. Also Mirror to Google Firebase Firestore for global 100% uptime (if quota allows)
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
-            await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name }, { name: name, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
+            await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
           } catch (e) {
             if (/quota|resource-exhausted/i.test(e.message || '')) {
               window.__atplFirebaseQuotaExhausted = true;
@@ -521,15 +537,15 @@
           }
         }
 
-        // 3. Update local state
+        // 3. Update local state with UUID tracking
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
             window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
-            window.FILES.push({ name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
+            window.FILES.push({ id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
             if (typeof FILES !== 'undefined') FILES = window.FILES;
-            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf);
+            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); // Keep legacy call for safety
           } catch (_) {}
         }
 
@@ -608,7 +624,11 @@
       // 3. Remove immediately from local state & IndexedDB
       if (module === 'salary') {
         var targetName = String(idOrName).toLowerCase();
-        window.FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== targetName; });
+        window.FILES = (window.FILES || []).filter(function(x) { 
+            var xName = x && x.name ? String(x.name).toLowerCase() : '';
+            var xId = x && x.id ? String(x.id).toLowerCase() : '';
+            return xName !== targetName && xId !== targetName; 
+        });
         if (typeof FILES !== 'undefined') FILES = window.FILES;
         if (typeof deleteFromDB === 'function') deleteFromDB(idOrName);
         try {
@@ -689,7 +709,7 @@
           try {
             var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
               cache: force ? 'no-cache' : 'default',
-              headers: { 'Accept': 'application/json' }
+              headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
             });
             if (res.ok) {
               var data = await res.json();
@@ -730,27 +750,37 @@
 
         if (!serverFiles) return;
 
-        // Apply BACKEND AUTHORITY to salary files
+        // Apply STRICT BACKEND AUTHORITY to salary files
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
-        var serverNameMap = {};
+        var serverMap = {};
         salaryServerFiles.forEach(function(f) {
-          if (f && f.name) serverNameMap[String(f.name).toLowerCase()] = f;
+          if (f && f.name) serverMap[String(f.name).toLowerCase()] = f;
+          if (f && f.id) serverMap[String(f.id).toLowerCase()] = f;
         });
 
         var curFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
         var dirty = false;
         var keptFiles = [];
 
-        // Check for deleted files (backend does not have it, or it is tombstoned)
+        // Check for deleted files (if backend does not have the ID/name, kill it locally)
         for (var i = 0; i < curFiles.length; i++) {
           var lf = curFiles[i];
-          if (!lf || !lf.name) continue;
-          var lk = String(lf.name).toLowerCase();
-          var tomb = serverTombs[lk] || serverTombs[lf.id];
-          if (!serverNameMap[lk] || tomb) {
-            console.log('[ATPL FileSync] Authoritative delete enforced for:', lf.name);
+          if (!lf || (!lf.name && !lf.id)) continue;
+          
+          var lkName = lf.name ? String(lf.name).toLowerCase() : '';
+          var lkId = lf.id ? String(lf.id).toLowerCase() : '';
+          
+          var tombName = serverTombs[lkName];
+          var tombId = serverTombs[lkId];
+          
+          // STRICT RULE: If it's not in the server list OR it's in a tombstone, it MUST die locally.
+          if ((!serverMap[lkName] && !serverMap[lkId]) || tombName || tombId) {
+            console.log('[ATPL FileSync] Authoritative delete enforced for:', lf.name || lf.id);
             dirty = true;
-            if (typeof deleteFromDB === 'function') deleteFromDB(lf.name);
+            if (typeof deleteFromDB === 'function') {
+              if (lf.name) deleteFromDB(lf.name);
+              if (lf.id) deleteFromDB(lf.id);
+            }
           } else {
             keptFiles.push(lf);
           }
@@ -761,9 +791,13 @@
 
         // Add or update missing files from backend
         for (var sf of salaryServerFiles) {
-          if (!sf || !sf.name) continue;
+          if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
-          var cur = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(sName).toLowerCase(); });
+          var cur = (window.FILES || []).find(function(x) { 
+              return (x && x.id && sf.id && String(x.id).toLowerCase() === String(sf.id).toLowerCase()) || 
+                     (x && x.name && sName && String(x.name).toLowerCase() === String(sName).toLowerCase()); 
+          });
+          
           if (cur && cur.savedAt === (sf.created_at || sf.saved) && cur.buf) continue;
 
           var rawBuf = null;
@@ -782,6 +816,7 @@
               var sheets = window.wbToSheets(wb);
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(sName).toLowerCase(); });
               var fItem = {
+                id: sf.id,
                 name: sName,
                 wb: wb,
                 sheets: sheets,
@@ -795,7 +830,7 @@
               if (window.DB) {
                 try {
                   var tx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
-                  tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, buf: rawBuf, saved: fItem.savedAt });
+                  tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: fItem.savedAt });
                 } catch (_) {}
               }
             } catch (err) {
