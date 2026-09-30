@@ -245,6 +245,10 @@
     // Connect Firebase Firestore Real-Time Watchers (Double Redundancy)
     connectFirebase: function() {
       if (typeof window === 'undefined') return;
+      if (window.__atplFirebaseQuotaExhausted) {
+        console.log('[ATPL FileSync] Firestore quota exhausted. Relying 100% on Central Express Backend.');
+        return;
+      }
       var setupListeners = () => {
         if (!window.ATPLFirebase) return;
         if (typeof window.ATPLFirebase.subscribeSalaryFiles === 'function') {

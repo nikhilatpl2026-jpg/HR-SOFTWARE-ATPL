@@ -3287,7 +3287,7 @@ setInterval(function(){
 // ════════════════════════════════════════════════════════════════════
 // ATPL LIVE FIREBASE REALTIME LISTENER (Cross-Browser, Cross-Device, Zero-Reload)
 // ════════════════════════════════════════════════════════════════════
-if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === 'function') {
+if (!window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === 'function') {
   try {
     window.ATPLFirebase.subscribeSalaryFiles(async function(update) {
       if (!update) return;
@@ -3365,7 +3365,8 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
       }
     });
 
-    window.ATPLFirebase.subscribeTombstones(function(tombs) {
+    if (!window.__atplFirebaseQuotaExhausted && typeof window.ATPLFirebase.subscribeTombstones === 'function') {
+      window.ATPLFirebase.subscribeTombstones(function(tombs) {
       if (!Array.isArray(tombs) || tombs.length === 0) return;
       var dirty = false;
       tombs.forEach(function(t) {
@@ -3388,9 +3389,10 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
         if (typeof window.updateRealtimeCloudBadge === 'function') window.updateRealtimeCloudBadge(window.FILES.length, 'ok', '🔥 Firebase Live');
       }
     });
+    }
 
     // Realtime HR Documents Subscription
-    if (typeof window.ATPLFirebase.subscribeHrDocs === 'function') {
+    if (!window.__atplFirebaseQuotaExhausted && typeof window.ATPLFirebase.subscribeHrDocs === 'function') {
       window.ATPLFirebase.subscribeHrDocs(async function(update) {
         if (!update) return;
         try {
@@ -3405,7 +3407,7 @@ if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeSalaryFiles === '
     }
 
     // Realtime HR Tombstones Subscription
-    if (typeof window.ATPLFirebase.subscribeHrTombstones === 'function') {
+    if (!window.__atplFirebaseQuotaExhausted && typeof window.ATPLFirebase.subscribeHrTombstones === 'function') {
       window.ATPLFirebase.subscribeHrTombstones(async function(tombs) {
         if (!Array.isArray(tombs) || tombs.length === 0) return;
         try {
