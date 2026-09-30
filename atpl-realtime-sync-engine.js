@@ -9,6 +9,7 @@
  *  2. Supabase PostgreSQL is DUAL-AUTHORITY backup & instant WebSocket notifier.
  *  3. Bidirectional convergence: Upload in Browser 1 -> instantly reflected in Browser 2.
  *  4. Permanent Anti-Resurrection: Deleted files are tombstoned in Firestore + Supabase.
+ *  5. Auto-sync polling pulse (3.5s): Guarantees convergence even across NAT/firewalls.
  * ───────────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -40,7 +41,9 @@
     if (!sb || realtimeChannel) return;
 
     try {
-      realtimeChannel = sb.channel('atpl-cross-browser-sync');
+      realtimeChannel = sb.channel('atpl-cross-browser-sync', {
+        config: { broadcast: { self: false } }
+      });
       realtimeChannel.on('broadcast', { event: 'SYNC_UPDATE' }, function(payload) {
         console.log('[ATPL Sync] Received cross-browser broadcast:', payload);
         triggerLocalRefresh();
@@ -66,10 +69,10 @@
     if (isRefreshing) return;
     isRefreshing = true;
     try {
-      if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
-        await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
-      } else if (typeof window.triggerManualCrossBrowserSync === 'function') {
+      if (typeof window.triggerManualCrossBrowserSync === 'function') {
         await window.triggerManualCrossBrowserSync();
+      } else if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
+        await window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
       }
     } catch (_) {}
     finally {
@@ -115,7 +118,7 @@
 
       // 2. Save to Supabase PostgreSQL (Double Redundancy)
       var sb = getSupabase();
-      if (sb) {
+      if (sb && b64) {
         try {
           await sb.from('hr_files').delete().eq('filename', name);
           var insRes = await sb.from('hr_files').insert({
@@ -229,7 +232,7 @@
             data.forEach(function(d) {
               if (d && d.filename) {
                 var k = String(d.filename).toLowerCase();
-                if (!fileMap[k] || (d.uploaded_at && Date.parse(d.uploaded_at) > (Date.parse(fileMap[k].saved_at) || 0))) {
+                if (!fileMap[k]) {
                   fileMap[k] = {
                     name: d.filename,
                     original_b64: d.payload || '',
@@ -237,6 +240,9 @@
                     uploaded_by: 'admin',
                     is_gzip: true
                   };
+                } else if (d.payload) {
+                  // Direct payload available from Supabase! Attach it
+                  fileMap[k].original_b64 = d.payload;
                 }
               }
             });
@@ -268,12 +274,15 @@
     // ── Decode Doc Payload ──
     decodeDocPayload: async function(doc) {
       if (doc && doc.original_b64) {
-        return { original_b64: doc.original_b64 };
+        return { original_b64: doc.original_b64, name: doc.name };
       }
       if (nativeFb && typeof nativeFb.decodeDocPayload === 'function') {
-        return nativeFb.decodeDocPayload(doc);
+        try {
+          var res = await nativeFb.decodeDocPayload(doc);
+          if (res) return res;
+        } catch (_) {}
       }
-      return { original_b64: '' };
+      return { original_b64: (doc && doc.payload) || '', name: doc && doc.name };
     },
 
     // ── Fetch Tombstones ──
@@ -387,15 +396,40 @@
     }
   }
 
-  // Periodic heartbeat reconciliation (every 6 seconds if tab is active)
+  // Automatic convergence: poll every 3.5s when tab is active to ensure instant sync
   if (typeof setInterval !== 'undefined') {
-    setInterval(function() {
+    setInterval(async function() {
       if (typeof document !== 'undefined' && !document.hidden) {
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
-          window.ATPLCloudSharedStorageV1.forceSyncAllFiles().catch(function(){});
-        }
+        try {
+          var files = await HybridEngine.fetchAllSalaryFiles();
+          var curCount = (window.FILES || []).length;
+          if (Array.isArray(files) && files.length !== curCount) {
+            console.log('[ATPL Sync] Count mismatch (Remote:', files.length, 'Local:', curCount, '). Auto-converging...');
+            if (typeof window.triggerManualCrossBrowserSync === 'function') {
+              window.triggerManualCrossBrowserSync();
+            }
+          }
+        } catch (_) {}
       }
-    }, 6000);
+    }, 3500);
+  }
+
+  // Proactive instant fetch on boot
+  if (typeof window !== 'undefined') {
+    var checkAndSync = function() {
+      setTimeout(function() {
+        if (typeof window.triggerManualCrossBrowserSync === 'function') {
+          window.triggerManualCrossBrowserSync();
+        } else if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === 'function') {
+          window.ATPLCloudSharedStorageV1.forceSyncAllFiles();
+        }
+      }, 500);
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', checkAndSync, { once: true });
+    } else {
+      checkAndSync();
+    }
   }
 
   console.log('[ATPL Dual Cloud Sync Engine] Fully mounted: Firebase Firestore + Supabase Realtime active.');
