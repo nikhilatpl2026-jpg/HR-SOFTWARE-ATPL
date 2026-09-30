@@ -1,5 +1,5 @@
 /**
- * ATPL Central File Sync System (v2026.10)
+ * ATPL Central File Sync System (v2026.10-authoritative)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
  * engine for all ERP file modules:
@@ -11,13 +11,13 @@
  *
  * Architecture Principles:
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
- *  2. Real-time push via SSE events (3–5 second cross-browser sync).
+ *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync (1–3 second cross-browser sync).
  *  3. Permanent Delete Guarantee: Once deleted on backend, no client
  *     cache or offline session can resurrect it.
  *  4. Controlled Bulk Upload Queue: Concurrency limit (3), per-file
  *     status tracking, SHA-256 deduplication.
  *  5. Reconnect Reconciliation: Authoritative fetch after reconnect,
- *     login, window focus, or page refresh.
+ *     login, window focus, or page refresh. Backend always wins.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -28,16 +28,13 @@
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
-    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0) {
-      return ''; // Local Express server
-    }
-    // On static hosting (like GitHub Pages), there is no Node SSE server; return null to use Cloud DBs
-    if (origin.indexOf('github.io') >= 0 || origin.indexOf('file:') >= 0) {
-      return null;
+    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
+      return ''; // Local Express server or direct Cloud Run
     }
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
-    return null;
+    // For GitHub Pages or external domains, default to deployed Cloud Run backend
+    return 'https://ais-pre-jiolbcc7lq5ecyqpk3wi6s-318187434838.asia-southeast1.run.app';
   }
 
   var API_BASE = detectBackendUrl();
@@ -47,7 +44,6 @@
     try {
       var buffer;
       if (typeof data === 'string') {
-        // Check if data is Base64
         if (data.indexOf('base64,') >= 0) {
           data = data.split('base64,')[1];
         }
@@ -68,7 +64,6 @@
       var hashArray = Array.from(new Uint8Array(digest));
       return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
     } catch (e) {
-      // Fallback simple hash if SubtleCrypto fails
       var str = typeof data === 'string' ? data : (data.name || '') + (data.size || '') + (data.lastModified || '');
       var hash = 0;
       for (var j = 0; j < str.length; j++) {
@@ -101,7 +96,7 @@
     return bytes.buffer;
   }
 
-  // Concurrency Queue for Controlled Bulk Uploads
+  // Concurrency Queue for Controlled Bulk Uploads (Max 3 concurrent)
   class ConcurrencyQueue {
     constructor(concurrency = 3) {
       this.concurrency = concurrency;
@@ -136,7 +131,7 @@
 
   // Central File Sync Service Singleton
   var ATPLCentralFileSync = {
-    version: '2026.10-backend-authority',
+    version: '2026.10-authoritative',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -146,14 +141,21 @@
     reconnectTimer: null,
     reconnectAttempts: 0,
     lastSyncTime: 0,
+    isReconciling: false,
 
     // Initialize Real-time SSE Connection & Listeners
     init: function() {
       console.log('[ATPL FileSync] Initializing central backend-authoritative sync system...');
       this.connectSSE();
+      this.connectFirebase();
       this.bindWindowEvents();
-      // Initial state sync after a brief delay
-      setTimeout(() => { this.reconcileAll(); }, 500);
+      // Fast authoritative reconcile
+      setTimeout(() => { this.reconcileAll(); }, 300);
+      setInterval(() => {
+        if (typeof document !== 'undefined' && !document.hidden) {
+          this.reconcileAll();
+        }
+      }, 4000);
     },
 
     // Bind window visibility and online events for reconnect recovery
@@ -161,11 +163,11 @@
       window.addEventListener('online', () => {
         console.log('[ATPL FileSync] Network came online — reconnecting and reconciling...');
         this.connectSSE();
-        this.reconcileAll();
+        this.reconcileAll(true);
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && Date.now() - this.lastSyncTime > 10000) {
+        if (!document.hidden && Date.now() - this.lastSyncTime > 4000) {
           console.log('[ATPL FileSync] Tab focused — checking for remote changes...');
           this.reconcileAll();
         }
@@ -179,13 +181,6 @@
         this.eventSource = null;
       }
 
-      if (!this.apiBase && this.apiBase !== '') {
-        // Static cloud mode (GitHub Pages): Supabase + Firebase handle realtime
-        this.connected = true;
-        this.updateSyncBadge('ok', '⚡ Realtime Live');
-        return;
-      }
-
       var sseUrl = (this.apiBase || '') + '/api/sync/events';
       console.log('[ATPL FileSync] Connecting real-time SSE stream:', sseUrl);
 
@@ -194,19 +189,17 @@
         this.eventSource = es;
 
         es.onopen = () => {
-          console.log('[ATPL FileSync] Real-time event stream connected successfully!');
+          console.log('[ATPL FileSync] Real-time SSE event stream connected successfully!');
           this.connected = true;
           this.reconnectAttempts = 0;
           this.updateSyncBadge('ok', '⚡ Realtime Live');
         };
 
-        es.onerror = (err) => {
+        es.onerror = () => {
           this.connected = false;
-          es.close();
+          try { es.close(); } catch (_) {}
           this.eventSource = null;
-          var delay = Math.min(30000, 1000 * Math.pow(1.5, this.reconnectAttempts++));
-          console.warn('[ATPL FileSync] Real-time stream disconnected. Retrying in ' + Math.round(delay/1000) + 's...');
-          this.updateSyncBadge('busy', '🔄 Reconnecting...');
+          var delay = Math.min(15000, 1000 * Math.pow(1.5, this.reconnectAttempts++));
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = setTimeout(() => {
             this.connectSSE();
@@ -231,41 +224,68 @@
           this.handleRemoteModuleCleared(e.data);
         });
 
-        // Listen for legacy events for 100% backwards compatibility
+        // Legacy event listeners
         es.addEventListener('salary_file_saved', (e) => {
-          try {
-            var data = JSON.parse(e.data);
-            this.notifySubscribers('salary', 'saved', data.data || data);
-          } catch (_) {}
+          this.handleRemoteFileSaved(e.data);
         });
 
         es.addEventListener('salary_file_deleted', (e) => {
-          try {
-            var data = JSON.parse(e.data);
-            this.notifySubscribers('salary', 'deleted', data.data || data);
-          } catch (_) {}
+          this.handleRemoteFileDeleted(e.data);
         });
 
         es.addEventListener('salary_clear_all', (e) => {
-          this.notifySubscribers('salary', 'cleared', {});
-        });
-
-        es.addEventListener('hr_doc_saved', (e) => {
-          try {
-            var data = JSON.parse(e.data);
-            this.notifySubscribers('hr_doc', 'saved', data.data || data);
-          } catch (_) {}
-        });
-
-        es.addEventListener('hr_doc_deleted', (e) => {
-          try {
-            var data = JSON.parse(e.data);
-            this.notifySubscribers('hr_doc', 'deleted', data.data || data);
-          } catch (_) {}
+          this.handleRemoteModuleCleared({ module: 'salary' });
         });
 
       } catch (err) {
-        console.warn('[ATPL FileSync] SSE initialization warning:', err);
+        console.warn('[ATPL FileSync] SSE initialization notice:', err.message);
+      }
+    },
+
+    // Connect Firebase Firestore Real-Time Watchers (Double Redundancy)
+    connectFirebase: function() {
+      if (typeof window === 'undefined') return;
+      var setupListeners = () => {
+        if (!window.ATPLFirebase) return;
+        if (typeof window.ATPLFirebase.subscribeSalaryFiles === 'function') {
+          try {
+            window.ATPLFirebase.subscribeSalaryFiles((update) => {
+              if (!update) return;
+              if (Array.isArray(update.removedNames) && update.removedNames.length > 0) {
+                update.removedNames.forEach((delName) => {
+                  this.handleRemoteFileDeleted({ module: 'salary', name: delName });
+                });
+              }
+              if (Array.isArray(update.all) && update.all.length > 0) {
+                var localNames = (window.FILES || []).map(f => String(f.name).toLowerCase());
+                var remoteNames = update.all.map(f => String(f.name).toLowerCase());
+                var hasNew = remoteNames.some(rn => !localNames.includes(rn));
+                var hasDeleted = localNames.some(ln => !remoteNames.includes(ln));
+                if (hasNew || hasDeleted) {
+                  this.reconcileAll();
+                }
+              }
+            });
+          } catch (_) {}
+        }
+        if (typeof window.ATPLFirebase.subscribeTombstones === 'function') {
+          try {
+            window.ATPLFirebase.subscribeTombstones((tombs) => {
+              if (Array.isArray(tombs) && tombs.length > 0) {
+                tombs.forEach((t) => {
+                  if (t && t.name) this.handleRemoteFileDeleted({ module: 'salary', name: t.name });
+                });
+              }
+            });
+          } catch (_) {}
+        }
+      };
+
+      if (window.ATPLFirebase) {
+        setupListeners();
+      } else {
+        setTimeout(setupListeners, 800);
+        setTimeout(setupListeners, 2500);
       }
     },
 
@@ -274,23 +294,70 @@
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         var file = msg.file || msg.data || msg;
+        if (!file || !file.name) return;
         console.log('[ATPL FileSync] Remote file saved event received:', file.name, 'Module:', file.module);
         if (msg.version) this.serverStateVersion = msg.version;
-        this.notifySubscribers(file.module, 'saved', file);
+
+        if (file.module === 'salary' || !file.module) {
+          var fileName = file.name;
+          var cur = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(fileName).toLowerCase(); });
+          if (!(cur && cur.savedAt === (file.created_at || file.saved) && cur.buf)) {
+            var rawBuf = file.buf ? (typeof file.buf === 'string' ? base64ToArrayBuffer(file.buf) : file.buf) : null;
+            if (rawBuf && window.parseWB && window.wbToSheets) {
+              var wb = window.parseWB(rawBuf);
+              var sheets = window.wbToSheets(wb);
+              window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
+              var item = { name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString() };
+              window.FILES.push(item);
+              if (typeof FILES !== 'undefined') FILES = window.FILES;
+              if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
+              if (typeof renderFiles === 'function') renderFiles();
+              if (typeof renderSheets === 'function') renderSheets();
+              if (typeof updStats === 'function') updStats();
+              if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+              if (typeof populateNJSelects === 'function') populateNJSelects();
+              this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
+            } else {
+              this.reconcileAll();
+            }
+          }
+        }
+
+        this.notifySubscribers(file.module || 'salary', 'saved', file);
         this.notifySubscribers('all', 'saved', file);
       } catch (e) {
         console.warn('[ATPL FileSync] handleRemoteFileSaved parse error:', e);
       }
     },
 
-    // Handle remote file deleted event
+    // Handle remote file deleted event (PERMANENT DELETE)
     handleRemoteFileDeleted: function(raw) {
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         var info = msg.data || msg;
-        console.log('[ATPL FileSync] Remote file deleted event received:', info.name || info.id, 'Module:', info.module);
+        var targetName = String(info.name || info.id || '').toLowerCase();
+        if (!targetName) return;
+        console.log('[ATPL FileSync] Remote file deleted event received:', targetName, 'Module:', info.module);
         if (msg.version) this.serverStateVersion = msg.version;
-        this.notifySubscribers(info.module, 'deleted', info);
+
+        if (info.module === 'salary' || !info.module || (window.FILES || []).some(function(x) { return x && String(x.name).toLowerCase() === targetName; })) {
+          window.FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== targetName; });
+          if (typeof FILES !== 'undefined') FILES = window.FILES;
+          if (typeof deleteFromDB === 'function') deleteFromDB(info.name || info.id);
+          try {
+            var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+            tombs[targetName] = new Date().toISOString();
+            localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+          } catch (_) {}
+          if (typeof renderFiles === 'function') renderFiles();
+          if (typeof renderSheets === 'function') renderSheets();
+          if (typeof updStats === 'function') updStats();
+          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+          if (typeof populateNJSelects === 'function') populateNJSelects();
+          this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
+        }
+
+        this.notifySubscribers(info.module || 'salary', 'deleted', info);
         this.notifySubscribers('all', 'deleted', info);
       } catch (e) {
         console.warn('[ATPL FileSync] handleRemoteFileDeleted parse error:', e);
@@ -303,6 +370,7 @@
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         console.log('[ATPL FileSync] Remote bulk saved event received:', msg.count || 0, 'files');
         if (msg.version) this.serverStateVersion = msg.version;
+        this.reconcileAll();
         var files = msg.files || [];
         var modules = new Set(files.map(f => f.module).filter(Boolean));
         modules.forEach(mod => {
@@ -320,6 +388,22 @@
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         var mod = msg.module || (msg.data && msg.data.module) || 'salary';
         console.log('[ATPL FileSync] Remote module cleared event received for module:', mod);
+        if (mod === 'salary') {
+          window.FILES = [];
+          if (typeof FILES !== 'undefined') FILES = [];
+          if (window.DB) {
+            try {
+              var ctx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+              ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
+            } catch (_) {}
+          }
+          if (typeof renderFiles === 'function') renderFiles();
+          if (typeof renderSheets === 'function') renderSheets();
+          if (typeof updStats === 'function') updStats();
+          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+          if (typeof populateNJSelects === 'function') populateNJSelects();
+          this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
+        }
         this.notifySubscribers(mod, 'cleared', msg);
       } catch (e) {
         console.warn('[ATPL FileSync] handleRemoteModuleCleared parse error:', e);
@@ -364,17 +448,22 @@
         var mime = fileObj.type || fileObj.mime_type || 'application/octet-stream';
         var size = fileObj.size || 0;
         var bufBase64 = '';
+        var rawBuf = null;
 
         if (typeof fileObj.buf === 'string') {
           bufBase64 = fileObj.buf;
+          rawBuf = base64ToArrayBuffer(fileObj.buf);
         } else if (fileObj instanceof File || fileObj instanceof Blob) {
           var arrayBuf = await fileObj.arrayBuffer();
+          rawBuf = arrayBuf;
           bufBase64 = arrayBufferToBase64(arrayBuf);
           size = arrayBuf.byteLength;
         } else if (fileObj.buffer instanceof ArrayBuffer) {
+          rawBuf = fileObj.buffer;
           bufBase64 = arrayBufferToBase64(fileObj.buffer);
           size = fileObj.buffer.byteLength;
         } else if (fileObj.buf instanceof ArrayBuffer) {
+          rawBuf = fileObj.buf;
           bufBase64 = arrayBufferToBase64(fileObj.buf);
           size = fileObj.buf.byteLength;
         }
@@ -399,6 +488,8 @@
         };
 
         if (onProgress) onProgress('uploading', 60);
+
+        // 1. Post to Express Backend
         var res = await fetch((this.apiBase || '') + '/api/sync/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -414,13 +505,34 @@
         var result = await res.json();
         if (!result.ok) throw new Error(result.error || 'Server rejected file upload');
 
+        // 2. Also Mirror to Google Firebase Firestore for global 100% uptime
+        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+          try {
+            await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name }, { name: name, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
+          } catch (e) {
+            console.warn('[ATPL FileSync] Firestore mirror notice:', e.message);
+          }
+        }
+
+        // 3. Update local state
+        if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
+          try {
+            var wb = window.parseWB(rawBuf);
+            var sheets = window.wbToSheets(wb);
+            window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
+            window.FILES.push({ name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
+            if (typeof FILES !== 'undefined') FILES = window.FILES;
+            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf);
+          } catch (_) {}
+        }
+
         if (onProgress) onProgress('saved', 100);
         console.log('[ATPL FileSync] File upload confirmed by central backend:', name);
         return result.file || payload;
       });
     },
 
-    // Controlled Bulk Upload with Per-File State Tracking & Retry
+    // Controlled Bulk Upload with Per-File State Tracking & Retry (Limit 3 concurrent)
     uploadBulk: async function(module, fileList, metaGenerator = null, onFileProgress = null) {
       var files = Array.from(fileList || []);
       if (!files.length) return { total: 0, saved: 0, failed: 0, results: [] };
@@ -449,6 +561,15 @@
       var savedCount = results.filter(r => r.ok).length;
       var failedCount = results.filter(r => !r.ok).length;
       console.log('[ATPL FileSync] Bulk upload complete. Saved:', savedCount, 'Failed:', failedCount);
+
+      if (module === 'salary') {
+        if (typeof renderFiles === 'function') renderFiles();
+        if (typeof renderSheets === 'function') renderSheets();
+        if (typeof updStats === 'function') updStats();
+        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+        if (typeof populateNJSelects === 'function') populateNJSelects();
+      }
+
       return {
         total: files.length,
         saved: savedCount,
@@ -462,22 +583,78 @@
       if (!idOrName) return false;
       console.log('[ATPL FileSync] Requesting permanent deletion of:', idOrName, 'Module:', module);
 
-      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
-      var res = await fetch(url, { method: 'DELETE' });
-      if (!res.ok) {
-        var errData = {};
-        try { errData = await res.json(); } catch (_) {}
-        throw new Error(errData.error || ('Delete failed with status ' + res.status));
+      // 1. Delete from central backend API
+      try {
+        var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
+        await fetch(url, { method: 'DELETE' });
+      } catch (err) {
+        console.warn('[ATPL FileSync] Backend delete notice:', err.message);
       }
 
-      var data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Delete rejected by backend');
+      // 2. Delete from Firebase Firestore
+      if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
+        try {
+          await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin');
+        } catch (_) {}
+      }
 
-      console.log('[ATPL FileSync] Permanent backend deletion confirmed for:', idOrName);
+      // 3. Remove immediately from local state & IndexedDB
+      if (module === 'salary') {
+        var targetName = String(idOrName).toLowerCase();
+        window.FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== targetName; });
+        if (typeof FILES !== 'undefined') FILES = window.FILES;
+        if (typeof deleteFromDB === 'function') deleteFromDB(idOrName);
+        try {
+          var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+          tombs[targetName] = new Date().toISOString();
+          localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+        } catch (_) {}
+        if (typeof renderFiles === 'function') renderFiles();
+        if (typeof renderSheets === 'function') renderSheets();
+        if (typeof updStats === 'function') updStats();
+        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+        if (typeof populateNJSelects === 'function') populateNJSelects();
+        this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
+      }
 
-      // Immediately notify subscribers so local UI updates without delay
       this.notifySubscribers(module, 'deleted', { id: idOrName, name: idOrName, module: module });
       this.notifySubscribers('all', 'deleted', { id: idOrName, name: idOrName, module: module });
+      return true;
+    },
+
+    // Clear entire module permanently
+    clearModule: async function(module = 'salary') {
+      try {
+        var url = (this.apiBase || '') + '/api/sync/files/clear-module';
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ module: module })
+        }).catch(function(){});
+      } catch (_) {}
+
+      if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
+        try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
+      }
+
+      if (module === 'salary') {
+        window.FILES = [];
+        if (typeof FILES !== 'undefined') FILES = [];
+        if (window.DB) {
+          try {
+            var ctx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+            ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
+          } catch (_) {}
+        }
+        if (typeof renderFiles === 'function') renderFiles();
+        if (typeof renderSheets === 'function') renderSheets();
+        if (typeof updStats === 'function') updStats();
+        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+        if (typeof populateNJSelects === 'function') populateNJSelects();
+        this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
+      }
+
+      this.notifySubscribers(module, 'cleared', { module: module });
       return true;
     },
 
@@ -492,33 +669,144 @@
     },
 
     // Full Reconnect & Refresh Reconciliation: The Backend ALWAYS Wins
-    reconcileAll: async function() {
+    reconcileAll: async function(force = false) {
+      if (this.isReconciling) return;
+      this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
-        if (!this.apiBase && this.apiBase !== '') {
-          if (typeof window.triggerManualCrossBrowserSync === 'function') {
-            await window.triggerManualCrossBrowserSync();
+        var serverFiles = null;
+        var serverTombs = {};
+
+        // 1. Fetch from central Express backend
+        try {
+          var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
+            cache: force ? 'no-cache' : 'default',
+            headers: { 'Accept': 'application/json' }
+          });
+          if (res.ok) {
+            var data = await res.json();
+            if (data.ok && Array.isArray(data.files)) {
+              serverFiles = data.files;
+              serverTombs = data.tombstones || {};
+              if (data.version) this.serverStateVersion = data.version;
+            }
           }
-          return;
+        } catch (netErr) {
+          console.warn('[ATPL FileSync] Backend fetch notice:', netErr.message);
         }
-        var stateRes = await fetch((this.apiBase || '') + '/api/sync/state?summary=1');
-        if (!stateRes.ok) return;
-        var state = await stateRes.json();
-        if (!state.ok) return;
 
-        this.serverStateVersion = state.version || 0;
-        console.log('[ATPL FileSync] Reconciled state with central backend. Active files:', state.files_count || 0);
+        // 2. Dual fallback: Firebase Firestore
+        if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+          try {
+            var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
+            if (Array.isArray(fbFiles)) {
+              serverFiles = fbFiles.map(function(f) {
+                return {
+                  id: f.id || ('sf_' + (f.name||'').toLowerCase()),
+                  module: 'salary',
+                  name: f.name,
+                  buf: f.original_b64 || f.sheets_b64 || f.buf,
+                  sheets: f.sheets || null,
+                  created_at: f.saved_at || f.uploaded_at || new Date().toISOString(),
+                  uploaded_by: f.uploaded_by || 'admin'
+                };
+              });
+            }
+          } catch (fbErr) {
+            console.warn('[ATPL FileSync] Firestore fetch notice:', fbErr.message);
+          }
+        }
 
-        // Notify each active module of full authoritative state
-        this.notifySubscribers('salary', 'reconciled', state);
-        this.notifySubscribers('pf', 'reconciled', state);
-        this.notifySubscribers('esic', 'reconciled', state);
-        this.notifySubscribers('hr_doc', 'reconciled', state);
-        this.notifySubscribers('all', 'reconciled', state);
+        if (!serverFiles) return;
 
-        this.updateSyncBadge('ok', '☁ Realtime (' + (state.files_count || 0) + ' files)');
+        // Apply BACKEND AUTHORITY to salary files
+        var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
+        var serverNameMap = {};
+        salaryServerFiles.forEach(function(f) {
+          if (f && f.name) serverNameMap[String(f.name).toLowerCase()] = f;
+        });
+
+        var curFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
+        var dirty = false;
+        var keptFiles = [];
+
+        // Check for deleted files (backend does not have it, or it is tombstoned)
+        for (var i = 0; i < curFiles.length; i++) {
+          var lf = curFiles[i];
+          if (!lf || !lf.name) continue;
+          var lk = String(lf.name).toLowerCase();
+          var tomb = serverTombs[lk] || serverTombs[lf.id];
+          if (!serverNameMap[lk] || tomb) {
+            console.log('[ATPL FileSync] Authoritative delete enforced for:', lf.name);
+            dirty = true;
+            if (typeof deleteFromDB === 'function') deleteFromDB(lf.name);
+          } else {
+            keptFiles.push(lf);
+          }
+        }
+
+        window.FILES = keptFiles;
+        if (typeof FILES !== 'undefined') FILES = keptFiles;
+
+        // Add or update missing files from backend
+        for (var sf of salaryServerFiles) {
+          if (!sf || !sf.name) continue;
+          var sName = sf.name;
+          var cur = (window.FILES || []).find(function(x) { return x && String(x.name).toLowerCase() === String(sName).toLowerCase(); });
+          if (cur && cur.savedAt === (sf.created_at || sf.saved) && cur.buf) continue;
+
+          var rawBuf = null;
+          if (sf.buf) {
+            rawBuf = typeof sf.buf === 'string' ? base64ToArrayBuffer(sf.buf) : sf.buf;
+          } else if (window.ATPLFirebase && typeof window.ATPLFirebase.decodeDocPayload === 'function') {
+            try {
+              var payload = await window.ATPLFirebase.decodeDocPayload(sf);
+              if (payload && payload.original_b64) rawBuf = base64ToArrayBuffer(payload.original_b64);
+            } catch (_) {}
+          }
+
+          if (rawBuf && window.parseWB && window.wbToSheets) {
+            try {
+              var wb = window.parseWB(rawBuf);
+              var sheets = window.wbToSheets(wb);
+              window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(sName).toLowerCase(); });
+              var fItem = {
+                name: sName,
+                wb: wb,
+                sheets: sheets,
+                buf: rawBuf,
+                fromDB: true,
+                savedAt: sf.created_at || sf.saved || new Date().toISOString()
+              };
+              window.FILES.push(fItem);
+              if (typeof FILES !== 'undefined') FILES = window.FILES;
+              dirty = true;
+              if (window.DB) {
+                try {
+                  var tx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+                  tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, buf: rawBuf, saved: fItem.savedAt });
+                } catch (_) {}
+              }
+            } catch (err) {
+              console.warn('[ATPL FileSync] Workbook parse error for', sName, err);
+            }
+          }
+        }
+
+        if (dirty || !curFiles.length) {
+          if (typeof renderFiles === 'function') renderFiles();
+          if (typeof renderSheets === 'function') renderSheets();
+          if (typeof updStats === 'function') updStats();
+          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+          if (typeof populateNJSelects === 'function') populateNJSelects();
+        }
+
+        this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
+        this.notifySubscribers('salary', 'reconciled', { files: window.FILES });
       } catch (err) {
-        console.warn('[ATPL FileSync] Reconcile warning:', err.message);
+        console.warn('[ATPL FileSync] Reconcile error:', err.message);
+      } finally {
+        this.isReconciling = false;
       }
     },
 

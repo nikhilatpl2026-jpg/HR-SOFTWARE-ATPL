@@ -158,11 +158,11 @@
         } catch (_) {}
       }
 
-      // 2. Delete / Tombstone in Supabase
+      // 2. Delete permanently in Supabase
       var sb = getSupabase();
       if (sb) {
         try {
-          await sb.from('hr_files').delete().eq('filename', name);
+          await sb.from('hr_files').delete().ilike('filename', name);
           await sb.from('hr_files').insert({
             filename: name,
             payload: '',
@@ -195,6 +195,7 @@
       var sb = getSupabase();
       if (sb) {
         try {
+          await sb.from('hr_files').delete().eq('doc_type', 'salary');
           await sb.from('hr_files').update({ doc_type: 'salary_tombstone', payload: '' }).eq('doc_type', 'salary');
         } catch (_) {}
       }
@@ -203,11 +204,11 @@
       return true;
     },
 
-    // ── Fetch All Salary Files (Merged from Firestore + Supabase) ──
+    // ── Fetch All Salary Files (Authoritative Firestore First, No Resurrection) ──
     fetchAllSalaryFiles: async function() {
       var fileMap = {};
 
-      // 1. Fetch from Firestore
+      // 1. Fetch from Firestore (Primary source of truth)
       if (nativeFb && typeof nativeFb.fetchAllSalaryFiles === 'function') {
         try {
           var fbFiles = await nativeFb.fetchAllSalaryFiles();
@@ -223,42 +224,27 @@
         }
       }
 
-      // 2. Fetch from Supabase
-      var sb = getSupabase();
-      if (sb) {
+      // 2. Fetch tombstones from Firestore
+      var remoteTombs = {};
+      if (nativeFb && typeof nativeFb.fetchAllTombstones === 'function') {
         try {
-          var { data, error } = await sb.from('hr_files').select('*').eq('doc_type', 'salary');
-          if (!error && Array.isArray(data)) {
-            data.forEach(function(d) {
-              if (d && d.filename) {
-                var k = String(d.filename).toLowerCase();
-                if (!fileMap[k]) {
-                  fileMap[k] = {
-                    name: d.filename,
-                    original_b64: d.payload || '',
-                    saved_at: d.uploaded_at || new Date().toISOString(),
-                    uploaded_by: 'admin',
-                    is_gzip: true
-                  };
-                } else if (d.payload) {
-                  // Direct payload available from Supabase! Attach it
-                  fileMap[k].original_b64 = d.payload;
-                }
-              }
+          var fbTombs = await nativeFb.fetchAllTombstones();
+          if (Array.isArray(fbTombs)) {
+            fbTombs.forEach(function(t) {
+              if (t && t.name) remoteTombs[String(t.name).toLowerCase()] = t.deleted_at || true;
             });
           }
-        } catch (e) {
-          console.warn('[ATPL Sync] Supabase fetch warning:', e.message);
-        }
+        } catch (_) {}
       }
 
-      // 3. Filter out any tombstoned files
+      // 3. Filter out any tombstoned files (Local + Remote)
       var localTombs = {};
       try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch (_) {}
       var allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '0') || 0;
-
       var result = [];
+
       Object.keys(fileMap).forEach(function(k) {
+        if (remoteTombs[k]) return; // Tombstoned in Firestore!
         var f = fileMap[k];
         var fileTime = Date.parse(f.saved_at || f.uploaded_at || '0') || 0;
         if (allClearedAt && allClearedAt >= fileTime) return;
