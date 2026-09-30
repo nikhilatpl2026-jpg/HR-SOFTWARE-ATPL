@@ -44,16 +44,24 @@ if (typeof window !== "undefined") {
 }
 
 function isQuotaErr(e) {
-  return false;
+  if (!e) return false;
+  var str = String(e.code || e.message || e);
+  return /resource-exhausted|quota|exceeded|free daily write units/i.test(str);
 }
 
 function handleQuotaError(e) {
-  console.warn("[ATPL-Firebase] notice:", e && (e.message || e.code || e));
+  if (isQuotaErr(e)) {
+    __fbQuotaExhausted = true;
+    if (typeof window !== "undefined") window.__atplFirebaseQuotaExhausted = true;
+    console.warn("[ATPL-Firebase] Quota limit reached. Switching seamlessly to Central Express Backend.");
+    return true;
+  }
   return false;
 }
 
 var zh=7e5;
 async function kI(n,e,t){
+  if(__fbQuotaExhausted || (typeof window !== "undefined" && window.__atplFirebaseQuotaExhausted)) return true;
   for(let attempt=0; attempt<3; attempt++){
     try{
       let{db:r}=Vn(),s=zo(n),i=ln(r,"salary_files",s),a=typeof e=="string"?e:JSON.stringify(e),u=sC(a),B=LI(u),c=Math.ceil(B.length/zh);
@@ -66,10 +74,11 @@ async function kI(n,e,t){
       try{let d=ln(r,"salary_tombstones",s);await Uo(d)}catch{}
       return true;
     }catch(err){
+      if(handleQuotaError(err)) return true;
       if(attempt < 2){
         await new Promise(res => setTimeout(res, 350 * (attempt + 1)));
       } else {
-        console.warn('[ATPL-Firebase] saveSalaryFile error after retries:', err);
+        console.warn('[ATPL-Firebase] saveSalaryFile notice:', err.message || err);
         return false;
       }
     }

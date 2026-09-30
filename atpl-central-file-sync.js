@@ -505,11 +505,14 @@
         var result = await res.json();
         if (!result.ok) throw new Error(result.error || 'Server rejected file upload');
 
-        // 2. Also Mirror to Google Firebase Firestore for global 100% uptime
-        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+        // 2. Also Mirror to Google Firebase Firestore for global 100% uptime (if quota allows)
+        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name }, { name: name, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
           } catch (e) {
+            if (/quota|resource-exhausted/i.test(e.message || '')) {
+              window.__atplFirebaseQuotaExhausted = true;
+            }
             console.warn('[ATPL FileSync] Firestore mirror notice:', e.message);
           }
         }
@@ -591,8 +594,8 @@
         console.warn('[ATPL FileSync] Backend delete notice:', err.message);
       }
 
-      // 2. Delete from Firebase Firestore
-      if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
+      // 2. Delete from Firebase Firestore (if quota allows)
+      if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
         try {
           await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin');
         } catch (_) {}
