@@ -115,17 +115,19 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
   // Give SSE 50ms to register
   await new Promise(r => setTimeout(r, 100));
 
+  const RUN = Date.now();
+
   // ─────────────────────────────────────────────────────────────
   // TEST 1: Single Upload — Browser A uploads 1 file, Browser B receives it within 3-5 seconds
   // ─────────────────────────────────────────────────────────────
   await t.test('TEST 1: Single Upload propagation', async () => {
     const bEventsCountBefore = browserB_SSE.events.length;
     const testFile1 = {
-      id: 'test_file_single_1',
+      id: 'test_file_single_' + RUN,
       module: 'salary',
       category: 'audit',
-      name: 'Salary_May_2026_Audit.xlsx',
-      buf: Buffer.from('TEST SALARY CONTENT 1').toString('base64'),
+      name: 'Salary_May_2026_Audit_' + RUN + '.xlsx',
+      buf: Buffer.from('TEST SALARY CONTENT 1 ' + RUN).toString('base64'),
       uploaded_by: 'Browser_A'
     };
 
@@ -366,17 +368,17 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
   // ─────────────────────────────────────────────────────────────
   await t.test('TEST 12: Simultaneous Multi-User Uploads', async () => {
     const p1 = request(PORT, 'POST', '/api/sync/files', {
-      id: 'simul_file_A',
+      id: 'simul_file_A_' + RUN,
       module: 'salary',
-      name: 'Simul_File_A.xlsx',
-      buf: Buffer.from('DATA A').toString('base64'),
+      name: 'Simul_File_A_' + RUN + '.xlsx',
+      buf: Buffer.from('DATA A ' + RUN).toString('base64'),
       uploaded_by: 'User_A'
     });
     const p2 = request(PORT, 'POST', '/api/sync/files', {
-      id: 'simul_file_B',
+      id: 'simul_file_B_' + RUN,
       module: 'salary',
-      name: 'Simul_File_B.xlsx',
-      buf: Buffer.from('DATA B').toString('base64'),
+      name: 'Simul_File_B_' + RUN + '.xlsx',
+      buf: Buffer.from('DATA B ' + RUN).toString('base64'),
       uploaded_by: 'User_B'
     });
 
@@ -385,8 +387,8 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
     assert.equal(r2.status, 201);
 
     const list = await request(PORT, 'GET', '/api/sync/files?module=salary');
-    assert.ok(list.data.files.some(f => f.id === 'simul_file_A'));
-    assert.ok(list.data.files.some(f => f.id === 'simul_file_B'));
+    assert.ok(list.data.files.some(f => f.id === 'simul_file_A_' + RUN));
+    assert.ok(list.data.files.some(f => f.id === 'simul_file_B_' + RUN));
   });
 
   // ─────────────────────────────────────────────────────────────
@@ -394,12 +396,12 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
   // Delete file while another browser fetches state — deleted file stays deleted
   // ─────────────────────────────────────────────────────────────
   await t.test('TEST 13: Simultaneous Delete & Refresh', async () => {
-    const delP = request(PORT, 'DELETE', '/api/sync/files/simul_file_A?module=salary');
+    const delP = request(PORT, 'DELETE', `/api/sync/files/simul_file_A_${RUN}?module=salary`);
     const refreshP = request(PORT, 'GET', '/api/sync/state');
 
     await Promise.all([delP, refreshP]);
     const finalState = await request(PORT, 'GET', '/api/sync/state');
-    assert.equal(finalState.data.files.some(f => f.id === 'simul_file_A'), false);
+    assert.equal(finalState.data.files.some(f => f.id === 'simul_file_A_' + RUN), false);
   });
 
   // ─────────────────────────────────────────────────────────────
@@ -408,10 +410,10 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
   // ─────────────────────────────────────────────────────────────
   await t.test('TEST 14: Duplicate Upload Protection', async () => {
     const payload = {
-      id: 'dup_test_1',
+      id: 'dup_test_1_' + RUN,
       module: 'salary',
-      name: 'Duplicate_Test_File.xlsx',
-      buf: Buffer.from('IDENTICAL CONTENT FOR DUP CHECK').toString('base64')
+      name: 'Duplicate_Test_File_' + RUN + '.xlsx',
+      buf: Buffer.from('IDENTICAL CONTENT FOR DUP CHECK ' + RUN).toString('base64')
     };
 
     const first = await request(PORT, 'POST', '/api/sync/files', payload);
@@ -419,15 +421,15 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
 
     // Second upload with new ID but identical payload
     const second = await request(PORT, 'POST', '/api/sync/files', {
-      id: 'dup_test_2',
+      id: 'dup_test_2_' + RUN,
       module: 'salary',
-      name: 'Duplicate_Test_File_Copy.xlsx',
-      buf: Buffer.from('IDENTICAL CONTENT FOR DUP CHECK').toString('base64')
+      name: 'Duplicate_Test_File_Copy_' + RUN + '.xlsx',
+      buf: Buffer.from('IDENTICAL CONTENT FOR DUP CHECK ' + RUN).toString('base64')
     });
 
     assert.equal(second.status, 200);
     assert.ok(second.data.duplicate, 'Duplicate upload must be detected');
-    assert.equal(second.data.file.id, 'dup_test_1', 'Must return existing record');
+    assert.equal(second.data.file.id, 'dup_test_1_' + RUN, 'Must return existing record');
   });
 
   // ─────────────────────────────────────────────────────────────
@@ -462,4 +464,6 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
   if (serverProc) {
     try { serverProc.kill('SIGKILL'); } catch (_) {}
   }
+
+  setTimeout(() => process.exit(0), 100);
 });
