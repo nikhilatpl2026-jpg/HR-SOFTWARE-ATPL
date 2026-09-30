@@ -77,7 +77,7 @@ window.ATPLCloudDebugger = (function() {
             if (!window.supabase) return alert("Supabase missing!");
             rightCol.innerHTML = '<div style="color:yellow">Scanning Supabase...</div>';
             try {
-                var res = await supabase.from('hr_files').select('filename, doc_type, size, uploaded_at');
+                var sClient = window.supabase.createClient('https://gsbyzddibdjxekutpkip.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzYnl6ZGRpYmRqeGVrdXRwa2lwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTk1NzcsImV4cCI6MjEwNTYzNTU3N30.Bz5NyhVtuJm1MjljiDsnW4036E3qZWgqyEWll7ZqzcI'); var res = await sClient.from('hr_files').select('filename, doc_type, size, uploaded_at');
                 if (res.error) throw res.error;
                 var data = res.data;
                 var html = '<div style="color:#22c55e">Backend scan successful! Found ' + data.length + ' rows.</div><hr>';
