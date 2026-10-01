@@ -36,14 +36,19 @@ function doPost(e) {
     var currentAction = action || requestBody.action || e.parameter._method;
     
     // -------------------------------------------------------------
-    // MODULE ISOLATION CHECK (Fixes Failing Test 1)
+    // MODULE ISOLATION & IMMUTABILITY CHECKS (Fixes Failing Tests)
     // -------------------------------------------------------------
     var parsed = requestBody.meta || {};
     var type = requestBody.module || '';
     
-    // Add this validation to your upload/categorization logic
+    // 1. Prevent PF files from being mistakenly uploaded to ESIC module
     if (parsed.detectedType === 'pf' && type === 'esic') {
       throw new Error('PF file blocked from ESIC');
+    }
+    
+    // 2. PF and ESIC have strict type guards and immutable backend category
+    if (currentAction === 'update' && (type === 'pf' || type === 'esic') && requestBody.category_changed) {
+      throw new Error('Challan category cannot be changed');
     }
 
     // -------------------------------------------------------------
@@ -108,7 +113,7 @@ function buildJSONResponse(data) {
 }
 
 // -------------------------------------------------------------
-// CHUNK UPLOAD HANDLER (Fixes Failing Test 2)
+// CHUNK UPLOAD HANDLER
 // -------------------------------------------------------------
 function appendDOLChunkBatch(uploadId, chunkData, chunkIndex) {
   // Implementation for appending DOL chunks in batch
