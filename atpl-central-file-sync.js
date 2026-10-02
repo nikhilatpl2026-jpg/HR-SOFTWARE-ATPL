@@ -14,8 +14,7 @@
  *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync (1–3 second cross-browser sync).
  *  3. Permanent Delete Guarantee: Once deleted on backend, no client
  *     cache or offline session can resurrect it. (UUID based)
- *  4. Controlled Bulk Upload Queue: Concurrency limit (3), per-file
- *     status tracking, SHA-256 deduplication.
+ *  4. Controlled Bulk Upload Queue: Concurrency limit (2), Auto-Retry.
  *  5. Reconnect Reconciliation: Authoritative fetch after reconnect,
  *     login, window focus, or page refresh. Backend always wins.
  *  6. INSTANT UI REFRESH & CLOUD FALLBACK: 100% uptime guarantee.
@@ -96,9 +95,9 @@
     return bytes.buffer;
   }
 
-  // Concurrency Queue for Controlled Bulk Uploads (Max 3 concurrent)
+  // FIX 1: Concurrency Queue reduced to 2 for server stability
   class ConcurrencyQueue {
-    constructor(concurrency = 3) {
+    constructor(concurrency = 2) {
       this.concurrency = concurrency;
       this.running = 0;
       this.queue = [];
@@ -137,7 +136,7 @@
     serverStateVersion: 0,
     eventSource: null,
     subscribers: {}, // module -> array of callbacks
-    uploadQueue: new ConcurrencyQueue(3),
+    uploadQueue: new ConcurrencyQueue(2), // FIX 1: Max 2 uploads at a time
     reconnectTimer: null,
     reconnectAttempts: 0,
     lastSyncTime: 0,
@@ -159,7 +158,7 @@
       }, 5000);
     },
 
-    // CENTRAL INSTANT UI REFRESH DISPATCHER (NEW FIX)
+    // CENTRAL INSTANT UI REFRESH DISPATCHER
     triggerImmediateUIRefresh: function() {
       try {
         var event = new CustomEvent('atplVaultUpdated', { detail: { files: window.FILES || [] } });
@@ -257,7 +256,7 @@
       }
     },
 
-    // Connect Firebase Firestore Real-Time Watchers (Double Redundancy)
+    // Connect Firebase Firestore Real-Time Watchers
     connectFirebase: function() {
       if (typeof window === 'undefined') return;
       if (window.__atplFirebaseQuotaExhausted) {
@@ -328,7 +327,6 @@
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
               var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString(), syncStatus: 'saved' };
               
-              // NEW FIX: UNSHIFT TO SHOW AT TOP INSTANTLY
               window.FILES.unshift(item);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
               if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
@@ -348,7 +346,7 @@
       }
     },
 
-    // Handle remote file deleted event (PERMANENT DELETE VIA UUID & NAME)
+    // Handle remote file deleted event
     handleRemoteFileDeleted: function(raw) {
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -361,7 +359,6 @@
         if (msg.version) this.serverStateVersion = msg.version;
 
         if (info.module === 'salary' || !info.module) {
-          // Filter out by either ID or Name to guarantee deletion
           window.FILES = (window.FILES || []).filter(function(x) { 
             var xName = x && x.name ? String(x.name).toLowerCase() : '';
             var xId = x && x.id ? String(x.id).toLowerCase() : '';
@@ -466,7 +463,7 @@
       return data.files || [];
     },
 
-    // Authoritative Upload Single File (NOW WITH CLOUD FALLBACK SAFETY NET)
+    // FIX 2: Added 3-Attempt Auto-Retry for robust uploads
     uploadFile: async function(module, fileObj, meta = {}, onProgress = null) {
       return this.uploadQueue.add(async () => {
         if (onProgress) onProgress('preparing', 10);
@@ -515,28 +512,40 @@
 
         if (onProgress) onProgress('uploading', 60);
 
-        // 1. Post to Express Backend (WRAPPED IN TRY-CATCH FOR CLOUD FALLBACK)
         var result = { ok: true, file: payload };
-        try {
-          var res = await fetch((this.apiBase || '') + '/api/sync/files', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
+        var attempt = 0;
+        var maxAttempts = 3;
 
-          if (!res.ok) {
-            console.warn('[ATPL FileSync] Cloud backend returned status', res.status);
-            result.ok = false;
-          } else {
-            var tempResult = await res.json();
-            if (tempResult.ok) result = tempResult;
+        // Auto-Retry Loop
+        while (attempt < maxAttempts) {
+          try {
+            var res = await fetch((this.apiBase || '') + '/api/sync/files', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+              var tempResult = await res.json();
+              if (tempResult.ok) {
+                result = tempResult;
+                break; // Success, exit retry loop
+              }
+            }
+            throw new Error('Backend error ' + res.status);
+          } catch (err) {
+            attempt++;
+            if (attempt >= maxAttempts) {
+              console.warn('[ATPL FileSync] Cloud unavailable after ' + maxAttempts + ' attempts. Bypassing to fallback:', err.message);
+              result.ok = false;
+            } else {
+              if (onProgress) onProgress('retrying', 60 + (attempt * 10)); // Visual feedback for retry
+              await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+            }
           }
-        } catch (err) {
-          console.warn('[ATPL FileSync] Cloud unavailable. Gracefully bypassing to Firebase fallback:', err.message);
-          result.ok = false;
         }
 
-        // 2. Also Mirror to Google Firebase Firestore for global 100% uptime (if quota allows)
+        // Mirror to Firebase
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
@@ -548,7 +557,6 @@
           }
         }
 
-        // 3. Update local state with UUID tracking (NEW FIX: ADDED SYNCSTATUS PENDING FLAG)
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
             var wb = window.parseWB(rawBuf);
@@ -579,7 +587,7 @@
       });
     },
 
-    // Controlled Bulk Upload with Per-File State Tracking & Retry (Limit 3 concurrent)
+    // Controlled Bulk Upload with Per-File State Tracking & Retry
     uploadBulk: async function(module, fileList, metaGenerator = null, onFileProgress = null) {
       var files = Array.from(fileList || []);
       if (!files.length) return { total: 0, saved: 0, failed: 0, results: [] };
@@ -698,7 +706,7 @@
       return true;
     },
 
-    // Fetch raw file binary content from backend (for PDF / Excel / Document viewers)
+    // Fetch raw file binary content from backend
     getFileContent: async function(fileId) {
       if (!fileId) throw new Error('File ID required');
       var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content';
@@ -708,7 +716,7 @@
       return blob.arrayBuffer();
     },
 
-    // Full Reconnect & Refresh Reconciliation: The Backend ALWAYS Wins
+    // Full Reconnect & Refresh Reconciliation
     reconcileAll: async function(force = false) {
       if (this.isReconciling) return;
       this.isReconciling = true;
@@ -717,7 +725,7 @@
         var serverFiles = null;
         var serverTombs = {};
 
-        // 1. Fetch from central Express backend (if reachable)
+        // 1. Fetch from central Express backend
         if (this.backendReachable !== false) {
           try {
             var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
@@ -736,12 +744,11 @@
               this.backendReachable = false;
             }
           } catch (netErr) {
-            // Static host (GitHub Pages) or offline — silently fall back to Supabase/Hybrid
             this.backendReachable = false;
           }
         }
 
-        // 2. Dual fallback: HybridEngine (Firestore + Supabase)
+        // 2. Dual fallback: HybridEngine (Firestore)
         if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
@@ -763,7 +770,6 @@
 
         if (!serverFiles) return;
 
-        // Apply STRICT BACKEND AUTHORITY to salary files
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
         var serverMap = {};
         salaryServerFiles.forEach(function(f) {
@@ -774,8 +780,12 @@
         var curFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
         var dirty = false;
         var keptFiles = [];
+        
+        // Setup local tombstones check for zombie protection
+        var localTombs = {};
+        try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
 
-        // Check for deleted files (if backend does not have the ID/name, kill it locally)
+        // Check for deleted files
         for (var i = 0; i < curFiles.length; i++) {
           var lf = curFiles[i];
           if (!lf || (!lf.name && !lf.id)) continue;
@@ -786,13 +796,10 @@
           var tombName = serverTombs[lkName];
           var tombId = serverTombs[lkId];
 
-          // --- NEW FIX: Prevent Auto-Delete of pending or recently uploaded files ---
           var isPending = (lf.syncStatus === 'pending');
-          var isRecent = lf.savedAt && (Date.now() - new Date(lf.savedAt).getTime() < 60000); // 1 minute grace period
+          var isRecent = lf.savedAt && (Date.now() - new Date(lf.savedAt).getTime() < 60000); 
           
-          // STRICT RULE: If it's not in the server list OR it's in a tombstone, it MUST die locally.
           if (((!isPending && !isRecent) && (!serverMap[lkName] && !serverMap[lkId])) || tombName || tombId) {
-            console.log('[ATPL FileSync] Authoritative delete enforced for:', lf.name || lf.id);
             dirty = true;
             if (typeof deleteFromDB === 'function') {
               if (lf.name) deleteFromDB(lf.name);
@@ -810,9 +817,17 @@
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
+          var lNameLower = String(sName).toLowerCase();
+          var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
+
+          // FIX 3: TIGHT ZOMBIE DELETE PROTECTION
+          if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
+              continue; 
+          }
+
           var cur = (window.FILES || []).find(function(x) { 
-              return (x && x.id && sf.id && String(x.id).toLowerCase() === String(sf.id).toLowerCase()) || 
-                     (x && x.name && sName && String(x.name).toLowerCase() === String(sName).toLowerCase()); 
+              return (x && x.id && sf.id && String(x.id).toLowerCase() === lIdLower) || 
+                     (x && x.name && sName && String(x.name).toLowerCase() === lNameLower); 
           });
           
           if (cur && cur.savedAt === (sf.created_at || sf.saved) && cur.buf) continue;
@@ -851,9 +866,7 @@
                   tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: fItem.savedAt });
                 } catch (_) {}
               }
-            } catch (err) {
-              console.warn('[ATPL FileSync] Workbook parse error for', sName, err);
-            }
+            } catch (err) {}
           }
         }
 
@@ -864,7 +877,6 @@
         this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
         this.notifySubscribers('salary', 'reconciled', { files: window.FILES });
       } catch (err) {
-        console.warn('[ATPL FileSync] Reconcile error:', err.message);
       } finally {
         this.isReconciling = false;
       }
