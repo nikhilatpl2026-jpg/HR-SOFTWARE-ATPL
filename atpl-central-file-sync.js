@@ -11,12 +11,10 @@
  *
  * Architecture Principles:
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
- *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync (1–3 second cross-browser sync).
- *  3. Permanent Delete Guarantee: Once deleted on backend, no client
- *     cache or offline session can resurrect it. (UUID based)
+ *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync.
+ *  3. Permanent Delete Guarantee: Once deleted on backend, no resurrect.
  *  4. Controlled Bulk Upload Queue: Concurrency limit (2), Auto-Retry.
- *  5. Reconnect Reconciliation: Authoritative fetch after reconnect,
- *     login, window focus, or page refresh. Backend always wins.
+ *  5. Reconnect Reconciliation (Queued): Fetches don't drop overlapping events.
  *  6. INSTANT UI REFRESH & CLOUD FALLBACK: 100% uptime guarantee.
  * ─────────────────────────────────────────────────────────────────
  */
@@ -24,16 +22,15 @@
   'use strict';
 
   // Determine central backend URL
-  // If running on a static host (e.g. GitHub Pages), fallback to deployed Cloud Run backend
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
     if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
-      return ''; // Local Express server or direct Cloud Run
+      return ''; 
     }
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
-    return ''; // Static hosts like GitHub Pages or preview iframes use relative or direct Supabase
+    return ''; 
   }
 
   var API_BASE = detectBackendUrl();
@@ -130,17 +127,18 @@
 
   // Central File Sync Service Singleton
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative',
+    version: '2026.10-authoritative-queued',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
     eventSource: null,
-    subscribers: {}, // module -> array of callbacks
+    subscribers: {}, 
     uploadQueue: new ConcurrencyQueue(2), // FIX 1: Max 2 uploads at a time
     reconnectTimer: null,
     reconnectAttempts: 0,
     lastSyncTime: 0,
     isReconciling: false,
+    pendingReconcile: false, // FIX 3: Queue overlapping sync triggers
 
     // Initialize Real-time SSE Connection & Listeners
     init: function() {
@@ -148,7 +146,6 @@
       this.connectSSE();
       this.connectFirebase();
       this.bindWindowEvents();
-      // Fast authoritative reconcile
       setTimeout(() => { this.reconcileAll(); }, 300);
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
@@ -221,35 +218,13 @@
           }, delay);
         };
 
-        // Listen for unified file events
-        es.addEventListener('file_saved', (e) => {
-          this.handleRemoteFileSaved(e.data);
-        });
-
-        es.addEventListener('file_deleted', (e) => {
-          this.handleRemoteFileDeleted(e.data);
-        });
-
-        es.addEventListener('files_bulk_saved', (e) => {
-          this.handleRemoteBulkSaved(e.data);
-        });
-
-        es.addEventListener('module_cleared', (e) => {
-          this.handleRemoteModuleCleared(e.data);
-        });
-
-        // Legacy event listeners
-        es.addEventListener('salary_file_saved', (e) => {
-          this.handleRemoteFileSaved(e.data);
-        });
-
-        es.addEventListener('salary_file_deleted', (e) => {
-          this.handleRemoteFileDeleted(e.data);
-        });
-
-        es.addEventListener('salary_clear_all', (e) => {
-          this.handleRemoteModuleCleared({ module: 'salary' });
-        });
+        es.addEventListener('file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
+        es.addEventListener('file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
+        es.addEventListener('files_bulk_saved', (e) => { this.handleRemoteBulkSaved(e.data); });
+        es.addEventListener('module_cleared', (e) => { this.handleRemoteModuleCleared(e.data); });
+        es.addEventListener('salary_file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
+        es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
+        es.addEventListener('salary_clear_all', (e) => { this.handleRemoteModuleCleared({ module: 'salary' }); });
 
       } catch (err) {
         console.warn('[ATPL FileSync] SSE initialization notice:', err.message);
@@ -716,9 +691,12 @@
       return blob.arrayBuffer();
     },
 
-    // Full Reconnect & Refresh Reconciliation
+    // FIX 3: Queued Reconcile to prevent dropped sync events across browsers
     reconcileAll: async function(force = false) {
-      if (this.isReconciling) return;
+      if (this.isReconciling) {
+        this.pendingReconcile = true; // Queue the next sync request
+        return;
+      }
       this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
@@ -820,7 +798,7 @@
           var lNameLower = String(sName).toLowerCase();
           var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
 
-          // FIX 3: TIGHT ZOMBIE DELETE PROTECTION
+          // FIX: TIGHT ZOMBIE DELETE PROTECTION
           if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
               continue; 
           }
@@ -879,6 +857,11 @@
       } catch (err) {
       } finally {
         this.isReconciling = false;
+        // FIX 3: Execute queued sync request immediately
+        if (this.pendingReconcile) {
+          this.pendingReconcile = false;
+          setTimeout(() => this.reconcileAll(force), 300);
+        }
       }
     },
 
