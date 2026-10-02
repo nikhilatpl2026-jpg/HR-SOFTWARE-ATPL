@@ -1,5 +1,5 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative)
+ * ATPL Central File Sync System (v2026.10-authoritative-instant)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
  * engine for all ERP file modules:
@@ -18,6 +18,7 @@
  *     status tracking, SHA-256 deduplication.
  *  5. Reconnect Reconciliation: Authoritative fetch after reconnect,
  *     login, window focus, or page refresh. Backend always wins.
+ *  6. INSTANT UI REFRESH: Immediate DOM rendering on file upload.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -130,7 +131,7 @@
 
   // Central File Sync Service Singleton
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative',
+    version: '2026.10-authoritative-instant',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -156,6 +157,20 @@
           this.reconcileAll();
         }
       }, 5000);
+    },
+
+    // CENTRAL INSTANT UI REFRESH DISPATCHER
+    triggerImmediateUIRefresh: function() {
+      try {
+        var event = new CustomEvent('atplVaultUpdated', { detail: { files: window.FILES || [] } });
+        window.dispatchEvent(event);
+      } catch(e) {}
+      
+      if (typeof renderFiles === 'function') renderFiles();
+      if (typeof renderSheets === 'function') renderSheets();
+      if (typeof updStats === 'function') updStats();
+      if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+      if (typeof populateNJSelects === 'function') populateNJSelects();
     },
 
     // Bind window visibility and online events for reconnect recovery
@@ -312,14 +327,11 @@
               var sheets = window.wbToSheets(wb);
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
               var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString() };
-              window.FILES.push(item);
+              window.FILES.unshift(item);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
               if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
-              if (typeof renderFiles === 'function') renderFiles();
-              if (typeof renderSheets === 'function') renderSheets();
-              if (typeof updStats === 'function') updStats();
-              if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-              if (typeof populateNJSelects === 'function') populateNJSelects();
+              
+              this.triggerImmediateUIRefresh();
               this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
             } else {
               this.reconcileAll();
@@ -369,11 +381,7 @@
             localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
           } catch (_) {}
           
-          if (typeof renderFiles === 'function') renderFiles();
-          if (typeof renderSheets === 'function') renderSheets();
-          if (typeof updStats === 'function') updStats();
-          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-          if (typeof populateNJSelects === 'function') populateNJSelects();
+          this.triggerImmediateUIRefresh();
           this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
         }
 
@@ -417,11 +425,7 @@
               ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
             } catch (_) {}
           }
-          if (typeof renderFiles === 'function') renderFiles();
-          if (typeof renderSheets === 'function') renderSheets();
-          if (typeof updStats === 'function') updStats();
-          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-          if (typeof populateNJSelects === 'function') populateNJSelects();
+          this.triggerImmediateUIRefresh();
           this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
         }
         this.notifySubscribers(mod, 'cleared', msg);
@@ -537,17 +541,21 @@
           }
         }
 
-        // 3. Update local state with UUID tracking
+        // 3. Update local state with UUID tracking & trigger INSTANT UI REFRESH
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
             window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
-            window.FILES.push({ id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
+            // Add file to top of list for instant UI feedback
+            window.FILES.unshift({ id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
             if (typeof FILES !== 'undefined') FILES = window.FILES;
             if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); // Keep legacy call for safety
           } catch (_) {}
         }
+        
+        // Force DOM redraw immediately without waiting for bulk completion
+        this.triggerImmediateUIRefresh();
 
         if (onProgress) onProgress('saved', 100);
         console.log('[ATPL FileSync] File upload confirmed by central backend:', name);
@@ -586,11 +594,7 @@
       console.log('[ATPL FileSync] Bulk upload complete. Saved:', savedCount, 'Failed:', failedCount);
 
       if (module === 'salary') {
-        if (typeof renderFiles === 'function') renderFiles();
-        if (typeof renderSheets === 'function') renderSheets();
-        if (typeof updStats === 'function') updStats();
-        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-        if (typeof populateNJSelects === 'function') populateNJSelects();
+        this.triggerImmediateUIRefresh();
       }
 
       return {
@@ -636,11 +640,8 @@
           tombs[targetName] = new Date().toISOString();
           localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
         } catch (_) {}
-        if (typeof renderFiles === 'function') renderFiles();
-        if (typeof renderSheets === 'function') renderSheets();
-        if (typeof updStats === 'function') updStats();
-        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-        if (typeof populateNJSelects === 'function') populateNJSelects();
+        
+        this.triggerImmediateUIRefresh();
         this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
       }
 
@@ -673,11 +674,8 @@
             ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
           } catch (_) {}
         }
-        if (typeof renderFiles === 'function') renderFiles();
-        if (typeof renderSheets === 'function') renderSheets();
-        if (typeof updStats === 'function') updStats();
-        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-        if (typeof populateNJSelects === 'function') populateNJSelects();
+        
+        this.triggerImmediateUIRefresh();
         this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
       }
 
@@ -840,11 +838,7 @@
         }
 
         if (dirty || !curFiles.length) {
-          if (typeof renderFiles === 'function') renderFiles();
-          if (typeof renderSheets === 'function') renderSheets();
-          if (typeof updStats === 'function') updStats();
-          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
-          if (typeof populateNJSelects === 'function') populateNJSelects();
+          this.triggerImmediateUIRefresh();
         }
 
         this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
