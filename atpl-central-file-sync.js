@@ -326,7 +326,7 @@
               var wb = window.parseWB(rawBuf);
               var sheets = window.wbToSheets(wb);
               window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
-              var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString() };
+              var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString(), syncStatus: 'saved' };
               
               // NEW FIX: UNSHIFT TO SHOW AT TOP INSTANTLY
               window.FILES.unshift(item);
@@ -526,12 +526,14 @@
 
           if (!res.ok) {
             console.warn('[ATPL FileSync] Cloud backend returned status', res.status);
+            result.ok = false;
           } else {
             var tempResult = await res.json();
             if (tempResult.ok) result = tempResult;
           }
         } catch (err) {
           console.warn('[ATPL FileSync] Cloud unavailable. Gracefully bypassing to Firebase fallback:', err.message);
+          result.ok = false;
         }
 
         // 2. Also Mirror to Google Firebase Firestore for global 100% uptime (if quota allows)
@@ -546,13 +548,24 @@
           }
         }
 
-        // 3. Update local state with UUID tracking (NEW FIX: UNSHIFT TO SHOW AT TOP INSTANTLY)
+        // 3. Update local state with UUID tracking (NEW FIX: ADDED SYNCSTATUS PENDING FLAG)
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
             window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
-            window.FILES.unshift({ id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: payload.created_at });
+            
+            // Add to frontend instantly and tag it so Auto-Sync doesn't delete it
+            window.FILES.unshift({ 
+                id: payload.id, 
+                name: name, 
+                wb: wb, 
+                sheets: sheets, 
+                buf: rawBuf, 
+                savedAt: payload.created_at,
+                syncStatus: result.ok ? 'saved' : 'pending' 
+            });
+            
             if (typeof FILES !== 'undefined') FILES = window.FILES;
             if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); // Keep legacy call for safety
           } catch (_) {}
@@ -772,9 +785,13 @@
           
           var tombName = serverTombs[lkName];
           var tombId = serverTombs[lkId];
+
+          // --- NEW FIX: Prevent Auto-Delete of pending or recently uploaded files ---
+          var isPending = (lf.syncStatus === 'pending');
+          var isRecent = lf.savedAt && (Date.now() - new Date(lf.savedAt).getTime() < 60000); // 1 minute grace period
           
           // STRICT RULE: If it's not in the server list OR it's in a tombstone, it MUST die locally.
-          if ((!serverMap[lkName] && !serverMap[lkId]) || tombName || tombId) {
+          if (((!isPending && !isRecent) && (!serverMap[lkName] && !serverMap[lkId])) || tombName || tombId) {
             console.log('[ATPL FileSync] Authoritative delete enforced for:', lf.name || lf.id);
             dirty = true;
             if (typeof deleteFromDB === 'function') {
@@ -822,7 +839,8 @@
                 sheets: sheets,
                 buf: rawBuf,
                 fromDB: true,
-                savedAt: sf.created_at || sf.saved || new Date().toISOString()
+                savedAt: sf.created_at || sf.saved || new Date().toISOString(),
+                syncStatus: 'saved'
               };
               window.FILES.push(fItem);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
