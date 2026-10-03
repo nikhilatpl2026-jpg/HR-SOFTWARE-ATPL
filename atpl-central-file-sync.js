@@ -1,22 +1,21 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative-final-fix)
+ * ATPL Central File Sync System (v2026.10-authoritative-ultimate)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
  * engine for all ERP file modules.
  *
  * Architecture Principles:
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
- *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync.
+ *  2. Real-time push + Aggressive NO-CACHE Background Polling.
  *  3. Permanent Delete Guarantee: Once deleted on backend, no resurrect.
  *  4. Controlled Bulk Upload Queue: Concurrency limit (2), Auto-Retry.
- *  5. SMART DEBOUNCE RECONCILE: Wait 1.5s to gather all concurrent 
- *     uploads before fetching, guaranteeing NO dropped files in Browser B.
+ *  5. SMART DEBOUNCE RECONCILE: Wait 2s to gather ALL concurrent uploads.
+ *  6. MISSING BINARY FETCH: Always download file data if not sent via list.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
   'use strict';
 
-  // Determine central backend URL
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
@@ -30,7 +29,6 @@
 
   var API_BASE = detectBackendUrl();
 
-  // Compute SHA-256 hash in browser
   async function computeSha256(data) {
     try {
       var buffer;
@@ -65,7 +63,6 @@
     }
   }
 
-  // Convert ArrayBuffer / Uint8Array to Base64
   function arrayBufferToBase64(buffer) {
     if (!buffer) return '';
     var bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -77,7 +74,6 @@
     return btoa(binary);
   }
 
-  // Convert Base64 to ArrayBuffer
   function base64ToArrayBuffer(base64) {
     if (!base64) return new ArrayBuffer(0);
     var clean = base64.indexOf(',') >= 0 ? base64.split(',')[1] : base64;
@@ -87,7 +83,6 @@
     return bytes.buffer;
   }
 
-  // Concurrency Queue reduced to 2 for server stability
   class ConcurrencyQueue {
     constructor(concurrency = 2) {
       this.concurrency = concurrency;
@@ -120,9 +115,8 @@
     }
   }
 
-  // Central File Sync Service Singleton
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative-final-fix',
+    version: '2026.10-authoritative-ultimate',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -130,29 +124,27 @@
     subscribers: {}, 
     uploadQueue: new ConcurrencyQueue(2),
     reconnectTimer: null,
-    reconcileTimer: null, // THE SMART WAIT TIMER
+    reconcileTimer: null, 
     reconnectAttempts: 0,
     lastSyncTime: 0,
     isReconciling: false,
+    pendingReconcile: false,
 
-    // Initialize System
     init: function() {
-      console.log('[ATPL FileSync] Initializing bulletproof Smart-Wait sync system...');
+      console.log('[ATPL FileSync] Initializing ultimate bulletproof sync system...');
       this.connectSSE();
       this.connectFirebase();
       this.bindWindowEvents();
-      setTimeout(() => { this.reconcileAll(); }, 300);
+      setTimeout(() => { this.reconcileAll(true); }, 300);
       
-      // Safe fallback polling (Only checks every 5 seconds if not busy)
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
-          if (this.backendReachable === false && Date.now() - this.lastSyncTime < 15000) return; // Save Firebase quota
+          if (this.backendReachable === false && Date.now() - this.lastSyncTime < 15000) return; 
           this.requestReconcile();
         }
       }, 5000);
     },
 
-    // CENTRAL INSTANT UI REFRESH DISPATCHER
     triggerImmediateUIRefresh: function() {
       try {
         var event = new CustomEvent('atplVaultUpdated', { detail: { files: window.FILES || [] } });
@@ -184,9 +176,7 @@
         try { this.eventSource.close(); } catch (_) {}
         this.eventSource = null;
       }
-
       var sseUrl = (this.apiBase || '') + '/api/sync/events';
-      
       try {
         var es = new EventSource(sseUrl);
         this.eventSource = es;
@@ -209,7 +199,6 @@
           }, delay);
         };
 
-        // Call the debounced fetch instead of immediate fetch
         es.addEventListener('file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
         es.addEventListener('file_deleted', (e) => { this.requestReconcile(); });
         es.addEventListener('files_bulk_saved', (e) => { this.requestReconcile(); });
@@ -217,7 +206,6 @@
         es.addEventListener('salary_file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
         es.addEventListener('salary_file_deleted', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_clear_all', (e) => { this.requestReconcile(); });
-
       } catch (err) {}
     },
 
@@ -233,11 +221,10 @@
               if (!update) return;
               if (Array.isArray(update.removedNames) && update.removedNames.length > 0) {
                 update.removedNames.forEach((delName) => {
-                  this.deleteFile('salary', delName, true); // Visual fast delete
+                  this.deleteFile('salary', delName, true); 
                 });
               }
               if (Array.isArray(update.all) && update.all.length > 0) {
-                // Wait for all overlapping firebase notifications before fetching
                 this.requestReconcile(); 
               }
             });
@@ -253,15 +240,14 @@
       }
     },
 
-    // THE MAGIC FIX: Smart Wait (Debounce). Solves the "1 missing file" bug.
+    // SMART WAIT: Waits 2 seconds for bulk files to finish arriving before syncing
     requestReconcile: function() {
       if (this.reconcileTimer) {
         clearTimeout(this.reconcileTimer);
       }
-      // System will wait 1.5 seconds to see if more files are uploading, then fetch ONCE.
       this.reconcileTimer = setTimeout(() => {
         this.reconcileAll(true);
-      }, 1500);
+      }, 2000); 
     },
 
     handleRemoteFileSaved: function(raw) {
@@ -276,7 +262,6 @@
           var rawBuf = file.buf ? (typeof file.buf === 'string' ? base64ToArrayBuffer(file.buf) : file.buf) : null;
           
           if (rawBuf && window.parseWB && window.wbToSheets) {
-            // Instant render if server provided full data
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
             window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
@@ -289,27 +274,34 @@
             this.triggerImmediateUIRefresh();
             this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
           } else {
-            // Trigger Smart Wait if data is missing
-            this.requestReconcile();
+            this.requestReconcile(); // Buffer missing? Request full sync
           }
         }
       } catch (e) {}
     },
 
     listFiles: async function(module = 'all', force = false) {
-      var url = (this.apiBase || '') + '/api/sync/files?module=' + encodeURIComponent(module) + '&summary=0';
+      var url = (this.apiBase || '') + '/api/sync/files?module=' + encodeURIComponent(module) + '&summary=0' + (force ? '&_t=' + Date.now() : '');
       var res = await fetch(url, {
-        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
-        cache: force ? 'no-cache' : 'default'
+        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+        cache: force ? 'no-store' : 'default'
       });
       if (!res.ok) throw new Error('Failed to list files from backend');
       var data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Backend failed to return files');
+      if (!data.ok) throw new Error(data.error);
       if (data.version) this.serverStateVersion = data.version;
       return data.files || [];
     },
 
-    // 3-Attempt Auto-Retry for robust uploads
+    getFileContent: async function(fileId) {
+      if (!fileId) throw new Error('File ID required');
+      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
+      var res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to download file content');
+      var blob = await res.blob();
+      return blob.arrayBuffer();
+    },
+
     uploadFile: async function(module, fileObj, meta = {}, onProgress = null) {
       return this.uploadQueue.add(async () => {
         if (onProgress) onProgress('preparing', 10);
@@ -362,7 +354,6 @@
         var attempt = 0;
         var maxAttempts = 3;
 
-        // Auto-Retry Loop
         while (attempt < maxAttempts) {
           try {
             var res = await fetch((this.apiBase || '') + '/api/sync/files', {
@@ -390,14 +381,11 @@
           }
         }
 
-        // Mirror to Firebase
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
           } catch (e) {
-            if (/quota|resource-exhausted/i.test(e.message || '')) {
-              window.__atplFirebaseQuotaExhausted = true;
-            }
+            if (/quota|resource-exhausted/i.test(e.message || '')) window.__atplFirebaseQuotaExhausted = true;
           }
         }
 
@@ -408,17 +396,12 @@
             window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
             
             window.FILES.unshift({ 
-                id: payload.id, 
-                name: name, 
-                wb: wb, 
-                sheets: sheets, 
-                buf: rawBuf, 
-                savedAt: payload.created_at,
-                syncStatus: result.ok ? 'saved' : 'pending' 
+                id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, 
+                savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending' 
             });
             
             if (typeof FILES !== 'undefined') FILES = window.FILES;
-            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf);
+            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); 
           } catch (_) {}
         }
         
@@ -434,7 +417,6 @@
       if (!files.length) return { total: 0, saved: 0, failed: 0, results: [] };
 
       var results = [];
-
       for (var i = 0; i < files.length; i++) {
         var f = files[i];
         var meta = typeof metaGenerator === 'function' ? await metaGenerator(f, i) : {};
@@ -452,30 +434,24 @@
         }
       }
 
-      if (module === 'salary') {
-        this.triggerImmediateUIRefresh(); 
-      }
-
+      if (module === 'salary') this.triggerImmediateUIRefresh(); 
       return { total: files.length, saved: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results: results };
     },
 
     deleteFile: async function(module, idOrName, skipRemote = false) {
       if (!idOrName) return false;
 
-      // 1. Delete from central backend API
       if (!skipRemote) {
         try {
           var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
           await fetch(url, { method: 'DELETE' });
         } catch (err) {}
 
-        // 2. Delete from Firebase Firestore 
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
           try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
         }
       }
 
-      // 3. Remove immediately from local state
       if (module === 'salary') {
         var targetName = String(idOrName).toLowerCase();
         window.FILES = (window.FILES || []).filter(function(x) { 
@@ -523,31 +499,24 @@
       return true;
     },
 
-    getFileContent: async function(fileId) {
-      if (!fileId) throw new Error('File ID required');
-      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
-      var res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to download file content');
-      var blob = await res.blob();
-      return blob.arrayBuffer();
-    },
-
-    // Master Fetcher
+    // THE MASTER FETCH: With Binary Fallback Check
     reconcileAll: async function(force = false) {
-      if (this.isReconciling) return; // Debounce handles overlaps now
+      if (this.isReconciling) {
+        this.pendingReconcile = true; 
+        return;
+      }
       this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
         var serverFiles = null;
         var serverTombs = {};
 
-        // 1. Fetch from central Express backend
         if (this.backendReachable !== false) {
           try {
             var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0' + (force ? '&_t=' + Date.now() : '');
             var res = await fetch(fetchUrl, {
               cache: force ? 'no-store' : 'default',
-              headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
+              headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
             });
             if (res.ok) {
               var data = await res.json();
@@ -565,7 +534,6 @@
           }
         }
 
-        // 2. Dual fallback: HybridEngine (Firestore)
         if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
@@ -601,14 +569,12 @@
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
 
-        // Clean dead files
         for (var i = 0; i < curFiles.length; i++) {
           var lf = curFiles[i];
           if (!lf || (!lf.name && !lf.id)) continue;
           
           var lkName = lf.name ? String(lf.name).toLowerCase() : '';
           var lkId = lf.id ? String(lf.id).toLowerCase() : '';
-          
           var tombName = serverTombs[lkName];
           var tombId = serverTombs[lkId];
 
@@ -629,7 +595,6 @@
         window.FILES = keptFiles;
         if (typeof FILES !== 'undefined') FILES = keptFiles;
 
-        // Process new incoming files
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
@@ -657,6 +622,13 @@
             } catch (_) {}
           }
 
+          // FIX: DOWNLOAD THE MISSING FILE DATA FORCEFULLY!
+          if (!rawBuf && sf.id && this.backendReachable) {
+              try {
+                  rawBuf = await this.getFileContent(sf.id);
+              } catch(e) {}
+          }
+
           if (rawBuf && window.parseWB && window.wbToSheets) {
             try {
               var wb = window.parseWB(rawBuf);
@@ -672,7 +644,8 @@
                 savedAt: sf.created_at || sf.saved || new Date().toISOString(),
                 syncStatus: 'saved'
               };
-              window.FILES.push(fItem);
+              // Add to the TOP instantly!
+              window.FILES.unshift(fItem);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
               dirty = true;
               if (window.DB) {
@@ -690,9 +663,14 @@
         }
 
         this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
+        this.notifySubscribers('salary', 'reconciled', { files: window.FILES });
       } catch (err) {
       } finally {
         this.isReconciling = false;
+        if (this.pendingReconcile) {
+          this.pendingReconcile = false;
+          setTimeout(() => this.reconcileAll(true), 300);
+        }
       }
     },
 
