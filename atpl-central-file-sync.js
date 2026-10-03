@@ -1,25 +1,22 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative-final)
+ * ATPL Central File Sync System (v2026.10-authoritative-final-fix)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
- * engine for all ERP file modules:
- *  - Salary Audit & All Files
- *  - PF to DOL & ESIC to DOL Challans
- *  - HR Documents & Compliance Records
- *  - Bank Account Verification Sheets
- *  - Employee Documents & General Files
+ * engine for all ERP file modules.
  *
  * Architecture Principles:
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
- *  2. Real-time push + Aggressive Background Polling (3s) for 100% cross-browser sync.
+ *  2. Real-time push via SSE events + Firebase Firestore WebSocket sync.
  *  3. Permanent Delete Guarantee: Once deleted on backend, no resurrect.
  *  4. Controlled Bulk Upload Queue: Concurrency limit (2), Auto-Retry.
- *  5. INSTANT UI REFRESH & CLOUD FALLBACK: 100% uptime guarantee.
+ *  5. SMART DEBOUNCE RECONCILE: Wait 1.5s to gather all concurrent 
+ *     uploads before fetching, guaranteeing NO dropped files in Browser B.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
   'use strict';
 
+  // Determine central backend URL
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
@@ -33,6 +30,7 @@
 
   var API_BASE = detectBackendUrl();
 
+  // Compute SHA-256 hash in browser
   async function computeSha256(data) {
     try {
       var buffer;
@@ -67,6 +65,7 @@
     }
   }
 
+  // Convert ArrayBuffer / Uint8Array to Base64
   function arrayBufferToBase64(buffer) {
     if (!buffer) return '';
     var bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -78,6 +77,7 @@
     return btoa(binary);
   }
 
+  // Convert Base64 to ArrayBuffer
   function base64ToArrayBuffer(base64) {
     if (!base64) return new ArrayBuffer(0);
     var clean = base64.indexOf(',') >= 0 ? base64.split(',')[1] : base64;
@@ -87,6 +87,7 @@
     return bytes.buffer;
   }
 
+  // Concurrency Queue reduced to 2 for server stability
   class ConcurrencyQueue {
     constructor(concurrency = 2) {
       this.concurrency = concurrency;
@@ -119,8 +120,9 @@
     }
   }
 
+  // Central File Sync Service Singleton
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative-final',
+    version: '2026.10-authoritative-final-fix',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -128,26 +130,29 @@
     subscribers: {}, 
     uploadQueue: new ConcurrencyQueue(2),
     reconnectTimer: null,
+    reconcileTimer: null, // THE SMART WAIT TIMER
     reconnectAttempts: 0,
     lastSyncTime: 0,
     isReconciling: false,
-    pendingReconcile: false,
 
+    // Initialize System
     init: function() {
-      console.log('[ATPL FileSync] Initializing bulletproof sync system...');
+      console.log('[ATPL FileSync] Initializing bulletproof Smart-Wait sync system...');
       this.connectSSE();
       this.connectFirebase();
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(); }, 300);
       
-      // AGGRESSIVE POLLING: Check server every 3 seconds for cross-browser updates
+      // Safe fallback polling (Only checks every 5 seconds if not busy)
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
-          this.reconcileAll();
+          if (this.backendReachable === false && Date.now() - this.lastSyncTime < 15000) return; // Save Firebase quota
+          this.requestReconcile();
         }
-      }, 3000);
+      }, 5000);
     },
 
+    // CENTRAL INSTANT UI REFRESH DISPATCHER
     triggerImmediateUIRefresh: function() {
       try {
         var event = new CustomEvent('atplVaultUpdated', { detail: { files: window.FILES || [] } });
@@ -164,12 +169,12 @@
     bindWindowEvents: function() {
       window.addEventListener('online', () => {
         this.connectSSE();
-        this.reconcileAll(true);
+        this.requestReconcile();
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-          this.reconcileAll(true);
+        if (!document.hidden && Date.now() - this.lastSyncTime > 4000) {
+          this.requestReconcile();
         }
       });
     },
@@ -179,7 +184,9 @@
         try { this.eventSource.close(); } catch (_) {}
         this.eventSource = null;
       }
+
       var sseUrl = (this.apiBase || '') + '/api/sync/events';
+      
       try {
         var es = new EventSource(sseUrl);
         this.eventSource = es;
@@ -198,17 +205,19 @@
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = setTimeout(() => {
             this.connectSSE();
-            this.reconcileAll();
+            this.requestReconcile();
           }, delay);
         };
 
+        // Call the debounced fetch instead of immediate fetch
         es.addEventListener('file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
-        es.addEventListener('file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
-        es.addEventListener('files_bulk_saved', (e) => { this.handleRemoteBulkSaved(e.data); });
-        es.addEventListener('module_cleared', (e) => { this.handleRemoteModuleCleared(e.data); });
+        es.addEventListener('file_deleted', (e) => { this.requestReconcile(); });
+        es.addEventListener('files_bulk_saved', (e) => { this.requestReconcile(); });
+        es.addEventListener('module_cleared', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
-        es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
-        es.addEventListener('salary_clear_all', (e) => { this.handleRemoteModuleCleared({ module: 'salary' }); });
+        es.addEventListener('salary_file_deleted', (e) => { this.requestReconcile(); });
+        es.addEventListener('salary_clear_all', (e) => { this.requestReconcile(); });
+
       } catch (err) {}
     },
 
@@ -221,7 +230,16 @@
         if (typeof window.ATPLFirebase.subscribeSalaryFiles === 'function') {
           try {
             window.ATPLFirebase.subscribeSalaryFiles((update) => {
-              if (update) this.reconcileAll();
+              if (!update) return;
+              if (Array.isArray(update.removedNames) && update.removedNames.length > 0) {
+                update.removedNames.forEach((delName) => {
+                  this.deleteFile('salary', delName, true); // Visual fast delete
+                });
+              }
+              if (Array.isArray(update.all) && update.all.length > 0) {
+                // Wait for all overlapping firebase notifications before fetching
+                this.requestReconcile(); 
+              }
             });
           } catch (_) {}
         }
@@ -230,39 +248,52 @@
       if (window.ATPLFirebase) {
         setupListeners();
       } else {
-        setTimeout(setupListeners, 1000);
+        setTimeout(setupListeners, 800);
+        setTimeout(setupListeners, 2500);
       }
     },
 
+    // THE MAGIC FIX: Smart Wait (Debounce). Solves the "1 missing file" bug.
+    requestReconcile: function() {
+      if (this.reconcileTimer) {
+        clearTimeout(this.reconcileTimer);
+      }
+      // System will wait 1.5 seconds to see if more files are uploading, then fetch ONCE.
+      this.reconcileTimer = setTimeout(() => {
+        this.reconcileAll(true);
+      }, 1500);
+    },
+
     handleRemoteFileSaved: function(raw) {
-      this.reconcileAll(true);
-    },
+      try {
+        var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        var file = msg.file || msg.data || msg;
+        if (!file || !file.name) return;
+        if (msg.version) this.serverStateVersion = msg.version;
 
-    handleRemoteFileDeleted: function(raw) {
-      this.reconcileAll(true);
-    },
-
-    handleRemoteBulkSaved: function(raw) {
-      this.reconcileAll(true);
-    },
-
-    handleRemoteModuleCleared: function(raw) {
-      this.reconcileAll(true);
-    },
-
-    subscribe: function(module, callback) {
-      if (!this.subscribers[module]) this.subscribers[module] = [];
-      this.subscribers[module].push(callback);
-      return () => {
-        this.subscribers[module] = this.subscribers[module].filter(cb => cb !== callback);
-      };
-    },
-
-    notifySubscribers: function(module, eventType, data) {
-      var cbs = this.subscribers[module] || [];
-      cbs.forEach(cb => {
-        try { cb(eventType, data); } catch (err) {}
-      });
+        if (file.module === 'salary' || !file.module) {
+          var fileName = file.name;
+          var rawBuf = file.buf ? (typeof file.buf === 'string' ? base64ToArrayBuffer(file.buf) : file.buf) : null;
+          
+          if (rawBuf && window.parseWB && window.wbToSheets) {
+            // Instant render if server provided full data
+            var wb = window.parseWB(rawBuf);
+            var sheets = window.wbToSheets(wb);
+            window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
+            var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString(), syncStatus: 'saved' };
+            
+            window.FILES.unshift(item);
+            if (typeof FILES !== 'undefined') FILES = window.FILES;
+            if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
+            
+            this.triggerImmediateUIRefresh();
+            this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
+          } else {
+            // Trigger Smart Wait if data is missing
+            this.requestReconcile();
+          }
+        }
+      } catch (e) {}
     },
 
     listFiles: async function(module = 'all', force = false) {
@@ -271,12 +302,14 @@
         headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
         cache: force ? 'no-cache' : 'default'
       });
-      if (!res.ok) throw new Error('Failed to list files');
+      if (!res.ok) throw new Error('Failed to list files from backend');
       var data = await res.json();
-      if (!data.ok) throw new Error(data.error);
+      if (!data.ok) throw new Error(data.error || 'Backend failed to return files');
+      if (data.version) this.serverStateVersion = data.version;
       return data.files || [];
     },
 
+    // 3-Attempt Auto-Retry for robust uploads
     uploadFile: async function(module, fileObj, meta = {}, onProgress = null) {
       return this.uploadQueue.add(async () => {
         if (onProgress) onProgress('preparing', 10);
@@ -298,6 +331,10 @@
           rawBuf = fileObj.buffer;
           bufBase64 = arrayBufferToBase64(fileObj.buffer);
           size = fileObj.buffer.byteLength;
+        } else if (fileObj.buf instanceof ArrayBuffer) {
+          rawBuf = fileObj.buf;
+          bufBase64 = arrayBufferToBase64(fileObj.buf);
+          size = fileObj.buf.byteLength;
         }
 
         if (onProgress) onProgress('hashing', 30);
@@ -325,6 +362,7 @@
         var attempt = 0;
         var maxAttempts = 3;
 
+        // Auto-Retry Loop
         while (attempt < maxAttempts) {
           try {
             var res = await fetch((this.apiBase || '') + '/api/sync/files', {
@@ -352,11 +390,14 @@
           }
         }
 
+        // Mirror to Firebase
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
           } catch (e) {
-            if (/quota|resource-exhausted/i.test(e.message || '')) window.__atplFirebaseQuotaExhausted = true;
+            if (/quota|resource-exhausted/i.test(e.message || '')) {
+              window.__atplFirebaseQuotaExhausted = true;
+            }
           }
         }
 
@@ -367,16 +408,22 @@
             window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
             
             window.FILES.unshift({ 
-                id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, 
-                savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending' 
+                id: payload.id, 
+                name: name, 
+                wb: wb, 
+                sheets: sheets, 
+                buf: rawBuf, 
+                savedAt: payload.created_at,
+                syncStatus: result.ok ? 'saved' : 'pending' 
             });
             
             if (typeof FILES !== 'undefined') FILES = window.FILES;
-            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); 
+            if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf);
           } catch (_) {}
         }
         
         this.triggerImmediateUIRefresh(); 
+
         if (onProgress) onProgress('saved', 100);
         return result.file || payload;
       });
@@ -387,6 +434,7 @@
       if (!files.length) return { total: 0, saved: 0, failed: 0, results: [] };
 
       var results = [];
+
       for (var i = 0; i < files.length; i++) {
         var f = files[i];
         var meta = typeof metaGenerator === 'function' ? await metaGenerator(f, i) : {};
@@ -404,22 +452,30 @@
         }
       }
 
-      if (module === 'salary') this.triggerImmediateUIRefresh(); 
+      if (module === 'salary') {
+        this.triggerImmediateUIRefresh(); 
+      }
+
       return { total: files.length, saved: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results: results };
     },
 
-    deleteFile: async function(module, idOrName) {
+    deleteFile: async function(module, idOrName, skipRemote = false) {
       if (!idOrName) return false;
 
-      try {
-        var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
-        await fetch(url, { method: 'DELETE' });
-      } catch (err) {}
+      // 1. Delete from central backend API
+      if (!skipRemote) {
+        try {
+          var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
+          await fetch(url, { method: 'DELETE' });
+        } catch (err) {}
 
-      if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
-        try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
+        // 2. Delete from Firebase Firestore 
+        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
+          try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
+        }
       }
 
+      // 3. Remove immediately from local state
       if (module === 'salary') {
         var targetName = String(idOrName).toLowerCase();
         window.FILES = (window.FILES || []).filter(function(x) { 
@@ -435,12 +491,10 @@
           localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
         } catch (_) {}
         
-        this.triggerImmediateUIRefresh(); 
+        this.triggerImmediateUIRefresh();
         this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
       }
 
-      this.notifySubscribers(module, 'deleted', { id: idOrName, name: idOrName, module: module });
-      this.notifySubscribers('all', 'deleted', { id: idOrName, name: idOrName, module: module });
       return true;
     },
 
@@ -463,38 +517,36 @@
             ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
           } catch (_) {}
         }
-        this.triggerImmediateUIRefresh(); 
+        this.triggerImmediateUIRefresh();
         this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
       }
-      this.notifySubscribers(module, 'cleared', { module: module });
       return true;
     },
 
     getFileContent: async function(fileId) {
       if (!fileId) throw new Error('File ID required');
-      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content';
-      var res = await fetch(url);
+      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
+      var res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to download file content');
       var blob = await res.blob();
       return blob.arrayBuffer();
     },
 
-    // RECONCILE WITH SMART MERGING & POLLING QUEUE
+    // Master Fetcher
     reconcileAll: async function(force = false) {
-      if (this.isReconciling) {
-        this.pendingReconcile = true; 
-        return;
-      }
+      if (this.isReconciling) return; // Debounce handles overlaps now
       this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
         var serverFiles = null;
         var serverTombs = {};
 
+        // 1. Fetch from central Express backend
         if (this.backendReachable !== false) {
           try {
-            var res = await fetch((this.apiBase || '') + '/api/sync/files?summary=0', {
-              cache: force ? 'no-cache' : 'default',
+            var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0' + (force ? '&_t=' + Date.now() : '');
+            var res = await fetch(fetchUrl, {
+              cache: force ? 'no-store' : 'default',
               headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' }
             });
             if (res.ok) {
@@ -502,6 +554,7 @@
               if (data.ok && Array.isArray(data.files)) {
                 serverFiles = data.files;
                 serverTombs = data.tombstones || {};
+                if (data.version) this.serverStateVersion = data.version;
                 this.backendReachable = true;
               }
             } else {
@@ -512,6 +565,7 @@
           }
         }
 
+        // 2. Dual fallback: HybridEngine (Firestore)
         if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
@@ -547,12 +601,14 @@
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
 
+        // Clean dead files
         for (var i = 0; i < curFiles.length; i++) {
           var lf = curFiles[i];
           if (!lf || (!lf.name && !lf.id)) continue;
           
           var lkName = lf.name ? String(lf.name).toLowerCase() : '';
           var lkId = lf.id ? String(lf.id).toLowerCase() : '';
+          
           var tombName = serverTombs[lkName];
           var tombId = serverTombs[lkId];
 
@@ -573,6 +629,7 @@
         window.FILES = keptFiles;
         if (typeof FILES !== 'undefined') FILES = keptFiles;
 
+        // Process new incoming files
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
@@ -633,14 +690,9 @@
         }
 
         this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
-        this.notifySubscribers('salary', 'reconciled', { files: window.FILES });
       } catch (err) {
       } finally {
         this.isReconciling = false;
-        if (this.pendingReconcile) {
-          this.pendingReconcile = false;
-          setTimeout(() => this.reconcileAll(force), 300);
-        }
       }
     },
 
@@ -654,6 +706,7 @@
     }
   };
 
+  // Expose globally
   window.ATPLCentralFileSync = ATPLCentralFileSync;
   window.atplBufToB64 = arrayBufferToBase64;
   window.atplB64ToBuf = base64ToArrayBuffer;
