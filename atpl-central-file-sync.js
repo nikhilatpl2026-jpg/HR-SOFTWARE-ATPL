@@ -1,17 +1,16 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative-ultimate-fix)
+ * ATPL Central File Sync System (v2026.10-authoritative-ABSOLUTE-FINAL)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
  * engine for all ERP file modules.
  *
  * Architecture Principles:
- *  1. Backend is the SINGLE SOURCE OF TRUTH.
- *  2. Real-time push + Aggressive NO-CACHE Background Polling.
- *  3. Permanent Delete Guarantee: Once deleted on backend, no resurrect.
- *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1) to prevent server 
- *     connection drops during heavy Excel uploads.
- *  5. SMART DEBOUNCE RECONCILE: Waits for queue to finish before sync.
- *  6. MISSING BINARY FETCH: Always downloads file data safely.
+ *  1. STRICT MAP ENGINE: Mathematically prevents duplicate files.
+ *  2. Backend is the SINGLE SOURCE OF TRUTH.
+ *  3. Permanent Delete Guarantee: Tombstone seal prevents zombies.
+ *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1) to prevent drops.
+ *  5. SMART DEBOUNCE RECONCILE: Waits for queue to finish.
+ *  6. RETRY BINARY FETCH: 3-Attempt retry for missing data.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -84,7 +83,7 @@
     return bytes.buffer;
   }
 
-  // FIX: Concurrency set to STRICTLY 1. Prevents server connection drops for bulk uploads!
+  // STRICT Concurrency 1 for absolute stability on slow networks
   class ConcurrencyQueue {
     constructor(concurrency = 1) {
       this.concurrency = concurrency;
@@ -118,13 +117,17 @@
   }
 
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative-ultimate-fix',
+    version: '2026.10-authoritative-ABSOLUTE-FINAL',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
     eventSource: null,
     subscribers: {}, 
-    uploadQueue: new ConcurrencyQueue(1), // 1 File at a time, guaranteed safety!
+    uploadQueue: new ConcurrencyQueue(1),
+    
+    // NEW: STRICT MAP ENGINE. Mathematically prevents duplicates.
+    fileMap: new Map(),
+
     reconnectTimer: null,
     reconcileTimer: null, 
     reconnectAttempts: 0,
@@ -133,7 +136,15 @@
     pendingReconcile: false,
 
     init: function() {
-      console.log('[ATPL FileSync] Initializing ultimate single-lane sync system...');
+      console.log('[ATPL FileSync] Initializing Absolute Map Engine...');
+      
+      // Load existing files into Map to prevent initial wipe
+      if (Array.isArray(window.FILES)) {
+        window.FILES.forEach(f => {
+          if (f && f.name) this.fileMap.set(String(f.name).toLowerCase(), f);
+        });
+      }
+
       this.connectSSE();
       this.connectFirebase();
       this.bindWindowEvents();
@@ -145,6 +156,21 @@
           this.requestReconcile();
         }
       }, 5000);
+    },
+
+    // NEW: Centralized synchronizer from Map to UI
+    syncToWindowFiles: function() {
+      var arr = Array.from(this.fileMap.values());
+      // Sort so newest files always stay on top
+      arr.sort((a, b) => {
+        var da = new Date(a.savedAt || 0).getTime();
+        var db = new Date(b.savedAt || 0).getTime();
+        return db - da; 
+      });
+      window.FILES = arr;
+      if (typeof FILES !== 'undefined') FILES = arr;
+      this.triggerImmediateUIRefresh();
+      this.updateSyncBadge('ok', '⚡ Realtime (' + arr.length + ' files)');
     },
 
     triggerImmediateUIRefresh: function() {
@@ -201,13 +227,13 @@
           }, delay);
         };
 
-        es.addEventListener('file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
-        es.addEventListener('file_deleted', (e) => { this.requestReconcile(); });
+        es.addEventListener('file_saved', (e) => { this.requestReconcile(); });
+        es.addEventListener('file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('files_bulk_saved', (e) => { this.requestReconcile(); });
-        es.addEventListener('module_cleared', (e) => { this.requestReconcile(); });
-        es.addEventListener('salary_file_saved', (e) => { this.handleRemoteFileSaved(e.data); });
-        es.addEventListener('salary_file_deleted', (e) => { this.requestReconcile(); });
-        es.addEventListener('salary_clear_all', (e) => { this.requestReconcile(); });
+        es.addEventListener('module_cleared', (e) => { this.clearModule('salary', true); });
+        es.addEventListener('salary_file_saved', (e) => { this.requestReconcile(); });
+        es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
+        es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
       } catch (err) {}
     },
 
@@ -242,7 +268,6 @@
       }
     },
 
-    // SMART WAIT: Now waits 2.5 seconds because single-lane uploads take slightly longer
     requestReconcile: function() {
       if (this.reconcileTimer) {
         clearTimeout(this.reconcileTimer);
@@ -252,33 +277,33 @@
       }, 2500); 
     },
 
-    handleRemoteFileSaved: function(raw) {
+    // Strict Deletion via Map
+    handleRemoteFileDeleted: function(raw) {
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        var file = msg.file || msg.data || msg;
-        if (!file || !file.name) return;
-        if (msg.version) this.serverStateVersion = msg.version;
+        var info = msg.data || msg;
+        var targetName = String(info.name || '').toLowerCase();
+        var targetId = String(info.id || '').toLowerCase();
+        if (!targetName && !targetId) return;
 
-        if (file.module === 'salary' || !file.module) {
-          var fileName = file.name;
-          var rawBuf = file.buf ? (typeof file.buf === 'string' ? base64ToArrayBuffer(file.buf) : file.buf) : null;
-          
-          if (rawBuf && window.parseWB && window.wbToSheets) {
-            var wb = window.parseWB(rawBuf);
-            var sheets = window.wbToSheets(wb);
-            window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(fileName).toLowerCase(); });
-            var item = { id: file.id, name: fileName, wb: wb, sheets: sheets, buf: rawBuf, fromDB: true, savedAt: file.created_at || file.saved || new Date().toISOString(), syncStatus: 'saved' };
-            
-            window.FILES.unshift(item);
-            if (typeof FILES !== 'undefined') FILES = window.FILES;
-            if (typeof saveFileToDB === 'function') saveFileToDB(fileName, rawBuf);
-            
-            this.triggerImmediateUIRefresh();
-            this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
-          } else {
-            this.requestReconcile(); 
+        var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+        if (targetName) tombs[targetName] = new Date().toISOString();
+        if (targetId) tombs[targetId] = new Date().toISOString();
+        localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+
+        if (targetName) this.fileMap.delete(targetName);
+        for (var [k, v] of this.fileMap.entries()) {
+          if ((targetId && String(v.id).toLowerCase() === targetId) || (targetName && String(v.name).toLowerCase() === targetName)) {
+            this.fileMap.delete(k);
           }
         }
+        
+        if (typeof deleteFromDB === 'function') {
+            if (info.name) deleteFromDB(info.name);
+            if (info.id) deleteFromDB(info.id);
+        }
+
+        this.syncToWindowFiles();
       } catch (e) {}
     },
 
@@ -288,7 +313,7 @@
         headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
         cache: force ? 'no-store' : 'default'
       });
-      if (!res.ok) throw new Error('Failed to list files from backend');
+      if (!res.ok) throw new Error('Failed to list files');
       var data = await res.json();
       if (!data.ok) throw new Error(data.error);
       if (data.version) this.serverStateVersion = data.version;
@@ -308,6 +333,7 @@
       return this.uploadQueue.add(async () => {
         if (onProgress) onProgress('preparing', 10);
         var name = fileObj.name;
+        var lName = String(name).toLowerCase();
         var mime = fileObj.type || fileObj.mime_type || 'application/octet-stream';
         var size = fileObj.size || 0;
         var bufBase64 = '';
@@ -325,10 +351,6 @@
           rawBuf = fileObj.buffer;
           bufBase64 = arrayBufferToBase64(fileObj.buffer);
           size = fileObj.buffer.byteLength;
-        } else if (fileObj.buf instanceof ArrayBuffer) {
-          rawBuf = fileObj.buf;
-          bufBase64 = arrayBufferToBase64(fileObj.buf);
-          size = fileObj.buf.byteLength;
         }
 
         if (onProgress) onProgress('hashing', 30);
@@ -395,20 +417,18 @@
           try {
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
-            window.FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
             
-            window.FILES.unshift({ 
+            // MAP OVERWRITE: Never duplicate, perfectly replace
+            this.fileMap.set(lName, { 
                 id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, 
                 savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending' 
             });
             
-            if (typeof FILES !== 'undefined') FILES = window.FILES;
             if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); 
           } catch (_) {}
         }
         
-        this.triggerImmediateUIRefresh(); 
-
+        this.syncToWindowFiles();
         if (onProgress) onProgress('saved', 100);
         return result.file || payload;
       });
@@ -436,12 +456,27 @@
         }
       }
 
-      if (module === 'salary') this.triggerImmediateUIRefresh(); 
+      if (module === 'salary') this.syncToWindowFiles(); 
       return { total: files.length, saved: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results: results };
     },
 
     deleteFile: async function(module, idOrName, skipRemote = false) {
       if (!idOrName) return false;
+      var targetName = String(idOrName).toLowerCase();
+
+      // 1. Tombstone it IMMEDIATELY
+      var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+      tombs[targetName] = new Date().toISOString();
+      localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+
+      // 2. Remove from Map IMMEDIATELY
+      this.fileMap.delete(targetName);
+      for (var [k, v] of this.fileMap.entries()) {
+        if (v.id && String(v.id).toLowerCase() === targetName) {
+            this.fileMap.delete(k);
+        }
+      }
+      this.syncToWindowFiles();
 
       if (!skipRemote) {
         try {
@@ -454,54 +489,38 @@
         }
       }
 
-      if (module === 'salary') {
-        var targetName = String(idOrName).toLowerCase();
-        window.FILES = (window.FILES || []).filter(function(x) { 
-            var xName = x && x.name ? String(x.name).toLowerCase() : '';
-            var xId = x && x.id ? String(x.id).toLowerCase() : '';
-            return xName !== targetName && xId !== targetName; 
-        });
-        if (typeof FILES !== 'undefined') FILES = window.FILES;
-        if (typeof deleteFromDB === 'function') deleteFromDB(idOrName);
-        try {
-          var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
-          tombs[targetName] = new Date().toISOString();
-          localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
-        } catch (_) {}
-        
-        this.triggerImmediateUIRefresh();
-        this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
+      if (module === 'salary' && typeof deleteFromDB === 'function') {
+         deleteFromDB(idOrName);
       }
-
       return true;
     },
 
-    clearModule: async function(module = 'salary') {
-      try {
-        var url = (this.apiBase || '') + '/api/sync/files/clear-module';
-        await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module }) }).catch(function(){});
-      } catch (_) {}
+    clearModule: async function(module = 'salary', skipRemote = false) {
+      if (!skipRemote) {
+        try {
+          var url = (this.apiBase || '') + '/api/sync/files/clear-module';
+          await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module }) }).catch(function(){});
+        } catch (_) {}
 
-      if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
-        try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
+        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
+          try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
+        }
       }
 
       if (module === 'salary') {
-        window.FILES = [];
-        if (typeof FILES !== 'undefined') FILES = [];
+        this.fileMap.clear();
         if (window.DB) {
           try {
             var ctx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
             ctx.objectStore(window.DB_STORE || 'salaryFiles').clear();
           } catch (_) {}
         }
-        this.triggerImmediateUIRefresh();
-        this.updateSyncBadge('ok', '⚡ Realtime (0 files)');
+        this.syncToWindowFiles();
       }
       return true;
     },
 
-    // THE MASTER FETCH
+    // THE MASTER FETCH: 100% Anti-Duplication
     reconcileAll: async function(force = false) {
       if (this.isReconciling) {
         this.pendingReconcile = true; 
@@ -525,7 +544,6 @@
               if (data.ok && Array.isArray(data.files)) {
                 serverFiles = data.files;
                 serverTombs = data.tombstones || {};
-                if (data.version) this.serverStateVersion = data.version;
                 this.backendReachable = true;
               }
             } else {
@@ -558,44 +576,11 @@
         if (!serverFiles) return;
 
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
-        var serverMap = {};
-        salaryServerFiles.forEach(function(f) {
-          if (f && f.name) serverMap[String(f.name).toLowerCase()] = f;
-          if (f && f.id) serverMap[String(f.id).toLowerCase()] = f;
-        });
-
-        var curFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
-        var dirty = false;
-        var keptFiles = [];
         
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
 
-        for (var i = 0; i < curFiles.length; i++) {
-          var lf = curFiles[i];
-          if (!lf || (!lf.name && !lf.id)) continue;
-          
-          var lkName = lf.name ? String(lf.name).toLowerCase() : '';
-          var lkId = lf.id ? String(lf.id).toLowerCase() : '';
-          var tombName = serverTombs[lkName];
-          var tombId = serverTombs[lkId];
-
-          var isPending = (lf.syncStatus === 'pending');
-          var isRecent = lf.savedAt && (Date.now() - new Date(lf.savedAt).getTime() < 60000); 
-          
-          if (((!isPending && !isRecent) && (!serverMap[lkName] && !serverMap[lkId])) || tombName || tombId) {
-            dirty = true;
-            if (typeof deleteFromDB === 'function') {
-              if (lf.name) deleteFromDB(lf.name);
-              if (lf.id) deleteFromDB(lf.id);
-            }
-          } else {
-            keptFiles.push(lf);
-          }
-        }
-
-        window.FILES = keptFiles;
-        if (typeof FILES !== 'undefined') FILES = keptFiles;
+        var fetchedNames = new Set();
 
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
@@ -603,16 +588,20 @@
           var lNameLower = String(sName).toLowerCase();
           var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
 
+          // 1. ZOMBIE CHECK
           if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
+              this.fileMap.delete(lNameLower);
               continue; 
           }
 
-          var cur = (window.FILES || []).find(function(x) { 
-              return (x && x.id && sf.id && String(x.id).toLowerCase() === lIdLower) || 
-                     (x && x.name && sName && String(x.name).toLowerCase() === lNameLower); 
-          });
+          fetchedNames.add(lNameLower);
+
+          var existing = this.fileMap.get(lNameLower);
           
-          if (cur && cur.savedAt === (sf.created_at || sf.saved) && cur.buf) continue;
+          // If we already have the file and its buffer, skip re-downloading it
+          if (existing && existing.buf && !sf.buf) {
+              continue; 
+          }
 
           var rawBuf = null;
           if (sf.buf) {
@@ -624,18 +613,30 @@
             } catch (_) {}
           }
 
+          // 2. THE 3-RETRY BINARY DOWNLOADER
           if (!rawBuf && sf.id && this.backendReachable) {
-              try {
-                  rawBuf = await this.getFileContent(sf.id);
-              } catch(e) {}
+              for (let attempt = 0; attempt < 3; attempt++) {
+                  try {
+                      rawBuf = await this.getFileContent(sf.id);
+                      if (rawBuf) break;
+                  } catch(e) {
+                      await new Promise(r => setTimeout(r, 1500));
+                  }
+              }
           }
 
-          if (rawBuf && window.parseWB && window.wbToSheets) {
+          // Even if rawBuf fails, we save empty buffer so it doesn't just disappear!
+          if (!rawBuf) {
+              rawBuf = new ArrayBuffer(0);
+          }
+
+          if (window.parseWB && window.wbToSheets) {
             try {
-              var wb = window.parseWB(rawBuf);
-              var sheets = window.wbToSheets(wb);
-              window.FILES = (window.FILES || []).filter(function(x) { return String(x.name).toLowerCase() !== String(sName).toLowerCase(); });
-              var fItem = {
+              var wb = rawBuf.byteLength > 0 ? window.parseWB(rawBuf) : null;
+              var sheets = wb ? window.wbToSheets(wb) : [];
+              
+              // MAP OVERWRITE: Never duplicate!
+              this.fileMap.set(lNameLower, {
                 id: sf.id,
                 name: sName,
                 wb: wb,
@@ -643,33 +644,35 @@
                 buf: rawBuf,
                 fromDB: true,
                 savedAt: sf.created_at || sf.saved || new Date().toISOString(),
-                syncStatus: 'saved'
-              };
-              window.FILES.unshift(fItem);
-              if (typeof FILES !== 'undefined') FILES = window.FILES;
-              dirty = true;
-              if (window.DB) {
+                syncStatus: rawBuf.byteLength > 0 ? 'saved' : 'error'
+              });
+              
+              if (window.DB && rawBuf.byteLength > 0) {
                 try {
                   var tx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
-                  tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: fItem.savedAt });
+                  tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: sf.created_at || sf.saved || new Date().toISOString() });
                 } catch (_) {}
               }
             } catch (err) {}
           }
         }
 
-        if (dirty || !curFiles.length) {
-          this.triggerImmediateUIRefresh();
+        // 3. PURGE DEAD FILES
+        for (var [name, f] of this.fileMap.entries()) {
+          var isPending = (f.syncStatus === 'pending');
+          var isRecent = f.savedAt && (Date.now() - new Date(f.savedAt).getTime() < 60000); 
+          if (!fetchedNames.has(name) && !isPending && !isRecent) {
+             this.fileMap.delete(name);
+          }
         }
 
-        this.updateSyncBadge('ok', '☁ Realtime (' + (window.FILES || []).length + ' files)');
-        this.notifySubscribers('salary', 'reconciled', { files: window.FILES });
+        this.syncToWindowFiles();
       } catch (err) {
       } finally {
         this.isReconciling = false;
         if (this.pendingReconcile) {
           this.pendingReconcile = false;
-          setTimeout(() => this.reconcileAll(true), 300);
+          setTimeout(() => this.reconcileAll(true), 500);
         }
       }
     },
@@ -677,7 +680,7 @@
     updateSyncBadge: function(status, msg) {
       try {
         if (typeof window.updateRealtimeCloudBadge === 'function') {
-          var count = Array.isArray(window.FILES) ? window.FILES.length : 0;
+          var count = this.fileMap ? this.fileMap.size : 0;
           window.updateRealtimeCloudBadge(count, status, msg);
         }
       } catch (_) {}
