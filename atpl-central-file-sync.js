@@ -1,15 +1,15 @@
 /**
- * ATPL Central File Sync System (v2026.10-ABSOLUTE-SYNC-FIX)
+ * ATPL Central File Sync System (v2026.10-SERVER-BREATHER-FIX)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization.
  * 
  * FIXES APPLIED:
- *  1. UNBREAKABLE SYNC: Removed the 'backendReachable' lock. System 
- *     now ALWAYS retries fetching from the server every 5 seconds.
- *  2. STRICT MAP ENGINE: Prevents duplicate files mathematically.
- *  3. NO AUTO-PURGE: Files will NEVER auto-delete incorrectly.
- *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1).
- *  5. RETRY BINARY FETCH: Always fetches missing file data safely.
+ *  1. SERVER BREATHER: Added 1.5s delay between bulk uploads and downloads 
+ *     to prevent Express/Cloud Run from choking or rate-limiting.
+ *  2. PROGRESSIVE UI: Files appear on screen ONE BY ONE as they download, 
+ *     rather than waiting for the entire batch to finish.
+ *  3. UNBREAKABLE SYNC: Relentless polling every 5 seconds.
+ *  4. STRICT MAP ENGINE: Mathematically prevents duplicates.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -115,7 +115,7 @@
   }
 
   var ATPLCentralFileSync = {
-    version: '2026.10-ABSOLUTE-SYNC-FIX',
+    version: '2026.10-SERVER-BREATHER-FIX',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -142,7 +142,7 @@
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(true); }, 300);
       
-      // RELENTLESS POLLING: Never stops checking the server.
+      // RELENTLESS POLLING
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
           this.requestReconcile();
@@ -296,28 +296,6 @@
       } catch (e) {}
     },
 
-    listFiles: async function(module = 'all', force = false) {
-      var url = (this.apiBase || '') + '/api/sync/files?module=' + encodeURIComponent(module) + '&summary=0' + (force ? '&_t=' + Date.now() : '');
-      var res = await fetch(url, {
-        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' },
-        cache: force ? 'no-store' : 'default'
-      });
-      if (!res.ok) throw new Error('Failed to list files');
-      var data = await res.json();
-      if (!data.ok) throw new Error(data.error);
-      if (data.version) this.serverStateVersion = data.version;
-      return data.files || [];
-    },
-
-    getFileContent: async function(fileId) {
-      if (!fileId) throw new Error('File ID required');
-      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
-      var res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to download file content');
-      var blob = await res.blob();
-      return blob.arrayBuffer();
-    },
-
     uploadFile: async function(module, fileObj, meta = {}, onProgress = null) {
       return this.uploadQueue.add(async () => {
         if (onProgress) onProgress('preparing', 10);
@@ -442,6 +420,11 @@
           results.push({ ok: false, name: f.name, error: err.message || err });
           if (onFileProgress) onFileProgress(i, 'failed', 0, f.name, err.message || err);
         }
+        
+        // FIX: SERVER BREATHER - Give server 1.5s to digest before sending next file!
+        if (i < files.length - 1) {
+            await new Promise(r => setTimeout(r, 1500));
+        }
       }
 
       if (module === 'salary') this.syncToWindowFiles(); 
@@ -506,6 +489,15 @@
       return true;
     },
 
+    getFileContent: async function(fileId) {
+      if (!fileId) throw new Error('File ID required');
+      var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
+      var res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to download file content');
+      var blob = await res.blob();
+      return blob.arrayBuffer();
+    },
+
     reconcileAll: async function(force = false) {
       if (this.isReconciling) {
         this.pendingReconcile = true; 
@@ -518,7 +510,6 @@
         var serverTombs = {};
         var backendSuccess = false;
 
-        // FIXED: Always retry backend. No more 'backendReachable' locking.
         try {
           var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0&_t=' + Date.now();
           var res = await fetch(fetchUrl, {
@@ -533,9 +524,7 @@
               backendSuccess = true;
             }
           }
-        } catch (netErr) {
-          // It's okay if it fails, it will try again next time.
-        }
+        } catch (netErr) {}
 
         if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
@@ -589,16 +578,17 @@
             } catch (_) {}
           }
 
-          // FIXED: Forces binary download regardless of backend lock
           if (!rawBuf && sf.id) {
-              for (let attempt = 0; attempt < 3; attempt++) {
+              for (let attempt = 0; attempt < 4; attempt++) {
                   try {
                       rawBuf = await this.getFileContent(sf.id);
-                      if (rawBuf) break;
+                      if (rawBuf && rawBuf.byteLength > 0) break;
                   } catch(e) {
-                      await new Promise(r => setTimeout(r, 1000));
+                      await new Promise(r => setTimeout(r, 2000));
                   }
               }
+              // FIX: SERVER BREATHER FOR DOWNLOADS
+              await new Promise(r => setTimeout(r, 800));
           }
 
           if (!rawBuf) {
@@ -627,17 +617,19 @@
                   tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: sf.created_at || sf.saved || new Date().toISOString() });
                 } catch (_) {}
               }
+              
+              // FIX: PROGRESSIVE UI - File turant screen par dikhegi, end tak wait nahi!
+              this.syncToWindowFiles();
+
             } catch (err) {}
           }
         }
-
-        this.syncToWindowFiles();
       } catch (err) {
       } finally {
         this.isReconciling = false;
         if (this.pendingReconcile) {
           this.pendingReconcile = false;
-          setTimeout(() => this.reconcileAll(true), 500);
+          setTimeout(() => this.reconcileAll(true), 1000);
         }
       }
     },
