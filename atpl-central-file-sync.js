@@ -15,6 +15,8 @@
 (function(window) {
   'use strict';
 
+  var LIVE_CLOUD_RUN_URL = 'https://ais-dev-otzwpfkfuuyg26sg6l3uml-427004433114.asia-southeast1.run.app';
+
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
     var origin = window.location.origin || '';
@@ -23,6 +25,9 @@
     }
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
+    if (origin.indexOf('github.io') >= 0) {
+      return LIVE_CLOUD_RUN_URL;
+    }
     return ''; 
   }
 
@@ -466,9 +471,9 @@
           if (onFileProgress) onFileProgress(i, 'failed', 0, f.name, err.message || err);
         }
         
-        // FIX: SERVER BREATHER - Give server 1.5s to digest before sending next file!
+        // Streamlined delay between uploads for smooth server handling
         if (i < files.length - 1) {
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 100));
         }
       }
 
@@ -582,7 +587,7 @@
         var backendSuccess = false;
 
         try {
-          var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0&_t=' + Date.now();
+          var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=1&_t=' + Date.now();
           var res = await fetch(fetchUrl, {
             cache: 'no-store',
             headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
@@ -684,6 +689,7 @@
           this.syncToWindowFiles();
         }
 
+        var downloadedAny = false;
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
@@ -696,9 +702,14 @@
           }
 
           var existing = this.fileMap.get(lNameLower);
-          
-          if (existing && existing.buf && !sf.buf) {
+          if (existing && existing.buf && existing.wb) {
               continue; 
+          }
+
+          var winExisting = Array.isArray(window.FILES) ? window.FILES.find(function(x) { return x && String(x.name).toLowerCase() === lNameLower && x.wb; }) : null;
+          if (winExisting && winExisting.buf && winExisting.wb) {
+            this.fileMap.set(lNameLower, winExisting);
+            continue;
           }
 
           var rawBuf = null;
@@ -712,26 +723,25 @@
           }
 
           if (!rawBuf && sf.id) {
-              for (let attempt = 0; attempt < 4; attempt++) {
-                  try {
-                      rawBuf = await this.getFileContent(sf.id);
-                      if (rawBuf && rawBuf.byteLength > 0) break;
-                  } catch(e) {
-                      await new Promise(r => setTimeout(r, 2000));
-                  }
-              }
-              // FIX: SERVER BREATHER FOR DOWNLOADS
-              await new Promise(r => setTimeout(r, 800));
-          }
-
-          if (!rawBuf) {
-              rawBuf = new ArrayBuffer(0);
-          }
-
-          if (window.parseWB && window.wbToSheets) {
             try {
-              var wb = rawBuf.byteLength > 0 ? window.parseWB(rawBuf) : null;
-              var sheets = wb ? window.wbToSheets(wb) : [];
+              rawBuf = await this.getFileContent(sf.id);
+            } catch(e) {
+              try {
+                var sRes = await fetch((this.apiBase || '') + '/api/sync/salary-file/' + encodeURIComponent(sName));
+                if (sRes.ok) {
+                  var sJson = await sRes.json();
+                  if (sJson && sJson.file && sJson.file.buf) {
+                    rawBuf = base64ToArrayBuffer(sJson.file.buf);
+                  }
+                }
+              } catch (_) {}
+            }
+          }
+
+          if (rawBuf && rawBuf.byteLength > 0 && window.parseWB && window.wbToSheets) {
+            try {
+              var wb = window.parseWB(rawBuf);
+              var sheets = window.wbToSheets(wb);
               
               this.fileMap.set(lNameLower, {
                 id: sf.id,
@@ -741,21 +751,23 @@
                 buf: rawBuf,
                 fromDB: true,
                 savedAt: sf.created_at || sf.saved || new Date().toISOString(),
-                syncStatus: rawBuf.byteLength > 0 ? 'saved' : 'error'
+                syncStatus: 'saved'
               });
               
-              if (window.DB && rawBuf.byteLength > 0) {
+              if (window.DB) {
                 try {
                   var tx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
                   tx.objectStore(window.DB_STORE || 'salaryFiles').put({ name: sName, id: sf.id, buf: rawBuf, saved: sf.created_at || sf.saved || new Date().toISOString() });
                 } catch (_) {}
               }
-              
-              // FIX: PROGRESSIVE UI - File turant screen par dikhegi, end tak wait nahi!
-              this.syncToWindowFiles();
-
-            } catch (err) {}
+              downloadedAny = true;
+            } catch (err) {
+              console.warn('[CentralSync] Parse error:', sName, err);
+            }
           }
+        }
+        if (downloadedAny || prunedAny) {
+          this.syncToWindowFiles();
         }
       } catch (err) {
       } finally {

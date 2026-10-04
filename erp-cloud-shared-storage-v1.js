@@ -1054,9 +1054,10 @@
      for(var j=0; j<localList.length; j++){
        var lf = localList[j];
        var lk = String(lf.name).toLowerCase();
-       if(!salaryRestoreAllowed(lf.name,lf.saved) || (st.salary_tombstones||{})[lk])continue;
+       if(!salaryRestoreAllowed(lf.name,lf.saved) || (st.salary_tombstones||{})[lk] || (st.tombstones||{})[lk])continue;
        var sFile = serverMap[lk];
-       if(!sFile || !sFile.buf || dateMs(lf.saved) > dateMs(sFile.saved)){
+       if(sFile) continue;
+       if(!sFile){
          try {
            var b64 = bufToB64(lf.buf);
            if(b64){

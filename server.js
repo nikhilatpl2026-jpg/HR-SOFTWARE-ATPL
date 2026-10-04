@@ -53,7 +53,21 @@ function readJsonFile(filename, fallback) {
 function writeJsonFile(filename, data) {
   try {
     const p = path.join(DATA_DIR, filename);
-    fs.writeFileSync(p, JSON.stringify(data), 'utf8');
+    let out = data;
+    if (filename === 'files_db.json' && data && data.files) {
+      const copy = { version: data.version, tombstones: data.tombstones, files: {} };
+      for (const [id, f] of Object.entries(data.files)) {
+        if (!f) continue;
+        const fCopy = Object.assign({}, f);
+        delete fCopy.buf;
+        copy.files[id] = fCopy;
+      }
+      out = copy;
+    }
+    const str = JSON.stringify(out);
+    fs.writeFile(p, str, 'utf8', (err) => {
+      if (err) console.warn('[Sync-Store] Async write warning for', filename, err.message);
+    });
   } catch (err) {
     console.warn('[Sync-Store] Write warning for', filename, err.message);
   }
@@ -233,7 +247,7 @@ app.get('/api/sync/files', (req, res) => {
       list = list.filter(f => f.category === category);
     }
 
-    if (summary === '1') {
+    if (summary === '1' || req.query.include_buf !== '1') {
       list = list.map(f => {
         const copy = Object.assign({}, f);
         delete copy.buf;
@@ -619,7 +633,18 @@ app.get('/api/sync/files/:id/content', (req, res) => {
       file = Object.values(filesDb.files).find(f => f.name.toLowerCase() === lower);
     }
 
-    if (!file) return res.status(404).json({ ok: false, error: 'File not found' });
+    if (!file) {
+      const lower = rawId.toLowerCase();
+      const salItem = syncSalaryFiles[lower];
+      if (salItem && salItem.buf) {
+        const clean = salItem.buf.includes(',') ? salItem.buf.split(',')[1] : salItem.buf;
+        const bin = Buffer.from(clean, 'base64');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(salItem.name)}"`);
+        return res.send(bin);
+      }
+      return res.status(404).json({ ok: false, error: 'File not found' });
+    }
 
     // Check disk blob first
     const blobPath = path.join(BLOBS_DIR, `${file.id}.bin`);
@@ -632,6 +657,15 @@ app.get('/api/sync/files/:id/content', (req, res) => {
     // Fallback to in-memory Base64
     if (file.buf) {
       const clean = file.buf.includes(',') ? file.buf.split(',')[1] : file.buf;
+      const bin = Buffer.from(clean, 'base64');
+      res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
+      return res.send(bin);
+    }
+
+    const salItem = syncSalaryFiles[file.name.toLowerCase()];
+    if (salItem && salItem.buf) {
+      const clean = salItem.buf.includes(',') ? salItem.buf.split(',')[1] : salItem.buf;
       const bin = Buffer.from(clean, 'base64');
       res.setHeader('Content-Type', file.mime_type || 'application/octet-stream');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
@@ -708,7 +742,29 @@ app.get('/api/sync/salary-file/:name', (req, res) => {
     const name = decodeURIComponent(req.params.name || '');
     if (!name) return res.status(400).json({ ok: false, error: 'File name required' });
     const key = name.toLowerCase();
-    const item = syncSalaryFiles[key];
+    let item = syncSalaryFiles[key];
+    if (!item || !item.buf) {
+      const match = Object.values(filesDb.files).find(f => f.name.toLowerCase() === key);
+      if (match) {
+        let b64 = match.buf || null;
+        if (!b64) {
+          const blobPath = path.join(BLOBS_DIR, `${match.id}.bin`);
+          if (fs.existsSync(blobPath)) {
+            b64 = fs.readFileSync(blobPath).toString('base64');
+          }
+        }
+        if (b64) {
+          item = {
+            name: match.name,
+            buf: b64,
+            sheets: match.sheets || null,
+            saved: match.created_at,
+            uploaded_by: match.uploaded_by
+          };
+          syncSalaryFiles[key] = item;
+        }
+      }
+    }
     if (!item) return res.status(404).json({ ok: false, error: 'File not found' });
     return res.json({ ok: true, file: item });
   } catch (err) {
@@ -782,6 +838,13 @@ app.post('/api/sync/salary-file', (req, res) => {
 
     // Also register in unified filesDb
     const id = 'sal_' + hashData(name).substring(0, 16);
+    if (buf && typeof buf === 'string') {
+      try {
+        const cleanBuf = buf.includes(',') ? buf.split(',')[1] : buf;
+        const bin = Buffer.from(cleanBuf, 'base64');
+        fs.writeFileSync(path.join(BLOBS_DIR, `${id}.bin`), bin);
+      } catch (_) {}
+    }
     filesDb.files[id] = {
       id: id,
       module: 'salary',

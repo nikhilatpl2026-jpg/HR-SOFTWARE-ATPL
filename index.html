@@ -80,7 +80,10 @@
 <link rel="preconnect" href="https://script.google.com">
 <link rel="dns-prefetch" href="https://script.googleusercontent.com">
 <script src="xlsx.full.min.js"></script>
-<script>window.__atplFirebaseQuotaExhausted = true;</script>
+<script>
+  window.__atplFirebaseQuotaExhausted = true;
+  window.__ATPL_CENTRAL_BACKEND_URL = 'https://ais-dev-otzwpfkfuuyg26sg6l3uml-427004433114.asia-southeast1.run.app';
+</script>
 <script src="atpl-firebase-bundle.js?v=20261001-quota-guarded"></script>
 <script src="pako.min.js"></script>
 <script>
@@ -3491,6 +3494,9 @@ if (!atplUsesSharedSalaryCloud() && typeof window.EventSource !== 'undefined') {
             } catch(_) {}
           }
           renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+          if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.handleRemoteFileDeleted === 'function') {
+            window.ATPLCentralFileSync.handleRemoteFileDeleted({ name: delName, id: delName, deleted_at: (payload.data && payload.data.deleted_at) });
+          }
           window.updateRealtimeCloudBadge(window.FILES.length);
           if (window.showToast) window.showToast('🗑 Realtime: File "' + delName + '" delete ho gayi.');
         }
