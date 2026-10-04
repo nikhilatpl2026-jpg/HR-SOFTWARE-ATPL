@@ -142,12 +142,12 @@
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(true); }, 300);
       
-      // RELENTLESS POLLING
+      // RELENTLESS POLLING (Every 3 seconds for instant cross-browser mirror)
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
           this.requestReconcile();
         }
-      }, 5000);
+      }, 3000);
     },
 
     syncToWindowFiles: function() {
@@ -174,6 +174,9 @@
       if (typeof updStats === 'function') updStats();
       if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
       if (typeof populateNJSelects === 'function') populateNJSelects();
+      if (window.ATPLGenZDashboard && typeof window.ATPLGenZDashboard.refresh === 'function') {
+        window.ATPLGenZDashboard.refresh();
+      }
     },
 
     bindWindowEvents: function() {
@@ -209,7 +212,7 @@
           this.connected = false;
           try { es.close(); } catch (_) {}
           this.eventSource = null;
-          var delay = Math.min(15000, 1000 * Math.pow(1.5, this.reconnectAttempts++));
+          var delay = Math.min(10000, 1000 * Math.pow(1.5, this.reconnectAttempts++));
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = setTimeout(() => {
             this.connectSSE();
@@ -224,6 +227,22 @@
         es.addEventListener('salary_file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
+        es.addEventListener('hr_doc_deleted', (e) => {
+          try {
+            var msg = JSON.parse(e.data || '{}');
+            var id = msg.id || (msg.data && msg.data.id);
+            if (id && typeof window.hrDocGetDocs === 'function') {
+              var docs = window.hrDocGetDocs();
+              if (Array.isArray(docs)) {
+                var lId = String(id).toLowerCase();
+                var remaining = docs.filter(function(d) { return d && String(d.id).toLowerCase() !== lId; });
+                docs.length = 0;
+                Array.prototype.push.apply(docs, remaining);
+                if (typeof window.hrDocRender === 'function') window.hrDocRender();
+              }
+            }
+          } catch(_) {}
+        });
       } catch (err) {}
     },
 
@@ -264,7 +283,7 @@
       }
       this.reconcileTimer = setTimeout(() => {
         this.reconcileAll(true);
-      }, 2500); 
+      }, 500); 
     },
 
     handleRemoteFileDeleted: function(raw) {
@@ -275,24 +294,50 @@
         var targetId = String(info.id || '').toLowerCase();
         if (!targetName && !targetId) return;
 
+        console.warn('[CentralSync] Remote file deleted received:', targetName || targetId);
+
         var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
         if (targetName) tombs[targetName] = new Date().toISOString();
         if (targetId) tombs[targetId] = new Date().toISOString();
         localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
 
         if (targetName) this.fileMap.delete(targetName);
+        if (targetId) this.fileMap.delete(targetId);
         for (var [k, v] of this.fileMap.entries()) {
-          if ((targetId && String(v.id).toLowerCase() === targetId) || (targetName && String(v.name).toLowerCase() === targetName)) {
+          var vn = String(v.name || '').toLowerCase();
+          var vi = String(v.id || '').toLowerCase();
+          if (vn === targetName || vi === targetId || vi === targetName || vn === targetId) {
             this.fileMap.delete(k);
           }
+        }
+
+        if (Array.isArray(window.FILES)) {
+          window.FILES = window.FILES.filter(function(x) {
+            if (!x) return false;
+            var xn = String(x.name || '').toLowerCase();
+            var xi = String(x.id || '').toLowerCase();
+            return xn !== targetName && xi !== targetId && xn !== targetId && xi !== targetName;
+          });
+          if (typeof FILES !== 'undefined') FILES = window.FILES;
         }
         
         if (typeof deleteFromDB === 'function') {
             if (info.name) deleteFromDB(info.name);
             if (info.id) deleteFromDB(info.id);
         }
+        if (window.DB) {
+          try {
+            var dtx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+            if (info.name) dtx.objectStore(window.DB_STORE || 'salaryFiles').delete(info.name);
+            if (info.id) dtx.objectStore(window.DB_STORE || 'salaryFiles').delete(info.id);
+          } catch (_) {}
+        }
 
         this.syncToWindowFiles();
+        if (window.ATPLGenZDashboard && typeof window.ATPLGenZDashboard.refresh === 'function') {
+          window.ATPLGenZDashboard.refresh(true);
+        }
+        window.dispatchEvent(new CustomEvent('atpl_files_updated'));
       } catch (e) {}
     },
 
@@ -441,10 +486,30 @@
 
       this.fileMap.delete(targetName);
       for (var [k, v] of this.fileMap.entries()) {
-        if (v.id && String(v.id).toLowerCase() === targetName) {
+        var vn = String((v && v.name) || '').toLowerCase();
+        var vi = String((v && v.id) || '').toLowerCase();
+        if (vn === targetName || vi === targetName || k === targetName) {
             this.fileMap.delete(k);
         }
       }
+
+      if (Array.isArray(window.FILES)) {
+        window.FILES = window.FILES.filter(function(x) {
+          if (!x) return false;
+          var xn = String(x.name || '').toLowerCase();
+          var xi = String(x.id || '').toLowerCase();
+          return xn !== targetName && xi !== targetName;
+        });
+        if (typeof FILES !== 'undefined') FILES = window.FILES;
+      }
+
+      if (window.DB) {
+        try {
+          var dtx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+          dtx.objectStore(window.DB_STORE || 'salaryFiles').delete(idOrName);
+        } catch (_) {}
+      }
+
       this.syncToWindowFiles();
 
       if (!skipRemote) {
@@ -452,6 +517,12 @@
           var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
           await fetch(url, { method: 'DELETE' });
         } catch (err) {}
+
+        if (module === 'salary') {
+          try {
+            await fetch((this.apiBase || '') + '/api/sync/salary-file/' + encodeURIComponent(idOrName), { method: 'DELETE' });
+          } catch (_) {}
+        }
 
         if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
           try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
@@ -550,6 +621,68 @@
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
+
+        // ═════════════════════════════════════════════════════════════════
+        // STRICT PRUNING: SERVER IS SINGLE SOURCE OF TRUTH
+        // If a file was deleted on Browser A / server, Browser B MUST delete it!
+        // ═════════════════════════════════════════════════════════════════
+        var activeServerNames = new Set();
+        var activeServerIds = new Set();
+        salaryServerFiles.forEach(function(sf) {
+          if (sf.name) activeServerNames.add(String(sf.name).toLowerCase());
+          if (sf.id) activeServerIds.add(String(sf.id).toLowerCase());
+        });
+
+        // Merge server tombstones into local storage
+        if (serverTombs && typeof serverTombs === 'object') {
+          for (var tk in serverTombs) {
+            localTombs[tk.toLowerCase()] = serverTombs[tk].deleted_at || new Date().toISOString();
+          }
+          try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch(_) {}
+        }
+
+        var prunedAny = false;
+        // Check this.fileMap for deleted files
+        for (var [localKey, localItem] of Array.from(this.fileMap.entries())) {
+          var lName = String((localItem && localItem.name) || localKey).toLowerCase();
+          var lId = String((localItem && localItem.id) || '').toLowerCase();
+          var isTombstoned = !!(serverTombs[lName] || serverTombs[lId] || localTombs[lName] || localTombs[lId]);
+          var isMissingOnServer = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId));
+
+          if (isTombstoned || isMissingOnServer) {
+            console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
+            this.fileMap.delete(localKey);
+            this.fileMap.delete(lName);
+            if (lId) this.fileMap.delete(lId);
+
+            if (window.DB) {
+              try {
+                var ptx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+                ptx.objectStore(window.DB_STORE || 'salaryFiles').delete(localItem.name || localKey);
+              } catch (_) {}
+            }
+            prunedAny = true;
+          }
+        }
+
+        // Also purge from window.FILES
+        if (Array.isArray(window.FILES)) {
+          var origLen = window.FILES.length;
+          window.FILES = window.FILES.filter(function(x) {
+            if (!x || !x.name) return false;
+            var xn = String(x.name).toLowerCase();
+            var xi = String(x.id || '').toLowerCase();
+            var isTomb = !!(serverTombs[xn] || serverTombs[xi] || localTombs[xn] || localTombs[xi]);
+            var isMissing = !activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi));
+            return !isTomb && !isMissing;
+          });
+          if (window.FILES.length !== origLen) prunedAny = true;
+          if (typeof FILES !== 'undefined') FILES = window.FILES;
+        }
+
+        if (prunedAny) {
+          this.syncToWindowFiles();
+        }
 
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;

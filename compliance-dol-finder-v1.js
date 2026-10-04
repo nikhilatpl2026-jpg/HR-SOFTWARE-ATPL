@@ -539,6 +539,14 @@ async function deleteChallan(type,id){
   if(!confirm('Permanently delete this challan'+(extra>0?' and '+extra+' duplicate cop'+(extra===1?'y':'ies'):'')+'?\n\n'+(r.name||id)+(r.period?'\n'+periodLabel(r.period):'')+'\n\nThis removes the saved challan, search index, and matching duplicate records from shared ERP.'))return;
   setStatus(type,'Deleting',(r.name||'challan')+(extra>0?' · '+ids.length+' copies':'')+' · backend cleanup',25);
   try{
+    // Permanent backend server deletion across all browsers
+    try {
+      ids.forEach(function(delId){
+        fetch('/api/sync/dol-record/' + encodeURIComponent(delId), { method: 'DELETE' }).catch(function(){});
+        fetch('/api/sync/files/' + encodeURIComponent(delId) + '?module=' + type, { method: 'DELETE' }).catch(function(){});
+      });
+    } catch(_) {}
+
     var res=await withTimeout(api.deleteComplianceDolBatchConfirmed(ids),120000,'Delete Failed — Retry');
     if(!res||res.failed)throw new Error((res&&res.results||[]).filter(function(x){return!x.ok}).map(function(x){return x.error||x.id}).join(' | ')||'Backend delete verification failed');
     setStatus(type,'Deleting','Backend removed · refreshing library',88);
