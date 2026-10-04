@@ -1,16 +1,15 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative-ABSOLUTE-FINAL)
+ * ATPL Central File Sync System (v2026.10-ABSOLUTE-SYNC-FIX)
  * ─────────────────────────────────────────────────────────────────
- * Centralized, backend-authoritative, real-time file synchronization
- * engine for all ERP file modules.
- *
- * Architecture Principles:
- *  1. STRICT MAP ENGINE: Mathematically prevents duplicate files.
- *  2. Backend is the SINGLE SOURCE OF TRUTH.
- *  3. Permanent Delete Guarantee: Tombstone seal prevents zombies.
- *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1) to prevent drops.
- *  5. SMART DEBOUNCE RECONCILE: Waits for queue to finish.
- *  6. RETRY BINARY FETCH: 3-Attempt retry for missing data.
+ * Centralized, backend-authoritative, real-time file synchronization.
+ * 
+ * FIXES APPLIED:
+ *  1. UNBREAKABLE SYNC: Removed the 'backendReachable' lock. System 
+ *     now ALWAYS retries fetching from the server every 5 seconds.
+ *  2. STRICT MAP ENGINE: Prevents duplicate files mathematically.
+ *  3. NO AUTO-PURGE: Files will NEVER auto-delete incorrectly.
+ *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1).
+ *  5. RETRY BINARY FETCH: Always fetches missing file data safely.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -83,7 +82,6 @@
     return bytes.buffer;
   }
 
-  // STRICT Concurrency 1 for absolute stability on slow networks
   class ConcurrencyQueue {
     constructor(concurrency = 1) {
       this.concurrency = concurrency;
@@ -117,17 +115,14 @@
   }
 
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative-ABSOLUTE-FINAL',
+    version: '2026.10-ABSOLUTE-SYNC-FIX',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
     eventSource: null,
     subscribers: {}, 
     uploadQueue: new ConcurrencyQueue(1),
-    
-    // NEW: STRICT MAP ENGINE. Mathematically prevents duplicates.
     fileMap: new Map(),
-
     reconnectTimer: null,
     reconcileTimer: null, 
     reconnectAttempts: 0,
@@ -136,9 +131,6 @@
     pendingReconcile: false,
 
     init: function() {
-      console.log('[ATPL FileSync] Initializing Absolute Map Engine...');
-      
-      // Load existing files into Map to prevent initial wipe
       if (Array.isArray(window.FILES)) {
         window.FILES.forEach(f => {
           if (f && f.name) this.fileMap.set(String(f.name).toLowerCase(), f);
@@ -150,18 +142,16 @@
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(true); }, 300);
       
+      // RELENTLESS POLLING: Never stops checking the server.
       setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
-          if (this.backendReachable === false && Date.now() - this.lastSyncTime < 15000) return; 
           this.requestReconcile();
         }
       }, 5000);
     },
 
-    // NEW: Centralized synchronizer from Map to UI
     syncToWindowFiles: function() {
       var arr = Array.from(this.fileMap.values());
-      // Sort so newest files always stay on top
       arr.sort((a, b) => {
         var da = new Date(a.savedAt || 0).getTime();
         var db = new Date(b.savedAt || 0).getTime();
@@ -193,7 +183,7 @@
       });
 
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && Date.now() - this.lastSyncTime > 4000) {
+        if (!document.hidden) {
           this.requestReconcile();
         }
       });
@@ -277,7 +267,6 @@
       }, 2500); 
     },
 
-    // Strict Deletion via Map
     handleRemoteFileDeleted: function(raw) {
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -418,7 +407,6 @@
             var wb = window.parseWB(rawBuf);
             var sheets = window.wbToSheets(wb);
             
-            // MAP OVERWRITE: Never duplicate, perfectly replace
             this.fileMap.set(lName, { 
                 id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, 
                 savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending' 
@@ -464,12 +452,10 @@
       if (!idOrName) return false;
       var targetName = String(idOrName).toLowerCase();
 
-      // 1. Tombstone it IMMEDIATELY
       var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
       tombs[targetName] = new Date().toISOString();
       localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
 
-      // 2. Remove from Map IMMEDIATELY
       this.fileMap.delete(targetName);
       for (var [k, v] of this.fileMap.entries()) {
         if (v.id && String(v.id).toLowerCase() === targetName) {
@@ -520,7 +506,6 @@
       return true;
     },
 
-    // THE MASTER FETCH: 100% Anti-Duplication
     reconcileAll: async function(force = false) {
       if (this.isReconciling) {
         this.pendingReconcile = true; 
@@ -531,30 +516,28 @@
         this.lastSyncTime = Date.now();
         var serverFiles = null;
         var serverTombs = {};
+        var backendSuccess = false;
 
-        if (this.backendReachable !== false) {
-          try {
-            var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0' + (force ? '&_t=' + Date.now() : '');
-            var res = await fetch(fetchUrl, {
-              cache: force ? 'no-store' : 'default',
-              headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-            });
-            if (res.ok) {
-              var data = await res.json();
-              if (data.ok && Array.isArray(data.files)) {
-                serverFiles = data.files;
-                serverTombs = data.tombstones || {};
-                this.backendReachable = true;
-              }
-            } else {
-              this.backendReachable = false;
+        // FIXED: Always retry backend. No more 'backendReachable' locking.
+        try {
+          var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=0&_t=' + Date.now();
+          var res = await fetch(fetchUrl, {
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+          });
+          if (res.ok) {
+            var data = await res.json();
+            if (data.ok && Array.isArray(data.files)) {
+              serverFiles = data.files;
+              serverTombs = data.tombstones || {};
+              backendSuccess = true;
             }
-          } catch (netErr) {
-            this.backendReachable = false;
           }
+        } catch (netErr) {
+          // It's okay if it fails, it will try again next time.
         }
 
-        if (!serverFiles && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+        if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
             if (Array.isArray(fbFiles)) {
@@ -576,11 +559,8 @@
         if (!serverFiles) return;
 
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
-        
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
-
-        var fetchedNames = new Set();
 
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
@@ -588,17 +568,13 @@
           var lNameLower = String(sName).toLowerCase();
           var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
 
-          // 1. ZOMBIE CHECK
           if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
               this.fileMap.delete(lNameLower);
               continue; 
           }
 
-          fetchedNames.add(lNameLower);
-
           var existing = this.fileMap.get(lNameLower);
           
-          // If we already have the file and its buffer, skip re-downloading it
           if (existing && existing.buf && !sf.buf) {
               continue; 
           }
@@ -613,19 +589,18 @@
             } catch (_) {}
           }
 
-          // 2. THE 3-RETRY BINARY DOWNLOADER
-          if (!rawBuf && sf.id && this.backendReachable) {
+          // FIXED: Forces binary download regardless of backend lock
+          if (!rawBuf && sf.id) {
               for (let attempt = 0; attempt < 3; attempt++) {
                   try {
                       rawBuf = await this.getFileContent(sf.id);
                       if (rawBuf) break;
                   } catch(e) {
-                      await new Promise(r => setTimeout(r, 1500));
+                      await new Promise(r => setTimeout(r, 1000));
                   }
               }
           }
 
-          // Even if rawBuf fails, we save empty buffer so it doesn't just disappear!
           if (!rawBuf) {
               rawBuf = new ArrayBuffer(0);
           }
@@ -635,7 +610,6 @@
               var wb = rawBuf.byteLength > 0 ? window.parseWB(rawBuf) : null;
               var sheets = wb ? window.wbToSheets(wb) : [];
               
-              // MAP OVERWRITE: Never duplicate!
               this.fileMap.set(lNameLower, {
                 id: sf.id,
                 name: sName,
@@ -654,15 +628,6 @@
                 } catch (_) {}
               }
             } catch (err) {}
-          }
-        }
-
-        // 3. PURGE DEAD FILES
-        for (var [name, f] of this.fileMap.entries()) {
-          var isPending = (f.syncStatus === 'pending');
-          var isRecent = f.savedAt && (Date.now() - new Date(f.savedAt).getTime() < 60000); 
-          if (!fetchedNames.has(name) && !isPending && !isRecent) {
-             this.fileMap.delete(name);
           }
         }
 
