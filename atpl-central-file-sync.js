@@ -1,5 +1,5 @@
 /**
- * ATPL Central File Sync System (v2026.10-authoritative-ultimate)
+ * ATPL Central File Sync System (v2026.10-authoritative-ultimate-fix)
  * ─────────────────────────────────────────────────────────────────
  * Centralized, backend-authoritative, real-time file synchronization
  * engine for all ERP file modules.
@@ -8,9 +8,10 @@
  *  1. Backend is the SINGLE SOURCE OF TRUTH.
  *  2. Real-time push + Aggressive NO-CACHE Background Polling.
  *  3. Permanent Delete Guarantee: Once deleted on backend, no resurrect.
- *  4. Controlled Bulk Upload Queue: Concurrency limit (2), Auto-Retry.
- *  5. SMART DEBOUNCE RECONCILE: Wait 2s to gather ALL concurrent uploads.
- *  6. MISSING BINARY FETCH: Always download file data if not sent via list.
+ *  4. STRICT BULK UPLOAD QUEUE: Concurrency limit (1) to prevent server 
+ *     connection drops during heavy Excel uploads.
+ *  5. SMART DEBOUNCE RECONCILE: Waits for queue to finish before sync.
+ *  6. MISSING BINARY FETCH: Always downloads file data safely.
  * ─────────────────────────────────────────────────────────────────
  */
 (function(window) {
@@ -83,8 +84,9 @@
     return bytes.buffer;
   }
 
+  // FIX: Concurrency set to STRICTLY 1. Prevents server connection drops for bulk uploads!
   class ConcurrencyQueue {
-    constructor(concurrency = 2) {
+    constructor(concurrency = 1) {
       this.concurrency = concurrency;
       this.running = 0;
       this.queue = [];
@@ -116,13 +118,13 @@
   }
 
   var ATPLCentralFileSync = {
-    version: '2026.10-authoritative-ultimate',
+    version: '2026.10-authoritative-ultimate-fix',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
     eventSource: null,
     subscribers: {}, 
-    uploadQueue: new ConcurrencyQueue(2),
+    uploadQueue: new ConcurrencyQueue(1), // 1 File at a time, guaranteed safety!
     reconnectTimer: null,
     reconcileTimer: null, 
     reconnectAttempts: 0,
@@ -131,7 +133,7 @@
     pendingReconcile: false,
 
     init: function() {
-      console.log('[ATPL FileSync] Initializing ultimate bulletproof sync system...');
+      console.log('[ATPL FileSync] Initializing ultimate single-lane sync system...');
       this.connectSSE();
       this.connectFirebase();
       this.bindWindowEvents();
@@ -240,14 +242,14 @@
       }
     },
 
-    // SMART WAIT: Waits 2 seconds for bulk files to finish arriving before syncing
+    // SMART WAIT: Now waits 2.5 seconds because single-lane uploads take slightly longer
     requestReconcile: function() {
       if (this.reconcileTimer) {
         clearTimeout(this.reconcileTimer);
       }
       this.reconcileTimer = setTimeout(() => {
         this.reconcileAll(true);
-      }, 2000); 
+      }, 2500); 
     },
 
     handleRemoteFileSaved: function(raw) {
@@ -274,7 +276,7 @@
             this.triggerImmediateUIRefresh();
             this.updateSyncBadge('ok', '⚡ Realtime (' + (window.FILES || []).length + ' files)');
           } else {
-            this.requestReconcile(); // Buffer missing? Request full sync
+            this.requestReconcile(); 
           }
         }
       } catch (e) {}
@@ -499,7 +501,7 @@
       return true;
     },
 
-    // THE MASTER FETCH: With Binary Fallback Check
+    // THE MASTER FETCH
     reconcileAll: async function(force = false) {
       if (this.isReconciling) {
         this.pendingReconcile = true; 
@@ -622,7 +624,6 @@
             } catch (_) {}
           }
 
-          // FIX: DOWNLOAD THE MISSING FILE DATA FORCEFULLY!
           if (!rawBuf && sf.id && this.backendReachable) {
               try {
                   rawBuf = await this.getFileContent(sf.id);
@@ -644,7 +645,6 @@
                 savedAt: sf.created_at || sf.saved || new Date().toISOString(),
                 syncStatus: 'saved'
               };
-              // Add to the TOP instantly!
               window.FILES.unshift(fItem);
               if (typeof FILES !== 'undefined') FILES = window.FILES;
               dirty = true;
@@ -684,7 +684,6 @@
     }
   };
 
-  // Expose globally
   window.ATPLCentralFileSync = ATPLCentralFileSync;
   window.atplBufToB64 = arrayBufferToBase64;
   window.atplB64ToBuf = base64ToArrayBuffer;
