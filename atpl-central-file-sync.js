@@ -33,6 +33,24 @@
 
   var API_BASE = detectBackendUrl();
 
+  async function confirmedJson(url, options) {
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, 30000);
+    try {
+      var response = await fetch(url, Object.assign({}, options, {
+        cache: 'no-store', signal: controller.signal
+      }));
+      if (response.redirected || !/application\/json/i.test(response.headers.get('content-type') || '')) {
+        throw new Error('Cloud backend returned a login/HTML page. A working production API is required.');
+      }
+      var data = await response.json();
+      if (!response.ok || !data || data.ok !== true) {
+        throw new Error(data && data.error || ('Cloud request failed (' + response.status + ')'));
+      }
+      return data;
+    } finally { clearTimeout(timer); }
+  }
+
   async function computeSha256(data) {
     try {
       var buffer;
@@ -228,7 +246,12 @@
         es.addEventListener('file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('files_bulk_saved', (e) => { this.requestReconcile(); });
-        es.addEventListener('module_cleared', (e) => { this.clearModule('salary', true); });
+        es.addEventListener('module_cleared', (e) => {
+          try {
+            var event = JSON.parse(e.data), info = event.data || event;
+            if (info.module === 'salary') this.clearModule('salary', true);
+          } catch (_) {}
+        });
         es.addEventListener('salary_file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
@@ -391,27 +414,22 @@
 
         if (onProgress) onProgress('uploading', 60);
 
-        var result = { ok: true, file: payload };
+        var result = { ok: false, file: payload };
+        var uploadError = null;
         var attempt = 0;
         var maxAttempts = 3;
 
         while (attempt < maxAttempts) {
           try {
-            var res = await fetch((this.apiBase || '') + '/api/sync/files', {
+            result = await confirmedJson((this.apiBase || '') + '/api/sync/files', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
             });
 
-            if (res.ok) {
-              var tempResult = await res.json();
-              if (tempResult.ok) {
-                result = tempResult;
-                break; 
-              }
-            }
-            throw new Error('Backend error ' + res.status);
+            break;
           } catch (err) {
+            uploadError = err;
             attempt++;
             if (attempt >= maxAttempts) {
               result.ok = false;
@@ -430,6 +448,14 @@
           }
         }
 
+        if (result.ok && module === 'salary') {
+          try {
+            var savedTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+            delete savedTombs[lName];
+            localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(savedTombs));
+          } catch (_) {}
+        }
+
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
             var wb = window.parseWB(rawBuf);
@@ -437,7 +463,7 @@
             
             this.fileMap.set(lName, { 
                 id: payload.id, name: name, wb: wb, sheets: sheets, buf: rawBuf, 
-                savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending' 
+                sha256_hash: sha256, savedAt: payload.created_at, syncStatus: result.ok ? 'saved' : 'pending'
             });
             
             if (typeof saveFileToDB === 'function') saveFileToDB(name, rawBuf); 
@@ -445,6 +471,10 @@
         }
         
         this.syncToWindowFiles();
+        if (!result.ok) {
+          this.updateSyncBadge('bad', 'Cloud save failed — local copy pending');
+          throw uploadError || new Error('Cloud save was not confirmed');
+        }
         if (onProgress) onProgress('saved', 100);
         return result.file || payload;
       });
@@ -483,6 +513,10 @@
 
     deleteFile: async function(module, idOrName, skipRemote = false) {
       if (!idOrName) return false;
+      // Keep the local file until the shared authority confirms deletion.
+      if (!skipRemote) {
+        await confirmedJson((this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module), { method: 'DELETE' });
+      }
       var targetName = String(idOrName).toLowerCase();
 
       var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
@@ -518,11 +552,6 @@
       this.syncToWindowFiles();
 
       if (!skipRemote) {
-        try {
-          var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
-          await fetch(url, { method: 'DELETE' });
-        } catch (err) {}
-
         if (module === 'salary') {
           try {
             await fetch((this.apiBase || '') + '/api/sync/salary-file/' + encodeURIComponent(idOrName), { method: 'DELETE' });
@@ -542,10 +571,9 @@
 
     clearModule: async function(module = 'salary', skipRemote = false) {
       if (!skipRemote) {
-        try {
-          var url = (this.apiBase || '') + '/api/sync/files/clear-module';
-          await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module }) }).catch(function(){});
-        } catch (_) {}
+        await confirmedJson((this.apiBase || '') + '/api/sync/files/clear-module', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module })
+        });
 
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
           try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
@@ -581,47 +609,17 @@
       }
       this.isReconciling = true;
       try {
-        this.lastSyncTime = Date.now();
         var serverFiles = null;
         var serverTombs = {};
         var backendSuccess = false;
 
-        try {
-          var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=1&_t=' + Date.now();
-          var res = await fetch(fetchUrl, {
-            cache: 'no-store',
-            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-          });
-          if (res.ok) {
-            var data = await res.json();
-            if (data.ok && Array.isArray(data.files)) {
-              serverFiles = data.files;
-              serverTombs = data.tombstones || {};
-              backendSuccess = true;
-            }
-          }
-        } catch (netErr) {}
-
-        if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
-          try {
-            var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
-            if (Array.isArray(fbFiles)) {
-              serverFiles = fbFiles.map(function(f) {
-                return {
-                  id: f.id || ('sf_' + (f.name||'').toLowerCase()),
-                  module: 'salary',
-                  name: f.name,
-                  buf: f.original_b64 || f.sheets_b64 || f.buf,
-                  sheets: f.sheets || null,
-                  created_at: f.saved_at || f.uploaded_at || new Date().toISOString(),
-                  uploaded_by: f.uploaded_by || 'admin'
-                };
-              });
-            }
-          } catch (_) {}
-        }
-
-        if (!serverFiles) return;
+        var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=1&_t=' + Date.now();
+        var data = await confirmedJson(fetchUrl, { headers: { 'Accept': 'application/json' } });
+        if (!Array.isArray(data.files)) throw new Error('Invalid cloud file list');
+        serverFiles = data.files;
+        serverTombs = data.tombstones || {};
+        backendSuccess = true;
+        // Never reconcile/prune the central store against a different backend's list.
 
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
         var localTombs = {};
@@ -654,7 +652,7 @@
           var isTombstoned = !!(serverTombs[lName] || serverTombs[lId] || localTombs[lName] || localTombs[lId]);
           var isMissingOnServer = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId));
 
-          if (isTombstoned || isMissingOnServer) {
+          if (isTombstoned || (isMissingOnServer && localItem.syncStatus === 'saved')) {
             console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
             this.fileMap.delete(localKey);
             this.fileMap.delete(lName);
@@ -679,7 +677,7 @@
             var xi = String(x.id || '').toLowerCase();
             var isTomb = !!(serverTombs[xn] || serverTombs[xi] || localTombs[xn] || localTombs[xi]);
             var isMissing = !activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi));
-            return !isTomb && !isMissing;
+            return !isTomb && !(isMissing && x.syncStatus === 'saved');
           });
           if (window.FILES.length !== origLen) prunedAny = true;
           if (typeof FILES !== 'undefined') FILES = window.FILES;
@@ -689,7 +687,7 @@
           this.syncToWindowFiles();
         }
 
-        var downloadedAny = false;
+        var downloadedAny = false, incompleteDownloads = false;
         for (var sf of salaryServerFiles) {
           if (!sf || (!sf.name && !sf.id)) continue;
           var sName = sf.name;
@@ -702,12 +700,17 @@
           }
 
           var existing = this.fileMap.get(lNameLower);
-          if (existing && existing.buf && existing.wb) {
+          if (existing && existing.syncStatus === 'pending') { incompleteDownloads = true; continue; }
+          if (existing && existing.buf && existing.wb && existing.syncStatus !== 'pending' &&
+              ((sf.sha256_hash && existing.sha256_hash === sf.sha256_hash) ||
+               (!sf.sha256_hash && existing.savedAt === (sf.updated_at || sf.created_at || sf.saved)))) {
               continue; 
           }
 
           var winExisting = Array.isArray(window.FILES) ? window.FILES.find(function(x) { return x && String(x.name).toLowerCase() === lNameLower && x.wb; }) : null;
-          if (winExisting && winExisting.buf && winExisting.wb) {
+          if (winExisting && winExisting.buf && winExisting.wb && winExisting.syncStatus !== 'pending' &&
+              ((sf.sha256_hash && winExisting.sha256_hash === sf.sha256_hash) ||
+               (!sf.sha256_hash && winExisting.savedAt === (sf.updated_at || sf.created_at || sf.saved)))) {
             this.fileMap.set(lNameLower, winExisting);
             continue;
           }
@@ -750,7 +753,8 @@
                 sheets: sheets,
                 buf: rawBuf,
                 fromDB: true,
-                savedAt: sf.created_at || sf.saved || new Date().toISOString(),
+                sha256_hash: sf.sha256_hash || '',
+                savedAt: sf.updated_at || sf.created_at || sf.saved || new Date().toISOString(),
                 syncStatus: 'saved'
               });
               
@@ -762,14 +766,22 @@
               }
               downloadedAny = true;
             } catch (err) {
+              incompleteDownloads = true;
               console.warn('[CentralSync] Parse error:', sName, err);
             }
-          }
+          } else { incompleteDownloads = true; }
         }
         if (downloadedAny || prunedAny) {
           this.syncToWindowFiles();
         }
+        if (incompleteDownloads) throw new Error('Some files are still pending or could not be downloaded');
+        this.lastSyncTime = Date.now();
+        this.lastError = null;
+        return true;
       } catch (err) {
+        this.lastError = err.message || String(err);
+        this.updateSyncBadge('bad', this.lastError);
+        return false;
       } finally {
         this.isReconciling = false;
         if (this.pendingReconcile) {
