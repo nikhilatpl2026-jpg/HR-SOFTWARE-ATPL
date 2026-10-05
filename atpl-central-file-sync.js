@@ -87,6 +87,33 @@
     return bytes.buffer;
   }
 
+  // An HTML login page or an unavailable server is never an empty file list.
+  async function requestJson(url, options) {
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, 20000);
+    try {
+      var res = await fetch(url, Object.assign({}, options || {}, { signal: controller.signal }));
+      if (res.redirected || !/application\/json/i.test(res.headers.get('content-type') || '')) {
+        throw new Error('Shared backend returned a login/HTML page. Configure an authenticated production API.');
+      }
+      var data = await res.json();
+      if (!res.ok || !data || data.ok !== true) throw new Error(data && data.error || ('Shared backend HTTP ' + res.status));
+      return data;
+    } finally { clearTimeout(timer); }
+  }
+
+  function fileTime(file) {
+    return Date.parse(file && (file.updated_at || file.savedAt || file.saved || file.created_at || file.uploaded_at) || '') || 0;
+  }
+  function deletedAfter(tombs, name, id, file) {
+    return [name, id].some(function(key) {
+      if (!key || !tombs[key]) return false;
+      var value = tombs[key];
+      var time = Date.parse(typeof value === 'object' ? value.deleted_at : value) || 0;
+      return value === true || !time || time >= fileTime(file);
+    });
+  }
+
   class ConcurrencyQueue {
     constructor(concurrency = 1) {
       this.concurrency = concurrency;
@@ -120,7 +147,7 @@
   }
 
   var ATPLCentralFileSync = {
-    version: '2026.10-SERVER-BREATHER-FIX',
+    version: '2026.10-CONFIRMED-SYNC',
     apiBase: API_BASE,
     connected: false,
     serverStateVersion: 0,
@@ -228,7 +255,9 @@
         es.addEventListener('file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('files_bulk_saved', (e) => { this.requestReconcile(); });
-        es.addEventListener('module_cleared', (e) => { this.clearModule('salary', true); });
+        es.addEventListener('module_cleared', (e) => {
+          try { var m = JSON.parse(e.data); if ((m.data || m).module === 'salary') this.clearModule('salary', true); } catch (_) {}
+        });
         es.addEventListener('salary_file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
@@ -295,6 +324,7 @@
       try {
         var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
         var info = msg.data || msg;
+        if (info.module && info.module !== 'salary') return;
         var targetName = String(info.name || '').toLowerCase();
         var targetId = String(info.id || '').toLowerCase();
         if (!targetName && !targetId) return;
@@ -311,7 +341,7 @@
         for (var [k, v] of this.fileMap.entries()) {
           var vn = String(v.name || '').toLowerCase();
           var vi = String(v.id || '').toLowerCase();
-          if (vn === targetName || vi === targetId || vi === targetName || vn === targetId) {
+          if ((targetName && (vn === targetName || vi === targetName)) || (targetId && (vi === targetId || vn === targetId))) {
             this.fileMap.delete(k);
           }
         }
@@ -321,7 +351,7 @@
             if (!x) return false;
             var xn = String(x.name || '').toLowerCase();
             var xi = String(x.id || '').toLowerCase();
-            return xn !== targetName && xi !== targetId && xn !== targetId && xi !== targetName;
+            return !(targetName && (xn === targetName || xi === targetName)) && !(targetId && (xi === targetId || xn === targetId));
           });
           if (typeof FILES !== 'undefined') FILES = window.FILES;
         }
@@ -364,6 +394,10 @@
           rawBuf = arrayBuf;
           bufBase64 = arrayBufferToBase64(arrayBuf);
           size = arrayBuf.byteLength;
+        } else if (fileObj.buf instanceof ArrayBuffer) {
+          rawBuf = fileObj.buf;
+          bufBase64 = arrayBufferToBase64(rawBuf);
+          size = rawBuf.byteLength;
         } else if (fileObj.buffer instanceof ArrayBuffer) {
           rawBuf = fileObj.buffer;
           bufBase64 = arrayBufferToBase64(fileObj.buffer);
@@ -391,44 +425,25 @@
 
         if (onProgress) onProgress('uploading', 60);
 
-        var result = { ok: true, file: payload };
-        var attempt = 0;
-        var maxAttempts = 3;
-
-        while (attempt < maxAttempts) {
-          try {
-            var res = await fetch((this.apiBase || '') + '/api/sync/files', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-
-            if (res.ok) {
-              var tempResult = await res.json();
-              if (tempResult.ok) {
-                result = tempResult;
-                break; 
-              }
-            }
-            throw new Error('Backend error ' + res.status);
-          } catch (err) {
-            attempt++;
-            if (attempt >= maxAttempts) {
-              result.ok = false;
-            } else {
-              if (onProgress) onProgress('retrying', 60 + (attempt * 10)); 
-              await new Promise(r => setTimeout(r, 2000)); 
-            }
-          }
+        var result;
+        try {
+          result = await requestJson((this.apiBase || '') + '/api/sync/files', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+          });
+          if (!result.file || !result.file.id || !result.file.name) throw new Error('Backend did not confirm the saved file.');
+        } catch (err) {
+          this.updateSyncBadge('error', 'Upload not confirmed — retry required');
+          if (onProgress) onProgress('failed', 0);
+          throw err;
         }
-
-        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
-          try {
-            await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
-          } catch (e) {
-            if (/quota|resource-exhausted/i.test(e.message || '')) window.__atplFirebaseQuotaExhausted = true;
-          }
-        }
+        // Use the server identity (including deduplicated uploads).
+        payload = result.file;
+        name = payload.name;
+        lName = String(name).toLowerCase();
+        var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+        delete tombs[lName];
+        delete tombs[String(payload.id).toLowerCase()];
+        localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
 
         if (module === 'salary' && rawBuf && window.parseWB && window.wbToSheets) {
           try {
@@ -483,6 +498,9 @@
 
     deleteFile: async function(module, idOrName, skipRemote = false) {
       if (!idOrName) return false;
+      if (!skipRemote) {
+        await requestJson((this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module), { method: 'DELETE' });
+      }
       var targetName = String(idOrName).toLowerCase();
 
       var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
@@ -517,23 +535,6 @@
 
       this.syncToWindowFiles();
 
-      if (!skipRemote) {
-        try {
-          var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(idOrName) + '?module=' + encodeURIComponent(module);
-          await fetch(url, { method: 'DELETE' });
-        } catch (err) {}
-
-        if (module === 'salary') {
-          try {
-            await fetch((this.apiBase || '') + '/api/sync/salary-file/' + encodeURIComponent(idOrName), { method: 'DELETE' });
-          } catch (_) {}
-        }
-
-        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
-          try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
-        }
-      }
-
       if (module === 'salary' && typeof deleteFromDB === 'function') {
          deleteFromDB(idOrName);
       }
@@ -542,14 +543,9 @@
 
     clearModule: async function(module = 'salary', skipRemote = false) {
       if (!skipRemote) {
-        try {
-          var url = (this.apiBase || '') + '/api/sync/files/clear-module';
-          await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module }) }).catch(function(){});
-        } catch (_) {}
-
-        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
-          try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
-        }
+        await requestJson((this.apiBase || '') + '/api/sync/files/clear-module', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ module: module })
+        });
       }
 
       if (module === 'salary') {
@@ -569,7 +565,7 @@
       if (!fileId) throw new Error('File ID required');
       var url = (this.apiBase || '') + '/api/sync/files/' + encodeURIComponent(fileId) + '/content?_t=' + Date.now();
       var res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to download file content');
+      if (!res.ok || res.redirected || /text\/html/i.test(res.headers.get('content-type') || '')) throw new Error('Failed to download file content');
       var blob = await res.blob();
       return blob.arrayBuffer();
     },
@@ -582,66 +578,25 @@
       this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
-        var serverFiles = null;
-        var serverTombs = {};
-        var backendSuccess = false;
-
-        try {
-          var fetchUrl = (this.apiBase || '') + '/api/sync/files?summary=1&_t=' + Date.now();
-          var res = await fetch(fetchUrl, {
-            cache: 'no-store',
-            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache, no-store, must-revalidate' }
-          });
-          if (res.ok) {
-            var data = await res.json();
-            if (data.ok && Array.isArray(data.files)) {
-              serverFiles = data.files;
-              serverTombs = data.tombstones || {};
-              backendSuccess = true;
-            }
-          }
-        } catch (netErr) {}
-
-        if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
-          try {
-            var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
-            if (Array.isArray(fbFiles)) {
-              serverFiles = fbFiles.map(function(f) {
-                return {
-                  id: f.id || ('sf_' + (f.name||'').toLowerCase()),
-                  module: 'salary',
-                  name: f.name,
-                  buf: f.original_b64 || f.sheets_b64 || f.buf,
-                  sheets: f.sheets || null,
-                  created_at: f.saved_at || f.uploaded_at || new Date().toISOString(),
-                  uploaded_by: f.uploaded_by || 'admin'
-                };
-              });
-            }
-          } catch (_) {}
-        }
-
-        if (!serverFiles) return;
+        var data = await requestJson((this.apiBase || '') + '/api/sync/files?module=salary&summary=1&_t=' + Date.now(), {
+          cache: 'no-store', headers: { 'Accept': 'application/json' }
+        });
+        if (!Array.isArray(data.files)) throw new Error('Shared backend returned an invalid file list.');
+        var serverFiles = data.files;
+        var serverTombs = data.tombstones || {};
 
         var salaryServerFiles = serverFiles.filter(function(f) { return f && (f.module === 'salary' || !f.module); });
         var localTombs = {};
         try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(e){}
 
-        // ═════════════════════════════════════════════════════════════════
-        // STRICT PRUNING: SERVER IS SINGLE SOURCE OF TRUTH
-        // If a file was deleted on Browser A / server, Browser B MUST delete it!
-        // ═════════════════════════════════════════════════════════════════
-        var activeServerNames = new Set();
-        var activeServerIds = new Set();
-        salaryServerFiles.forEach(function(sf) {
-          if (sf.name) activeServerNames.add(String(sf.name).toLowerCase());
-          if (sf.id) activeServerIds.add(String(sf.id).toLowerCase());
-        });
-
+        // Only explicit deletion records can remove local files.
         // Merge server tombstones into local storage
         if (serverTombs && typeof serverTombs === 'object') {
           for (var tk in serverTombs) {
-            localTombs[tk.toLowerCase()] = serverTombs[tk].deleted_at || new Date().toISOString();
+            if (!serverTombs[tk]) continue;
+            if (serverTombs[tk].module && serverTombs[tk].module !== 'salary') continue;
+            var stamp = serverTombs[tk].deleted_at || serverTombs[tk];
+            if (!localTombs[tk.toLowerCase()] || Date.parse(stamp) > Date.parse(localTombs[tk.toLowerCase()])) localTombs[tk.toLowerCase()] = stamp;
           }
           try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch(_) {}
         }
@@ -651,10 +606,9 @@
         for (var [localKey, localItem] of Array.from(this.fileMap.entries())) {
           var lName = String((localItem && localItem.name) || localKey).toLowerCase();
           var lId = String((localItem && localItem.id) || '').toLowerCase();
-          var isTombstoned = !!(serverTombs[lName] || serverTombs[lId] || localTombs[lName] || localTombs[lId]);
-          var isMissingOnServer = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId));
+          var isTombstoned = deletedAfter(localTombs, lName, lId, localItem);
 
-          if (isTombstoned || isMissingOnServer) {
+          if (isTombstoned) {
             console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
             this.fileMap.delete(localKey);
             this.fileMap.delete(lName);
@@ -677,9 +631,8 @@
             if (!x || !x.name) return false;
             var xn = String(x.name).toLowerCase();
             var xi = String(x.id || '').toLowerCase();
-            var isTomb = !!(serverTombs[xn] || serverTombs[xi] || localTombs[xn] || localTombs[xi]);
-            var isMissing = !activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi));
-            return !isTomb && !isMissing;
+            var isTomb = deletedAfter(localTombs, xn, xi, x);
+            return !isTomb; // Missing is not proof of deletion: keep unsynced local copies.
           });
           if (window.FILES.length !== origLen) prunedAny = true;
           if (typeof FILES !== 'undefined') FILES = window.FILES;
@@ -696,18 +649,18 @@
           var lNameLower = String(sName).toLowerCase();
           var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
 
-          if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
+          if (deletedAfter(localTombs, lNameLower, lIdLower, sf)) {
               this.fileMap.delete(lNameLower);
               continue; 
           }
 
           var existing = this.fileMap.get(lNameLower);
-          if (existing && existing.buf && existing.wb) {
+          if (existing && existing.buf && existing.wb && fileTime(existing) >= fileTime(sf)) {
               continue; 
           }
 
           var winExisting = Array.isArray(window.FILES) ? window.FILES.find(function(x) { return x && String(x.name).toLowerCase() === lNameLower && x.wb; }) : null;
-          if (winExisting && winExisting.buf && winExisting.wb) {
+          if (winExisting && winExisting.buf && winExisting.wb && fileTime(winExisting) >= fileTime(sf)) {
             this.fileMap.set(lNameLower, winExisting);
             continue;
           }
@@ -715,11 +668,6 @@
           var rawBuf = null;
           if (sf.buf) {
             rawBuf = typeof sf.buf === 'string' ? base64ToArrayBuffer(sf.buf) : sf.buf;
-          } else if (window.ATPLFirebase && typeof window.ATPLFirebase.decodeDocPayload === 'function') {
-            try {
-              var payload = await window.ATPLFirebase.decodeDocPayload(sf);
-              if (payload && payload.original_b64) rawBuf = base64ToArrayBuffer(payload.original_b64);
-            } catch (_) {}
           }
 
           if (!rawBuf && sf.id) {
@@ -738,6 +686,9 @@
             }
           }
 
+          var latestTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+          if (deletedAfter(latestTombs, lNameLower, lIdLower, sf)) continue;
+          if (!rawBuf || !rawBuf.byteLength) throw new Error('Download not confirmed: ' + sName);
           if (rawBuf && rawBuf.byteLength > 0 && window.parseWB && window.wbToSheets) {
             try {
               var wb = window.parseWB(rawBuf);
@@ -750,7 +701,7 @@
                 sheets: sheets,
                 buf: rawBuf,
                 fromDB: true,
-                savedAt: sf.created_at || sf.saved || new Date().toISOString(),
+                savedAt: sf.updated_at || sf.created_at || sf.saved || new Date().toISOString(),
                 syncStatus: 'saved'
               });
               
@@ -762,14 +713,19 @@
               }
               downloadedAny = true;
             } catch (err) {
-              console.warn('[CentralSync] Parse error:', sName, err);
+              throw new Error('Could not read shared workbook ' + sName + ': ' + err.message);
             }
           }
         }
         if (downloadedAny || prunedAny) {
           this.syncToWindowFiles();
         }
+        this.lastError = '';
+        return true;
       } catch (err) {
+        this.lastError = err.message || String(err);
+        this.updateSyncBadge('error', 'Sync unavailable — local files retained');
+        return false;
       } finally {
         this.isReconciling = false;
         if (this.pendingReconcile) {
