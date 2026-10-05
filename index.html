@@ -3616,8 +3616,9 @@ async function handleFiles(list) {
   if (window.showToast) window.showToast('⏳ Uploading ' + total + ' file(s) across all browsers...');
 
   if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.uploadBulk === 'function') {
-    await window.ATPLCentralFileSync.uploadBulk('salary', validFiles, null, function(i, status, pct, fname) {
+    var uploadResult = await window.ATPLCentralFileSync.uploadBulk('salary', validFiles, null, function(i, status, pct, fname) {
       if (lbl) lbl.textContent = 'Saving (' + (i + 1) + '/' + total + '): ' + fname;
+      if (status === 'failed') lg('err', 'Cloud save failed: ' + fname);
       if (status === 'saved') lg('ok', '💾 (' + (i + 1) + '/' + total + ') Saved & Synced: <b>' + fname + '</b>');
     });
   } else {
@@ -3643,8 +3644,12 @@ async function handleFiles(list) {
   }
 
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-  if (lbl) lbl.textContent = (window.FILES || FILES).length + ' files saved';
-  if (window.showToast) window.showToast('✅ All ' + total + ' files uploaded and synced to all browsers!');
+  if (uploadResult) {
+    if (lbl) lbl.textContent = uploadResult.saved + ' cloud saved · ' + uploadResult.failed + ' failed';
+    if (window.showToast) window.showToast(uploadResult.failed
+      ? 'Cloud save incomplete: ' + uploadResult.failed + ' file(s) failed. Keep the originals and retry.'
+      : '✅ ' + uploadResult.saved + ' files confirmed by cloud. Other browsers will refresh.');
+  } else if (lbl) lbl.textContent = (window.FILES || FILES).length + ' local files · verify cloud sync';
 }
 
 function renderFiles() {
@@ -3683,7 +3688,9 @@ function rmFile(i) {
   if (!confirm('Kya aap file "' + name + '" ko delete karna chahte hain?\nYe file cloud storage aur sabhi phones/browsers se permanent delete ho jayegi.')) return;
 
   if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.deleteFile === 'function') {
-    window.ATPLCentralFileSync.deleteFile('salary', name);
+    window.ATPLCentralFileSync.deleteFile('salary', name).catch(function(e) {
+      if (window.showToast) window.showToast('Delete not confirmed: ' + e.message);
+    });
   } else {
     FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
     window.FILES = FILES;
@@ -3699,7 +3706,9 @@ function clearAllFiles() {
   if (!confirm('Saari files delete karna chahte ho?')) return;
   isRestoringAborted = true;
   if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.clearModule === 'function') {
-    window.ATPLCentralFileSync.clearModule('salary');
+    window.ATPLCentralFileSync.clearModule('salary').catch(function(e) {
+      if (window.showToast) window.showToast('Clear not confirmed: ' + e.message);
+    });
   } else {
     window.FILES = [];
     FILES = [];
@@ -11248,7 +11257,7 @@ else AInit();
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
 <!-- ATPL CENTRAL BACKEND-AUTHORITATIVE FILE SYNC ENGINE -->
-<script src="atpl-central-file-sync.js?v=20261001-quota-guarded"></script>
+<script src="atpl-central-file-sync.js?v=20261005-confirmed-sync"></script>
 <!-- ATPL FOOLPROOF REALTIME ENGINE -->
 <script src="supabase-js-v2.min.js"></script>
 <script src="atpl-realtime-sync-engine.js?v=202610-live-force-v6"></script>
@@ -11437,7 +11446,8 @@ window.triggerManualCrossBrowserSync = async function() {
   try {
     // 1. Authoritative Sync Salary Files via Central Engine
     if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.reconcileAll === 'function') {
-      await window.ATPLCentralFileSync.reconcileAll(true);
+      var confirmed = await window.ATPLCentralFileSync.reconcileAll(true);
+      if (confirmed !== true) throw new Error(window.ATPLCentralFileSync.lastError || 'Cloud sync not confirmed; retry after the current sync finishes.');
     } else if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
       var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
       if (Array.isArray(fbFiles)) {
@@ -11480,9 +11490,10 @@ window.triggerManualCrossBrowserSync = async function() {
       } catch(_) {}
     }
     var count = window.FILES ? window.FILES.length : 0;
-    if (window.showToast) window.showToast('✅ Cross-browser sync complete (' + count + ' Files + HR + Master)!');
+    if (window.showToast) window.showToast('✅ Salary file sync confirmed (' + count + ' files). HR and Master refresh requested.');
   } catch(e) {
     console.warn('[ATPL Sync] Manual sync warning:', e);
+    if (window.showToast) window.showToast('Sync incomplete: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync Browsers'; }
   }
@@ -11528,5 +11539,4 @@ document.addEventListener('click', function(e) {
 <script src="atpl-cloud-debugger.js?v=1790774655.36861.84687.79887"></script>
 </body>
 </html>
-
 
