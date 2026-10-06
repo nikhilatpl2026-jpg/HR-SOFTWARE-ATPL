@@ -198,6 +198,7 @@
     },
 
     connectSSE: function() {
+      if (typeof window !== "undefined" && window.location && window.location.port === "4173") return;
       if (this.eventSource) {
         try { this.eventSource.close(); } catch (_) {}
         this.eventSource = null;

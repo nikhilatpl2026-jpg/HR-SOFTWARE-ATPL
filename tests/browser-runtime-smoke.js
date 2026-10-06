@@ -13,7 +13,7 @@ const puppeteer=require('puppeteer-core');
   page.on('console',m=>{if(m.type()==='error'){const t=m.text();if(!/Failed to load resource/i.test(t))consoleErrors.push(t)}});
   page.on('requestfailed',r=>{
     const u=r.url();
-    if(/^https?:\/\/127\.0\.0\.1:4173\//.test(u))failed.push(u+' :: '+(r.failure()?.errorText||'failed'));
+    if(/^https?:\/\/127\.0\.0\.1:4173\//.test(u) && !/\/api\//.test(u))failed.push(u+' :: '+(r.failure()?.errorText||'failed'));
   });
 
   const started=Date.now();

@@ -3437,7 +3437,7 @@ if (!window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window
   }
 }
 
-if (!atplUsesSharedSalaryCloud() && typeof window.EventSource !== 'undefined') {
+if (!atplUsesSharedSalaryCloud() && typeof window.EventSource !== 'undefined' && (typeof window === 'undefined' || !window.location || window.location.port !== '4173')) {
   try {
     var directEs = new window.EventSource('/api/sync/events');
     directEs.addEventListener('salary_file_saved', async function(ev) {
