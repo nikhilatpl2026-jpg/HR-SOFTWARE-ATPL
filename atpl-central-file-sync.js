@@ -15,7 +15,7 @@
 (function(window) {
   'use strict';
 
-  var LIVE_CLOUD_RUN_URL = 'https://ais-dev-otzwpfkfuuyg26sg6l3uml-427004433114.asia-southeast1.run.app';
+  var LIVE_CLOUD_RUN_URL = 'https://ais-dev-3zlbsxikrsurlpn66mdx5x-427004433114.asia-southeast1.run.app';
 
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
