@@ -3280,7 +3280,9 @@ async function atplDirectServerSync(force) {
       }
     }
 
-    renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+    if (deletedAny || (toDownload && toDownload.length > 0)) {
+      renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+    }
     window.updateRealtimeCloudBadge(window.FILES ? window.FILES.length : 0);
   } catch(e) {
     console.warn('[DirectSync] note:', e);
@@ -3293,8 +3295,8 @@ async function atplDirectServerSync(force) {
 setTimeout(function(){ atplDirectServerSync(true); }, 500);
 setTimeout(function(){ atplDirectServerSync(false); }, 2000);
 setInterval(function(){
-  if (!document.hidden) atplDirectServerSync(false);
-}, 6000);
+  if (!document.hidden && !window.__ATPL_IS_UPLOADING) atplDirectServerSync(false);
+}, 12000);
 
 // ════════════════════════════════════════════════════════════════════
 // ATPL LIVE FIREBASE REALTIME LISTENER (Cross-Browser, Cross-Device, Zero-Reload)

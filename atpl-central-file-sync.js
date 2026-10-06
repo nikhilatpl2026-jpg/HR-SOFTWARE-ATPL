@@ -147,24 +147,28 @@
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(true); }, 300);
       
-      // RELENTLESS POLLING (Every 3 seconds for instant cross-browser mirror)
+      // Smooth background pulse (event-driven WebSockets handle instant changes)
       setInterval(() => {
-        if (typeof document !== 'undefined' && !document.hidden) {
+        if (typeof document !== 'undefined' && !document.hidden && !window.__ATPL_IS_UPLOADING) {
           this.requestReconcile();
         }
-      }, 3000);
+      }, 10000);
     },
 
-    syncToWindowFiles: function() {
+    syncToWindowFiles: function(forceRefresh = false) {
       var arr = Array.from(this.fileMap.values());
       arr.sort((a, b) => {
         var da = new Date(a.savedAt || 0).getTime();
         var db = new Date(b.savedAt || 0).getTime();
         return db - da; 
       });
+      var prev = window.FILES || [];
+      var isChanged = forceRefresh || prev.length !== arr.length || prev.some((p, i) => !arr[i] || p.name !== arr[i].name || p.savedAt !== arr[i].savedAt);
       window.FILES = arr;
       if (typeof FILES !== 'undefined') FILES = arr;
-      this.triggerImmediateUIRefresh();
+      if (isChanged) {
+        this.triggerImmediateUIRefresh();
+      }
       this.updateSyncBadge('ok', '⚡ Realtime (' + arr.length + ' files)');
     },
 

@@ -549,11 +549,16 @@
       }
 
       // B. AUTO-DOWNLOAD: Any file in activeServerMap missing locally must be downloaded & rendered!
-      var localFiles = Array.isArray(window.FILES) ? window.FILES : [];
+      var localFiles = Array.isArray(window.FILES) ? window.FILES : (typeof FILES !== 'undefined' && Array.isArray(FILES) ? FILES : []);
       var localNames = new Set();
       localFiles.forEach(function(f) {
-        if (f && f.name && f.wb) localNames.add(String(f.name).toLowerCase().trim());
+        if (f && f.name) localNames.add(String(f.name).toLowerCase().trim());
       });
+      if (window.ATPLCentralFileSync && window.ATPLCentralFileSync.fileMap) {
+        for (var k of window.ATPLCentralFileSync.fileMap.keys()) {
+          localNames.add(String(k).toLowerCase().trim());
+        }
+      }
 
       var missing = [];
       for (var [fnLower, row] of activeServerMap.entries()) {
@@ -870,7 +875,7 @@
 
     fetchAllSalaryFiles: async function() {
       try {
-        var rows = await sbRest('hr_files?select=id,filename,payload,uploaded_at,size&doc_type=eq.salary&order=uploaded_at.desc');
+        var rows = await sbRest('hr_files?select=id,filename,uploaded_at,size&doc_type=eq.salary&order=uploaded_at.desc');
         var tRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
         var tombs = {};
         var allClearedAt = 0;
@@ -887,6 +892,12 @@
           });
         }
         if (!Array.isArray(rows)) return [];
+        var localMap = new Map();
+        if (Array.isArray(window.FILES)) {
+          window.FILES.forEach(function(f) {
+            if (f && f.name) localMap.set(String(f.name).toLowerCase().trim(), f);
+          });
+        }
         var activeList = [];
         for (var i = 0; i < rows.length; i++) {
           var d = rows[i];
@@ -896,11 +907,12 @@
           if (allClearedAt && fTime <= allClearedAt) continue;
           var tStamp = tombs[fn];
           if (tStamp && Date.parse(tStamp) >= fTime) continue;
+          var local = localMap.get(fn);
           activeList.push({
             id: d.id,
             name: d.filename,
-            original_b64: d.payload,
-            buf: d.payload,
+            original_b64: local ? (local.buf ? atplBufToB64(local.buf) : '') : '',
+            buf: local ? local.buf : null,
             size: d.size,
             saved_at: d.uploaded_at,
             uploaded_at: d.uploaded_at,
@@ -1149,10 +1161,12 @@
   // Guarantees all devices, tabs, and phones auto-purge deleted files and sync additions
   if (typeof setInterval !== 'undefined') {
     setInterval(function() {
-      if (typeof document !== 'undefined' && !document.hidden) {
-        triggerUniversalReconciliation().catch(function(){});
+      if (typeof document !== 'undefined' && !document.hidden && !window.__ATPL_IS_UPLOADING) {
+        if (Date.now() - lastReconcileTime > 7000) {
+          triggerUniversalReconciliation().catch(function(){});
+        }
       }
-    }, 3000);
+    }, 10000);
   }
 
   console.log('[ATPL Universal Real-Time Sync Engine v2026.10] Authoritative cloud sync active across all devices.');
