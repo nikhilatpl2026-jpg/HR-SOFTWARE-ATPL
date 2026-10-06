@@ -15,7 +15,7 @@
 (function(window) {
   'use strict';
 
-  var LIVE_CLOUD_RUN_URL = 'https://ais-dev-3zlbsxikrsurlpn66mdx5x-427004433114.asia-southeast1.run.app';
+  var LIVE_CLOUD_RUN_URL = "";
 
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
@@ -26,7 +26,7 @@
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
     if (origin.indexOf('github.io') >= 0) {
-      return LIVE_CLOUD_RUN_URL;
+      return "";
     }
     return ''; 
   }
@@ -198,6 +198,7 @@
     },
 
     connectSSE: function() {
+      if (!this.apiBase) return;
       if (typeof window !== "undefined" && window.location && window.location.port === "4173") return;
       if (this.eventSource) {
         try { this.eventSource.close(); } catch (_) {}
@@ -576,6 +577,9 @@
     },
 
     reconcileAll: async function(force = false) {
+      if (!this.apiBase && window.ATPLRealtimeSyncEngine && typeof window.ATPLRealtimeSyncEngine.triggerUniversalReconciliation === 'function') {
+        return window.ATPLRealtimeSyncEngine.triggerUniversalReconciliation();
+      }
       if (this.isReconciling) {
         this.pendingReconcile = true; 
         return;
