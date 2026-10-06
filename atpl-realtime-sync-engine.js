@@ -103,7 +103,12 @@
   // Realtime Broadcast Channel Setup
   function initRealtimeChannel() {
     var sb = getSupabase();
-    if (!sb || realtimeChannel) return;
+    if (!sb) return;
+    if (realtimeChannel) {
+      if (realtimeChannel.state === 'joined' || realtimeChannel.state === 'joining') return;
+      try { sb.removeChannel(realtimeChannel); } catch (_) {}
+      realtimeChannel = null;
+    }
     try {
       realtimeChannel = sb.channel('atpl-cross-browser-sync', {
         config: { broadcast: { self: false } }
@@ -111,18 +116,19 @@
 
       realtimeChannel.on('broadcast', { event: 'SYNC_UPDATE' }, function(msg) {
         var payload = msg.payload || msg;
-        console.log('[ATPL Sync] Received cross-browser broadcast:', payload);
         handleIncomingBroadcast(payload);
       });
 
       realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'hr_files' }, function() {
-        console.log('[ATPL Sync] Postgres table change detected, auto-reconciling...');
         triggerUniversalReconciliation();
       });
 
       realtimeChannel.subscribe(function(status) {
         if (status === 'SUBSCRIBED') {
-          console.log('[ATPL Sync] Connected to Supabase real-time broadcast channel.');
+          console.log('[ATPL Sync] Connected to Supabase real-time channel.');
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          realtimeChannel = null;
+          setTimeout(initRealtimeChannel, 3000);
         }
       });
     } catch (e) {
@@ -1147,12 +1153,19 @@
 
     // Auto-reconcile on focus & visibilitychange
     window.addEventListener('focus', function() {
+      initRealtimeChannel();
       if (Date.now() - lastReconcileTime > 2000) triggerUniversalReconciliation();
     });
+
     document.addEventListener('visibilitychange', function() {
-      if (!document.hidden && Date.now() - lastReconcileTime > 2000) triggerUniversalReconciliation();
+      if (!document.hidden) {
+        initRealtimeChannel();
+        if (Date.now() - lastReconcileTime > 2000) triggerUniversalReconciliation();
+      }
     });
+
     window.addEventListener('online', function() {
+      initRealtimeChannel();
       triggerUniversalReconciliation();
     });
   }
