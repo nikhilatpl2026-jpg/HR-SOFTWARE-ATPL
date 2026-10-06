@@ -38,15 +38,5 @@
     "uploadedAt": "2026-10-02T14:30:00.000Z",
     "fileType": "pdf",
     "status": "Synced"
-  },
-  {
-    "id": "doc-hr-02",
-    "name": "Standard_Offer_Letter_Template_v2.docx",
-    "category": "HR Documents",
-    "size": "512 KB",
-    "uploadedBy": "HR Manager",
-    "uploadedAt": "2026-10-01T16:00:00.000Z",
-    "fileType": "doc",
-    "status": "Synced"
   }
 ]
