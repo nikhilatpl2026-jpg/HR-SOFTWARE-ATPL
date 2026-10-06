@@ -138,7 +138,7 @@
     init: function() {
       if (Array.isArray(window.FILES)) {
         window.FILES.forEach(f => {
-          if (f && f.name) this.fileMap.set(String(f.name).toLowerCase(), f);
+          if (f && f.name) { var fk = f.id || (String(f.name).toLowerCase() + '_' + (f.savedAt||f.created_at||'')); this.fileMap.set(fk, f); }
         });
       }
 
@@ -254,7 +254,7 @@
 
     connectFirebase: function() {
       if (typeof window === 'undefined') return;
-      if (window.__atplFirebaseQuotaExhausted) return;
+      // Quota guard disabled for Supabase universal engine
       
       var setupListeners = () => {
         if (!window.ATPLFirebase) return;
@@ -423,7 +423,7 @@
           }
         }
 
-        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(name, { original_b64: bufBase64, name: name, id: payload.id }, { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by });
           } catch (e) {
@@ -530,7 +530,7 @@
           } catch (_) {}
         }
 
-        if (module === 'salary' && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
+        if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
           try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
         }
       }

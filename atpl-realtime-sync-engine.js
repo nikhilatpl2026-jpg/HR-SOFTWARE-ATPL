@@ -139,8 +139,11 @@
         window.showToast('🗑 Realtime: File "' + (name || id) + '" was deleted by Admin and auto-removed from this device.');
       }
     } else {
-      // If a file was uploaded on Admin browser, trigger refresh
+      // If a file was uploaded on any browser, trigger immediate download and refresh
       triggerUniversalReconciliation();
+      if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.reconcileAll === 'function') {
+        window.ATPLCentralFileSync.reconcileAll(true);
+      }
     }
   }
 
