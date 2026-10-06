@@ -394,34 +394,24 @@
         if (onProgress) onProgress('uploading', 60);
 
         var result = { ok: true, file: payload };
-        var attempt = 0;
-        var maxAttempts = 3;
-
-        while (attempt < maxAttempts) {
+        // Fast direct cloud upload: only attempt server endpoint if configured & not static Pages
+        if (this.apiBase && !window.location.hostname.includes('github.io')) {
           try {
-            var res = await fetch((this.apiBase || '') + '/api/sync/files', {
+            var ctrl = new AbortController();
+            var tid = setTimeout(function() { ctrl.abort(); }, 1500);
+            var res = await fetch(this.apiBase + '/api/sync/files', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
+              body: JSON.stringify(payload),
+              signal: ctrl.signal
             });
-
+            clearTimeout(tid);
             if (res.ok) {
               var tempResult = await res.json();
-              if (tempResult.ok) {
-                result = tempResult;
-                break; 
-              }
+              if (tempResult.ok) result = tempResult;
             }
-            throw new Error('Backend error ' + res.status);
-          } catch (err) {
-            attempt++;
-            if (attempt >= maxAttempts) {
-              result.ok = false;
-            } else {
-              if (onProgress) onProgress('retrying', 60 + (attempt * 10)); 
-              await new Promise(r => setTimeout(r, 2000)); 
-            }
-          }
+          } catch (_) {}
+        }
         }
 
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
@@ -656,42 +646,50 @@
         }
 
         var prunedAny = false;
-        // Check this.fileMap for deleted files
-        for (var [localKey, localItem] of Array.from(this.fileMap.entries())) {
-          var lName = String((localItem && localItem.name) || localKey).toLowerCase();
-          var lId = String((localItem && localItem.id) || '').toLowerCase();
-          var isTombstoned = !!(serverTombs[lName] || serverTombs[lId] || localTombs[lName] || localTombs[lId]);
-          var isMissingOnServer = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId));
-
-          if (isTombstoned || isMissingOnServer) {
-            console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
-            this.fileMap.delete(localKey);
-            this.fileMap.delete(lName);
-            if (lId) this.fileMap.delete(lId);
-
-            if (window.DB) {
-              try {
-                var ptx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
-                ptx.objectStore(window.DB_STORE || 'salaryFiles').delete(localItem.name || localKey);
-              } catch (_) {}
+        var isUploadingNow = !!window.__ATPL_IS_UPLOADING || (window.__ATPL_LAST_UPLOAD_TIME && Date.now() - window.__ATPL_LAST_UPLOAD_TIME < 120000);
+        if (!isUploadingNow) {
+          // Check this.fileMap for deleted files
+          for (var [localKey, localItem] of Array.from(this.fileMap.entries())) {
+            var lName = String((localItem && localItem.name) || localKey).toLowerCase();
+            var lId = String((localItem && localItem.id) || '').toLowerCase();
+            var sTombTime = Date.parse(serverTombs[lName]?.deleted_at || serverTombs[lId]?.deleted_at || '0') || 0;
+            var lItemTime = Date.parse((localItem && (localItem.savedAt || localItem.created_at)) || '0') || 0;
+            var isExplicitServerTomb = sTombTime > 0 && sTombTime >= lItemTime;
+            var fileAge = Date.now() - lItemTime;
+            var isStaleMissing = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId)) && fileAge > 120000 && !localItem.uploading;
+            if (isExplicitServerTomb || isStaleMissing) {
+              console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
+              this.fileMap.delete(localKey);
+              this.fileMap.delete(lName);
+              if (lId) this.fileMap.delete(lId);
+              if (window.DB) {
+                try {
+                  var ptx = window.DB.transaction(window.DB_STORE || 'salaryFiles', 'readwrite');
+                  ptx.objectStore(window.DB_STORE || 'salaryFiles').delete(localItem.name || localKey);
+                } catch (_) {}
+              }
+              prunedAny = true;
             }
-            prunedAny = true;
           }
-        }
-
-        // Also purge from window.FILES
-        if (Array.isArray(window.FILES)) {
-          var origLen = window.FILES.length;
-          window.FILES = window.FILES.filter(function(x) {
-            if (!x || !x.name) return false;
-            var xn = String(x.name).toLowerCase();
-            var xi = String(x.id || '').toLowerCase();
-            var isTomb = !!(serverTombs[xn] || serverTombs[xi] || localTombs[xn] || localTombs[xi]);
-            var isMissing = !activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi));
-            return !isTomb && !isMissing;
-          });
-          if (window.FILES.length !== origLen) prunedAny = true;
-          if (typeof FILES !== 'undefined') FILES = window.FILES;
+          // Also purge from window.FILES safely
+          if (Array.isArray(window.FILES)) {
+            var origLen = window.FILES.length;
+            window.FILES = window.FILES.filter(function(x) {
+              if (!x || !x.name) return false;
+              var xn = String(x.name).toLowerCase();
+              var xi = String(x.id || '').toLowerCase();
+              var sTombTime = Date.parse(serverTombs[xn]?.deleted_at || serverTombs[xi]?.deleted_at || '0') || 0;
+              var xTime = Date.parse(x.savedAt || x.saved || x.uploaded_at || '0') || 0;
+              if (sTombTime > 0 && sTombTime >= xTime) return false;
+              var fileAge = Date.now() - xTime;
+              if (!activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi)) && fileAge > 120000 && !x.uploading) {
+                return false;
+              }
+              return true;
+            });
+            if (window.FILES.length !== origLen) prunedAny = true;
+            if (typeof FILES !== 'undefined') FILES = window.FILES;
+          }
         }
 
         if (prunedAny) {

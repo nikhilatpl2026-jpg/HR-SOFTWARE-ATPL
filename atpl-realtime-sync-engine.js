@@ -455,31 +455,36 @@
       var localTombs = {};
       try { localTombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
 
-      // Build active server map (excluding files whose tombstone is newer than upload)
+      // Build active server map from authoritative server rows
+      var allClearedAt = 0;
+      if (tombs['__all__']) {
+        allClearedAt = Date.parse(tombs['__all__']) || 0;
+      }
+
       var activeServerMap = new Map();
       activeRows.forEach(function(r) {
         if (!r || !r.filename) return;
         var fn = String(r.filename).toLowerCase().trim();
-        var tStamp = tombs[fn] || localTombs[fn];
-        if (tStamp && Date.parse(tStamp) >= Date.parse(r.uploaded_at)) {
-          return; // Deleted via tombstone!
+        var fTime = Date.parse(r.uploaded_at) || 0;
+        if (allClearedAt && fTime <= allClearedAt) return;
+        var sTomb = tombs[fn];
+        if (sTomb && Date.parse(sTomb) >= fTime) {
+          return; // Server tombstone exists and is newer
         }
         activeServerMap.set(fn, r);
+
+        // Clear stale local tombstone for this active file
+        if (localTombs[fn]) {
+          delete localTombs[fn];
+        }
       });
+      try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch(_) {}
 
       var changed = false;
 
-      // Clear stale local tombstones for files that are active on server
-      for (var [afn, aRow] of activeServerMap.entries()) {
-        if (localTombs[afn] && Date.parse(aRow.uploaded_at) > Date.parse(localTombs[afn])) {
-          delete localTombs[afn];
-          try { localStorage.setItem("ATPL_SALARY_TOMBSTONES_V2", JSON.stringify(localTombs)); } catch(_) {}
-        }
-      }
-
       // A. PRUNING GUARD:
-      // Never prune while user is uploading or within 90 seconds of upload!
-      var isUploadingNow = !!window.__ATPL_IS_UPLOADING || (window.__ATPL_LAST_UPLOAD_TIME && Date.now() - window.__ATPL_LAST_UPLOAD_TIME < 90000);
+      // Never prune while user is uploading or within 120 seconds of upload!
+      var isUploadingNow = !!window.__ATPL_IS_UPLOADING || (window.__ATPL_LAST_UPLOAD_TIME && Date.now() - window.__ATPL_LAST_UPLOAD_TIME < 120000);
 
       if (!isUploadingNow && Array.isArray(window.FILES)) {
         var toPrune = [];
@@ -487,7 +492,7 @@
           if (!f || !f.name) return;
           var fn = String(f.name).toLowerCase().trim();
           var tStamp = tombs[fn];
-          var fStamp = f.savedAt || f.uploaded_at || f.created_at || "0";
+          var fStamp = f.savedAt || f.uploaded_at || f.created_at || 0;
 
           // 1. Explicit tombstone from server
           if (tStamp && Date.parse(tStamp) >= Date.parse(fStamp)) {
@@ -495,9 +500,9 @@
             return;
           }
 
-          // 2. Missing from server AND local file is older than 90 seconds
+          // 2. Missing from server AND local file is older than 120 seconds
           var fileAge = Date.now() - (Date.parse(fStamp) || 0);
-          if (!activeServerMap.has(fn) && fileAge > 90000 && !f.uploading) {
+          if (!activeServerMap.has(fn) && fileAge > 120000 && !f.uploading) {
             toPrune.push(f.name);
           }
         });
@@ -510,28 +515,38 @@
         }
       }
 
-      // Strict pruning from IndexedDB
-      try {
-        var req = indexedDB.open('AroraTextiles', 1);
-        req.onsuccess = function(e) {
-          var db = e.target.result;
-          if (db.objectStoreNames.contains('salaryFiles')) {
-            var tx = db.transaction('salaryFiles', 'readwrite');
-            var store = tx.objectStore('salaryFiles');
-            var curReq = store.openCursor();
-            curReq.onsuccess = function(ev) {
-              var cursor = ev.target.result;
-              if (cursor) {
-                var item = cursor.value;
-                if (item && item.name && !activeServerMap.has(String(item.name).toLowerCase().trim())) {
-                  cursor.delete();
+      // Safe IndexedDB pruning only when NOT uploading
+      if (!isUploadingNow) {
+        try {
+          var req = indexedDB.open('AroraTextiles', 1);
+          req.onsuccess = function(e) {
+            var db = e.target.result;
+            if (db.objectStoreNames.contains('salaryFiles')) {
+              var tx = db.transaction('salaryFiles', 'readwrite');
+              var store = tx.objectStore('salaryFiles');
+              var curReq = store.openCursor();
+              curReq.onsuccess = function(ev) {
+                var cursor = ev.target.result;
+                if (cursor) {
+                  var item = cursor.value;
+                  if (item && item.name) {
+                    var ifn = String(item.name).toLowerCase().trim();
+                    var itemTime = Date.parse(item.saved || item.uploaded_at || 0) || 0;
+                    var sTomb = tombs[ifn];
+                    var isExplicitTomb = sTomb && Date.parse(sTomb) >= itemTime;
+                    var itemAge = Date.now() - itemTime;
+                    var isStaleMissing = !activeServerMap.has(ifn) && itemAge > 120000;
+                    if (isExplicitTomb || isStaleMissing) {
+                      cursor.delete();
+                    }
+                  }
+                  cursor.continue();
                 }
-                cursor.continue();
-              }
-            };
-          }
-        };
-      } catch(_) {}
+              };
+            }
+          };
+        } catch(_) {}
+      }
 
       // B. AUTO-DOWNLOAD: Any file in activeServerMap missing locally must be downloaded & rendered!
       var localFiles = Array.isArray(window.FILES) ? window.FILES : [];
@@ -854,18 +869,59 @@
     },
 
     fetchAllSalaryFiles: async function() {
-      await reconcileSalaryFiles();
-      var arr = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : [];
-      return arr.map(function(f) {
-        return {
-          id: f.id || f.name,
-          name: f.name,
-          buf: f.buf,
-          sheets: f.sheets,
-          saved_at: f.savedAt || f.saved || new Date().toISOString(),
-          uploaded_by: 'admin'
-        };
-      });
+      try {
+        var rows = await sbRest('hr_files?select=id,filename,payload,uploaded_at,size&doc_type=eq.salary&order=uploaded_at.desc');
+        var tRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
+        var tombs = {};
+        var allClearedAt = 0;
+        if (Array.isArray(tRows)) {
+          tRows.forEach(function(t) {
+            if (t && t.filename) {
+              var cleanFn = String(t.filename).toLowerCase().trim();
+              tombs[cleanFn] = t.uploaded_at;
+              if (cleanFn === '__all__') {
+                var tVal = Date.parse(t.uploaded_at) || 0;
+                if (tVal > allClearedAt) allClearedAt = tVal;
+              }
+            }
+          });
+        }
+        if (!Array.isArray(rows)) return [];
+        var activeList = [];
+        for (var i = 0; i < rows.length; i++) {
+          var d = rows[i];
+          if (!d || !d.filename) continue;
+          var fn = String(d.filename).toLowerCase().trim();
+          var fTime = Date.parse(d.uploaded_at) || 0;
+          if (allClearedAt && fTime <= allClearedAt) continue;
+          var tStamp = tombs[fn];
+          if (tStamp && Date.parse(tStamp) >= fTime) continue;
+          activeList.push({
+            id: d.id,
+            name: d.filename,
+            original_b64: d.payload,
+            buf: d.payload,
+            size: d.size,
+            saved_at: d.uploaded_at,
+            uploaded_at: d.uploaded_at,
+            uploaded_by: 'admin'
+          });
+        }
+        return activeList;
+      } catch (err) {
+        console.warn('[ATPL Sync] fetchAllSalaryFiles fallback notice:', err.message);
+        var arr = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : [];
+        return arr.map(function(f) {
+          return {
+            id: f.id || f.name,
+            name: f.name,
+            buf: f.buf,
+            sheets: f.sheets,
+            saved_at: f.savedAt || f.saved || new Date().toISOString(),
+            uploaded_by: 'admin'
+          };
+        });
+      }
     },
 
     // ─── HR DOCUMENTS API ───
