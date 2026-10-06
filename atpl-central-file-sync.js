@@ -697,9 +697,14 @@
           var lNameLower = String(sName).toLowerCase();
           var lIdLower = sf.id ? String(sf.id).toLowerCase() : '';
 
-          if (serverTombs[lNameLower] || serverTombs[lIdLower] || localTombs[lNameLower] || localTombs[lIdLower]) {
+          var tombTimeVal = Date.parse(serverTombs[lNameLower]?.deleted_at || serverTombs[lIdLower]?.deleted_at || localTombs[lNameLower] || localTombs[lIdLower] || '0') || 0;
+          var sfTimeVal = Date.parse(sf.created_at || sf.saved_at || '0') || Date.now();
+          if (tombTimeVal && tombTimeVal > sfTimeVal) {
               this.fileMap.delete(lNameLower);
-              continue; 
+              continue;
+          } else if (tombTimeVal) {
+              delete localTombs[lNameLower];
+              try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(localTombs)); } catch (_) {}
           }
 
           var existing = this.fileMap.get(lNameLower);

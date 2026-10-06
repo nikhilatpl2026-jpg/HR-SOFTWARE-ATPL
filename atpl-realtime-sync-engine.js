@@ -145,9 +145,21 @@
   }
 
   // Strict local purge routines
-  function purgeLocalHrDoc(id, name) {
+  function purgeLocalHrDoc(id, name, tombstoneTime) {
     try {
       var targetId = String(id || '').toLowerCase();
+      var targetName = String(name || '').toLowerCase();
+      if (typeof window.hrDocGetDocs === 'function' && tombstoneTime) {
+        var docs = window.hrDocGetDocs();
+        if (Array.isArray(docs)) {
+          var existing = docs.find(function(d) { return d && (String(d.id || '').toLowerCase() === targetId || String(d.document_name || '').toLowerCase() === targetName); });
+          if (existing) {
+            var dTime = Date.parse(existing.updated_at || existing.created_at || '0') || 0;
+            var tTime = Date.parse(tombstoneTime) || 0;
+            if (dTime > tTime) return; // Doc is newer than tombstone! Preserve it!
+          }
+        }
+      }
       var targetName = String(name || '').toLowerCase();
 
       // Record in local tombstone registry
@@ -181,9 +193,17 @@
     }
   }
 
-  function purgeLocalSalaryFile(name) {
+  function purgeLocalSalaryFile(name, tombstoneTime) {
     try {
       var targetName = String(name || '').toLowerCase();
+      if (Array.isArray(window.FILES) && tombstoneTime) {
+        var existing = window.FILES.find(function(x) { return x && String(x.name || '').toLowerCase() === targetName; });
+        if (existing) {
+          var fTime = Date.parse(existing.savedAt || existing.uploaded_at || existing.created_at || '0') || 0;
+          var tTime = Date.parse(tombstoneTime) || 0;
+          if (fTime > tTime) return; // File is newer than tombstone! Preserve it!
+        }
+      }
 
       // Record in local salary tombstone registry
       var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
@@ -270,9 +290,9 @@
           var dt = String(t.doc_type || '');
 
           if (dt.indexOf('hr') >= 0) {
-            purgeLocalHrDoc(fn, fn);
+            purgeLocalHrDoc(fn, fn, t.uploaded_at);
           } else if (dt.indexOf('salary') >= 0) {
-            purgeLocalSalaryFile(fn);
+            purgeLocalSalaryFile(fn, t.uploaded_at);
           } else if (dt.indexOf('pf') >= 0 || dt.indexOf('esic') >= 0) {
             purgeLocalCompliance(dt.replace('_tombstone', ''), fn);
           }
@@ -333,7 +353,8 @@
 
       // 2. Save to Supabase (Authoritative Cloud)
       try {
-        await sbRest('hr_files?filename=eq.' + encodeURIComponent(name), { method: 'DELETE' });
+        await sbRest('hr_files?filename=ilike.' + encodeURIComponent(name), { method: 'DELETE' });
+      try { await sbRest('hr_files?filename=ilike.' + encodeURIComponent(name) + '&doc_type=eq.salary_tombstone', { method: 'DELETE' }); } catch (_) {}
         await sbRest('hr_files', {
           method: 'POST',
           body: {
@@ -471,7 +492,8 @@
 
       // 2. Save to Supabase Cloud
       try {
-        await sbRest('hr_files?filename=eq.' + encodeURIComponent(doc.id), { method: 'DELETE' });
+        await sbRest('hr_files?filename=ilike.' + encodeURIComponent(doc.id), { method: 'DELETE' });
+      try { await sbRest('hr_files?filename=ilike.' + encodeURIComponent(docName) + '&doc_type=eq.hr_doc_tombstone', { method: 'DELETE' }); } catch (_) {}
         await sbRest('hr_files', {
           method: 'POST',
           body: {
