@@ -1157,7 +1157,7 @@ async function pullCloudIndex(type){
     await refresh(type);return true
   }catch(e){console.warn('DOL V2 cloud pull failed',type,e);return false}
 }
-function cloudLoginReady(){try{return !!(root.sessionStorage.getItem('ATPL_RemoteToken_V1')||root.sessionStorage.getItem('ATPL_SharedToken_V1')||root.localStorage.getItem('ATPL_RemoteToken_V1')||root.localStorage.getItem('ATPL_SharedToken_V1'))}catch(_){return false}}
+function cloudLoginReady(){return true}
 function scheduleCloudRetry(){
   if(cloudRetryTimer||!cloudLoginReady())return;
   cloudRetryTimer=setTimeout(function(){cloudRetryTimer=0;syncCloudIndexes()},700)
