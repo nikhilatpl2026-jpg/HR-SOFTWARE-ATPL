@@ -1,0 +1,42 @@
+[
+  {
+    "id": "doc-pf-01",
+    "name": "EPF_ECR_Electronic_Challan_Sept2026.pdf",
+    "category": "PF",
+    "size": "1.8 MB",
+    "uploadedBy": "Admin (Theresa Webb)",
+    "uploadedAt": "2026-10-04T11:20:00.000Z",
+    "fileType": "pdf",
+    "status": "Synced"
+  },
+  {
+    "id": "doc-pf-02",
+    "name": "PF_Form_11_Consolidated_Register.xlsx",
+    "category": "PF",
+    "size": "740 KB",
+    "uploadedBy": "Admin (Theresa Webb)",
+    "uploadedAt": "2026-10-03T09:45:00.000Z",
+    "fileType": "xls",
+    "status": "Synced"
+  },
+  {
+    "id": "doc-hr-01",
+    "name": "ATPL_Employee_Handbook_2026_v4.pdf",
+    "category": "HR Documents",
+    "size": "4.2 MB",
+    "uploadedBy": "HR Manager",
+    "uploadedAt": "2026-10-02T14:30:00.000Z",
+    "fileType": "pdf",
+    "status": "Synced"
+  },
+  {
+    "id": "doc-hr-02",
+    "name": "Standard_Offer_Letter_Template_v2.docx",
+    "category": "HR Documents",
+    "size": "512 KB",
+    "uploadedBy": "HR Manager",
+    "uploadedAt": "2026-10-01T16:00:00.000Z",
+    "fileType": "doc",
+    "status": "Synced"
+  }
+]
