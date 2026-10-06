@@ -82,7 +82,7 @@
 <script src="xlsx.full.min.js"></script>
 <script>
   window.__atplFirebaseQuotaExhausted = false;
-  window.__ATPL_CENTRAL_BACKEND_URL = 'https://ais-dev-otzwpfkfuuyg26sg6l3uml-427004433114.asia-southeast1.run.app';
+  window.__ATPL_CENTRAL_BACKEND_URL = '';
 </script>
 <script src="atpl-firebase-bundle.js?v=20261001-quota-guarded"></script>
 <script src="pako.min.js"></script>
@@ -3602,6 +3602,8 @@ dz.addEventListener('dragleave', function() { dz.classList.remove('over'); });
 dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('over'); handleFiles(Array.from(e.dataTransfer.files)); });
 
 async function handleFiles(list) {
+  window.__ATPL_IS_UPLOADING = true;
+  window.__ATPL_LAST_UPLOAD_TIME = Date.now();
   var validFiles = (list || []).filter(function(file) {
     if (!file || !file.name || !file.name.match(/\.(xlsx|xls|csv)$/i)) {
       if (file && file.name) lg('err', '❌ Support nahi: ' + file.name);
@@ -3645,6 +3647,8 @@ async function handleFiles(list) {
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
   if (lbl) lbl.textContent = (window.FILES || FILES).length + ' files saved';
   if (window.showToast) window.showToast('✅ All ' + total + ' files uploaded and synced to all browsers!');
+  window.__ATPL_IS_UPLOADING = false;
+  window.__ATPL_LAST_UPLOAD_TIME = Date.now();
 }
 
 function renderFiles() {

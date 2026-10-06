@@ -453,6 +453,8 @@
     },
 
     uploadBulk: async function(module, fileList, metaGenerator = null, onFileProgress = null) {
+      window.__ATPL_IS_UPLOADING = true;
+      window.__ATPL_LAST_UPLOAD_TIME = Date.now();
       var files = Array.from(fileList || []);
       if (!files.length) return { total: 0, saved: 0, failed: 0, results: [] };
 
@@ -479,7 +481,9 @@
         }
       }
 
-      if (module === 'salary') this.syncToWindowFiles(); 
+      if (module === 'salary') this.syncToWindowFiles();
+      window.__ATPL_IS_UPLOADING = false;
+      window.__ATPL_LAST_UPLOAD_TIME = Date.now();
       return { total: files.length, saved: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length, results: results };
     },
 

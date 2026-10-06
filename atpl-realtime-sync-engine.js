@@ -469,13 +469,35 @@
 
       var changed = false;
 
-      // A. STRICT PRUNING: If local file is missing from activeServerMap, PURGE IT!
-      if (Array.isArray(window.FILES)) {
+      // Clear stale local tombstones for files that are active on server
+      for (var [afn, aRow] of activeServerMap.entries()) {
+        if (localTombs[afn] && Date.parse(aRow.uploaded_at) > Date.parse(localTombs[afn])) {
+          delete localTombs[afn];
+          try { localStorage.setItem("ATPL_SALARY_TOMBSTONES_V2", JSON.stringify(localTombs)); } catch(_) {}
+        }
+      }
+
+      // A. PRUNING GUARD:
+      // Never prune while user is uploading or within 90 seconds of upload!
+      var isUploadingNow = !!window.__ATPL_IS_UPLOADING || (window.__ATPL_LAST_UPLOAD_TIME && Date.now() - window.__ATPL_LAST_UPLOAD_TIME < 90000);
+
+      if (!isUploadingNow && Array.isArray(window.FILES)) {
         var toPrune = [];
         window.FILES.forEach(function(f) {
           if (!f || !f.name) return;
           var fn = String(f.name).toLowerCase().trim();
-          if (!activeServerMap.has(fn)) {
+          var tStamp = tombs[fn];
+          var fStamp = f.savedAt || f.uploaded_at || f.created_at || "0";
+
+          // 1. Explicit tombstone from server
+          if (tStamp && Date.parse(tStamp) >= Date.parse(fStamp)) {
+            toPrune.push(f.name);
+            return;
+          }
+
+          // 2. Missing from server AND local file is older than 90 seconds
+          var fileAge = Date.now() - (Date.parse(fStamp) || 0);
+          if (!activeServerMap.has(fn) && fileAge > 90000 && !f.uploading) {
             toPrune.push(f.name);
           }
         });
@@ -575,10 +597,22 @@
                 }
 
                 changed = true;
+
+                // Progressive render so user sees each file appear immediately
+                if (typeof renderFiles === "function") renderFiles();
+                if (typeof renderAllFilesPage === "function") renderAllFilesPage();
+                if (typeof updStats === "function") updStats();
+                if (typeof populateNJSelects === "function") populateNJSelects();
+                if (typeof window.updateRealtimeCloudBadge === "function") {
+                  window.updateRealtimeCloudBadge(Array.isArray(window.FILES) ? window.FILES.length : 0, "ok");
+                }
               }
             }
           } catch (dlErr) {
             console.warn('[ATPL Sync] Error downloading file:', target.filename, dlErr);
+          }
+          if (i < missing.length - 1) {
+            await new Promise(function(r) { setTimeout(r, 120); });
           }
         }
       }
@@ -820,36 +854,18 @@
     },
 
     fetchAllSalaryFiles: async function() {
-      var fileMap = {};
-      try {
-        var rows = await sbRest('hr_files?select=id,filename,payload,uploaded_at&doc_type=eq.salary');
-        var tRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
-        var tombs = {};
-        if (Array.isArray(tRows)) {
-          tRows.forEach(function(t) {
-            if (t && t.filename) tombs[String(t.filename).toLowerCase().trim()] = t.uploaded_at;
-          });
-        }
-
-        if (Array.isArray(rows)) {
-          rows.forEach(function(d) {
-            if (d && d.filename) {
-              var fn = String(d.filename).toLowerCase().trim();
-              var tStamp = tombs[fn];
-              if (tStamp && Date.parse(tStamp) >= Date.parse(d.uploaded_at)) return; // Tombstoned
-              fileMap[fn] = {
-                id: d.id,
-                name: d.filename,
-                original_b64: d.payload,
-                saved_at: d.uploaded_at,
-                uploaded_by: 'admin'
-              };
-            }
-          });
-        }
-      } catch (_) {}
-
-      return Object.values(fileMap);
+      await reconcileSalaryFiles();
+      var arr = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : [];
+      return arr.map(function(f) {
+        return {
+          id: f.id || f.name,
+          name: f.name,
+          buf: f.buf,
+          sheets: f.sheets,
+          saved_at: f.savedAt || f.saved || new Date().toISOString(),
+          uploaded_by: 'admin'
+        };
+      });
     },
 
     // ─── HR DOCUMENTS API ───
