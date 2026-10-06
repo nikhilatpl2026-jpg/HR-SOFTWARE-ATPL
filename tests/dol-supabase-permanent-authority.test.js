@@ -2,10 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-const index = fs.readFileSync('index.html','utf8');
-const rebuild = fs.readFileSync('compliance-dol-rebuild-v2.js','utf8');
-const adapter = fs.readFileSync('compliance-dol-supabase-v2.js','utf8');
-const edge = fs.readFileSync('supabase/functions/dol-api/index.ts','utf8');
+const path = require('node:path');
+const index = fs.readFileSync(path.resolve(__dirname, '..', 'index.html'), 'utf8');
+const rebuild = fs.readFileSync(path.resolve(__dirname, '..', 'compliance-dol-rebuild-v2.js'), 'utf8');
+const adapter = fs.readFileSync(path.resolve(__dirname, '..', 'compliance-dol-supabase-v2.js'), 'utf8');
+const edge = fs.readFileSync(path.resolve(__dirname, '..', 'supabase/functions/dol-api/index.ts'), 'utf8');
 
 test('service worker update never force reloads active ERP session', () => {
   assert.equal(index.includes('window.location.reload()'), false);

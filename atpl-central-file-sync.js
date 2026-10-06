@@ -416,7 +416,6 @@
             }
           } catch (_) {}
         }
-        }
 
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
