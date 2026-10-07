@@ -2637,6 +2637,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <th style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap">#</th>
               <th onclick="emSort('emp_id')" style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;cursor:pointer" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#64748b'">EMP ID ↕</th>
               <th onclick="emSort('name')" style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;cursor:pointer;min-width:160px" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#64748b'">EMPLOYEE NAME ↕</th>
+              <th onclick="emSort('status')" style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;cursor:pointer;min-width:110px" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#64748b'">STATUS ↕</th>
               <th style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;min-width:140px">FATHER'S NAME</th>
               <th onclick="emSort('dob')" style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;cursor:pointer" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#64748b'">D.O.B ↕</th>
               <th onclick="emSort('doj')" style="padding:9px 10px;text-align:left;color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;white-space:nowrap;cursor:pointer" onmouseover="this.style.color='#a5b4fc'" onmouseout="this.style.color='#64748b'">D.O.J ↕</th>
@@ -8176,7 +8177,7 @@ function emRenderTable() {
   var cardHtml = '';
 
   if (slice.length === 0) {
-    tblHtml = '<tr><td colspan="16" style="padding:40px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🔍</div><div style="font-size:14px;font-weight:700;color:#f1f5f9">Koi Employee Record Nahi Mila</div><div style="font-size:12px;margin-top:4px">Kripya filter ya search query change karein.</div></td></tr>';
+    tblHtml = '<tr><td colspan="17" style="padding:40px;text-align:center;color:#94a3b8"><div style="font-size:32px;margin-bottom:8px">🔍</div><div style="font-size:14px;font-weight:700;color:#f1f5f9">Koi Employee Record Nahi Mila</div><div style="font-size:12px;margin-top:4px">Kripya filter ya search query change karein.</div></td></tr>';
     cardHtml = '<div style="padding:40px 20px;text-align:center;color:#94a3b8;background:#1e293b;border-radius:12px;border:1px dashed #334155"><div style="font-size:36px;margin-bottom:8px">🔍</div><div style="font-size:15px;font-weight:700;color:#f1f5f9">Koi Employee Record Nahi Mila</div><div style="font-size:12px;margin-top:4px">Kripya filter ya search query change karein.</div></div>';
   } else {
     slice.forEach(function(e, si) {
@@ -8203,7 +8204,8 @@ function emRenderTable() {
       if(isDup) tblHtml += '<span style="background:#7f1d1d;color:#fca5a5;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:700">DUP</span>';
       tblHtml += '<span style="background:#1e3a5f;color:#60a5fa;padding:1px 5px;border-radius:4px;font-size:8px;font-weight:600">'+(e.cat2||e.cat1||'—')+'</span>';
       tblHtml += '</div></td>';
-      tblHtml += '<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-weight:700;color:#f1f5f9;font-size:12px">'+(e.name||'')+'</span> '+statusBadge+'</div></td>';
+      tblHtml += '<td style="padding:8px 10px"><span style="font-weight:700;color:#f1f5f9;font-size:12px">'+(e.name||'')+'</span></td>';
+      tblHtml += '<td style="padding:8px 10px;white-space:nowrap">'+statusBadge+'</td>';
       tblHtml += '<td style="padding:8px 10px;color:#94a3b8;font-size:11px">'+(e.father||'—')+'</td>';
       tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.dob||'—')+'</td>';
       tblHtml += '<td style="padding:8px 10px;font-family:monospace;font-size:10px;color:#94a3b8">'+(e.doj||'—')+'</td>';
@@ -8234,9 +8236,10 @@ function emRenderTable() {
       var colorIdx = Math.abs((e.name||'').split('').reduce(function(a,c){return a+c.charCodeAt(0)},0)) % avatarColors.length;
       var avBg = avatarColors[colorIdx];
 
-      cardHtml += '<div class="m-emp-card-item" style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);position:relative;overflow:hidden">';
-      cardHtml += '  <div style="display:flex;align-items:center;gap:12px">';
-      cardHtml += '    <div style="width:42px;height:42px;border-radius:12px;background:'+avBg+';color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:0.5px;box-shadow:0 4px 12px rgba(0,0,0,0.3);flex-shrink:0">'+initials+'</div>';
+      cardHtml += '<div class="m-emp-card-item" id="em-mcard-'+realIdx+'" style="background:'+(selected?'#1e1b4b':'#1e293b')+';border:1px solid '+(selected?'#6366f1':'#334155')+';border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:0 8px 24px rgba(0,0,0,0.35);position:relative;overflow:hidden">';
+      cardHtml += '  <div style="display:flex;align-items:center;gap:10px">';
+      cardHtml += '    <input type="checkbox" '+(selected?'checked':'')+' onchange="emToggleRow('+realIdx+', this)" style="width:20px;height:20px;cursor:pointer;accent-color:#6366f1;flex-shrink:0" title="Select employee">';
+      cardHtml += '    <div style="width:40px;height:40px;border-radius:12px;background:'+avBg+';color:#ffffff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;letter-spacing:0.5px;box-shadow:0 4px 12px rgba(0,0,0,0.3);flex-shrink:0">'+initials+'</div>';
       cardHtml += '    <div style="flex:1;min-width:0">';
       cardHtml += '      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
       cardHtml += '        <div style="font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:0.1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(e.name||'—')+'</div>';
@@ -8333,6 +8336,19 @@ window.emToggleAll = function(cb) {
 
 window.emToggleRow = function(idx, cb) {
   if(cb.checked) EM.selectedRows.add(idx); else EM.selectedRows.delete(idx);
+  var row = document.getElementById('em-row-' + idx);
+  if (row) {
+    row.style.background = cb.checked ? '#1e1b4b' : '';
+    var chk = row.querySelector('input[type="checkbox"]');
+    if (chk && chk !== cb) chk.checked = cb.checked;
+  }
+  var mcard = document.getElementById('em-mcard-' + idx);
+  if (mcard) {
+    mcard.style.background = cb.checked ? '#1e1b4b' : '#1e293b';
+    mcard.style.borderColor = cb.checked ? '#6366f1' : '#334155';
+    var mchk = mcard.querySelector('input[type="checkbox"]');
+    if (mchk && mchk !== cb) mchk.checked = cb.checked;
+  }
   emUpdateBulkUI();
 };
 
@@ -8675,7 +8691,15 @@ function emRenderSingleRow(e) {
       (c.opts||[]).forEach(function(o){
         var opt = document.createElement('option');
         opt.value = o; opt.textContent = o;
-        if(String(e[c.key]||'MALE')===o) opt.selected = true;
+        var curVal = e[c.key];
+        if (c.key === 'status') {
+          var isL = emIsLeft(e);
+          if ((isL && o === 'LEFT') || (!isL && o === 'ACTIVE')) opt.selected = true;
+        } else if (c.key === 'gender') {
+          if (String(curVal || 'MALE').toUpperCase() === o) opt.selected = true;
+        } else {
+          if (String(curVal || (c.opts && c.opts[0]) || '').toUpperCase() === o) opt.selected = true;
+        }
         sel.appendChild(opt);
       });
       td.appendChild(sel);
@@ -8809,7 +8833,13 @@ function emFillSingleFromText(text) {
     var val = (cols[i]||'').trim();
     if(el.tagName==='SELECT'){
       var upper = val.toUpperCase();
-      el.value = (upper==='FEMALE') ? 'FEMALE' : 'MALE';
+      if(key === 'status') {
+        el.value = (upper === 'LEFT' || upper === 'INACTIVE' || upper === 'EXITED') ? 'LEFT' : 'ACTIVE';
+      } else if (key === 'gender') {
+        el.value = (upper === 'FEMALE') ? 'FEMALE' : 'MALE';
+      } else {
+        el.value = val;
+      }
     } else {
       el.value = val;
     }
