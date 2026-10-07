@@ -19,7 +19,7 @@ root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var LEGACY_DB_NAME='ATPL_COMPLIANCE_DOL_V1',LEGACY_DB_VER=1,LEGACY_STORE='files';
-var state={esic:{rows:[],index:{},periods:[],selected:{}},pf:{rows:[],index:{},periods:[],selected:{}}};
+var state={esic:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:"2025"},pf:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:"2025"}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
@@ -752,7 +752,7 @@ function pageHtml(type){
     '<div id="cd2-'+type+'-status" class="cd2-status">Ready.</div>'+
     '<div class="cd2-grid">'+
       '<section class="cd2-card"><div class="cd2-cardhead"><div><b>Saved Challan Library</b><small id="cd2-'+type+'-coverage">0 files</small></div><button data-cd2-refresh="'+type+'">↻ Refresh</button></div>'+
-        '<div class="cd2-libtools"><input id="cd2-'+type+'-libsearch" placeholder="Search challan name / month / year..."><select id="cd2-'+type+'-yearfilter"><option value="">All years</option></select><select id="cd2-'+type+'-monthfilter"><option value="">All months</option></select></div>'+
+        '<div class="cd2-viewmodes"><button type="button" class="cd2-vmode-btn active" data-cd2-mode="year12" data-cd2-type="'+type+'">📅 12 Months View (2025)</button><button type="button" class="cd2-vmode-btn" data-cd2-mode="folders" data-cd2-type="'+type+'">📁 Year Folders</button><button type="button" class="cd2-vmode-btn" data-cd2-mode="list" data-cd2-type="'+type+'">📋 All Files List</button></div><div class="cd2-libtools"><input id="cd2-'+type+'-libsearch" placeholder="Search challan name / month / year..."><select id="cd2-'+type+'-yearfilter"><option value="">All years</option></select><select id="cd2-'+type+'-monthfilter"><option value="">All months</option></select></div>'+
         '<div class="cd2-bulk"><label><input type="checkbox" data-cd2-selectall="'+type+'"> Select all shown</label><span id="cd2-'+type+'-selected">0 selected</span><button type="button" data-cd2-downloadselected="'+type+'" disabled>⬇ Download selected (.zip)</button></div>'+
         '<div id="cd2-'+type+'-missing" class="cd2-missing"></div>'+
         '<div id="cd2-'+type+'-files" class="cd2-files"></div></section>'+
@@ -770,7 +770,7 @@ function addCss(){
 function ensureViewer(){
   if($('cd2-viewer'))return;
   if(!document.body)return;
-  var d=document.createElement('div');d.id='cd2-viewer';d.className='cd2-view';d.innerHTML='<div class="cd2-modal"><div class="cd2-vh"><div class="cd2-vtitle"><b id="cd2-vname">Challan</b><span id="cd2-vmeta"></span></div><select id="cd2-vsheet" style="display:none"></select><button id="cd2-vclose">✕ Close</button></div><div id="cd2-vbody" class="cd2-vbody"></div><div id="cd2-vfoot" class="cd2-vfoot" style="display:none"><button id="cd2-vprev">← Prev</button><span id="cd2-vpage">1 / 1</span><button id="cd2-vnext">Next →</button></div></div>';
+  var d=document.createElement('div');d.id='cd2-viewer';d.className='cd2-view';d.innerHTML='<div class="cd2-modal"><div class="cd2-vh"><div class="cd2-vtitle"><b id="cd2-vname">Challan</b><span id="cd2-vmeta"></span></div><select id="cd2-vsheet" style="display:none"></select><button type="button" id="cd2-vprev-challan" title="Previous Month">◀ Prev</button><button type="button" id="cd2-vnext-challan" title="Next Month">Next ▶</button><button type="button" id="cd2-vnewtab" title="Open PDF in New Window">↗ Open Tab</button><button type="button" id="cd2-vdownload" title="Download PDF">⬇ Download</button><button id="cd2-vclose">✕ Close</button></div><div id="cd2-vbody" class="cd2-vbody"></div><div id="cd2-vfoot" class="cd2-vfoot" style="display:none"><button id="cd2-vprev">← Prev</button><span id="cd2-vpage">1 / 1</span><button id="cd2-vnext">Next →</button></div></div>';
   document.body.appendChild(d);
   function safeSet(id, prop, fn){ var el = $(id); if(el) el[prop] = fn; }
   safeSet('cd2-vclose','onclick',closeViewer);
@@ -784,15 +784,57 @@ function closeViewer(){
   viewer.sheets=null;$('cd2-viewer').classList.remove('show');$('cd2-vbody').innerHTML='';$('cd2-vfoot').style.display='none';$('cd2-vsheet').style.display='none'
 }
 async function openViewer(type,id){
-  ensureViewer();var rec=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);
+  ensureViewer();
+  var rows=state[type].rows||[];
+  var rec=rows.find(function(x){return String(x.id)===String(id)||String(x.cloudRecordId)===String(id)||String(x.name)===String(id)})||await dbGet(id);
+  if(!rec){
+    // Try by period if passed
+    rec=rows.find(function(x){return String(x.period)===String(id)});
+  }
   if(!rec){setStatus(type,'Open failed — saved record not found',true);return}
-  $('cd2-vname').textContent=rec.name||'Challan';$('cd2-vmeta').textContent=(rec.period?periodLabel(rec.period):'Month required')+' · SHA-256 '+String(rec.hash||'').slice(0,16)+'…';
-  $('cd2-viewer').classList.add('show');$('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
+  viewer.currentType=type;
+  viewer.currentId=rec.id;
+  viewer.currentRec=rec;
+  $('cd2-vname').textContent=rec.name||'Challan';
+  $('cd2-vmeta').textContent=(rec.period?periodLabel(rec.period):'Month required')+' · '+Math.round((rec.size||0)/1024)+' KB · SHA-256 '+String(rec.hash||'').slice(0,16)+'…';
+  $('cd2-viewer').classList.add('show');
+  $('cd2-vbody').innerHTML='<div class="cd2-empty">Opening challan…</div>';
+  
+  // Wire header action buttons
+  var btnNewTab=$('cd2-vnewtab'), btnDl=$('cd2-vdownload'), btnPrev=$('cd2-vprev-challan'), btnNext=$('cd2-vnext-challan');
+  if(btnDl)btnDl.onclick=function(){downloadChallan(type,rec.id)};
+  
+  // Find prev/next month in active rows
+  var sortedRows=(state[type].rows||[]).slice().sort(function(a,b){return String(a.period||'').localeCompare(String(b.period||''))});
+  var curIdx=sortedRows.findIndex(function(x){return String(x.id)===String(rec.id)});
+  if(btnPrev){
+    btnPrev.disabled=curIdx<=0;
+    btnPrev.onclick=function(){if(curIdx>0)openViewer(type,sortedRows[curIdx-1].id)};
+  }
+  if(btnNext){
+    btnNext.disabled=curIdx<0||curIdx>=sortedRows.length-1;
+    btnNext.onclick=function(){if(curIdx<sortedRows.length-1)openViewer(type,sortedRows[curIdx+1].id)};
+  }
+
   var blob;
-  try{blob=await recordBlob(type,rec,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Downloading original… '+p+'%</div>'})}catch(e){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Open failed: '+esc(e.message||e)+'</div>';return}
-  if(!blob){$('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in this browser or the shared vault. Open the browser/device where this challan was originally uploaded once so ERP can recover it automatically; only if that original is gone everywhere is one re-upload required.</div>';return}
+  try{
+    blob=await recordBlob(type,rec,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Downloading original… '+p+'%</div>'})
+  }catch(e){
+    $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Open failed: '+esc(e.message||e)+'</div>';
+    return
+  }
+  if(!blob){
+    $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in cloud storage or this browser.</div>';
+    return
+  }
+  viewer.url=URL.createObjectURL(blob);
+  if(btnNewTab)btnNewTab.onclick=function(){window.open(viewer.url,'_blank')};
+
   var ext=String(rec.name||'').split('.').pop().toLowerCase();
-  if(ext==='pdf'){viewer.url=URL.createObjectURL(blob);$('cd2-vbody').innerHTML='<iframe title="PDF challan viewer" src="'+esc(viewer.url)+'#toolbar=1&navpanes=0"></iframe>';return}
+  if(ext==='pdf'){
+    $('cd2-vbody').innerHTML='<div style="width:100%;height:100%;display:flex;flex-direction:column;"><div style="padding:6px 12px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;display:flex;align-items:center;justify-content:space-between;font-size:10px;"><span style="font-weight:800;color:#0f172a;">📄 '+esc(rec.name)+' ('+(rec.period?periodLabel(rec.period):'')+')</span><div><a href="'+esc(viewer.url)+'" target="_blank" style="padding:4px 9px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:800;margin-right:6px;">↗ Open in New Window</a><button type="button" class="cd2-btn cd2-dl" onclick="downloadChallan(\''+type+'\',\''+rec.id+'\')">⬇ Download</button></div></div><object data="'+esc(viewer.url)+'" type="application/pdf" style="width:100%;flex:1;min-height:0;"><iframe src="'+esc(viewer.url)+'" style="width:100%;height:100%;border:0;"></iframe><div style="padding:30px;text-align:center;"><p style="font-size:12px;font-weight:800;color:#1e293b;margin-bottom:8px;">PDF Ready</p><a href="'+esc(viewer.url)+'" target="_blank" class="cd2-btn cd2-dl" style="padding:8px 16px;font-size:11px;font-weight:800;">↗ Click here to open PDF</a></div></object></div>';
+    return
+  }
   try{
     var buf=await blob.arrayBuffer(),parsed=rec.viewerSheets&&rec.viewerSheets.length?{sheets:rec.viewerSheets}:await parseExcel(buf,type,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Preparing Excel viewer… '+p+'%</div>'});
     viewer.sheets=parsed.sheets||[];viewer.sheet=0;viewer.page=1;if(!viewer.sheets.length)throw new Error('No sheets found');
@@ -862,7 +904,7 @@ async function refresh(type){
 function addLibraryCss(){
   if($('cd2-library-style'))return;
   var s=document.createElement('style');s.id='cd2-library-style';s.textContent=
-  '.cd2-libtools{display:grid;grid-template-columns:minmax(0,1fr) 120px 110px;gap:7px;margin-bottom:8px}.cd2-libtools input,.cd2-libtools select{border:1px solid #cbd5e1;border-radius:8px;padding:8px 9px;font-size:9px;background:#fff;color:#0f172a}.cd2-bulk{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:7px 9px;border:1px solid #dbeafe;background:#eff6ff;border-radius:9px;font-size:9px;color:#1e3a8a}.cd2-bulk label{display:flex;align-items:center;gap:5px;font-weight:800}.cd2-bulk span{margin-left:auto}.cd2-bulk button{border:0;border-radius:7px;background:#1d4ed8;color:#fff;padding:6px 9px;font-size:9px;font-weight:850;cursor:pointer}.cd2-bulk button:disabled{opacity:.45;cursor:not-allowed}.cd2-missing{margin-bottom:9px}.cd2-missbox{border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:9px}.cd2-misshead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}.cd2-misshead b{font-size:10px;color:#0f172a}.cd2-misshead span{font-size:8px;color:#64748b}.cd2-monthgrid{display:flex;flex-wrap:wrap;gap:4px}.cd2-monthchip{padding:4px 6px;border-radius:999px;font-size:8px;font-weight:800;border:1px solid #e2e8f0;background:#fff;color:#475569}.cd2-monthchip.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}.cd2-monthchip.miss{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.cd2-yearfolder{border:1px solid #e2e8f0;border-radius:11px;background:#fff;overflow:hidden}.cd2-yearfolder+ .cd2-yearfolder{margin-top:7px}.cd2-yearfolder summary{cursor:pointer;list-style:none;padding:9px 10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;color:#1e293b}.cd2-yearfolder summary::-webkit-details-marker{display:none}.cd2-foldercount{font-size:8px;color:#64748b;font-weight:750}.cd2-yearbody{display:flex;flex-direction:column;gap:6px;padding:7px}.cd2-file{grid-template-columns:24px minmax(0,1fr) 112px auto auto auto!important}.cd2-select{width:15px!important;height:15px;accent-color:#1d4ed8}.cd2-dl{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}@media(max-width:1100px){.cd2-file{grid-template-columns:22px minmax(0,1fr) 105px auto auto!important}.cd2-file .cd2-dl{grid-column:auto}.cd2-libtools{grid-template-columns:1fr 1fr}.cd2-libtools input{grid-column:1/-1}.cd2-bulk{flex-wrap:wrap}.cd2-bulk span{margin-left:0}}';
+  '.cd2-libtools{display:grid;grid-template-columns:minmax(0,1fr) 120px 110px;gap:7px;margin-bottom:8px}.cd2-libtools input,.cd2-libtools select{border:1px solid #cbd5e1;border-radius:8px;padding:8px 9px;font-size:9px;background:#fff;color:#0f172a}.cd2-bulk{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:7px 9px;border:1px solid #dbeafe;background:#eff6ff;border-radius:9px;font-size:9px;color:#1e3a8a}.cd2-bulk label{display:flex;align-items:center;gap:5px;font-weight:800}.cd2-bulk span{margin-left:auto}.cd2-bulk button{border:0;border-radius:7px;background:#1d4ed8;color:#fff;padding:6px 9px;font-size:9px;font-weight:850;cursor:pointer}.cd2-bulk button:disabled{opacity:.45;cursor:not-allowed}.cd2-missing{margin-bottom:9px}.cd2-missbox{border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;padding:9px}.cd2-misshead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px}.cd2-misshead b{font-size:10px;color:#0f172a}.cd2-misshead span{font-size:8px;color:#64748b}.cd2-monthgrid{display:flex;flex-wrap:wrap;gap:4px}.cd2-monthchip{padding:4px 6px;border-radius:999px;font-size:8px;font-weight:800;border:1px solid #e2e8f0;background:#fff;color:#475569}.cd2-monthchip.ok{background:#ecfdf5;border-color:#bbf7d0;color:#166534}.cd2-monthchip.miss{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.cd2-yearfolder{border:1px solid #e2e8f0;border-radius:11px;background:#fff;overflow:hidden}.cd2-yearfolder+ .cd2-yearfolder{margin-top:7px}.cd2-yearfolder summary{cursor:pointer;list-style:none;padding:9px 10px;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;font-size:10px;font-weight:900;color:#1e293b}.cd2-yearfolder summary::-webkit-details-marker{display:none}.cd2-foldercount{font-size:8px;color:#64748b;font-weight:750}.cd2-yearbody{display:flex;flex-direction:column;gap:6px;padding:7px}.cd2-file{grid-template-columns:24px minmax(0,1fr) 112px auto auto auto!important} .cd2-viewmodes{display:flex;gap:6px;margin:0 0 10px;padding:4px;background:#f1f5f9;border-radius:10px;border:1px solid #e2e8f0} .cd2-vmode-btn{flex:1;border:0;background:transparent;padding:7px 10px;border-radius:7px;font-size:10px;font-weight:800;color:#64748b;cursor:pointer;transition:all .15s} .cd2-vmode-btn.active{background:#fff;color:#1e293b;box-shadow:0 1px 3px rgba(0,0,0,.08);font-weight:900} .cd2-year12-banner{background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 100%);border:1px solid #c7d2fe;border-radius:12px;padding:12px 14px;margin-bottom:10px} .cd2-y12-title{font-size:12px;font-weight:900;color:#1e1b4b;display:flex;align-items:center;justify-content:space-between;gap:8px} .cd2-y12-desc{font-size:9px;color:#4338ca;margin-top:3px} .cd2-y12-actions{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap} .cd2-y12-btn{border:0;border-radius:7px;padding:6px 11px;font-size:9px;font-weight:850;cursor:pointer;display:inline-flex;align-items:center;gap:4px} .cd2-y12-btn-primary{background:#2563eb;color:#fff} .cd2-y12-btn-sec{background:#fff;border:1px solid #cbd5e1;color:#1e293b} .cd2-year12-grid{display:grid;grid-template-columns:1fr;gap:6px} .cd2-month-card{border:1px solid #e2e8f0;background:#fff;border-radius:10px;padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:all .15s;cursor:pointer} .cd2-month-card:hover{border-color:#93c5fd;box-shadow:0 2px 8px rgba(37,99,235,.07)} .cd2-month-card.complete{border-left:4px solid #16a34a;background:#fafdfb} .cd2-month-card.missing{border-left:4px solid #f97316;background:#fffaf5;cursor:default} .cd2-m-left{display:flex;align-items:center;gap:10px;min-width:0;flex:1} .cd2-m-num{font-size:11px;font-weight:900;width:34px;color:#64748b;text-transform:uppercase} .cd2-m-info{min-width:0;flex:1} .cd2-m-name{font-size:11px;font-weight:850;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .cd2-m-sub{font-size:9px;color:#64748b;margin-top:2px} .cd2-m-badge{display:inline-block;padding:2px 7px;border-radius:999px;font-size:8px;font-weight:800;letter-spacing:.3px} .cd2-badge-ok{background:#dcfce7;color:#15803d} .cd2-badge-miss{background:#ffedd5;color:#c2410c} .cd2-m-actions{display:flex;align-items:center;gap:5px;flex-shrink:0} .cd2-folders-toolbar{display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px} .cd2-folders-toolbar button{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:5px 9px;font-size:9px;font-weight:800;cursor:pointer} .cd2-pdf-bar{display:flex;align-items:center;gap:8px;padding:7px 12px;background:#1e293b;color:#fff;border-radius:8px 8px 0 0} .cd2-pdf-bar button{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:6px;padding:5px 9px;font-size:9px;font-weight:800;cursor:pointer} .cd2-pdf-bar button:hover{background:rgba(255,255,255,.25)} .cd2-select{width:15px!important;height:15px;accent-color:#1d4ed8}.cd2-dl{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}@media(max-width:1100px){.cd2-file{grid-template-columns:22px minmax(0,1fr) 105px auto auto!important}.cd2-file .cd2-dl{grid-column:auto}.cd2-libtools{grid-template-columns:1fr 1fr}.cd2-libtools input{grid-column:1/-1}.cd2-bulk{flex-wrap:wrap}.cd2-bulk span{margin-left:0}}';
   document.head.appendChild(s)
 }
 function libraryYearRows(type){
@@ -933,10 +975,84 @@ async function downloadSelected(type){
 function renderFiles(type){
   var rows=state[type].rows||[],box=$('cd2-'+type+'-files'),cov=$('cd2-'+type+'-coverage');if(!box)return;
   syncYearFilter(type);syncMonthFilter(type);
-  var search=$('cd2-'+type+'-libsearch'),yearSel=$('cd2-'+type+'-yearfilter'),monthSel=$('cd2-'+type+'-monthfilter'),qv=String(search&&search.value||'').toLowerCase().trim(),yf=String(yearSel&&yearSel.value||''),mf=String(monthSel&&monthSel.value||'');
+  var search=$('cd2-'+type+'-libsearch'),yearSel=$('cd2-'+type+'-yearfilter'),monthSel=$('cd2-'+type+'-monthfilter');
+  var qv=String(search&&search.value||'').toLowerCase().trim(),yf=String(yearSel&&yearSel.value||''),mf=String(monthSel&&monthSel.value||'');
   var periods=state[type].periods||[],bad=rows.filter(function(r){return r.parseStatus==='error'||!(r.ids||[]).length}).length;
   cov.textContent=rows.length+' saved file'+(rows.length===1?'':'s')+(periods.length?' · '+periodLabel(periods[0])+' → '+periodLabel(periods[periods.length-1]):'')+(bad?' · '+bad+' need indexing':'');
   renderMissingMonths(type);
+  
+  var mode = state[type].viewMode || 'year12';
+  
+  // Update view mode button states
+  var shell=document.querySelector('[data-type="'+type+'"]');
+  if(shell){
+    shell.querySelectorAll('.cd2-vmode-btn').forEach(function(b){
+      b.classList.toggle('active', b.getAttribute('data-cd2-mode')===mode);
+    });
+  }
+
+  // --- MODE 1: 12 MONTHS YEAR VIEW (All 12 Challans for 2025/Chosen Year) ---
+  if(mode==='year12'){
+    var targetYear = yf || state[type].activeYear || '2025';
+    var yearRows = rows.filter(function(r){return r.period && String(r.period).slice(0,4)===targetYear});
+    var mNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var mShort=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var completeCount = 0;
+    
+    var cardsHtml = mNames.map(function(mName, idx){
+      var mNum = String(idx+1).padStart(2,'0');
+      var pKey = targetYear+'-'+mNum;
+      var match = yearRows.find(function(r){return String(r.period)===pKey});
+      if(match){
+        completeCount++;
+        var indexed=(match.ids||[]).length>0&&match.parseStatus!=='error', meta=indexed?((match.ids||[]).length+' IDs indexed'):'Indexed';
+        return '<div class="cd2-month-card complete" data-cd2-card-open="'+esc(match.id)+'" title="Click to view '+mName+' '+targetYear+' challan">'+
+          '<div class="cd2-m-left">'+
+            '<div class="cd2-m-num">'+mShort[idx]+'</div>'+
+            '<div class="cd2-m-info">'+
+              '<div class="cd2-m-name">'+esc(match.name)+'</div>'+
+              '<div class="cd2-m-sub"><span class="cd2-m-badge cd2-badge-ok">✓ '+mName+' '+targetYear+'</span> · '+Math.round((match.size||0)/1024)+' KB · '+meta+'</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="cd2-m-actions">'+
+            '<button type="button" class="cd2-btn" data-cd2-view="'+esc(match.id)+'">👁 Open</button>'+
+            '<button type="button" class="cd2-btn cd2-dl" data-cd2-download="'+esc(match.id)+'">⬇ Download</button>'+
+          '</div>'+
+        '</div>';
+      } else {
+        return '<div class="cd2-month-card missing">'+
+          '<div class="cd2-m-left">'+
+            '<div class="cd2-m-num">'+mShort[idx]+'</div>'+
+            '<div class="cd2-m-info">'+
+              '<div class="cd2-m-name" style="color:#94a3b8;">'+mName+' '+targetYear+' Challan</div>'+
+              '<div class="cd2-m-sub"><span class="cd2-m-badge cd2-badge-miss">Pending / Missing</span> · Not uploaded yet</div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="cd2-m-actions">'+
+            '<button type="button" class="cd2-btn" data-cd2-pick="'+type+'">＋ Upload</button>'+
+          '</div>'+
+        '</div>';
+      }
+    }).join('');
+
+    var bannerHtml = '<div class="cd2-year12-banner">'+
+      '<div class="cd2-y12-title">'+
+        '<span>📅 Year '+esc(targetYear)+' Complete Challan Dashboard</span>'+
+        '<span style="font-size:10px;color:#166534;background:#dcfce7;padding:3px 8px;border-radius:999px;">'+completeCount+' / 12 Months ('+Math.round((completeCount/12)*100)+'%)</span>'+
+      '</div>'+
+      '<div class="cd2-y12-desc">'+(completeCount===12?'🎉 All 12 Challans for '+targetYear+' are uploaded & verified! View or download anytime.':(12-completeCount)+' month(s) remaining for '+targetYear+'.')+'</div>'+
+      '<div class="cd2-y12-actions">'+
+        (yearRows.length?'<button type="button" class="cd2-y12-btn cd2-y12-btn-primary" data-cd2-download-year="'+targetYear+'">⬇ Download All '+yearRows.length+' Challans ('+targetYear+' ZIP)</button>':'')+
+        (yearRows.length?'<button type="button" class="cd2-y12-btn cd2-y12-btn-sec" data-cd2-browse-year="'+targetYear+'">👁 Browse First Month (Jan → Dec)</button>':'')+
+      '</div>'+
+    '</div>';
+
+    box.innerHTML = bannerHtml + '<div class="cd2-year12-grid">' + cardsHtml + '</div>';
+    updateBulk(type);
+    return;
+  }
+
+  // --- MODE 2 & 3: FOLDERS / ALL FILES ---
   var filtered=rows.filter(function(r){
     var y=r.period?String(r.period).slice(0,4):'Unknown';
     if(yf&&y!==yf)return false;
@@ -946,18 +1062,35 @@ function renderFiles(type){
     return hay.indexOf(qv)>=0
   });
   if(!filtered.length){box.innerHTML='<div class="cd2-empty">'+(rows.length?'No challan matches this search/filter.':'No V2 challans yet. Upload all ESIC/PF challans here.')+'</div>';updateBulk(type);return}
-  var groups={};
-  filtered.forEach(function(r){var y=r.period?String(r.period).slice(0,4):'Unknown';(groups[y]||(groups[y]=[])).push(r)});
-  var years=Object.keys(groups).sort(function(a,b){if(a==='Unknown')return 1;if(b==='Unknown')return-1;return b.localeCompare(a)});
-  box.innerHTML=years.map(function(y){
-    var items=groups[y].sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))||String(b.uploadedAt||'').localeCompare(String(a.uploadedAt||''))});
-    var body=items.map(function(r){
-      var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' indexed IDs'):'⚠ Needs indexing';
-      if(r.parseStatus==='processing')meta='⏳ Indexing…';
-      return'<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'"><input class="cd2-select" type="checkbox" data-cd2-select="'+esc(r.id)+'" '+(state[type].selected[String(r.id)]?'checked':'')+' aria-label="Select '+esc(r.name)+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+' · '+esc(r.uploadedBy?'By '+r.uploadedBy+' · ':'')+'SHA '+esc(String(r.hash||'').slice(0,10))+(r.parseError?' · '+esc(r.parseError):'')+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+  
+  if(mode==='folders'){
+    var groups={};
+    filtered.forEach(function(r){var y=r.period?String(r.period).slice(0,4):'Unknown';(groups[y]||(groups[y]=[])).push(r)});
+    var years=Object.keys(groups).sort(function(a,b){if(a==='Unknown')return 1;if(b==='Unknown')return-1;return b.localeCompare(a)});
+    
+    var foldersToolbar = '<div class="cd2-folders-toolbar"><button type="button" id="cd2-'+type+'-expandall">Expand All</button><button type="button" id="cd2-'+type+'-collapseall">Collapse All</button></div>';
+    
+    var foldersHtml=years.map(function(y){
+      // Sort chronological Jan to Dec inside folder
+      var items=groups[y].sort(function(a,b){return String(a.period||'').localeCompare(String(b.period||''))||String(a.name||'').localeCompare(String(b.name||''))});
+      var body=items.map(function(r){
+        var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' IDs indexed'):'⚠ Needs indexing';
+        return '<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'" data-cd2-card-open="'+esc(r.id)+'" style="cursor:pointer;"><input class="cd2-select" type="checkbox" data-cd2-select="'+esc(r.id)+'" '+(state[type].selected[String(r.id)]?'checked':'')+' aria-label="Select '+esc(r.name)+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+      }).join('');
+      return '<details class="cd2-yearfolder" open><summary><span>📁 Year '+esc(y==='Unknown'?'Month Not Set':y)+(items.length===12?' (Complete 12 Months ✓)':'')+'</span><span class="cd2-foldercount">'+items.length+' challan'+(items.length===1?'':'s')+'</span></summary><div class="cd2-yearbody">'+body+'</div></details>'
     }).join('');
-    return'<details class="cd2-yearfolder" open><summary><span>📁 '+esc(y==='Unknown'?'Month Not Set':y)+'</span><span class="cd2-foldercount">'+items.length+' challan'+(items.length===1?'':'s')+'</span></summary><div class="cd2-yearbody">'+body+'</div></details>'
-  }).join('');updateBulk(type)
+    
+    box.innerHTML = foldersToolbar + foldersHtml;
+  } else {
+    // List mode
+    var sorted=filtered.slice().sort(function(a,b){return String(b.period||'').localeCompare(String(a.period||''))});
+    var body=sorted.map(function(r){
+      var indexed=(r.ids||[]).length>0&&r.parseStatus!=='error',meta=indexed?((r.ids||[]).length+' IDs indexed'):'⚠ Needs indexing';
+      return '<div class="cd2-file '+(!r.period||!indexed?'warn':'')+'" data-cd2-card-open="'+esc(r.id)+'" style="cursor:pointer;"><input class="cd2-select" type="checkbox" data-cd2-select="'+esc(r.id)+'" '+(state[type].selected[String(r.id)]?'checked':'')+' aria-label="Select '+esc(r.name)+'"><div><div class="cd2-fn">'+esc(r.name)+'</div><div class="cd2-fm">'+(r.period?periodLabel(r.period)+' · ':'')+Math.round((r.size||0)/1024)+' KB · '+meta+'</div></div><input type="month" data-cd2-period="'+esc(r.id)+'" value="'+esc(r.period||'')+'"><button class="cd2-btn" data-cd2-view="'+esc(r.id)+'">👁 Open</button><button class="cd2-btn cd2-dl" data-cd2-download="'+esc(r.id)+'">⬇ Download</button><button class="cd2-btn cd2-del" data-cd2-delete="'+esc(r.id)+'">🗑 Delete</button></div>'
+    }).join('');
+    box.innerHTML = body;
+  }
+  updateBulk(type);
 }
 async function updatePeriod(type,id,period){
   var r=(state[type].rows||[]).find(function(x){return String(x.id)===String(id)})||await dbGet(id);if(!r)return;
@@ -1454,16 +1587,70 @@ function wire(type){
   var sb=document.querySelector('[data-cd2-search="'+type+'"]');if(sb)sb.onclick=function(){search(type)};
   var rb=document.querySelector('[data-cd2-refresh="'+type+'"]');if(rb)rb.onclick=function(){refresh(type)};
   if(libSearch)libSearch.addEventListener('input',function(){renderFiles(type)});
-  if(yearFilter)yearFilter.addEventListener('change',function(){renderFiles(type)});
+  if(yearFilter)yearFilter.addEventListener('change',function(){state[type].activeYear=yearFilter.value||'2025';renderFiles(type)});
   if(monthFilter)monthFilter.addEventListener('change',function(){renderFiles(type)});
+  
+  // Wire view mode buttons
+  var shell=document.querySelector('[data-type="'+type+'"]');
+  if(shell){
+    shell.querySelectorAll('.cd2-vmode-btn').forEach(function(btn){
+      btn.onclick=function(){
+        state[type].viewMode=btn.getAttribute('data-cd2-mode');
+        renderFiles(type);
+      };
+    });
+  }
+
   var all=document.querySelector('[data-cd2-selectall="'+type+'"]'),bulk=document.querySelector('[data-cd2-downloadselected="'+type+'"]');
   if(all)all.addEventListener('change',function(){Array.prototype.forEach.call($('cd2-'+type+'-files').querySelectorAll('[data-cd2-select]'),function(x){x.checked=all.checked;state[type].selected[String(x.getAttribute('data-cd2-select'))]=all.checked});updateBulk(type)});
   if(bulk)bulk.onclick=function(){downloadSelected(type)};
+  
   var files=$('cd2-'+type+'-files');if(!files)return;
-  files.addEventListener('change',function(e){var sid=e.target.getAttribute('data-cd2-select');if(sid){state[type].selected[String(sid)]=!!e.target.checked;updateBulk(type);return}var id=e.target.getAttribute('data-cd2-period');if(id)updatePeriod(type,id,e.target.value)});
-  files.addEventListener('click',function(e){var v=e.target.closest&&e.target.closest('[data-cd2-view]');if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}var dl=e.target.closest&&e.target.closest('[data-cd2-download]');if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}var d=e.target.closest&&e.target.closest('[data-cd2-delete]');if(d)deleteOne(type,d.getAttribute('data-cd2-delete'))})
-}
+  files.addEventListener('change',function(e){
+    var sid=e.target.getAttribute('data-cd2-select');
+    if(sid){state[type].selected[String(sid)]=!!e.target.checked;updateBulk(type);return}
+    var id=e.target.getAttribute('data-cd2-period');
+    if(id)updatePeriod(type,id,e.target.value)
+  });
+  files.addEventListener('click',function(e){
+    // Year download ZIP button
+    var yDl=e.target.closest&&e.target.closest('[data-cd2-download-year]');
+    if(yDl){
+      var yr=yDl.getAttribute('data-cd2-download-year');
+      var yrRows=(state[type].rows||[]).filter(function(r){return r.period&&String(r.period).slice(0,4)===yr});
+      if(yrRows.length){
+        state[type].selected={};
+        yrRows.forEach(function(r){state[type].selected[String(r.id)]=true});
+        downloadSelected(type);
+      }
+      return;
+    }
+    // Browse year button
+    var yBr=e.target.closest&&e.target.closest('[data-cd2-browse-year]');
+    if(yBr){
+      var yr=yBr.getAttribute('data-cd2-browse-year');
+      var yrRows=(state[type].rows||[]).filter(function(r){return r.period&&String(r.period).slice(0,4)===yr}).sort(function(a,b){return String(a.period||'').localeCompare(String(b.period||''))});
+      if(yrRows.length)openViewer(type,yrRows[0].id);
+      return;
+    }
+    // Expand/Collapse all
+    var expAll=e.target.closest&&e.target.closest('#cd2-'+type+'-expandall');
+    if(expAll){files.querySelectorAll('details.cd2-yearfolder').forEach(function(d){d.open=true});return}
+    var colAll=e.target.closest&&e.target.closest('#cd2-'+type+'-collapseall');
+    if(colAll){files.querySelectorAll('details.cd2-yearfolder').forEach(function(d){d.open=false});return}
 
+    var v=e.target.closest&&e.target.closest('[data-cd2-view]');
+    if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}
+    var dl=e.target.closest&&e.target.closest('[data-cd2-download]');
+    if(dl){downloadChallan(type,dl.getAttribute('data-cd2-download'));return}
+    var d=e.target.closest&&e.target.closest('[data-cd2-delete]');
+    if(d){deleteOne(type,d.getAttribute('data-cd2-delete'));return}
+    var c=e.target.closest&&e.target.closest('[data-cd2-card-open]');
+    if(c&&!e.target.closest('button')&&!e.target.closest('input')){
+      openViewer(type,c.getAttribute('data-cd2-card-open'));
+    }
+  });
+}
 function mountLatest(type){
   var page=ensurePage(type);if(!page)return false;
   var shell=page.querySelector('.cd2-shell'),ok=shell&&shell.getAttribute('data-cd2-ui')==='cloud-only-final17-fast10'&&$('cd2-'+type+'-libsearch')&&$('cd2-'+type+'-yearfilter');

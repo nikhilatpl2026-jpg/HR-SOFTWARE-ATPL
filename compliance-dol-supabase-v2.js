@@ -278,36 +278,57 @@ async function signedFile(rec){
   return edgeJson({action:'file',type:type,id:id},30000);
 }
 async function fileBlob(rec,progress){
-  if(progress)progress(3);
+  if(progress)progress(5);
   if(tok()){
     try{
       var info=await signedFile(rec);
       if(info&&info.url){
-        if(progress)progress(10);
+        if(progress)progress(15);
         var res=await timeoutFetch(info.url,{method:'GET'},60000);
         if(res.ok){var blob=await res.blob();if(progress)progress(100);return blob}
       }
     }catch(_){}
   }
-  if(progress)progress(20);
+  if(progress)progress(25);
   var recName=String(rec&&rec.name||rec&&rec.file_name||'');
   var type=String(rec&&rec.type||rec&&rec.challan_type||'pf').toLowerCase();
+  var cid=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
   var rows=null;
-  if(recName){
-    rows=await sbDirectRest('hr_files?filename=ilike.'+encodeURIComponent(recName)+'&doc_type=eq.'+type+'&select=payload&limit=1');
+  if(cid && /^\d+$/.test(cid)){
+    try{rows=await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(cid)+'&select=payload&limit=1');}catch(_){}
   }
-  if((!rows||!rows.length)&&rec&&(rec.cloudRecordId||rec.id)){
-    rows=await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(rec.cloudRecordId||rec.id)+'&select=payload&limit=1');
+  if((!rows||!rows.length)&&recName){
+    try{rows=await sbDirectRest('hr_files?filename=eq.'+encodeURIComponent(recName)+'&doc_type=eq.'+type+'&select=payload&limit=1');}catch(_){}
+  }
+  if((!rows||!rows.length)&&recName){
+    try{rows=await sbDirectRest('hr_files?filename=ilike.'+encodeURIComponent(recName)+'&doc_type=eq.'+type+'&select=payload&limit=1');}catch(_){}
+  }
+  if((!rows||!rows.length)&&cid){
+    try{rows=await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(cid)+'&select=payload&limit=1');}catch(_){}
+  }
+  if((!rows||!rows.length)&&rec&&rec.period){
+    try{
+      var allRows=await sbDirectRest('hr_files?doc_type=eq.'+type+'&select=id,filename,payload&limit=100');
+      if(Array.isArray(allRows)){
+        for(var ai=0;ai<allRows.length;ai++){
+          var ar=allRows[ai],ap={};
+          try{ap=typeof ar.payload==='string'?JSON.parse(ar.payload||'{}'):(ar.payload||{})}catch(_){}
+          if(ap.period===rec.period||ar.filename===recName){rows=[ar];break;}
+        }
+      }
+    }catch(_){}
   }
   if(Array.isArray(rows)&&rows[0]&&rows[0].payload){
-    var p={};try{p=JSON.parse(rows[0].payload||'{}')}catch(_){}
+    var p={};try{p=typeof rows[0].payload==='string'?JSON.parse(rows[0].payload||'{}'):(rows[0].payload||{})}catch(_){}
     if(p.original_b64){
       var ab=base64ToArrayBuffer(p.original_b64);
-      var b=new Blob([ab],{type:p.mime||'application/octet-stream'});
-      if(progress)progress(100);return b;
+      var mime=String(p.mime||(recName.toLowerCase().endsWith('.pdf')?'application/pdf':'application/octet-stream'));
+      var b=new Blob([ab],{type:mime});
+      if(progress)progress(100);
+      return b;
     }
   }
-  throw new Error('Original file download failed');
+  throw new Error('Original file not found in cloud storage');
 }async function searchIndex(type,ids){
   type=String(type||'').toLowerCase();ids=arr(ids).map(normalizeId).filter(Boolean).slice(0,60);
   var rows=await listRaw(type,true),matches={},coverage={},unindexed=[];
