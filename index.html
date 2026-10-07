@@ -2557,6 +2557,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <div style="font-size:10px;color:#a5b4fc;margin-top:2px">Complete Employee Data • Search, Edit, Excel Export</div>
           </div>
           <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button id="emBulkDeleteBtn" type="button" onclick="emDeleteSelected()" style="display:none;padding:7px 13px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(220,38,38,0.4)">🗑 Delete Selected (<span id="emSelectedCount">0</span>)</button>
             <button onclick="emOpenAdd()" style="padding:7px 12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">➕ Add</button>
             <button onclick="emDownloadExcel()" style="padding:7px 12px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">⬇ Excel</button>
             <button id="emMinimizeBtn" onclick="emToggleWindow()" class="desktop-only-btn" style="padding:7px 12px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">↙ Minimize</button>
@@ -8188,9 +8189,10 @@ function emRenderTable() {
       if(selected) rowBg = 'background:#1e1b4b';
 
       var isEmpLeft = emIsLeft(e);
-      var statusBadge = isEmpLeft 
-        ? '<span style="background:rgba(239,68,68,0.2);color:#f87171;border:1px solid rgba(239,68,68,0.4);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🔴 LEFT' + (e.dol ? ' ('+e.dol+')' : '') + '</span>'
-        : '<span style="background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);padding:2px 7px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:0.5px">🟢 ACTIVE</span>';
+      var statusBadge = '<select class="em-status-select" onchange="emUpdateStatus('+realIdx+', this.value)" style="padding:3px 7px;border-radius:6px;font-size:9px;font-weight:850;cursor:pointer;outline:none;transition:all .15s;' + (isEmpLeft ? 'background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.6);' : 'background:rgba(16,185,129,0.25);color:#6ee7b7;border:1px solid rgba(16,185,129,0.6);') + '">' +
+        '<option value="ACTIVE" ' + (!isEmpLeft ? 'selected' : '') + ' style="background:#0f172a;color:#34d399;font-weight:700">🟢 ACTIVE</option>' +
+        '<option value="LEFT" ' + (isEmpLeft ? 'selected' : '') + ' style="background:#0f172a;color:#f87171;font-weight:700">🔴 INACTIVE / LEFT' + (e.dol ? ' ('+e.dol+')' : '') + '</option>' +
+      '</select>';
 
       // 1. Desktop Table Row
       tblHtml += '<tr style="'+rowBg+';border-bottom:1px solid #1e293b;transition:background .1s" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\''+(selected?'#1e1b4b':si%2===0?'#111827':'#0f172a')+'\'">';
@@ -8294,11 +8296,31 @@ function emRenderTable() {
   phtml += '<button onclick="emGoPage('+(EM.currentPage+1)+')" '+(EM.currentPage>=pages?'disabled':'')+' style="padding:6px 14px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">Next →</button>';
   var pagBtns = document.getElementById('emPagBtns');
   if (pagBtns) pagBtns.innerHTML = phtml;
+  if (typeof emUpdateBulkUI === 'function') emUpdateBulkUI();
 }
 
 
-// ── Select All ──
-function emToggleAll(cb) {
+// ── Bulk Selection & Status Handlers ──
+window.emUpdateBulkUI = function() {
+  var count = EM.selectedRows ? EM.selectedRows.size : 0;
+  var btn = document.getElementById('emBulkDeleteBtn');
+  var countSpan = document.getElementById('emSelectedCount');
+  var selectAllCb = document.getElementById('emSelectAll');
+  if (btn) {
+    btn.style.display = count > 0 ? 'inline-flex' : 'none';
+  }
+  if (countSpan) {
+    countSpan.textContent = count;
+  }
+  if (selectAllCb) {
+    var start = (EM.currentPage - 1) * EM.rowsPerPage;
+    var slice = EM.filtered.slice(start, start + EM.rowsPerPage);
+    var allChecked = slice.length > 0 && slice.every(function(e){ return EM.selectedRows.has(EM.data.indexOf(e)); });
+    selectAllCb.checked = allChecked;
+  }
+};
+
+window.emToggleAll = function(cb) {
   var start = (EM.currentPage-1)*EM.rowsPerPage;
   var slice = EM.filtered.slice(start, start+EM.rowsPerPage);
   slice.forEach(function(e){
@@ -8306,11 +8328,84 @@ function emToggleAll(cb) {
     if(cb.checked) EM.selectedRows.add(idx); else EM.selectedRows.delete(idx);
   });
   emRenderTable();
-}
+  emUpdateBulkUI();
+};
 
-function emToggleRow(idx, cb) {
+window.emToggleRow = function(idx, cb) {
   if(cb.checked) EM.selectedRows.add(idx); else EM.selectedRows.delete(idx);
-}
+  emUpdateBulkUI();
+};
+
+window.emUpdateStatus = function(idx, newStatus) {
+  var e = EM.data[idx];
+  if (!e) return;
+  e.status = newStatus;
+  if (newStatus === 'LEFT' || newStatus === 'INACTIVE') {
+    if (!e.dol || e.dol === '—' || e.dol === 'NA') {
+      var d = new Date();
+      var day = String(d.getDate()).padStart(2, '0');
+      var month = String(d.getMonth() + 1).padStart(2, '0');
+      e.dol = day + '-' + month + '-' + d.getFullYear();
+    }
+  } else {
+    e.status = 'ACTIVE';
+    e.dol = '';
+  }
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+  } catch(_) {}
+  if (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA)) {
+    window.EMP_MASTER_DATA = EM.data.slice();
+  }
+  if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
+    window.ATPLCloudSyncV1.saveMaster(e.emp_id, e);
+  }
+  emUpdateStats();
+  emFilter();
+  if (window.showToast) {
+    window.showToast('✅ ' + (e.name || e.emp_id) + ' status updated to ' + newStatus);
+  }
+};
+
+window.emDeleteSelected = function() {
+  var count = EM.selectedRows ? EM.selectedRows.size : 0;
+  if (!count) {
+    alert('Pehle delete karne ke liye employees select karein.');
+    return;
+  }
+  var confirmMsg = 'Kya aap sach mein in ' + count + ' selected employees ko permanently delete karna chahte hain?';
+  if (!confirm(confirmMsg)) return;
+
+  var indices = Array.from(EM.selectedRows).sort(function(a, b) { return b - a; });
+  var deletedIds = [];
+  indices.forEach(function(idx) {
+    if (idx >= 0 && idx < EM.data.length) {
+      var e = EM.data[idx];
+      if (e && e.emp_id) deletedIds.push(e.emp_id);
+      EM.data.splice(idx, 1);
+    }
+  });
+
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+  } catch(_) {}
+  if (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA)) {
+    window.EMP_MASTER_DATA = EM.data.slice();
+  }
+  if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.deleteMaster === 'function') {
+    deletedIds.forEach(function(id) {
+      try { window.ATPLCloudSyncV1.deleteMaster(id); } catch(_) {}
+    });
+  }
+
+  EM.selectedRows.clear();
+  emUpdateBulkUI();
+  emFilter();
+  emUpdateStats();
+  if (window.showToast) {
+    window.showToast('🗑 ' + count + ' employees delete ho gaye.');
+  }
+};
 
 // ── Add ──
 function emOpenAdd() {
@@ -8508,6 +8603,8 @@ document.addEventListener('keydown', function(e){
 var EM_COLS = [
   {key:'emp_id',     label:'EMP CODE',    w:'90px',  type:'text'},
   {key:'name',       label:'NAME',        w:'160px', type:'text'},
+  {key:'status',     label:'STATUS',      w:'110px', type:'select', opts:['ACTIVE','LEFT']},
+  {key:'dol',        label:'DOL (EXIT)',  w:'120px', type:'text'},
   {key:'father',     label:"FATHER'S NAME",w:'150px',type:'text'},
   {key:'dob',        label:'D.O.B',       w:'120px', type:'text'},
   {key:'doj',        label:'D.O.J',       w:'120px', type:'text'},
