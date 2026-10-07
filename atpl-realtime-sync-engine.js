@@ -680,7 +680,7 @@
             var dId = String(d.id).toLowerCase().trim();
             var tStamp = hrTombs[dId];
             if (tStamp && Date.parse(tStamp) >= Date.parse(d.updated_at || r.uploaded_at || '0')) {
-              return; // Tombstoned!
+              return; // Explicitly tombstoned!
             }
             activeServerDocs.set(dId, d);
           }
@@ -689,26 +689,39 @@
 
       var changed = false;
       var localDocs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : null;
-
       if (Array.isArray(localDocs)) {
-        // Prune deleted docs from local memory
+        // Prune ONLY if explicitly tombstoned with a newer timestamp!
         var origCount = localDocs.length;
         var remaining = localDocs.filter(function(d) {
           if (!d || !d.id) return false;
           var lid = String(d.id).toLowerCase().trim();
-          return activeServerDocs.has(lid);
+          var tStamp = hrTombs[lid];
+          if (tStamp && Date.parse(tStamp) >= Date.parse(d.updated_at || '0')) {
+            return false; // Explicitly tombstoned by user
+          }
+          return true; // Keep local edited/created document!
         });
-
         if (remaining.length !== origCount) {
           localDocs.length = 0;
           Array.prototype.push.apply(localDocs, remaining);
           changed = true;
         }
 
-        // Add missing docs from server
+        // Auto-upload local documents to server if server is missing them
+        for (var i = 0; i < localDocs.length; i++) {
+          var ld = localDocs[i];
+          if (ld && ld.id) {
+            var lId = String(ld.id).toLowerCase().trim();
+            if (!activeServerDocs.has(lId) && !hrTombs[lId]) {
+              try { UniversalEngine.saveHrDoc(ld); } catch(_) {}
+            }
+          }
+        }
+
+        // Add missing docs from server to local
         for (var [dId, sDoc] of activeServerDocs.entries()) {
           var exists = localDocs.some(function(x) { return x && String(x.id).toLowerCase().trim() === dId; });
-          if (!exists) {
+          if (!exists && !hrTombs[dId]) {
             localDocs.push(sDoc);
             // Save to IndexedDB
             try {
@@ -726,7 +739,7 @@
         }
       }
 
-      // Prune IndexedDB documents store
+      // In IndexedDB documents store: ONLY delete if explicitly tombstoned!
       try {
         var req = indexedDB.open('AroraTextilesHRDocs', 1);
         req.onsuccess = function(ev) {
@@ -739,8 +752,14 @@
               var cursor = e.target.result;
               if (cursor) {
                 var doc = cursor.value;
-                if (doc && doc.id && !activeServerDocs.has(String(doc.id).toLowerCase().trim())) {
-                  cursor.delete();
+                if (doc && doc.id) {
+                  var docId = String(doc.id).toLowerCase().trim();
+                  var tStamp = hrTombs[docId];
+                  if (tStamp && Date.parse(tStamp) >= Date.parse(doc.updated_at || '0')) {
+                    cursor.delete();
+                  } else if (!activeServerDocs.has(docId) && !hrTombs[docId]) {
+                    try { UniversalEngine.saveHrDoc(doc); } catch(_) {}
+                  }
                 }
                 cursor.continue();
               }
@@ -752,8 +771,8 @@
       if (changed && typeof window.hrDocRender === 'function') {
         window.hrDocRender();
       }
-    } catch(e) {
-      console.warn('[ATPL Sync] Reconcile HR docs error:', e);
+    } catch(err) {
+      console.warn('[ATPL Sync] Reconcile HR docs error:', err);
     }
   }
 
@@ -1127,6 +1146,8 @@
   window.ATPLRealtimeSyncEngine = UniversalEngine;
   window.ATPLRealtimeSync = UniversalEngine;
   window.ATPLFirebase = UniversalEngine;
+  window.UniversalEngine = UniversalEngine;
+  window.ATPLSyncEngine = UniversalEngine;
 
   // Intercept window.hrDocDelete to guarantee strict auto-deletion everywhere
   var originalHrDocDelete = window.hrDocDelete;

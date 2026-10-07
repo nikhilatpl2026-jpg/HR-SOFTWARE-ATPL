@@ -9220,26 +9220,48 @@ function hrDocToggleWindow(){
         });
         cb();
 
-        // Server-authoritative sync to auto-prune deleted HR docs
+        // Server-authoritative sync (merge only, do not wipe local docs)
         fetch('/api/sync/state')
           .then(function(res){ return res.json(); })
           .then(function(state){
-            if(state && Array.isArray(state.hr_docs)){
-              var sMap = {};
-              state.hr_docs.forEach(function(sd){ if(sd && sd.id) sMap[String(sd.id).toLowerCase()] = sd; });
-              var validDocs = DOCS.filter(function(d){ return !d || !d.id || !!sMap[String(d.id).toLowerCase()]; });
-              if(validDocs.length !== DOCS.length){
-                DOCS.length = 0;
-                Array.prototype.push.apply(DOCS, validDocs);
-                render();
-              }
+            if(state && Array.isArray(state.hr_docs) && state.hr_docs.length > 0){
+              state.hr_docs.forEach(function(sd){
+                if(sd && sd.id && !DOCS.some(function(x){ return x && String(x.id).toLowerCase() === String(sd.id).toLowerCase(); })){
+                  DOCS.push(sd);
+                }
+              });
+              render();
             }
           }).catch(function(){});
       };
       r.onerror=function(){DOCS=[];cb();};
     });
   }
-  function put(d,cb){try{var ts=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');if(d&&d.id&&ts[String(d.id).toLowerCase()]){delete ts[String(d.id).toLowerCase()];localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(ts));}}catch(_){}openDB(function(){if(!DB){alert('⚠️ Browser storage unavailable.');return;}var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).put(d);t.oncomplete=function(){cb();};t.onerror=function(){alert('⚠️ Document save error.');};});}
+  function put(d,cb){
+  d.updated_at = d.updated_at || new Date().toISOString();
+  try{
+    var ts1=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V1')||'{}');
+    var ts2=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');
+    if(d&&d.id){ var k1=String(d.id).toLowerCase().trim(); delete ts1[k1]; delete ts2[k1]; }
+    if(d&&d.document_name){ var k2=String(d.document_name).toLowerCase().trim(); delete ts1[k2]; delete ts2[k2]; }
+    localStorage.setItem('ATPL_HR_TOMBSTONES_V1',JSON.stringify(ts1));
+    localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(ts2));
+  }catch(_){}
+  openDB(function(){
+    if(!DB){alert('⚠️ Browser storage unavailable.');return;}
+    var t=DB.transaction(STORE,'readwrite');
+    t.objectStore(STORE).put(d);
+    t.oncomplete=function(){
+      if(window.UniversalEngine && typeof window.UniversalEngine.saveHrDoc === 'function'){
+        window.UniversalEngine.saveHrDoc(d).catch(function(){});
+      } else if(window.ATPLRealtimeSyncEngine && typeof window.ATPLRealtimeSyncEngine.saveHrDoc === 'function'){
+        window.ATPLRealtimeSyncEngine.saveHrDoc(d).catch(function(){});
+      }
+      cb();
+    };
+    t.onerror=function(){alert('⚠️ Document save error.');};
+  });
+}
   function del(id,cb){try{var tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');tombs[String(id).toLowerCase()]=new Date().toISOString();localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));}catch(_){}openDB(function(){if(!DB)return;var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=function(){if(cb)cb();};});}
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function dateText(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?esc(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();}
@@ -10392,7 +10414,18 @@ function patchSave(){
     var existing=fileList(old),use=files.length?files:existing;
     var d={id:id,employee_code:old.employee_code||'',employee_name:old.employee_name||'',doc_type:Q('hrDocType').value,document_name:Q('hrDocName').value.trim(),holder:Q('hrDocHolder').value||'',reference_no:Q('hrDocRefNo').value||'',certificate_no:Q('hrDocCertNo').value||'',issuing_authority:Q('hrDocAuthority').value||'',location:Q('hrDocLocation').value||'',validity_period:Q('hrDocValidity').value||'',issue_date:Q('hrDocIssueDate').value,last_renewal_date:Q('hrDocLastRenewalDate')?.value||'',retraining_date:Q('hrDocRetrainDate').value,expiry_date:Q('hrDocExpiryDate').value,alert_days:Number(Q('hrDocAlertDays').value),remarks:Q('hrDocRemarks').value.trim(),file_name:use.length?use.map(function(x){return x.name}).join(' + '):'',file_type:use.length?use[0].type:'',file_data:use.length?use[0].data:null,file_data_list:use.length?use:null,updated_at:new Date().toISOString()};
     if(!d.document_name){alert('Document / Training Name required hai.');return}
-    putDoc(d,function(){var idx=docs.findIndex(function(x){return String(x.id)===String(id)});if(idx>=0)docs[idx]=d;else docs.push(d);if(Q('hrDocModal'))Q('hrDocModal').style.display='none';renderFinal();if(typeof window.showToast==='function')window.showToast('✅ Document + attachment save ho gaya.');});
+    putDoc(d,function(){
+      var idx=docs.findIndex(function(x){return String(x.id)===String(id)});
+      if(idx>=0)docs[idx]=d;else docs.push(d);
+      if(Q('hrDocModal'))Q('hrDocModal').style.display='none';
+      renderFinal();
+      if(typeof window.showToast==='function')window.showToast('✅ Document + attachment save ho gaya.');
+      if(window.UniversalEngine && typeof window.UniversalEngine.saveHrDoc === 'function'){
+        window.UniversalEngine.saveHrDoc(d).catch(function(){});
+      } else if(window.ATPLRealtimeSyncEngine && typeof window.ATPLRealtimeSyncEngine.saveHrDoc === 'function'){
+        window.ATPLRealtimeSyncEngine.saveHrDoc(d).catch(function(){});
+      }
+    });
   }).catch(function(err){alert('File save nahi ho saki.\n\n'+(err.message||err))});return false;
  };
  window.hrDocSave=save;
