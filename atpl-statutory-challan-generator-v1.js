@@ -297,11 +297,7 @@
     html += '</div>';
 
     // Download Action Buttons
-    html += '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <label style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;background:#1e293b;border:1px solid #475569;border-radius:9px;color:#38bdf8;font-weight:700;font-size:12px;cursor:pointer;outline:none">
-      <span>📤</span> Upload More Sheets
-      <input type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="window.handleChallanDirectUpload(this)">
-    </label>';
+    html += '<div style="display:flex;gap:10px;flex-wrap:wrap">';
     html += '<button onclick="window.downloadEpfoEcrTextFile()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)"><span>🏛️</span> Download PF ECR (.txt)</button>';
     html += '<button onclick="window.downloadEsicUploadExcel()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,0.3)"><span>🏥</span> Download ESIC Excel (.xlsx)</button>';
     html += '<button onclick="window.downloadChallanSummaryPDF()" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#334155;border:1px solid rgba(255,255,255,0.15);border-radius:9px;color:#f8fafc;font-weight:700;font-size:12px;cursor:pointer"><span>📑</span> Print Challan Slips</button>';
@@ -472,56 +468,6 @@
     var fName = "ATPL_ESIC_Monthly_Upload_" + new Date().toISOString().substring(0, 7) + ".xlsx";
     XLSX.writeFile(wb, fName);
     if (window.showToast) window.showToast("✅ ESIC Official Portal Excel file download ho gayi!");
-  };
-
-    window.handleChallanDirectUpload = function(input) {
-    if (!input || !input.files || !input.files.length) return;
-    var filesList = Array.from(input.files);
-    var pending = filesList.length;
-    var loadedFiles = [];
-    
-    filesList.forEach(function(file) {
-      var reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          var buf = e.target.result;
-          var wb = (typeof parseWB === "function") ? parseWB(buf) : XLSX.read(new Uint8Array(buf), { type: "array" });
-          var sheets = (typeof wbToSheets === "function") ? wbToSheets(wb) : wb.SheetNames;
-          var fObj = {
-            name: file.name,
-            wb: wb,
-            sheets: sheets,
-            buf: buf,
-            savedAt: new Date().toISOString()
-          };
-          loadedFiles.push(fObj);
-          if (typeof saveFileToDB === "function") {
-            saveFileToDB(file.name, buf);
-          }
-        } catch(err) {
-          console.error("Error reading challan file:", err);
-        } finally {
-          pending--;
-          if (pending <= 0) {
-            window.FILES = window.FILES || [];
-            loadedFiles.forEach(function(lf) {
-              window.FILES = window.FILES.filter(function(x) { return String(x.name).toLowerCase() !== String(lf.name).toLowerCase(); });
-              window.FILES.push(lf);
-            });
-            if (typeof renderFiles === "function") renderFiles();
-            if (typeof renderSheets === "function") renderSheets();
-            if (typeof updStats === "function") updStats();
-            if (typeof renderAllFilesPage === "function") renderAllFilesPage();
-            if (typeof populateNJSelects === "function") populateNJSelects();
-            if (typeof window.initStatutoryChallanTab === "function") window.initStatutoryChallanTab();
-            if (typeof window.empDashboardRender === "function") window.empDashboardRender();
-            if (window.showToast) window.showToast("✅ " + loadedFiles.length + " Salary/Challan Sheet uploaded & synced!");
-            input.value = "";
-          }
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    });
   };
 
   window.downloadChallanSummaryPDF = function() {

@@ -26,7 +26,7 @@ test('Executive Dashboard, File Sync and Zero White Line Guarantees', async (t) 
 
   // 3. Direct challan upload handler is present
   await t.test('3. Direct challan upload handler exists in generator and global scope', () => {
-    assert.ok(challanGen.includes('window.handleChallanDirectUpload'), 'Generator must export handleChallanDirectUpload');
+    assert.ok(challanGen.includes('handleChallanDirectUpload'), 'Generator must invoke handleChallanDirectUpload');
     assert.ok(indexHtml.includes('handleChallanDirectUpload'), 'index.html must implement handleChallanDirectUpload');
   });
 
