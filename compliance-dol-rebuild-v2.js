@@ -137,11 +137,16 @@ function sharedCloudRecordKey(r){
 }
 async function cloudRecords(type){
   var v=vaultApi(),d=durableApi(),dedicated=[],legacy=[],dedicatedOk=false,legacyOk=false,errors=[];
-  if(v&&v.authority==='supabase'&&typeof v.list==='function'){
-    dedicated=await bounded(v.list(type),32000,'Supabase challan authority');
-    dedicated=Array.isArray(dedicated)?dedicated:[];
-    cloudMode[type]='supabase';
-    return{mode:'supabase',records:dedicated,dedicatedCount:dedicated.length,legacyCount:0,partialErrors:[]}
+    if(v&&v.authority==='supabase'&&typeof v.list==='function'){
+    try{
+      dedicated=await bounded(v.list(type),32000,'Supabase challan authority');
+      dedicated=Array.isArray(dedicated)?dedicated:[];
+      cloudMode[type]='supabase';
+      return{mode:'supabase',records:dedicated,dedicatedCount:dedicated.length,legacyCount:0,partialErrors:[]}
+    }catch(e){
+      console.warn('Supabase challan list fallback',e);
+      errors.push('supabase: '+(e&&e.message||e));
+    }
   }
   if(v&&typeof v.list==='function'){
     try{
@@ -1200,7 +1205,10 @@ async function upload(type,fileList){
   await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend · local viewer cache';
   if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
   var pack;
-  try{pack=await cloudRecords(type)}catch(e){setStatus(type,'Cloud library check failed — '+(e.message||e),true);return}
+  try{pack=await cloudRecords(type)}catch(e){
+    console.warn('Cloud library check fallback',e);
+    pack={mode:(vaultApi()&&vaultApi().authority==='supabase')?'supabase':'legacy',records:[],dedicatedCount:0,legacyCount:0,partialErrors:[String(e&&e.message||e)]};
+  }
   var mode=(pack.mode==='v4'||pack.mode==='supabase')?pack.mode:'legacy',byHash={};
   (pack.records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
   var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0,indexPending:0};
