@@ -441,8 +441,17 @@ function pfEvidence(ids,text){
   return establishment||twelve>=3||strongText||/[A-Z]{2,6}[\s\/_-]*[A-Z]{2,5}[\s\/_-]*\d{7}/.test(text)
 }
 function detectedDocumentType(name,ids,text){
-  var sample=String(name||'')+' '+String(text||'');if(pfEvidence(ids,sample))return'pf';
-  return /\b(?:ESIC|E\.?S\.?I\.?C|EMPLOYEES?\s+STATE\s+INSURANCE|INSURANCE\s+(?:NO|NUMBER)|IP\s+(?:NO|NUMBER))\b/i.test(sample)?'esic':''
+  var sample=String(name||'')+' '+String(text||'');
+  var hasEsic=/\b(?:ESIC|E\.?S\.?I\.?C|EMPLOYEES?\s+STATE\s+INSURANCE|INSURANCE\s+(?:NO|NUMBER)|IP\s+(?:NO|NUMBER))\b/i.test(sample);
+  var hasPf=pfEvidence(ids,sample);
+  if(hasEsic&&!hasPf)return'esic';
+  if(hasPf&&!hasEsic)return'pf';
+  if(hasEsic&&hasPf){
+    if(/\besic\b/i.test(name))return'esic';
+    if(/\b(?:epf|epfo|ecr|provident)\b/i.test(name))return'pf';
+    return'esic';
+  }
+  return'';
 }
 function looksLikePfRecord(r){return !!(r&&r.type==='esic'&&pfEvidence(recordIds(r),r.name||''))}
 function logicalName(name){return String(name||'').toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}

@@ -95,25 +95,82 @@ function mapRow(r){
 async function listRaw(type,force){
   type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
   if(!force&&rawCache[type]&&Date.now()-rawCacheAt[type]<RAW_CACHE_MS)return rawCache[type];
-  var d=await edgeJson({action:'list',type:type},30000),rows=arr(d.records);
+  var rows=[];
+  var edgeLoaded=false;
+  if(tok()){
+    try{
+      var d=await edgeJson({action:'list',type:type},15000);
+      if(d&&d.ok!==false&&Array.isArray(d.records)){
+        rows=d.records;
+        edgeLoaded=true;
+      }
+    }catch(e){
+      console.warn('Edge list fallback to direct Supabase',e);
+    }
+  }
+  try{
+    var sbRows=await sbDirectRest('hr_files?doc_type=eq.'+type+'&select=id,filename,size,uploaded_at,payload,version&order=uploaded_at.desc');
+    var tombRows=await sbDirectRest('hr_files?doc_type=eq.'+type+'_tombstone&select=filename,uploaded_at');
+    var tombstones=new Set();
+    if(Array.isArray(tombRows)){
+      tombRows.forEach(function(t){if(t&&t.filename)tombstones.add(String(t.filename).toLowerCase().trim())});
+    }
+    if(Array.isArray(sbRows)){
+      var directRows=[];
+      sbRows.forEach(function(sr){
+        var fn=String(sr.filename||'').toLowerCase().trim();
+        if(tombstones.has(fn))return;
+        var p={};
+        try{p=typeof sr.payload==='string'?JSON.parse(sr.payload||'{}'):(sr.payload||{})}catch(_){}
+        directRows.push({
+          id:String(sr.id||''),
+          challan_type:type,
+          file_name:sr.filename||p.name||'Challan',
+          file_size:Number(sr.size||0),
+          file_hash:String(p.hash||p.fileHash||p.fingerprint||'').toLowerCase(),
+          period:String(p.period||''),
+          member_ids:arr(p.ids||p.member_ids),
+          contributions:arr(p.contributions),
+          created_at:sr.uploaded_at||new Date().toISOString(),
+          updated_at:sr.uploaded_at||new Date().toISOString(),
+          uploaded_by:String(p.uploaded_by||'admin'),
+          file_path:sr.filename,
+          hasOriginalFile:true
+        });
+      });
+      if(!edgeLoaded){
+        rows=directRows;
+      }else{
+        var seen=new Set();
+        rows.forEach(function(r){var k=String(r.file_hash||r.fileHash||r.file_name||r.name||'').toLowerCase();if(k)seen.add(k)});
+        directRows.forEach(function(dr){var k=String(dr.file_hash||dr.file_name||'').toLowerCase();if(!seen.has(k)){rows.push(dr);seen.add(k)}});
+      }
+    }
+  }catch(err){
+    console.warn('Direct Supabase hr_files query error',err);
+  }
   rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows
 }
 async function list(type){
   return (await listRaw(type,true)).map(mapRow)
 }
 async function check(hash,intent,type){
-  hash=String(hash||'').toLowerCase();type=String(type||'').toLowerCase();
-  if(!hash)return{ok:true,duplicate:false};
-  if(type!=='pf'&&type!=='esic')throw new Error('Challan type required for duplicate check');
-  if(tok()){
-    try{
-      var d=await edgeJson({action:'check',type:type,file_hash:hash,upload_intent:String(intent||'user_upload')},15000);
-      return{ok:true,duplicate:!!d.duplicate,deleted:!!d.deleted,record:d.record?mapRow(d.record):null};
-    }catch(_){}
+  try{
+    hash=String(hash||'').toLowerCase();type=String(type||'').toLowerCase();
+    if(!hash)return{ok:true,duplicate:false};
+    if(type!=='pf'&&type!=='esic')return{ok:true,duplicate:false};
+    if(tok()){
+      try{
+        var d=await edgeJson({action:'check',type:type,file_hash:hash,upload_intent:String(intent||'user_upload')},12000);
+        if(d&&d.ok!==false)return{ok:true,duplicate:!!d.duplicate,deleted:!!d.deleted,record:d.record?mapRow(d.record):null};
+      }catch(_){}
+    }
+    var rows=await listRaw(type,false);
+    var matching=rows.find(function(r){return String(r.file_hash||r.fileHash||r.fingerprint||'').toLowerCase()===hash});
+    return{ok:true,duplicate:!!matching,deleted:false,record:matching?mapRow(matching):null};
+  }catch(_){
+    return{ok:true,duplicate:false};
   }
-  var rows=await listRaw(type,false);
-  var matching=rows.find(function(r){return String(r.file_hash||r.fileHash||'').toLowerCase()===hash});
-  return{ok:true,duplicate:!!matching,deleted:false,record:matching?mapRow(matching):null};
 }function currentUserId(){
   try{var s=JSON.parse(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null');return s&&s.id?String(s.id):''}catch(_){return''}
 }
@@ -178,8 +235,22 @@ async function upload(rec,buf,progress){
 }async function update(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
   if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id)throw new Error('Challan id missing');
-  var d=await edgeJson({action:'updatePeriod',type:type,id:id,period:String(rec&&rec.period||'')},22000);
-  rawCache[type]=null;rawCacheAt[type]=0;return mapRow(d.record||{})
+  if(tok()){
+    try{
+      var d=await edgeJson({action:'updatePeriod',type:type,id:id,period:String(rec&&rec.period||'')},15000);
+      rawCache[type]=null;rawCacheAt[type]=0;return mapRow(d.record||{})
+    }catch(e){console.warn('Edge update fallback',e)}
+  }
+  try{
+    var rows=await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(id)+'&select=id,payload');
+    if(Array.isArray(rows)&&rows[0]){
+      var p={};try{p=JSON.parse(rows[0].payload||'{}')}catch(_){}
+      p.period=String(rec&&rec.period||'');
+      await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(id),{method:'PATCH',body:{payload:JSON.stringify(p)}});
+    }
+  }catch(_){}
+  rawCache[type]=null;rawCacheAt[type]=0;
+  return mapRow({id:id,challan_type:type,period:rec.period,file_name:rec.name});
 }
 async function remove(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||''),name=String(rec&&rec.name||'');
@@ -221,7 +292,13 @@ async function fileBlob(rec,progress){
   if(progress)progress(20);
   var recName=String(rec&&rec.name||rec&&rec.file_name||'');
   var type=String(rec&&rec.type||rec&&rec.challan_type||'pf').toLowerCase();
-  var rows=await sbDirectRest('hr_files?filename=ilike.'+encodeURIComponent(recName)+'&doc_type=eq.'+type+'&select=payload&limit=1');
+  var rows=null;
+  if(recName){
+    rows=await sbDirectRest('hr_files?filename=ilike.'+encodeURIComponent(recName)+'&doc_type=eq.'+type+'&select=payload&limit=1');
+  }
+  if((!rows||!rows.length)&&rec&&(rec.cloudRecordId||rec.id)){
+    rows=await sbDirectRest('hr_files?id=eq.'+encodeURIComponent(rec.cloudRecordId||rec.id)+'&select=payload&limit=1');
+  }
   if(Array.isArray(rows)&&rows[0]&&rows[0].payload){
     var p={};try{p=JSON.parse(rows[0].payload||'{}')}catch(_){}
     if(p.original_b64){

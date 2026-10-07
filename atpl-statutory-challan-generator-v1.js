@@ -269,7 +269,11 @@
       container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8">' +
         '<div style="font-size:40px;margin-bottom:12px">📂</div>' +
         '<div style="font-size:16px;font-weight:700;color:#f8fafc">Koi Salary Sheet Uploaded Nahi Hai</div>' +
-        '<div style="font-size:13px;margin-top:6px">Kripya sidebar se monthly salary file upload karein taaki PF aur ESIC challan generate ho sake.</div>' +
+        '<div style="font-size:13px;margin-top:6px;margin-bottom:18px">Monthly salary file upload karein taaki EPFO ECR (#~# format) aur ESIC challan instant generate ho sakein.</div>' +
+        '<label style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)">' +
+        '<span>📤</span> Upload Salary / Challan Sheet' +
+        '<input type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="window.handleChallanDirectUpload(this)">' +
+        '</label>' +
         '</div>';
       return;
     }
