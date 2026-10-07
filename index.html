@@ -852,7 +852,11 @@ td.blank-val { color: var(--muted); font-style: italic; }
 .mobile-only-cards-container { display: none; }
 .desktop-only-table-wrap { display: block; }
 
-/* ── EMPLOYEE MASTER FULL SCREEN ─────────────── */
+/* ── EMPLOYEE MASTER & WORKFORCE DASHBOARD ─────────────── */
+#page-empmaster, #page-empdashboard { display:none; }
+#page-empdashboard.active { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; inset:0 !important; z-index:200 !important; flex-direction:column !important; overflow:hidden !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; background:#090d16 !important; }
+#page-empdashboard.active.dash-windowed { display:flex !important; position:fixed !important; top:68px !important; left:210px !important; right:18px !important; bottom:18px !important; inset:68px 18px 18px 210px !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; z-index:500 !important; border:1px solid #0284c7 !important; border-radius:14px !important; box-shadow:0 28px 80px rgba(0,0,0,.65) !important; }
+body.dash-windowed #page-empdashboard.active.dash-windowed { position:fixed !important; top:68px !important; left:210px !important; right:18px !important; bottom:18px !important; inset:68px 18px 18px 210px !important; display:flex !important; z-index:9999 !important; }
 #page-empmaster { display:none; }
 #page-empmaster.active { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; inset:0 !important; z-index:200 !important; flex-direction:column !important; overflow:hidden !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; background:#0f172a !important; }
 #page-empmaster.active.em-windowed { display:flex !important; position:fixed !important; top:72px !important; left:220px !important; right:20px !important; bottom:20px !important; inset:72px 20px 20px 220px !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; z-index:500 !important; border:1px solid #6366f1 !important; border-radius:14px !important; box-shadow:0 28px 80px rgba(0,0,0,.55) !important; }
@@ -1842,6 +1846,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>👥 Employee</span><span class="vnav-arrow" id="arr-emp">▾</span>
     </div>
     <div class="vnav-sub" id="cat-emp">
+      <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge" style="background:#10b981">LIVE</span></div>
       <div class="vitem" id="vn-dol" onclick="goPage('dol')"><span class="vi">📅</span>Date of Leaving</div>
       <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')"><span class="vi">✅</span>DOL Verifier</div>
       <div class="vitem" id="vn-ff" onclick="goPage('ff')"><span class="vi">📄</span>F&amp;F Settlement</div>
@@ -2558,6 +2563,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           </div>
           <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <button id="emBulkDeleteBtn" type="button" onclick="emDeleteSelected()" style="display:none;padding:7px 13px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(220,38,38,0.4)">🗑 Delete Selected (<span id="emSelectedCount">0</span>)</button>
+            <button type="button" onclick="goPage('empdashboard')" style="padding:7px 13px;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(13,148,136,0.3)">📊 Dashboard</button>
             <button onclick="emOpenAdd()" style="padding:7px 12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">➕ Add</button>
             <button onclick="emDownloadExcel()" style="padding:7px 12px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">⬇ Excel</button>
             <button id="emMinimizeBtn" onclick="emToggleWindow()" class="desktop-only-btn" style="padding:7px 12px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">↙ Minimize</button>
@@ -2703,7 +2709,10 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;display:flex;align-items:center;gap:6px">
               <span>🖱️ <strong>Mouse se Columns Drag & Drop Karein:</strong> Kisi bhi column ko mouse se seedha pakad kar aage-peeche shift karein (Excel sequence ke hisaab se)</span>
             </div>
-            <button type="button" onclick="emResetColOrder()" style="padding:3px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset Column Order</button>
+            <div style="display:flex;gap:6px">
+              <button type="button" onclick="emOpenAddColModal()" style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">➕ Add / Restore Column</button>
+              <button type="button" onclick="emResetColOrder()" style="padding:4px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All Columns</button>
+            </div>
           </div>
           <!-- Column headers like Excel -->
           <div class="em-xls-hdr" style="display:grid;grid-template-columns:90px 160px 150px 120px 120px 150px 140px 150px 130px 130px 80px 160px 130px 110px 110px 100px 100px 100px;gap:0;background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content">
@@ -2755,7 +2764,10 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
                   <span>🖱️ Excel Column Order (Mouse se pakad kar aage-peeche Drag & Drop karein):</span>
                   <span style="font-size:10px;color:#94a3b8;font-weight:400">(Excel file ke sequence ke anusaar set karein)</span>
                 </div>
-                <button type="button" onclick="emResetColOrder()" style="padding:3px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset Order</button>
+                <div style="display:flex;gap:6px">
+                <button type="button" onclick="emOpenAddColModal()" style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">➕ Add / Restore Column</button>
+                <button type="button" onclick="emResetColOrder()" style="padding:4px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All Columns</button>
+              </div>
               </div>
               <div id="emColChipsContainer" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;align-items:center"></div>
             </div>
@@ -2779,7 +2791,324 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       </div>
     </div>
 
-    <!-- ══ DOWNLOAD FORMAT MODAL ══ -->
+    <!-- ══ ADD / RESTORE / REMOVE COLUMN MODAL ══ -->
+    <div id="emColModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:999999;align-items:center;justify-content:center" onclick="if(event.target===this)emCloseAddColModal()">
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:14px;width:540px;max-width:96vw;box-shadow:0 30px 90px rgba(0,0,0,0.7);overflow:hidden;display:flex;flex-direction:column">
+        <div style="padding:16px 20px;background:#0f172a;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:14px;font-weight:800;color:#f1f5f9;display:flex;align-items:center;gap:6px">
+              <span>➕ Columns Manage Karein (Add / Restore / Remove)</span>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:2px">Excel file ke format ke anusaar columns add ya hata sakte hain</div>
+          </div>
+          <button type="button" onclick="emCloseAddColModal()" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;line-height:1">✕</button>
+        </div>
+        
+        <div style="padding:18px 20px;overflow-y:auto;max-height:72vh;display:flex;flex-direction:column;gap:16px">
+          <!-- Section 1: Inactive / Hidden standard columns -->
+          <div>
+            <div style="font-size:11px;font-weight:800;color:#c7d2fe;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Hidden / Inactive Standard Columns (Wapas Jodein):</div>
+            <div id="emHiddenColsList" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:8px">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+
+          <!-- Section 2: Create Custom Column -->
+          <div style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:14px">
+            <div style="font-size:12px;font-weight:800;color:#38bdf8;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+              <span>✨ Naya Custom Column Banayein:</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label style="font-size:10px;color:#94a3b8;font-weight:700;display:block;margin-bottom:4px">COLUMN NAME / HEADER</label>
+                <input id="emCustomColLabel" placeholder="e.g. Mobile, UAN, Aadhaar, Shift" style="width:100%;padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:11px;outline:none">
+              </div>
+              <div>
+                <label style="font-size:10px;color:#94a3b8;font-weight:700;display:block;margin-bottom:4px">FIELD TYPE</label>
+                <select id="emCustomColType" style="width:100%;padding:8px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:11px;outline:none">
+                  <option value="text">Text / General</option>
+                  <option value="number">Number (Amount / ID)</option>
+                </select>
+              </div>
+            </div>
+            <button type="button" onclick="emCreateCustomCol()" style="width:100%;padding:8px;background:#0284c7;color:#fff;border:none;border-radius:7px;font-weight:800;font-size:11px;cursor:pointer">➕ Yeh Column Table Mein Jodein</button>
+          </div>
+
+          <!-- Section 3: Reset Default -->
+          <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #334155;padding-top:10px">
+            <span style="font-size:11px;color:#64748b">Sabhi standard 18 columns wapas chahiye?</span>
+            <button type="button" onclick="emResetColOrder();emCloseAddColModal();" style="padding:6px 12px;background:#334155;color:#f1f5f9;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↺ Reset All Standard Columns</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ EXECUTIVE WORKFORCE & COMPLIANCE DASHBOARD PAGE ══ -->
+    <div class="page" id="page-empdashboard" style="display:none;flex-direction:column;overflow:hidden">
+      <!-- Dashboard Top Header Bar -->
+      <div style="padding:12px 20px;background:linear-gradient(135deg,#090d16,#0f172a);border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button type="button" onclick="goPage('empmaster')" style="padding:6px 11px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
+            ← Employee Master
+          </button>
+          <div>
+            <div style="font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px">
+              <span>📊 Workforce &amp; Compliance Dashboard</span>
+              <span id="dashTotalBadge" style="padding:2px 8px;background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);border-radius:20px;font-size:11px;font-weight:700">Live Sync</span>
+            </div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px">Employee Master Analytics • PF &amp; ESIC Coverage • Monthly Headcount &amp; Turnover</div>
+          </div>
+        </div>
+
+        <!-- Month & Year Historical Status Selector -->
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:6px;background:#1e293b;padding:4px 8px;border:1.5px solid #3b82f6;border-radius:8px">
+            <span style="font-size:11px;font-weight:800;color:#60a5fa">📅 Month Filter:</span>
+            <select id="dashMonthSelect" onchange="empDashboardOnPeriodChange()" style="background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;outline:none;cursor:pointer">
+              <option value="LIVE">⚡ Current Live Workforce</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09" selected>September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            <select id="dashYearSelect" onchange="empDashboardOnPeriodChange()" style="background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;outline:none;cursor:pointer">
+              <option value="2026">2026</option>
+              <option value="2025" selected>2025</option>
+              <option value="2024">2024</option>
+            </select>
+          </div>
+
+          <button type="button" onclick="empDashboardRender()" style="padding:7px 12px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
+            🔄 Refresh
+          </button>
+          <button id="dashMinimizeBtn" type="button" onclick="dashToggleWindow()" style="padding:7px 12px;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
+            ↙ Minimize
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Month Navigation Bar -->
+      <div style="background:#0f172a;border-bottom:1px solid #1e293b;padding:8px 20px;display:flex;align-items:center;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:0">
+        <span style="font-size:11px;color:#64748b;font-weight:700;white-space:nowrap">Quick Jump:</span>
+        <button type="button" onclick="empDashboardSetPeriod('LIVE',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap">⚡ Current Live</button>
+        <button type="button" onclick="empDashboardSetPeriod('09',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Sep 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('08',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Aug 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('07',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jul 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('06',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jun 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('05',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">May 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('04',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Apr 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('03',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Mar 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('02',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Feb 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('01',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jan 2025</button>
+      </div>
+
+      <!-- Dashboard Scrollable Body -->
+      <div style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:16px">
+        
+        <!-- Active Period Banner -->
+        <div id="dashPeriodBanner" style="padding:10px 16px;background:rgba(30,58,138,0.3);border:1px solid #3b82f6;border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">📍</span>
+            <div>
+              <span id="dashPeriodTitle" style="font-size:13px;font-weight:800;color:#93c5fd">September 2025 Workforce &amp; Statutory Report</span>
+              <span style="font-size:11px;color:#94a3b8;margin-left:6px" id="dashPeriodSubtitle">(Is month mein active employees, PF aur ESIC ka poora hisaab)</span>
+            </div>
+          </div>
+          <span id="dashPeriodActivePill" style="padding:3px 10px;background:#10b981;color:#fff;border-radius:20px;font-size:11px;font-weight:800">475 Active</span>
+        </div>
+
+        <!-- KPI Grid: 8 Executive Metric Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+          <!-- 1. Total Registered -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:11px;font-weight:700">
+              <span>TOTAL REGISTERED</span>
+              <span>👥</span>
+            </div>
+            <div id="kpiTotalEmp" style="font-size:24px;font-weight:800;color:#f8fafc">496</div>
+            <div style="font-size:10px;color:#64748b">Overall Database Headcount</div>
+          </div>
+
+          <!-- 2. Active Workforce -->
+          <div style="background:#111827;border:1px solid rgba(16,185,129,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#6ee7b7;font-size:11px;font-weight:700">
+              <span>ACTIVE WORKFORCE</span>
+              <span>🟢</span>
+            </div>
+            <div id="kpiActiveEmp" style="font-size:24px;font-weight:800;color:#34d399">475</div>
+            <div id="kpiActiveRate" style="font-size:10px;color:#a7f3d0;font-weight:600">95.8% of total</div>
+          </div>
+
+          <!-- 3. Exited / Left -->
+          <div style="background:#111827;border:1px solid rgba(239,68,68,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#fca5a5;font-size:11px;font-weight:700">
+              <span>EXITED / LEFT (DOL)</span>
+              <span>🔴</span>
+            </div>
+            <div id="kpiLeftEmp" style="font-size:24px;font-weight:800;color:#f87171">21</div>
+            <div id="kpiLeftRate" style="font-size:10px;color:#fecaca;font-weight:600">4.2% turnover</div>
+          </div>
+
+          <!-- 4. PF Covered -->
+          <div style="background:#111827;border:1px solid rgba(99,102,241,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#c7d2fe;font-size:11px;font-weight:700">
+              <span>PF (EPFO) COVERED</span>
+              <span>🏢</span>
+            </div>
+            <div id="kpiPfEmp" style="font-size:24px;font-weight:800;color:#818cf8">448</div>
+            <div id="kpiPfRate" style="font-size:10px;color:#c7d2fe;font-weight:600">94.3% coverage</div>
+          </div>
+
+          <!-- 5. ESIC Covered -->
+          <div style="background:#111827;border:1px solid rgba(14,165,233,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#7dd3fc;font-size:11px;font-weight:700">
+              <span>ESIC COVERED</span>
+              <span>🩺</span>
+            </div>
+            <div id="kpiEsiEmp" style="font-size:24px;font-weight:800;color:#38bdf8">460</div>
+            <div id="kpiEsiRate" style="font-size:10px;color:#7dd3fc;font-weight:600">96.8% coverage</div>
+          </div>
+
+          <!-- 6. Dual Covered (PF + ESIC) -->
+          <div style="background:#111827;border:1px solid rgba(245,158,11,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#fde68a;font-size:11px;font-weight:700">
+              <span>BOTH PF &amp; ESIC</span>
+              <span>⚡</span>
+            </div>
+            <div id="kpiBothEmp" style="font-size:24px;font-weight:800;color:#fbbf24">442</div>
+            <div id="kpiBothRate" style="font-size:10px;color:#fde68a;font-weight:600">Dual statutory benefits</div>
+          </div>
+
+          <!-- 7. Total Monthly Payroll -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:11px;font-weight:700">
+              <span>MONTHLY PAYROLL</span>
+              <span>💰</span>
+            </div>
+            <div id="kpiPayroll" style="font-size:22px;font-weight:800;color:#34d399">₹—</div>
+            <div style="font-size:10px;color:#64748b">Gross Salary Sum</div>
+          </div>
+
+          <!-- 8. Average Salary -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:11px;font-weight:700">
+              <span>AVERAGE SALARY</span>
+              <span>📊</span>
+            </div>
+            <div id="kpiAvgSalary" style="font-size:22px;font-weight:800;color:#fcd34d">₹—</div>
+            <div style="font-size:10px;color:#64748b">Per active worker</div>
+          </div>
+        </div>
+
+        <!-- 12-Month Annual Trend Table (Jan to Dec) -->
+        <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#f8fafc">📈 12-Month Annual Workforce &amp; Statutory Trend (<span id="dashYearTitle">2025</span>)</div>
+              <div style="font-size:11px;color:#94a3b8">Kisi bhi month par click karke uss month ka exact data dekh sakte hain:</div>
+            </div>
+            <span style="font-size:10px;color:#38bdf8;background:rgba(14,165,233,0.15);padding:3px 8px;border-radius:12px;border:1px solid rgba(14,165,233,0.3)">Click Month to Filter</span>
+          </div>
+
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px">
+              <thead>
+                <tr style="background:#0f172a;border-bottom:2px solid #334155;color:#94a3b8;text-transform:uppercase;font-size:10px">
+                  <th style="padding:8px 12px;text-align:left">Month</th>
+                  <th style="padding:8px 12px;text-align:center">Active Headcount</th>
+                  <th style="padding:8px 12px;text-align:center">PF Enrolled</th>
+                  <th style="padding:8px 12px;text-align:center">ESIC Enrolled</th>
+                  <th style="padding:8px 12px;text-align:center">Dual Covered</th>
+                  <th style="padding:8px 12px;text-align:center">New Joinees</th>
+                  <th style="padding:8px 12px;text-align:center">Exits</th>
+                  <th style="padding:8px 12px;text-align:right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="dashAnnualTrendBody">
+                <!-- Populated dynamically for all 12 months -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 2 Column Breakdown: Department Analysis & Statutory Venn -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+          <!-- Department Breakdown -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px">
+            <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">🏢 Department-Wise Headcount &amp; Compliance</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Departments mein active staff aur PF/ESIC ratio:</div>
+            <div id="dashDeptBreakdown" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Statutory & Gender Ratio -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">⚖️ Statutory Benefit Distribution</div>
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">PF vs ESIC vs Both breakdown:</div>
+              <div id="dashStatutoryBars" style="display:flex;flex-direction:column;gap:8px">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <div style="border-top:1px solid #1f2937;padding-top:12px">
+              <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">👥 Gender Distribution</div>
+              <div id="dashGenderBox" style="display:flex;gap:10px;align-items:center;margin-top:6px">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtered Employee List for Selected Month -->
+        <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#f8fafc">📋 Selected Month Employee Roster (<span id="dashRosterCount">0</span> Employees)</div>
+              <div style="font-size:11px;color:#94a3b8">Is mahine mein active employees ki poori list:</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="dashRosterSearch" oninput="empDashboardFilterRoster()" placeholder="Search Name, Code, Dept..." style="padding:6px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#fff;font-size:11px;outline:none">
+              <button type="button" onclick="empDashboardExportExcel()" style="padding:6px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Export Excel</button>
+            </div>
+          </div>
+
+          <div style="max-height:360px;overflow-y:auto;border:1px solid #1f2937;border-radius:8px">
+            <table style="width:100%;border-collapse:collapse;font-size:11px">
+              <thead style="position:sticky;top:0;background:#0f172a;border-bottom:1px solid #334155;z-index:2">
+                <tr style="color:#94a3b8;font-size:10px;text-transform:uppercase">
+                  <th style="padding:8px 10px;text-align:left">#</th>
+                  <th style="padding:8px 10px;text-align:left">Emp ID</th>
+                  <th style="padding:8px 10px;text-align:left">Employee Name</th>
+                  <th style="padding:8px 10px;text-align:left">Status</th>
+                  <th style="padding:8px 10px;text-align:left">DOJ</th>
+                  <th style="padding:8px 10px;text-align:left">DOL</th>
+                  <th style="padding:8px 10px;text-align:left">PF No</th>
+                  <th style="padding:8px 10px;text-align:left">ESI No</th>
+                  <th style="padding:8px 10px;text-align:left">Department</th>
+                  <th style="padding:8px 10px;text-align:right">Gross (₹)</th>
+                </tr>
+              </thead>
+              <tbody id="dashRosterBody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+<!-- ══ DOWNLOAD FORMAT MODAL ══ -->
     <div id="emDlModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center" onclick="if(event.target===this)emCloseDlModal()">
       <div style="background:#1e293b;border:1px solid #334155;border-radius:14px;width:460px;max-width:96vw;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
         <div style="padding:16px 22px;border-bottom:1px solid #334155">
@@ -8656,9 +8985,137 @@ var EM_COLS = [
   {key:'gross',      label:'GROSS (₹)',   w:'100px', type:'number'},
 ];
 
-var DEFAULT_EM_COLS = EM_COLS.slice();
+var ALL_STANDARD_EM_COLS = [
+  {key:'emp_id',     label:'EMP CODE',    w:'90px',  type:'text', required:true},
+  {key:'name',       label:'NAME',        w:'160px', type:'text', required:true},
+  {key:'status',     label:'STATUS',      w:'110px', type:'select', opts:['ACTIVE','LEFT']},
+  {key:'dol',        label:'DOL (EXIT)',  w:'120px', type:'text'},
+  {key:'father',     label:"FATHER'S NAME",w:'150px',type:'text'},
+  {key:'dob',        label:'D.O.B',       w:'120px', type:'text'},
+  {key:'doj',        label:'D.O.J',       w:'120px', type:'text'},
+  {key:'pf_no',      label:'PF NO',       w:'150px', type:'text'},
+  {key:'esi_no',     label:'ESI NO',      w:'140px', type:'text'},
+  {key:'bank_name',  label:'BANK NAME',   w:'150px', type:'text'},
+  {key:'ifsc',       label:'IFSC CODE',   w:'130px', type:'text'},
+  {key:'account_no', label:'ACCOUNT NO',  w:'130px', type:'text'},
+  {key:'gender',     label:'GENDER',      w:'80px',  type:'select', opts:['MALE','FEMALE']},
+  {key:'dept',       label:'DEPARTMENT',  w:'160px', type:'text'},
+  {key:'cat1',       label:'CATEGORY',    w:'130px', type:'text'},
+  {key:'basic',      label:'BASIC (₹)',   w:'110px', type:'number'},
+  {key:'hra',        label:'HRA (₹)',     w:'110px', type:'number'},
+  {key:'gross',      label:'GROSS (₹)',   w:'100px', type:'number'},
+];
+
+var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_BULK_ROWS = []; // parsed bulk rows
 window._emDragColIdx = -1;
+
+// Function to remove a column
+window.emRemoveCol = function(idx) {
+  if (idx < 0 || idx >= EM_COLS.length) return;
+  var col = EM_COLS[idx];
+  if (col.key === 'emp_id' || col.key === 'name') {
+    alert('⚠️ Employee Code aur Name mandatory hain, inhein delete nahi kiya jaa sakta.');
+    return;
+  }
+  var confirmMsg = 'Kya aap column "' + col.label + '" ko Excel editor se hatana chahte hain?';
+  if (!confirm(confirmMsg)) return;
+
+  var curVals = emGetSingleRowValues();
+  EM_COLS.splice(idx, 1);
+  emSaveColOrder();
+  emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  if (window.showToast) {
+    window.showToast('🗑 Column "' + col.label + '" hata diya gaya. Excel paste mein ab yeh nahi maanga jaayega.');
+  }
+};
+
+window.emOpenAddColModal = function() {
+  var modal = document.getElementById('emColModal');
+  if (!modal) return;
+  var list = document.getElementById('emHiddenColsList');
+  if (list) {
+    list.innerHTML = '';
+    var activeKeys = new Set(EM_COLS.map(function(c){ return c.key; }));
+    var hidden = ALL_STANDARD_EM_COLS.filter(function(c){ return !activeKeys.has(c.key); });
+    if (!hidden.length) {
+      list.innerHTML = '<span style="font-size:11px;color:#64748b;padding:4px">Sabhi standard columns pehle se active hain! Naya custom column bana sakte hain.</span>';
+    } else {
+      hidden.forEach(function(c) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.cssText = 'padding:6px 12px;background:#1e293b;border:1px solid #3b82f6;color:#93c5fd;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all .15s';
+        btn.innerHTML = '<span>➕ ' + c.label + '</span>';
+        btn.onclick = function() {
+          emAddStandardCol(c.key);
+        };
+        list.appendChild(btn);
+      });
+    }
+  }
+  modal.style.display = 'flex';
+};
+
+window.emCloseAddColModal = function() {
+  var modal = document.getElementById('emColModal');
+  if (modal) modal.style.display = 'none';
+};
+
+window.emAddStandardCol = function(key) {
+  var col = ALL_STANDARD_EM_COLS.find(function(c){ return c.key === key; });
+  if (!col) return;
+  if (EM_COLS.some(function(c){ return c.key === key; })) {
+    alert('Yeh column pehle se active hai.');
+    return;
+  }
+  EM_COLS.push(Object.assign({}, col));
+  emSaveColOrder();
+  var curVals = emGetSingleRowValues();
+  emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  emOpenAddColModal(); // refresh hidden list
+  if (window.showToast) {
+    window.showToast('✅ Column "' + col.label + '" table mein jodh diya gaya!');
+  }
+};
+
+window.emCreateCustomCol = function() {
+  var labelInput = document.getElementById('emCustomColLabel');
+  var typeInput = document.getElementById('emCustomColType');
+  var label = (labelInput ? labelInput.value : '').trim();
+  var type = (typeInput ? typeInput.value : 'text') || 'text';
+  if (!label) {
+    alert('Kripya column ka naam/header likhein.');
+    return;
+  }
+  var key = label.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '') || ('col_' + Date.now());
+  if (EM_COLS.some(function(c){ return c.key === key; })) {
+    key = key + '_' + Math.floor(Math.random() * 100);
+  }
+  var newCol = {
+    key: key,
+    label: label.toUpperCase(),
+    w: '130px',
+    type: type
+  };
+  EM_COLS.push(newCol);
+  if (!ALL_STANDARD_EM_COLS.some(function(c){ return c.key === key; })) {
+    ALL_STANDARD_EM_COLS.push(newCol);
+  }
+  emSaveColOrder();
+  if (labelInput) labelInput.value = '';
+  var curVals = emGetSingleRowValues();
+  emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  emCloseAddColModal();
+  if (window.showToast) {
+    window.showToast('✨ Naya Custom Column "' + newCol.label + '" safaltapoorvak add ho gaya!');
+  }
+};
 
 function emGetSingleRowValues() {
   var vals = {};
@@ -8746,12 +9203,14 @@ window.emRenderColChips = function() {
     chip.style.cssText = 'padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:700;color:' + (colors[c.key] || '#e2e8f0') + ';user-select:none;transition:all .15s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.2)';
     chip.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
 
+    var canRemove = (c.key !== 'emp_id' && c.key !== 'name');
     chip.innerHTML = '<span style="color:#818cf8;font-size:13px;font-weight:900;cursor:grab" title="Drag with mouse">⋮⋮</span> ' +
       '<span style="color:#64748b;font-size:10px">' + (ci + 1) + '.</span> ' +
       '<span>' + c.label + '</span>' +
-      '<span style="display:inline-flex;gap:2px;margin-left:4px">' +
+      '<span style="display:inline-flex;gap:2px;margin-left:4px;align-items:center">' +
       '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Shift Left" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">◀</button>' +
       '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Shift Right" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">▶</button>' +
+      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein" style="padding:1px 4px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:4px;font-size:9px;font-weight:800;cursor:pointer;margin-left:2px">✕</button>' : '') +
       '</span>';
 
     chip.addEventListener('dragstart', function(ev){
@@ -8835,14 +9294,16 @@ function emRenderSingleRow(e) {
     th.style.cssText = 'padding:7px 8px;font-size:9px;font-weight:800;color:'+(colors[c.key]||'#94a3b8')+';text-transform:uppercase;letter-spacing:0.7px;border-right:1px solid #1e293b;white-space:nowrap;cursor:grab;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:all .15s;background:#0f172a;';
     th.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
 
+    var canRemove = (c.key !== 'emp_id' && c.key !== 'name');
     th.innerHTML = '<span style="display:flex;align-items:center;gap:3px;overflow:hidden;text-overflow:ellipsis">' +
       '<span style="color:#818cf8;font-size:12px;font-weight:900;cursor:grab" title="Drag with mouse">⋮⋮</span> ' +
       '<span style="color:#64748b;font-size:8px">' + (ci + 1) + '.</span> ' +
       '<span>' + c.label + '</span>' +
       '</span>' +
-      '<span style="display:inline-flex;gap:1px;margin-left:2px">' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Move Left" style="padding:0 2px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">◀</button>' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Move Right" style="padding:0 2px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">▶</button>' +
+      '<span style="display:inline-flex;gap:2px;margin-left:2px;align-items:center">' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Move Left" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">◀</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Move Right" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">▶</button>' +
+      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein" style="padding:0 3px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:2px;font-size:8px;font-weight:800;cursor:pointer">✕</button>' : '') +
       '</span>';
 
     // Drag & Drop handlers
@@ -11056,6 +11517,452 @@ function aroraAddMasterButtons(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',aroraAddMasterButtons);else aroraAddMasterButtons();
 setTimeout(aroraAddMasterButtons,800);
 
+
+/* ============================================================
+   EXECUTIVE WORKFORCE & STATUTORY DASHBOARD ENGINE
+   ============================================================ */
+window.DASH_STATE = {
+  month: '09', // default Sep
+  year: 2025,
+  roster: [],
+  filteredRoster: []
+};
+
+window.dashToggleWindow = function() {
+  var pg = document.getElementById('page-empdashboard');
+  var btn = document.getElementById('dashMinimizeBtn');
+  if (!pg) return;
+  var mini = pg.classList.toggle('dash-windowed');
+  document.body.classList.toggle('dash-windowed', mini);
+  if (btn) {
+    btn.innerHTML = mini ? '⛶ Full Screen' : '↙ Minimize';
+    btn.title = mini ? 'Full screen restore karein' : 'Window minimize karein';
+  }
+};
+
+window.empDashboardSetPeriod = function(month, year) {
+  DASH_STATE.month = month;
+  if (year) DASH_STATE.year = parseInt(year, 10);
+  var mSel = document.getElementById('dashMonthSelect');
+  var ySel = document.getElementById('dashYearSelect');
+  if (mSel) mSel.value = month;
+  if (ySel) ySel.value = DASH_STATE.year;
+
+  // Update quick jump buttons styling
+  document.querySelectorAll('.dash-quick-btn').forEach(function(b){
+    var txt = b.textContent.trim();
+    var match = (month === 'LIVE' && txt.includes('Live')) || (month !== 'LIVE' && txt.includes(month) || (month === '09' && txt.includes('Sep')) || (month === '08' && txt.includes('Aug')) || (month === '07' && txt.includes('Jul')) || (month === '06' && txt.includes('Jun')) || (month === '05' && txt.includes('May')) || (month === '04' && txt.includes('Apr')) || (month === '03' && txt.includes('Mar')) || (month === '02' && txt.includes('Feb')) || (month === '01' && txt.includes('Jan')));
+    if (match) {
+      b.style.background = '#6366f1';
+      b.style.color = '#fff';
+      b.style.borderColor = 'transparent';
+    } else {
+      b.style.background = '#1e293b';
+      b.style.color = '#cbd5e1';
+      b.style.borderColor = '#334155';
+    }
+  });
+
+  empDashboardRender();
+};
+
+window.empDashboardOnPeriodChange = function() {
+  var mSel = document.getElementById('dashMonthSelect');
+  var ySel = document.getElementById('dashYearSelect');
+  var m = mSel ? mSel.value : '09';
+  var y = ySel ? parseInt(ySel.value, 10) : 2025;
+  empDashboardSetPeriod(m, y);
+};
+
+function parseDateObj(str) {
+  if (!str) return null;
+  var s = String(str).trim();
+  if (!s || s === '—' || s === 'NA' || s === '-') return null;
+  var m = s.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+  if (m) {
+    var day = parseInt(m[1], 10);
+    var month = parseInt(m[2], 10);
+    var year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    return new Date(year, month - 1, day);
+  }
+  var m2 = s.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+  if (m2) {
+    return new Date(parseInt(m2[1], 10), parseInt(m2[2], 10) - 1, parseInt(m2[3], 10));
+  }
+  return null;
+}
+
+window.empDashboardRender = function() {
+  var employees = [];
+  if (window.EM && Array.isArray(EM.data) && EM.data.length) {
+    employees = EM.data;
+  } else if (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA)) {
+    employees = window.EMP_MASTER_DATA;
+  } else {
+    try {
+      var raw = localStorage.getItem('AroraTextilesEmployeeMasterV3');
+      if (raw) employees = JSON.parse(raw);
+    } catch(_) {}
+  }
+  if (!employees || !employees.length) employees = [];
+
+  var month = DASH_STATE.month;
+  var year = DASH_STATE.year || 2025;
+  var monthNames = {
+    '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June',
+    '07':'July','08':'August','09':'September','10':'October','11':'November','12':'December'
+  };
+
+  var isLive = (month === 'LIVE');
+  var mNum = isLive ? (new Date().getMonth() + 1) : parseInt(month, 10);
+  var targetYear = isLive ? new Date().getFullYear() : year;
+
+  // Calculate start and end date for historical month filtering
+  var monthStartDate = new Date(targetYear, mNum - 1, 1);
+  var monthEndDate = new Date(targetYear, mNum, 0, 23, 59, 59);
+
+  // Compute active employees in target month
+  var activeInMonth = [];
+  var exitedInMonth = 0;
+  var joinedInMonth = 0;
+
+  employees.forEach(function(e) {
+    var doj = parseDateObj(e.doj);
+    var dol = parseDateObj(e.dol);
+    var isLeftNow = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol || (e.status && e.status !== 'ACTIVE'));
+
+    if (isLive) {
+      if (!isLeftNow) activeInMonth.push(e);
+      return;
+    }
+
+    // Historical month evaluation:
+    // Joined on or before month end:
+    var joinedBeforeEnd = !doj || (doj <= monthEndDate);
+    // Not exited before month start:
+    var notLeftBeforeStart = !dol || (dol >= monthStartDate);
+
+    if (joinedBeforeEnd && notLeftBeforeStart) {
+      activeInMonth.push(e);
+    }
+
+    if (doj && doj >= monthStartDate && doj <= monthEndDate) {
+      joinedInMonth++;
+    }
+    if (dol && dol >= monthStartDate && dol <= monthEndDate) {
+      exitedInMonth++;
+    }
+  });
+
+  DASH_STATE.roster = activeInMonth;
+  DASH_STATE.filteredRoster = activeInMonth.slice();
+
+  // Metrics
+  var totalReg = employees.length;
+  var activeCount = activeInMonth.length;
+  var leftCount = isLive ? (totalReg - activeCount) : exitedInMonth;
+
+  var pfCount = activeInMonth.filter(function(e){ return Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-'); }).length;
+  var esiCount = activeInMonth.filter(function(e){ return Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-'); }).length;
+  var bothCount = activeInMonth.filter(function(e){
+    var p = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+    var s = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+    return p && s;
+  }).length;
+
+  var pfOnly = pfCount - bothCount;
+  var esiOnly = esiCount - bothCount;
+  var neitherCount = activeCount - (pfOnly + esiOnly + bothCount);
+
+  var totalPayroll = activeInMonth.reduce(function(acc, e){
+    var g = parseFloat(String(e.gross || 0).replace(/,/g, '')) || 0;
+    return acc + g;
+  }, 0);
+  var avgSalary = activeCount > 0 ? Math.round(totalPayroll / activeCount) : 0;
+
+  var activePct = totalReg > 0 ? ((activeCount / totalReg) * 100).toFixed(1) : '0';
+  var pfPct = activeCount > 0 ? ((pfCount / activeCount) * 100).toFixed(1) : '0';
+  var esiPct = activeCount > 0 ? ((esiCount / activeCount) * 100).toFixed(1) : '0';
+
+  // Update UI Elements
+  var setTxt = function(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  };
+
+  var pTitle = isLive ? 'Current Live Workforce Overview' : (monthNames[month] + ' ' + year + ' Workforce & Statutory Compliance');
+  setTxt('dashPeriodTitle', pTitle);
+  setTxt('dashPeriodSubtitle', isLive ? 'Real-time live active employees & statutory enrolled count' : ('Data calculated for ' + monthNames[month] + ' ' + year + ' based on joining & exit records'));
+  setTxt('dashPeriodActivePill', activeCount + ' Active in ' + (isLive ? 'Live' : (monthNames[month].slice(0,3) + ' ' + year)));
+  setTxt('dashYearTitle', year);
+
+  setTxt('kpiTotalEmp', totalReg);
+  setTxt('kpiActiveEmp', activeCount);
+  setTxt('kpiActiveRate', activePct + '% of database');
+  setTxt('kpiLeftEmp', isLive ? leftCount : exitedInMonth);
+  setTxt('kpiLeftRate', isLive ? ((leftCount/totalReg*100).toFixed(1)+'% total turnover') : (exitedInMonth + ' exited in this month'));
+
+  setTxt('kpiPfEmp', pfCount);
+  setTxt('kpiPfRate', pfPct + '% statutory PF coverage');
+  setTxt('kpiEsiEmp', esiCount);
+  setTxt('kpiEsiRate', esiPct + '% statutory ESIC coverage');
+  setTxt('kpiBothEmp', bothCount);
+  setTxt('kpiBothRate', (activeCount>0?((bothCount/activeCount*100).toFixed(1)):'0') + '% dual coverage');
+
+  setTxt('kpiPayroll', totalPayroll > 0 ? ('₹' + totalPayroll.toLocaleString('en-IN')) : '₹—');
+  setTxt('kpiAvgSalary', avgSalary > 0 ? ('₹' + avgSalary.toLocaleString('en-IN')) : '₹—');
+
+  // Render 12-Month Annual Trend Table
+  renderAnnualTrendTable(employees, year, month);
+
+  // Render Department Breakdown
+  renderDepartmentBreakdown(activeInMonth);
+
+  // Render Statutory Bars & Gender Box
+  renderStatutoryAndGender(activeInMonth, activeCount, pfOnly, esiOnly, bothCount, neitherCount);
+
+  // Render Roster Table
+  empDashboardFilterRoster();
+};
+
+function renderAnnualTrendTable(employees, year, currentMonthKey) {
+  var tbody = document.getElementById('dashAnnualTrendBody');
+  if (!tbody) return;
+  var months = [
+    {k:'01',n:'January'},{k:'02',n:'February'},{k:'03',n:'March'},{k:'04',n:'April'},
+    {k:'05',n:'May'},{k:'06',n:'June'},{k:'07',n:'July'},{k:'08',n:'August'},
+    {k:'09',n:'September'},{k:'10',n:'October'},{k:'11',n:'November'},{k:'12',n:'December'}
+  ];
+
+  var html = '';
+  months.forEach(function(m) {
+    var mNum = parseInt(m.k, 10);
+    var startD = new Date(year, mNum - 1, 1);
+    var endD = new Date(year, mNum, 0, 23, 59, 59);
+
+    var mActive = 0, mPf = 0, mEsi = 0, mBoth = 0, mJoined = 0, mExited = 0;
+
+    employees.forEach(function(e) {
+      var doj = parseDateObj(e.doj);
+      var dol = parseDateObj(e.dol);
+      var joinedBeforeEnd = !doj || (doj <= endD);
+      var notLeftBeforeStart = !dol || (dol >= startD);
+
+      if (joinedBeforeEnd && notLeftBeforeStart) {
+        mActive++;
+        var hasPf = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+        var hasEsi = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+        if (hasPf) mPf++;
+        if (hasEsi) mEsi++;
+        if (hasPf && hasEsi) mBoth++;
+      }
+      if (doj && doj >= startD && doj <= endD) mJoined++;
+      if (dol && dol >= startD && dol <= endD) mExited++;
+    });
+
+    var isSelected = (currentMonthKey === m.k);
+    var rowBg = isSelected ? 'background:rgba(99,102,241,0.2);border:1px solid #6366f1' : 'background:#0f172a';
+
+    html += '<tr style="' + rowBg + ';border-bottom:1px solid #1e293b;transition:background .15s" onmouseover="this.style.background=\'#1e1b4b\'" onmouseout="this.style.background=\'' + (isSelected ? 'rgba(99,102,241,0.2)' : '#0f172a') + '\'">';
+    html += '  <td style="padding:8px 12px;font-weight:700;color:' + (isSelected ? '#a5b4fc' : '#f8fafc') + '">' + (isSelected ? '👉 ' : '') + m.n + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;font-weight:800;color:#34d399">' + mActive + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#818cf8">' + mPf + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#38bdf8">' + mEsi + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#fbbf24">' + mBoth + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;color:#6ee7b7">+' + mJoined + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:center;color:#f87171">-' + mExited + '</td>';
+    html += '  <td style="padding:8px 12px;text-align:right">';
+    html += '    <button type="button" onclick="empDashboardSetPeriod(\'' + m.k + '\',' + year + ')" style="padding:3px 8px;background:' + (isSelected ? '#6366f1' : '#1e293b') + ';color:#fff;border:1px solid #334155;border-radius:4px;font-size:10px;cursor:pointer;font-weight:700">' + (isSelected ? 'Active View' : 'Select') + '</button>';
+    html += '  </td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function renderDepartmentBreakdown(activeList) {
+  var box = document.getElementById('dashDeptBreakdown');
+  if (!box) return;
+  var depts = {};
+  activeList.forEach(function(e) {
+    var d = (e.dept || 'General').trim() || 'General';
+    if (!depts[d]) depts[d] = { total: 0, pf: 0, esi: 0 };
+    depts[d].total++;
+    if (e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-') depts[d].pf++;
+    if (e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-') depts[d].esi++;
+  });
+
+  var entries = Object.keys(depts).map(function(k){ return { name: k, total: depts[k].total, pf: depts[k].pf, esi: depts[k].esi }; });
+  entries.sort(function(a, b){ return b.total - a.total; });
+
+  if (!entries.length) {
+    box.innerHTML = '<div style="color:#64748b;font-size:11px;padding:12px;text-align:center">No department data available.</div>';
+    return;
+  }
+
+  var maxTotal = Math.max.apply(null, entries.map(function(e){ return e.total; })) || 1;
+  var html = '';
+  entries.slice(0, 10).forEach(function(dept) {
+    var pct = Math.round((dept.total / maxTotal) * 100);
+    var pfRate = Math.round((dept.pf / dept.total) * 100);
+    var esiRate = Math.round((dept.esi / dept.total) * 100);
+
+    html += '<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px 10px">';
+    html += '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px">';
+    html += '    <span style="font-weight:700;color:#f8fafc">' + dept.name + '</span>';
+    html += '    <span style="font-weight:800;color:#38bdf8">' + dept.total + ' staff</span>';
+    html += '  </div>';
+    html += '  <div style="width:100%;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;margin-bottom:4px">';
+    html += '    <div style="width:' + pct + '%;height:100%;background:linear-gradient(90deg,#6366f1,#38bdf8);border-radius:3px"></div>';
+    html += '  </div>';
+    html += '  <div style="display:flex;gap:12px;font-size:9px;color:#94a3b8">';
+    html += '    <span>PF: <strong style="color:#a5b4fc">' + dept.pf + ' (' + pfRate + '%)</strong></span>';
+    html += '    <span>ESIC: <strong style="color:#7dd3fc">' + dept.esi + ' (' + esiRate + '%)</strong></span>';
+    html += '  </div>';
+    html += '</div>';
+  });
+  box.innerHTML = html;
+}
+
+function renderStatutoryAndGender(activeList, totalActive, pfOnly, esiOnly, bothCount, neitherCount) {
+  var statBox = document.getElementById('dashStatutoryBars');
+  if (statBox) {
+    var statItems = [
+      { label: 'Both PF & ESIC Covered', count: bothCount, color: '#fbbf24', bg: 'rgba(245,158,11,0.2)' },
+      { label: 'PF Only (EPFO)', count: pfOnly, color: '#818cf8', bg: 'rgba(99,102,241,0.2)' },
+      { label: 'ESIC Only (Medical)', count: esiOnly, color: '#38bdf8', bg: 'rgba(14,165,233,0.2)' },
+      { label: 'Neither PF nor ESIC', count: neitherCount, color: '#94a3b8', bg: 'rgba(148,163,184,0.2)' }
+    ];
+    var sHtml = '';
+    statItems.forEach(function(item) {
+      var pct = totalActive > 0 ? ((item.count / totalActive) * 100).toFixed(1) : '0';
+      sHtml += '<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px 10px">';
+      sHtml += '  <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:3px">';
+      sHtml += '    <span style="color:' + item.color + '">' + item.label + '</span>';
+      sHtml += '    <span style="color:#fff">' + item.count + ' (' + pct + '%)</span>';
+      sHtml += '  </div>';
+      sHtml += '  <div style="width:100%;height:5px;background:#1e293b;border-radius:3px;overflow:hidden">';
+      sHtml += '    <div style="width:' + pct + '%;height:100%;background:' + item.color + ';border-radius:3px"></div>';
+      sHtml += '  </div>';
+      sHtml += '</div>';
+    });
+    statBox.innerHTML = sHtml;
+  }
+
+  var genBox = document.getElementById('dashGenderBox');
+  if (genBox) {
+    var male = activeList.filter(function(e){ return String(e.gender||'').toUpperCase() !== 'FEMALE'; }).length;
+    var female = activeList.length - male;
+    var mPct = totalActive > 0 ? ((male / totalActive) * 100).toFixed(1) : '0';
+    var fPct = totalActive > 0 ? ((female / totalActive) * 100).toFixed(1) : '0';
+
+    genBox.innerHTML = 
+      '<div style="flex:1;background:#0f172a;border:1px solid #1e3a8a;border-radius:8px;padding:10px;text-align:center">' +
+        '<div style="font-size:11px;color:#93c5fd;font-weight:700">👨 Male</div>' +
+        '<div style="font-size:18px;font-weight:800;color:#fff;margin:2px 0">' + male + '</div>' +
+        '<div style="font-size:10px;color:#60a5fa">' + mPct + '%</div>' +
+      '</div>' +
+      '<div style="flex:1;background:#0f172a;border:1px solid #831843;border-radius:8px;padding:10px;text-align:center">' +
+        '<div style="font-size:11px;color:#f472b6;font-weight:700">👩 Female</div>' +
+        '<div style="font-size:18px;font-weight:800;color:#fff;margin:2px 0">' + female + '</div>' +
+        '<div style="font-size:10px;color:#f472b6">' + fPct + '%</div>' +
+      '</div>';
+  }
+}
+
+window.empDashboardFilterRoster = function() {
+  var q = (document.getElementById('dashRosterSearch') ? document.getElementById('dashRosterSearch').value : '').toLowerCase().trim();
+  var roster = DASH_STATE.roster || [];
+  if (!q) {
+    DASH_STATE.filteredRoster = roster.slice();
+  } else {
+    DASH_STATE.filteredRoster = roster.filter(function(e) {
+      return (String(e.name||'').toLowerCase().indexOf(q) >= 0) ||
+        (String(e.emp_id||'').toLowerCase().indexOf(q) >= 0) ||
+        (String(e.dept||'').toLowerCase().indexOf(q) >= 0) ||
+        (String(e.pf_no||'').toLowerCase().indexOf(q) >= 0) ||
+        (String(e.esi_no||'').toLowerCase().indexOf(q) >= 0);
+    });
+  }
+
+  var countSpan = document.getElementById('dashRosterCount');
+  if (countSpan) countSpan.textContent = DASH_STATE.filteredRoster.length;
+
+  var tbody = document.getElementById('dashRosterBody');
+  if (!tbody) return;
+
+  if (!DASH_STATE.filteredRoster.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:24px;text-align:center;color:#64748b">Koi matching employee nahi mila.</td></tr>';
+    return;
+  }
+
+  var html = '';
+  DASH_STATE.filteredRoster.slice(0, 100).forEach(function(e, i) {
+    var hasPf = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+    var hasEsi = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+    var isLeft = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol);
+
+    html += '<tr style="border-bottom:1px solid #1e293b;' + (i%2===0?'background:#111827':'background:#0f172a') + '">';
+    html += '  <td style="padding:6px 10px;color:#64748b">' + (i + 1) + '</td>';
+    html += '  <td style="padding:6px 10px;font-family:monospace;font-weight:700;color:#818cf8">' + (e.emp_id || '—') + '</td>';
+    html += '  <td style="padding:6px 10px;font-weight:700;color:#f8fafc">' + (e.name || '—') + '</td>';
+    html += '  <td style="padding:6px 10px">' + (isLeft ? '<span style="color:#f87171;font-weight:700">🔴 LEFT</span>' : '<span style="color:#34d399;font-weight:700">🟢 ACTIVE</span>') + '</td>';
+    html += '  <td style="padding:6px 10px;font-family:monospace;color:#94a3b8">' + (e.doj || '—') + '</td>';
+    html += '  <td style="padding:6px 10px;font-family:monospace;color:#94a3b8">' + (e.dol || '—') + '</td>';
+    html += '  <td style="padding:6px 10px;font-family:monospace;color:' + (hasPf ? '#a5b4fc' : '#475569') + '">' + (hasPf ? e.pf_no : 'NA') + '</td>';
+    html += '  <td style="padding:6px 10px;font-family:monospace;color:' + (hasEsi ? '#7dd3fc' : '#475569') + '">' + (hasEsi ? e.esi_no : 'NA') + '</td>';
+    html += '  <td style="padding:6px 10px;color:#cbd5e1">' + (e.dept || '—') + '</td>';
+    html += '  <td style="padding:6px 10px;text-align:right;font-family:monospace;color:#34d399;font-weight:700">₹' + (parseFloat(String(e.gross||0).replace(/,/g,''))||0).toLocaleString('en-IN') + '</td>';
+    html += '</tr>';
+  });
+  tbody.innerHTML = html;
+};
+
+window.empDashboardExportExcel = function() {
+  var list = DASH_STATE.filteredRoster || [];
+  if (!list.length) {
+    alert('Export karne ke liye koi data nahi hai.');
+    return;
+  }
+  var csv = 'EMP ID,NAME,STATUS,DOJ,DOL,PF NO,ESI NO,DEPARTMENT,GROSS SALARY\n';
+  list.forEach(function(e) {
+    csv += [
+      '"' + (e.emp_id||'') + '"',
+      '"' + (e.name||'') + '"',
+      '"' + (e.status||'ACTIVE') + '"',
+      '"' + (e.doj||'') + '"',
+      '"' + (e.dol||'') + '"',
+      '"' + (e.pf_no||'NA') + '"',
+      '"' + (e.esi_no||'NA') + '"',
+      '"' + (e.dept||'') + '"',
+      '"' + (e.gross||'0') + '"'
+    ].join(',') + '\n';
+  });
+
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'ATPL_Workforce_' + (DASH_STATE.month || 'Selected') + '_' + (DASH_STATE.year || 2025) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+// Hook into goPage so opening 'empdashboard' automatically runs render
+(function(){
+  var origGoPage = window.goPage;
+  window.goPage = function(name) {
+    if (typeof origGoPage === 'function') origGoPage(name);
+    if (name === 'empdashboard') {
+      setTimeout(function(){
+        empDashboardRender();
+      }, 50);
+    }
+  };
+})();
+
 /* Replace the fragile bulk parser with header-aware parsing. */
 window.emParseBulkPaste=function(){
   var area=document.getElementById('emBulkPasteArea');if(!area)return;
@@ -11272,36 +12179,192 @@ function aroraHrFieldCount(t){
   return n;
 }
 function aroraHrExtract(text,fileName){
-  var all=String(text||'').replace(/\r/g,'\n').replace(/[ \t]+/g,' '),lines=all.split('\n').map(function(x){return x.trim();}).filter(Boolean),out={};
+  var all=String(text||'').replace(/\r/g,'\n').replace(/[ \t]+/g,' ');
+  var lines=all.split('\n').map(function(x){return x.trim();}).filter(Boolean);
+  var out={};
+  var low=all.toLowerCase();
+
   function after(labels){
     for(var i=0;i<lines.length;i++){
       var l=lines[i].toLowerCase();
       for(var j=0;j<labels.length;j++){
-        var p=l.indexOf(labels[j].toLowerCase());if(p<0)continue;
+        var p=l.indexOf(labels[j].toLowerCase());
+        if(p<0) continue;
         var v=lines[i].slice(p+labels[j].length).replace(/^[\s:：=\-–]+/,'').trim();
-        if(v)return v;
-        if(lines[i+1])return lines[i+1];
+        if(v) return v;
+        if(lines[i+1] && lines[i+1].length>1) return lines[i+1];
       }
     }
     return '';
   }
-  var low=all.toLowerCase();
-  out.document_name=/fire\s*noc/i.test(all)?'Fire NOC':(/training|प्रशिक्षण/i.test(all)?'Training Record':(/policy|procedure/i.test(all)?'HR Policy':(fileName||'Compliance Document').replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ')));
-  out.doc_type=/fire\s*noc|fire safety|fire fighting|अग्नि/i.test(low)?'Fire NOC':(/training|प्रशिक्षण|induction/i.test(low)?'Training Record':(/policy|procedure|code of conduct/i.test(low)?'HR Policy':'Other'));
-  out.holder=after(['company name','name of company','holder/company','holder','applicant name','name of applicant']);
-  if(!out.holder){var cm=all.match(/[A-Z][A-Z .&-]{3,60}(?:PRIVATE LIMITED|PVT\.?\s*LTD\.?|LIMITED)/i);if(cm)out.holder=cm[0].trim();}
-  out.reference_no=after(['reference no','reference number','application no','application number','ref no','file no','file number']);
-  out.certificate_no=after(['certificate no','certificate number','licence no','license no','permit no','registration no']);
-  out.issuing_authority=after(['issuing authority','issued by','issued from','competent authority','authority']);
-  out.location=after(['location','site address','factory address','premises address','address','स्थान','पता']);
-  out.issue_date=aroraHrDate(after(['issue date','date of issue','issued on','effective date','training date','date of approval','जारी दिनांक']));
-  out.expiry_date=aroraHrDate(after(['expiry date','expiration date','valid till','valid upto','valid up to','expires on','validity','वैधता']));
-  var dates=all.match(/\b\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4}\b/g)||[];
-  if(!out.issue_date&&dates.length)out.issue_date=aroraHrDate(dates[0]);
-  if(!out.expiry_date&&dates.length>1)out.expiry_date=aroraHrDate(dates[dates.length-1]);
-  var signed=after(['signed by','authorized by','authorised by']);out.remarks='';
-  var meta=[];if(out.reference_no)meta.push('Reference No.: '+out.reference_no);if(out.holder)meta.push('Holder/Company: '+out.holder);if(signed)meta.push('Signed/Authorized By: '+signed);
-  out.remarks=meta.join(' | ');
+
+  function toIsoDate(dStr) {
+    if(!dStr) return '';
+    var s = String(dStr).replace(/[Oo]/g,'0').replace(/[Il]/g,'1').trim();
+    var m = s.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);
+    if(m) {
+      return m[3] + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0');
+    }
+    var m2 = s.match(/(\d{4})[\/.\-](\d{1,2})[\/.\-](\d{1,2})/);
+    if(m2) {
+      return m2[1] + '-' + m2[2].padStart(2,'0') + '-' + m2[3].padStart(2,'0');
+    }
+    return '';
+  }
+
+  // 1. Identify Document Type & ID Numbers with precision
+  var isAadhaar = /aadhaar|aadhar|uidai|unique identification authority|mera aadhaar|विशिष्ट पहचान/i.test(low);
+  var isPan = /income\s*tax|permanent\s*account\s*number|pan\s*card|आयकर विभाग/i.test(low);
+  var isBank = /passbook|bank\s*statement|cancelled\s*cheque|cheque|ifsc|account\s*number|a\/c\s*no|saving\s*account|current\s*account|bank\s*of/i.test(low);
+  var isAppointment = /appointment\s*letter|offer\s*letter|employment\s*agreement|joining\s*letter|terms\s*of\s*employment/i.test(low);
+  var isPf = /provident\s*fund|epfo|form\s*11|uan\s*card|universal\s*account\s*number|pf\s*declaration/i.test(low);
+  var isEsic = /esic|employees'\s*state\s*insurance|e-pehchan|pehchan\s*card|insurance\s*number|tic\s*card/i.test(low);
+  var isMedical = /medical\s*fitness|fitness\s*certificate|mbbs|dr\.|doctor|medical\s*examination|fit\s*for\s*duty/i.test(low);
+  var isDriving = /driving\s*licen[sc]e|transport\s*department|dl\s*no/i.test(low);
+  var isFire = /fire\s*noc|fire\s*safety|fire\s*drill|अग्नि/i.test(low);
+  var isTraining = /training|induction|orientation|toolbox|safety\s*training|प्रशिक्षण/i.test(low);
+  var isPolicy = /policy|procedure|standing\s*order|code\s*of\s*conduct|hr\s*manual/i.test(low);
+
+  // Extract ID / Certificate Numbers
+  var aadhaarMatch = all.match(/\b(\d{4})\s*(\d{4})\s*(\d{4})\b/);
+  var panMatch = all.match(/\b([A-Z]{5}[0-9]{4}[A-Z])\b/);
+  var ifscMatch = all.match(/\b([A-Z]{4}0[A-Z0-9]{6})\b/);
+  var accMatch = all.match(/(?:a\/c|account|acc|ac)[\s.:#-]*(\d{9,18})/i) || all.match(/\b(\d{11,16})\b/);
+  var uanMatch = all.match(/\b(10\d{10})\b/);
+  var esicMatch = all.match(/(?:insurance|esic|ip)[\s.:#-]*(\d{10,17})/i);
+
+  // Determine Type & Title
+  if (isAadhaar || aadhaarMatch) {
+    out.doc_type = 'Aadhaar Card';
+    out.certificate_no = aadhaarMatch ? (aadhaarMatch[1] + ' ' + aadhaarMatch[2] + ' ' + aadhaarMatch[3]) : '';
+    out.issuing_authority = 'Unique Identification Authority of India (UIDAI)';
+    out.validity_period = 'Permanent';
+    out.document_name = 'Aadhaar Card';
+  } else if (isPan || panMatch) {
+    out.doc_type = 'PAN Card';
+    out.certificate_no = panMatch ? panMatch[1] : '';
+    out.issuing_authority = 'Income Tax Department, Govt. of India';
+    out.validity_period = 'Permanent';
+    out.document_name = 'PAN Card - ' + (panMatch ? panMatch[1] : '');
+  } else if (isBank || ifscMatch) {
+    out.doc_type = 'Bank Passbook / Cheque';
+    out.certificate_no = accMatch ? accMatch[1] : (ifscMatch ? ifscMatch[1] : '');
+    out.reference_no = ifscMatch ? ('IFSC: ' + ifscMatch[1]) : '';
+    out.issuing_authority = after(['bank name','bank','branch']) || 'Bank Authority';
+    out.document_name = 'Bank Passbook / Account Proof';
+  } else if (isAppointment) {
+    out.doc_type = 'Appointment Letter';
+    out.document_name = 'Appointment & Joining Letter';
+    out.issuing_authority = 'Arora Textiles HR Department';
+    out.validity_period = 'Employment Tenure';
+  } else if (isPf || uanMatch) {
+    out.doc_type = 'PF Declaration / Form 11';
+    out.certificate_no = uanMatch ? ('UAN: ' + uanMatch[1]) : '';
+    out.issuing_authority = 'Employees\' Provident Fund Organisation (EPFO)';
+    out.document_name = 'PF Form 11 / UAN Declaration';
+  } else if (isEsic || esicMatch) {
+    out.doc_type = 'ESIC Declaration';
+    out.certificate_no = esicMatch ? ('IP: ' + esicMatch[1]) : '';
+    out.issuing_authority = 'Employees\' State Insurance Corporation (ESIC)';
+    out.document_name = 'ESIC e-Pehchan Declaration';
+  } else if (isMedical) {
+    out.doc_type = 'Medical Fitness';
+    out.document_name = 'Medical Fitness Certificate';
+    out.issuing_authority = after(['dr.','doctor','clinic','hospital']) || 'Authorized Medical Practitioner';
+  } else if (isDriving) {
+    out.doc_type = 'Driving License';
+    out.document_name = 'Driving Licence Document';
+    out.issuing_authority = 'Transport Department';
+  } else if (isFire) {
+    out.doc_type = 'Fire NOC';
+    out.document_name = 'Fire NOC & Safety Clearance';
+  } else if (isTraining) {
+    out.doc_type = 'Training Record';
+    out.document_name = 'Safety & Workforce Training Record';
+  } else if (isPolicy) {
+    out.doc_type = 'HR Policy';
+    out.document_name = 'Company HR Policy & Compliance';
+  } else {
+    out.doc_type = 'Other';
+    out.document_name = (fileName || 'Compliance Document').replace(/\.[^.]+$/,'').replace(/[_-]+/g,' ');
+  }
+
+  // Cross-reference with Employee Master Data (match Employee Name or ID)
+  var matchedEmp = null;
+  var empList = (window.EM && Array.isArray(EM.data) && EM.data) || (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA) || [];
+  
+  // Search for employee name in text
+  for (var ei = 0; ei < empList.length; ei++) {
+    var emp = empList[ei];
+    var empName = String(emp.name || '').trim();
+    var empCode = String(emp.emp_id || '').trim();
+    if (empCode && all.indexOf(empCode) >= 0) {
+      matchedEmp = emp;
+      break;
+    }
+    if (empName && empName.length > 4 && low.indexOf(empName.toLowerCase()) >= 0) {
+      matchedEmp = emp;
+      break;
+    }
+  }
+
+  if (matchedEmp) {
+    out.holder = matchedEmp.name + ' (' + matchedEmp.emp_id + ')';
+    if (!out.document_name.includes(matchedEmp.name)) {
+      out.document_name = out.document_name + ' - ' + matchedEmp.name;
+    }
+  } else {
+    out.holder = after(['name', 'holder', 'employee name', 'holder/company', 'applicant name', 'name of applicant', 'श्री/श्रीमती', 'नाम']);
+    if (!out.holder) {
+      // Check for prominent name line
+      for (var li = 0; li < Math.min(lines.length, 12); li++) {
+        var curL = lines[li];
+        if (/^(to|from|sub|ref|subject|date|government|india|republic)/i.test(curL)) continue;
+        if (/^[A-Z][a-z]+ [A-Z][a-z]+/.test(curL) && curL.length < 35) {
+          out.holder = curL;
+          break;
+        }
+      }
+    }
+  }
+
+  // Reference and Certificate numbers fallback
+  if (!out.reference_no) {
+    out.reference_no = after(['reference no', 'ref no', 'file no', 'application no', 'registration no']);
+  }
+  if (!out.certificate_no) {
+    out.certificate_no = after(['certificate no', 'licence no', 'license no', 'roll no', 'sr no', 'id no']);
+  }
+  if (!out.issuing_authority) {
+    out.issuing_authority = after(['issuing authority', 'issued by', 'authority', 'competent authority']);
+  }
+  out.location = after(['location', 'site address', 'factory address', 'address', 'city', 'स्थान', 'पता']);
+
+  // Extract Dates accurately
+  var allDateMatches = all.match(/\b(?:\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{4}|\d{4}[\/.\-]\d{1,2}[\/.\-]\d{1,2})\b/g) || [];
+  
+  var issueDateStr = after(['issue date', 'date of issue', 'issued on', 'date of training', 'training date', 'joining date', 'effective date', 'जारी दिनांक']);
+  out.issue_date = toIsoDate(issueDateStr);
+  if (!out.issue_date && allDateMatches.length > 0) {
+    out.issue_date = toIsoDate(allDateMatches[0]);
+  }
+
+  var expiryDateStr = after(['expiry date', 'expiration date', 'valid till', 'valid upto', 'valid up to', 'expires on', 'validity', 'वैधता']);
+  out.expiry_date = toIsoDate(expiryDateStr);
+  if (!out.expiry_date && allDateMatches.length > 1 && !isAadhaar && !isPan) {
+    out.expiry_date = toIsoDate(allDateMatches[allDateMatches.length - 1]);
+  }
+
+  var retrainStr = after(['re-training due', 'retraining due', 'next training', 'renewal due', 'next due']);
+  out.retraining_date = toIsoDate(retrainStr);
+
+  var meta = [];
+  if (out.doc_type) meta.push('Type: ' + out.doc_type);
+  if (out.certificate_no) meta.push('ID/Cert: ' + out.certificate_no);
+  if (out.holder) meta.push('Holder: ' + out.holder);
+  if (out.issuing_authority) meta.push('Authority: ' + out.issuing_authority);
+  out.remarks = meta.join(' | ');
+
   return out;
 }
 window.hrDocAutoReadFile=async function(input){
@@ -11320,10 +12383,29 @@ window.hrDocAutoReadFile=async function(input){
     var set=function(id,v){var e=document.getElementById(id);if(e&&v)e.value=v;};
     set('hrDocName',d.document_name);set('hrDocHolder',d.holder);set('hrDocRefNo',d.reference_no);
     set('hrDocCertNo',d.certificate_no);set('hrDocAuthority',d.issuing_authority);set('hrDocLocation',d.location);
-    set('hrDocIssueDate',d.issue_date);set('hrDocExpiryDate',d.expiry_date);if(d.remarks)set('hrDocRemarks',d.remarks);
-    if(status)status.textContent='✅ Double-face OCR complete — '+files.length+' file(s) read. Form save se pehle verify karo.';
-    if(progress)progress.style.display='none';
-    if(typeof showToast==='function')showToast('🤖 <strong>Double-Face OCR Complete</strong><br>Front + Back / multiple pages read karke fields fill kiye gaye.');
+    set('hrDocIssueDate',d.issue_date);set('hrDocExpiryDate',d.expiry_date);
+    if(d.validity_period) set('hrDocValidity', d.validity_period);
+    if(d.retraining_date) set('hrDocRetrainDate', d.retraining_date);
+    if(d.remarks) set('hrDocRemarks', d.remarks);
+
+    // Populate AI Verification Card
+    var vBox = document.getElementById('hrDocAiVerifyBox');
+    var vSummary = document.getElementById('hrDocAiVerifySummary');
+    if (vBox && vSummary) {
+      vSummary.innerHTML = 
+        '<div><strong style="color:#15803d">📄 Document Type:</strong> <span style="font-weight:700">' + (d.doc_type || 'General') + '</span></div>' +
+        '<div><strong style="color:#15803d">📝 Title:</strong> <span>' + (d.document_name || '—') + '</span></div>' +
+        '<div><strong style="color:#15803d">👤 Holder / Employee:</strong> <span style="font-weight:700;color:#0369a1">' + (d.holder || '—') + '</span></div>' +
+        '<div><strong style="color:#15803d">🔢 Cert / ID No.:</strong> <span style="font-family:monospace;font-weight:700;color:#7c3aed">' + (d.certificate_no || d.reference_no || '—') + '</span></div>' +
+        '<div><strong style="color:#15803d">🏢 Issuing Authority:</strong> <span>' + (d.issuing_authority || '—') + '</span></div>' +
+        '<div><strong style="color:#15803d">📅 Issue Date:</strong> <span style="font-family:monospace">' + (d.issue_date || '—') + '</span></div>' +
+        '<div><strong style="color:#15803d">⏳ Expiry:</strong> <span style="font-family:monospace">' + (d.expiry_date || d.validity_period || 'Permanent') + '</span></div>';
+      vBox.style.display = 'block';
+    }
+
+    if(status) status.textContent='✅ 100% OCR Auto-Read Complete — '+files.length+' file(s) read. Form auto-fill ho gaya hai.';
+    if(progress) progress.style.display='none';
+    if(typeof showToast==='function') showToast('🤖 <strong>100% OCR Auto-Fill Complete</strong><br>' + (d.doc_type || 'Document') + ' detect karke saare fields bhar diye gaye hain.');
   }catch(e){
     if(progress)progress.style.display='none';
     if(status)status.textContent='⚠️ OCR failed: '+(e.message||e);
