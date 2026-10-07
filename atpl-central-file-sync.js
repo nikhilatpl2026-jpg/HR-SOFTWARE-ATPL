@@ -183,6 +183,15 @@
       if (typeof updStats === 'function') updStats();
       if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
       if (typeof populateNJSelects === 'function') populateNJSelects();
+      if (typeof window.initStatutoryChallanTab === 'function') {
+        try { window.initStatutoryChallanTab(); } catch(_) {}
+      }
+      if (typeof window.empDashboardRender === 'function') {
+        try { window.empDashboardRender(); } catch(_) {}
+      }
+      if (typeof window.hrDocRender === 'function') {
+        try { window.hrDocRender(); } catch(_) {}
+      }
       if (window.ATPLGenZDashboard && typeof window.ATPLGenZDashboard.refresh === 'function') {
         window.ATPLGenZDashboard.refresh();
       }

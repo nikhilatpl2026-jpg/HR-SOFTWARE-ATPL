@@ -857,6 +857,71 @@ td.blank-val { color: var(--muted); font-style: italic; }
 #page-empdashboard.active { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; inset:0 !important; z-index:200 !important; flex-direction:column !important; overflow:hidden !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; background:#090d16 !important; }
 #page-empdashboard.active.dash-windowed { display:flex !important; position:fixed !important; top:68px !important; left:210px !important; right:18px !important; bottom:18px !important; inset:68px 18px 18px 210px !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; z-index:500 !important; border:1px solid #0284c7 !important; border-radius:14px !important; box-shadow:0 28px 80px rgba(0,0,0,.65) !important; }
 body.dash-windowed #page-empdashboard.active.dash-windowed { position:fixed !important; top:68px !important; left:210px !important; right:18px !important; bottom:18px !important; inset:68px 18px 18px 210px !important; display:flex !important; z-index:9999 !important; }
+
+/* ══ EXECUTIVE WORKFORCE DASHBOARD SCOPED STYLES (ZERO WHITE LINE GLITCH) ══ */
+#page-empdashboard, #page-empdashboard * {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  box-sizing: border-box;
+}
+#page-empdashboard button,
+#page-empdashboard select,
+#page-empdashboard input,
+#page-empdashboard table,
+#page-empdashboard tr,
+#page-empdashboard td,
+#page-empdashboard th {
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+#page-empdashboard button:focus,
+#page-empdashboard button:focus-visible,
+#page-empdashboard tr:focus,
+#page-empdashboard td:focus,
+#page-empdashboard select:focus,
+#page-empdashboard input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.dash-trend-bar-col {
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 8px;
+  padding: 8px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  border: 1px solid transparent;
+}
+.dash-trend-bar-col:hover {
+  background: rgba(99,102,241,0.14) !important;
+  transform: translateY(-2px);
+  border-color: rgba(99,102,241,0.4) !important;
+}
+.dash-trend-bar-col.active {
+  background: linear-gradient(180deg, rgba(99,102,241,0.28), rgba(15,23,42,0.9)) !important;
+  border: 1px solid #6366f1 !important;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.3) !important;
+}
+.dash-trend-row {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  outline: none !important;
+}
+.dash-trend-row:hover {
+  background: #1e1b4b !important;
+}
+.dash-trend-row.active {
+  background: rgba(99,102,241,0.2) !important;
+}
+.dash-trend-row td {
+  outline: none !important;
+  border: none !important;
+}
+
 #page-empmaster { display:none; }
 #page-empmaster.active { display:flex !important; position:fixed !important; top:0 !important; left:0 !important; right:0 !important; bottom:0 !important; inset:0 !important; z-index:200 !important; flex-direction:column !important; overflow:hidden !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; background:#0f172a !important; }
 #page-empmaster.active.em-windowed { display:flex !important; position:fixed !important; top:72px !important; left:220px !important; right:20px !important; bottom:20px !important; inset:72px 20px 20px 220px !important; width:auto !important; height:auto !important; min-height:0 !important; max-height:none !important; z-index:500 !important; border:1px solid #6366f1 !important; border-radius:14px !important; box-shadow:0 28px 80px rgba(0,0,0,.55) !important; }
@@ -2848,22 +2913,22 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <!-- Dashboard Top Header Bar -->
       <div style="padding:12px 20px;background:linear-gradient(135deg,#090d16,#0f172a);border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex-shrink:0">
         <div style="display:flex;align-items:center;gap:12px">
-          <button type="button" onclick="goPage('empmaster')" style="padding:6px 11px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
+          <button type="button" onclick="goPage('empmaster')" style="padding:6px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;outline:none">
             ← Employee Master
           </button>
           <div>
             <div style="font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px">
-              <span>📊 Workforce &amp; Compliance Dashboard</span>
-              <span id="dashTotalBadge" style="padding:2px 8px;background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);border-radius:20px;font-size:11px;font-weight:700">Live Sync</span>
+              <span>📊 Executive Workforce &amp; Statutory Compliance Dashboard</span>
+              <span id="dashDataSourceBadge" style="padding:2px 8px;background:rgba(16,185,129,0.2);color:#34d399;border:1px solid rgba(16,185,129,0.4);border-radius:20px;font-size:11px;font-weight:700">⚡ Live Synced</span>
             </div>
-            <div style="font-size:10px;color:#94a3b8;margin-top:2px">Employee Master Analytics • PF &amp; ESIC Coverage • Monthly Headcount &amp; Turnover</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px">Live Salary Files • Employee Master • EPFO ECR &amp; ESIC Returns • HR Documents Health</div>
           </div>
         </div>
 
-        <!-- Month & Year Historical Status Selector -->
+        <!-- Month & Year Historical Status Selector & Actions -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <div style="display:flex;align-items:center;gap:6px;background:#1e293b;padding:4px 8px;border:1.5px solid #3b82f6;border-radius:8px">
-            <span style="font-size:11px;font-weight:800;color:#60a5fa">📅 Month Filter:</span>
+            <span style="font-size:11px;font-weight:800;color:#60a5fa">📅 Period:</span>
             <select id="dashMonthSelect" onchange="empDashboardOnPeriodChange()" style="background:#0f172a;color:#f8fafc;border:1px solid #334155;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;outline:none;cursor:pointer">
               <option value="LIVE">⚡ Current Live Workforce</option>
               <option value="01">January</option>
@@ -2886,10 +2951,10 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             </select>
           </div>
 
-          <button type="button" onclick="empDashboardRender()" style="padding:7px 12px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
-            🔄 Refresh
+          <button id="btnDashDeepSync" type="button" onclick="window.syncAllAtplModules(true)" style="padding:7px 14px;background:linear-gradient(135deg,#0284c7,#0369a1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px;outline:none;box-shadow:0 4px 12px rgba(2,132,199,0.3)">
+            🔄 Deep Sync All (Files + HR + Master)
           </button>
-          <button id="dashMinimizeBtn" type="button" onclick="dashToggleWindow()" style="padding:7px 12px;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">
+          <button id="dashMinimizeBtn" type="button" onclick="dashToggleWindow()" style="padding:7px 12px;background:#334155;border:1px solid #475569;color:#e2e8f0;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px;outline:none">
             ↙ Minimize
           </button>
         </div>
@@ -2898,42 +2963,45 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <!-- Quick Month Navigation Bar -->
       <div style="background:#0f172a;border-bottom:1px solid #1e293b;padding:8px 20px;display:flex;align-items:center;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:0">
         <span style="font-size:11px;color:#64748b;font-weight:700;white-space:nowrap">Quick Jump:</span>
-        <button type="button" onclick="empDashboardSetPeriod('LIVE',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap">⚡ Current Live</button>
-        <button type="button" onclick="empDashboardSetPeriod('09',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Sep 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('08',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Aug 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('07',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jul 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('06',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jun 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('05',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">May 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('04',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Apr 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('03',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Mar 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('02',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Feb 2025</button>
-        <button type="button" onclick="empDashboardSetPeriod('01',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap">Jan 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('LIVE',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;outline:none">⚡ Current Live</button>
+        <button type="button" onclick="empDashboardSetPeriod('09',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Sep 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('08',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Aug 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('07',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Jul 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('06',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Jun 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('05',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">May 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('04',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Apr 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('03',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Mar 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('02',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Feb 2025</button>
+        <button type="button" onclick="empDashboardSetPeriod('01',2025)" class="dash-quick-btn" style="padding:4px 10px;background:#1e293b;color:#cbd5e1;border:1px solid #334155;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;outline:none">Jan 2025</button>
       </div>
 
       <!-- Dashboard Scrollable Body -->
       <div style="flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:16px">
         
         <!-- Active Period Banner -->
-        <div id="dashPeriodBanner" style="padding:10px 16px;background:rgba(30,58,138,0.3);border:1px solid #3b82f6;border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="font-size:18px">📍</span>
+        <div id="dashPeriodBanner" style="padding:12px 18px;background:rgba(30,58,138,0.25);border:1px solid #3b82f6;border-radius:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">📍</span>
             <div>
-              <span id="dashPeriodTitle" style="font-size:13px;font-weight:800;color:#93c5fd">September 2025 Workforce &amp; Statutory Report</span>
-              <span style="font-size:11px;color:#94a3b8;margin-left:6px" id="dashPeriodSubtitle">(Is month mein active employees, PF aur ESIC ka poora hisaab)</span>
+              <div id="dashPeriodTitle" style="font-size:14px;font-weight:800;color:#93c5fd">September 2025 Workforce &amp; Statutory Report</div>
+              <div style="font-size:11px;color:#cbd5e1;margin-top:2px" id="dashPeriodSubtitle">Loading synchronized monthly salary files and employee master data...</div>
             </div>
           </div>
-          <span id="dashPeriodActivePill" style="padding:3px 10px;background:#10b981;color:#fff;border-radius:20px;font-size:11px;font-weight:800">475 Active</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="dashPeriodSourceBadge" style="padding:4px 10px;background:#1e293b;color:#38bdf8;border:1px solid #0284c7;border-radius:20px;font-size:11px;font-weight:700">📄 File Synced</span>
+            <span id="dashPeriodActivePill" style="padding:4px 12px;background:#10b981;color:#fff;border-radius:20px;font-size:11px;font-weight:800">475 Active Workers</span>
+          </div>
         </div>
 
-        <!-- KPI Grid: 8 Executive Metric Cards -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        <!-- KPI Grid: 9 Executive Metric Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
           <!-- 1. Total Registered -->
           <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px">
             <div style="display:flex;justify-content:space-between;align-items:center;color:#94a3b8;font-size:11px;font-weight:700">
               <span>TOTAL REGISTERED</span>
               <span>👥</span>
             </div>
-            <div id="kpiTotalEmp" style="font-size:24px;font-weight:800;color:#f8fafc">496</div>
+            <div id="kpiTotalEmp" style="font-size:24px;font-weight:800;color:#f8fafc">0</div>
             <div style="font-size:10px;color:#64748b">Overall Database Headcount</div>
           </div>
 
@@ -2943,8 +3011,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>ACTIVE WORKFORCE</span>
               <span>🟢</span>
             </div>
-            <div id="kpiActiveEmp" style="font-size:24px;font-weight:800;color:#34d399">475</div>
-            <div id="kpiActiveRate" style="font-size:10px;color:#a7f3d0;font-weight:600">95.8% of total</div>
+            <div id="kpiActiveEmp" style="font-size:24px;font-weight:800;color:#34d399">0</div>
+            <div id="kpiActiveRate" style="font-size:10px;color:#a7f3d0;font-weight:600">Active in selected month</div>
           </div>
 
           <!-- 3. Exited / Left -->
@@ -2953,8 +3021,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>EXITED / LEFT (DOL)</span>
               <span>🔴</span>
             </div>
-            <div id="kpiLeftEmp" style="font-size:24px;font-weight:800;color:#f87171">21</div>
-            <div id="kpiLeftRate" style="font-size:10px;color:#fecaca;font-weight:600">4.2% turnover</div>
+            <div id="kpiLeftEmp" style="font-size:24px;font-weight:800;color:#f87171">0</div>
+            <div id="kpiLeftRate" style="font-size:10px;color:#fecaca;font-weight:600">Turnover / Exited records</div>
           </div>
 
           <!-- 4. PF Covered -->
@@ -2963,8 +3031,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>PF (EPFO) COVERED</span>
               <span>🏢</span>
             </div>
-            <div id="kpiPfEmp" style="font-size:24px;font-weight:800;color:#818cf8">448</div>
-            <div id="kpiPfRate" style="font-size:10px;color:#c7d2fe;font-weight:600">94.3% coverage</div>
+            <div id="kpiPfEmp" style="font-size:24px;font-weight:800;color:#818cf8">0</div>
+            <div id="kpiPfRate" style="font-size:10px;color:#c7d2fe;font-weight:600">EPFO statutory coverage</div>
           </div>
 
           <!-- 5. ESIC Covered -->
@@ -2973,8 +3041,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>ESIC COVERED</span>
               <span>🩺</span>
             </div>
-            <div id="kpiEsiEmp" style="font-size:24px;font-weight:800;color:#38bdf8">460</div>
-            <div id="kpiEsiRate" style="font-size:10px;color:#7dd3fc;font-weight:600">96.8% coverage</div>
+            <div id="kpiEsiEmp" style="font-size:24px;font-weight:800;color:#38bdf8">0</div>
+            <div id="kpiEsiRate" style="font-size:10px;color:#7dd3fc;font-weight:600">Medical statutory coverage</div>
           </div>
 
           <!-- 6. Dual Covered (PF + ESIC) -->
@@ -2983,8 +3051,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>BOTH PF &amp; ESIC</span>
               <span>⚡</span>
             </div>
-            <div id="kpiBothEmp" style="font-size:24px;font-weight:800;color:#fbbf24">442</div>
-            <div id="kpiBothRate" style="font-size:10px;color:#fde68a;font-weight:600">Dual statutory benefits</div>
+            <div id="kpiBothEmp" style="font-size:24px;font-weight:800;color:#fbbf24">0</div>
+            <div id="kpiBothRate" style="font-size:10px;color:#fde68a;font-weight:600">Dual benefit coverage</div>
           </div>
 
           <!-- 7. Total Monthly Payroll -->
@@ -2994,7 +3062,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>💰</span>
             </div>
             <div id="kpiPayroll" style="font-size:22px;font-weight:800;color:#34d399">₹—</div>
-            <div style="font-size:10px;color:#64748b">Gross Salary Sum</div>
+            <div id="kpiPayrollSub" style="font-size:10px;color:#64748b">Gross Salary Sum</div>
           </div>
 
           <!-- 8. Average Salary -->
@@ -3006,65 +3074,107 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <div id="kpiAvgSalary" style="font-size:22px;font-weight:800;color:#fcd34d">₹—</div>
             <div style="font-size:10px;color:#64748b">Per active worker</div>
           </div>
+
+          <!-- 9. HR Compliance Health -->
+          <div style="background:#111827;border:1px solid rgba(139,92,246,0.4);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:4px;cursor:pointer" onclick="goPage('hrdocs')">
+            <div style="display:flex;justify-content:space-between;align-items:center;color:#ddd6fe;font-size:11px;font-weight:700">
+              <span>HR DOCS COMPLIANCE</span>
+              <span>📚</span>
+            </div>
+            <div id="kpiHrHealth" style="font-size:22px;font-weight:800;color:#c084fc">0 Verified</div>
+            <div id="kpiHrAlerts" style="font-size:10px;color:#a78bfa">0 Expired • 0 Due Soon</div>
+          </div>
         </div>
 
-        <!-- 12-Month Annual Trend Table (Jan to Dec) -->
-        <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <!-- 12-Month Annual Trend: Visual Interactive Mini Bar Chart + Data Matrix -->
+        <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
             <div>
-              <div style="font-size:13px;font-weight:800;color:#f8fafc">📈 12-Month Annual Workforce &amp; Statutory Trend (<span id="dashYearTitle">2025</span>)</div>
-              <div style="font-size:11px;color:#94a3b8">Kisi bhi month par click karke uss month ka exact data dekh sakte hain:</div>
+              <div style="font-size:14px;font-weight:800;color:#f8fafc">📈 12-Month Annual Workforce &amp; Statutory Trend (<span id="dashYearTitle">2025</span>)</div>
+              <div style="font-size:11px;color:#94a3b8">Kisi bhi month par click karke uss month ka exact data dekhein — Zero White Line Guarantee:</div>
             </div>
-            <span style="font-size:10px;color:#38bdf8;background:rgba(14,165,233,0.15);padding:3px 8px;border-radius:12px;border:1px solid rgba(14,165,233,0.3)">Click Month to Filter</span>
+            <div style="display:flex;gap:10px;align-items:center">
+              <span style="font-size:10px;color:#34d399;display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:8px;height:8px;background:#34d399;border-radius:2px"></span> Active
+              </span>
+              <span style="font-size:10px;color:#818cf8;display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:8px;height:8px;background:#818cf8;border-radius:2px"></span> PF
+              </span>
+              <span style="font-size:10px;color:#38bdf8;display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:8px;height:8px;background:#38bdf8;border-radius:2px"></span> ESIC
+              </span>
+            </div>
           </div>
 
+          <!-- Executive 12-Month Mini Bar Visualizer -->
+          <div id="dashAnnualVisualChart" style="display:grid;grid-template-columns:repeat(12, minmax(60px, 1fr));gap:6px;background:#090d16;border:1px solid #1e293b;border-radius:10px;padding:12px 10px;margin-bottom:14px;overflow-x:auto">
+            <!-- Dynamically populated with 12 interactive monthly visual bars -->
+          </div>
+
+          <!-- Detailed 12-Month Trend Matrix (No White Line Glitch) -->
           <div style="overflow-x:auto">
-            <table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px">
+            <table id="dashTrendTable" style="width:100%;border-collapse:separate;border-spacing:0 4px;font-size:11px;min-width:750px">
               <thead>
-                <tr style="background:#0f172a;border-bottom:2px solid #334155;color:#94a3b8;text-transform:uppercase;font-size:10px">
-                  <th style="padding:8px 12px;text-align:left">Month</th>
-                  <th style="padding:8px 12px;text-align:center">Active Headcount</th>
-                  <th style="padding:8px 12px;text-align:center">PF Enrolled</th>
-                  <th style="padding:8px 12px;text-align:center">ESIC Enrolled</th>
-                  <th style="padding:8px 12px;text-align:center">Dual Covered</th>
-                  <th style="padding:8px 12px;text-align:center">New Joinees</th>
-                  <th style="padding:8px 12px;text-align:center">Exits</th>
-                  <th style="padding:8px 12px;text-align:right">Action</th>
+                <tr style="background:#0f172a;color:#94a3b8;text-transform:uppercase;font-size:10px">
+                  <th style="padding:10px 12px;text-align:left;border-top-left-radius:6px;border-bottom-left-radius:6px">Month</th>
+                  <th style="padding:10px 12px;text-align:center">Data Source</th>
+                  <th style="padding:10px 12px;text-align:center">Active Headcount</th>
+                  <th style="padding:10px 12px;text-align:center">PF Enrolled</th>
+                  <th style="padding:10px 12px;text-align:center">ESIC Enrolled</th>
+                  <th style="padding:10px 12px;text-align:center">Dual Covered</th>
+                  <th style="padding:10px 12px;text-align:center">New Joinees</th>
+                  <th style="padding:10px 12px;text-align:center">Exits</th>
+                  <th style="padding:10px 12px;text-align:right;border-top-right-radius:6px;border-bottom-right-radius:6px">Action</th>
                 </tr>
               </thead>
               <tbody id="dashAnnualTrendBody">
-                <!-- Populated dynamically for all 12 months -->
+                <!-- Populated dynamically for all 12 months with clean row styles -->
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- 2 Column Breakdown: Department Analysis & Statutory Venn -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
-          <!-- Department Breakdown -->
+        <!-- 3 Column Breakdown: Department Analysis, Statutory Split, & HR Docs Compliance -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+          <!-- 1. Department Breakdown -->
           <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px">
             <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">🏢 Department-Wise Headcount &amp; Compliance</div>
-            <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Departments mein active staff aur PF/ESIC ratio:</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Departments mein active staff aur statutory compliance:</div>
             <div id="dashDeptBreakdown" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto">
               <!-- Dynamically populated -->
             </div>
           </div>
 
-          <!-- Statutory & Gender Ratio -->
+          <!-- 2. Statutory & Gender Ratio -->
           <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px">
             <div>
               <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">⚖️ Statutory Benefit Distribution</div>
-              <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">PF vs ESIC vs Both breakdown:</div>
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">PF vs ESIC vs Both dual coverage:</div>
               <div id="dashStatutoryBars" style="display:flex;flex-direction:column;gap:8px">
                 <!-- Dynamically populated -->
               </div>
             </div>
-
             <div style="border-top:1px solid #1f2937;padding-top:12px">
               <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">👥 Gender Distribution</div>
               <div id="dashGenderBox" style="display:flex;gap:10px;align-items:center;margin-top:6px">
                 <!-- Dynamically populated -->
               </div>
+            </div>
+          </div>
+
+          <!-- 3. HR Documents Compliance Widget -->
+          <div style="background:#111827;border:1px solid #1f2937;border-radius:12px;padding:16px;display:flex;flex-direction:column;justify-content:space-between">
+            <div>
+              <div style="font-size:13px;font-weight:800;color:#f8fafc;margin-bottom:4px">📚 HR Legal &amp; Document Health</div>
+              <div style="font-size:11px;color:#94a3b8;margin-bottom:12px">Company policies, certificates aur expiry status:</div>
+              <div id="dashHrDocBreakdown" style="display:flex;flex-direction:column;gap:8px">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+            <div style="margin-top:14px;border-top:1px solid #1e293b;padding-top:10px;display:flex;justify-content:flex-end">
+              <button type="button" onclick="goPage('hrdocs')" style="padding:6px 14px;background:#1e293b;border:1px solid #38bdf8;color:#38bdf8;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;outline:none">
+                📚 Manage HR Documents →
+              </button>
             </div>
           </div>
         </div>
@@ -3076,12 +3186,18 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <div style="font-size:13px;font-weight:800;color:#f8fafc">📋 Selected Month Employee Roster (<span id="dashRosterCount">0</span> Employees)</div>
               <div style="font-size:11px;color:#94a3b8">Is mahine mein active employees ki poori list:</div>
             </div>
-            <div style="display:flex;gap:8px;align-items:center">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="dashRosterFilter" onchange="empDashboardFilterRoster()" style="padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#cbd5e1;font-size:11px;outline:none;cursor:pointer">
+                <option value="ALL">All Status</option>
+                <option value="ACTIVE" selected>Active Only</option>
+                <option value="LEFT">Exited / DOL Only</option>
+                <option value="PF">PF Enrolled Only</option>
+                <option value="ESIC">ESIC Enrolled Only</option>
+              </select>
               <input id="dashRosterSearch" oninput="empDashboardFilterRoster()" placeholder="Search Name, Code, Dept..." style="padding:6px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#fff;font-size:11px;outline:none">
-              <button type="button" onclick="empDashboardExportExcel()" style="padding:6px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">⬇ Export Excel</button>
+              <button type="button" onclick="empDashboardExportExcel()" style="padding:6px 12px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;outline:none">⬇ Export Excel</button>
             </div>
           </div>
-
           <div style="max-height:360px;overflow-y:auto;border:1px solid #1f2937;border-radius:8px">
             <table style="width:100%;border-collapse:collapse;font-size:11px">
               <thead style="position:sticky;top:0;background:#0f172a;border-bottom:1px solid #334155;z-index:2">
@@ -3108,7 +3224,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       </div>
     </div>
 
-<!-- ══ DOWNLOAD FORMAT MODAL ══ -->
+    <!-- ══ DOWNLOAD FORMAT MODAL ══ -->
     <div id="emDlModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;align-items:center;justify-content:center" onclick="if(event.target===this)emCloseDlModal()">
       <div style="background:#1e293b;border:1px solid #334155;border-radius:14px;width:460px;max-width:96vw;box-shadow:0 30px 80px rgba(0,0,0,0.6)">
         <div style="padding:16px 22px;border-bottom:1px solid #334155">
@@ -11519,15 +11635,156 @@ setTimeout(aroraAddMasterButtons,800);
 
 
 /* ============================================================
-   EXECUTIVE WORKFORCE & STATUTORY DASHBOARD ENGINE
+   EXECUTIVE WORKFORCE & STATUTORY DASHBOARD ENGINE (V4 MULTI-SYNC)
    ============================================================ */
+
 window.DASH_STATE = {
   month: '09', // default Sep
   year: 2025,
   roster: [],
-  filteredRoster: []
+  filteredRoster: [],
+  dataSource: 'auto'
 };
 
+// ── 1. GLOBAL MULTI-MODULE DEEP SYNC ENGINE ──
+window.syncAllAtplModules = async function(isInteractive) {
+  var btn = document.getElementById('btnDashDeepSync');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Syncing All Modules...';
+  }
+  try {
+    // 1. Reconcile Salary Files via Central File Sync
+    if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.reconcileAll === 'function') {
+      await window.ATPLCentralFileSync.reconcileAll(true);
+    } else if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+      var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
+      if (Array.isArray(fbFiles)) {
+        if (typeof renderFiles === 'function') renderFiles();
+        if (typeof renderSheets === 'function') renderSheets();
+        if (typeof updStats === 'function') updStats();
+        if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+        if (typeof populateNJSelects === 'function') populateNJSelects();
+      }
+    }
+
+    // 2. Sync HR Documents from Cloud
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+      try {
+        var hrDocs = await window.ATPLFirebase.fetchAllHrDocs();
+        if (Array.isArray(hrDocs) && typeof window.hrDocSetDocs === 'function') {
+          window.hrDocSetDocs(hrDocs);
+        }
+        if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrTombstones === 'function') {
+          var fbTombs = await window.ATPLFirebase.fetchAllHrTombstones();
+          if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate === 'function') {
+            await window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate(fbTombs);
+          }
+        }
+        if (typeof window.hrDocRender === 'function') window.hrDocRender();
+      } catch(_) {}
+    }
+
+    // 3. Sync Employee Master from Cloud
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllEmployeeMaster === 'function') {
+      try {
+        var emRecs = await window.ATPLFirebase.fetchAllEmployeeMaster();
+        if (Array.isArray(emRecs) && emRecs.length > 0) {
+          if (window.EM) window.EM.data = emRecs.slice();
+          if (Array.isArray(window.EMP_MASTER_DATA)) {
+            window.EMP_MASTER_DATA.length = 0;
+            Array.prototype.push.apply(window.EMP_MASTER_DATA, emRecs);
+          }
+          if (typeof window.emFilter === 'function') window.emFilter();
+          if (typeof window.emUpdateStats === 'function') window.emUpdateStats();
+          try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(emRecs)); } catch(_) {}
+        }
+      } catch(_) {}
+    }
+
+    // 4. Refresh Statutory Challans
+    if (typeof window.initStatutoryChallanTab === 'function') {
+      try { window.initStatutoryChallanTab(); } catch(_) {}
+    }
+
+    // 5. Refresh Executive Dashboard
+    empDashboardRender();
+
+    var fCount = window.FILES ? window.FILES.length : 0;
+    var dCount = (typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : []).length;
+    var eCount = (window.EM && window.EM.data) ? window.EM.data.length : (window.EMP_MASTER_DATA ? window.EMP_MASTER_DATA.length : 0);
+
+    if (isInteractive && window.showToast) {
+      window.showToast('✅ All Modules Synced! (' + fCount + ' Files • ' + dCount + ' HR Docs • ' + eCount + ' Master Employees)');
+    }
+  } catch(err) {
+    console.warn('[Sync All] Sync warning:', err);
+    if (isInteractive && window.showToast) {
+      window.showToast('⚠️ Sync update completed with notice');
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Deep Sync All (Files + HR + Master)';
+    }
+  }
+};
+
+// Aliases for compatibility
+window.triggerManualCrossBrowserSync = window.syncAllAtplModules;
+
+// ── 2. DIRECT CHALLAN FILE UPLOAD HANDLER ──
+window.handleChallanDirectUpload = function(input) {
+  if (!input || !input.files || !input.files.length) return;
+  var filesList = Array.from(input.files);
+  var pending = filesList.length;
+  var loadedFiles = [];
+
+  filesList.forEach(function(file) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        var buf = e.target.result;
+        var wb = (typeof parseWB === 'function') ? parseWB(buf) : XLSX.read(new Uint8Array(buf), { type: 'array' });
+        var sheets = (typeof wbToSheets === 'function') ? wbToSheets(wb) : (wb ? wb.SheetNames : []);
+        var fObj = {
+          name: file.name,
+          wb: wb,
+          sheets: sheets,
+          buf: buf,
+          savedAt: new Date().toISOString()
+        };
+        loadedFiles.push(fObj);
+        if (typeof saveFileToDB === 'function') {
+          saveFileToDB(file.name, buf);
+        }
+      } catch(err) {
+        console.error('Error reading challan file:', err);
+      } finally {
+        pending--;
+        if (pending <= 0) {
+          window.FILES = window.FILES || [];
+          loadedFiles.forEach(function(lf) {
+            window.FILES = window.FILES.filter(function(x) { return String(x.name).toLowerCase() !== String(lf.name).toLowerCase(); });
+            window.FILES.push(lf);
+          });
+          if (typeof renderFiles === 'function') renderFiles();
+          if (typeof renderSheets === 'function') renderSheets();
+          if (typeof updStats === 'function') updStats();
+          if (typeof renderAllFilesPage === 'function') renderAllFilesPage();
+          if (typeof populateNJSelects === 'function') populateNJSelects();
+          if (typeof window.initStatutoryChallanTab === 'function') window.initStatutoryChallanTab();
+          empDashboardRender();
+          if (window.showToast) window.showToast('✅ ' + loadedFiles.length + ' Salary/Challan Sheet uploaded & synced!');
+          input.value = '';
+        }
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+};
+
+// ── 3. WINDOW FULLSCREEN / MINIMIZE TOGGLE ──
 window.dashToggleWindow = function() {
   var pg = document.getElementById('page-empdashboard');
   var btn = document.getElementById('dashMinimizeBtn');
@@ -11551,18 +11808,32 @@ window.empDashboardSetPeriod = function(month, year) {
   // Update quick jump buttons styling
   document.querySelectorAll('.dash-quick-btn').forEach(function(b){
     var txt = b.textContent.trim();
-    var match = (month === 'LIVE' && txt.includes('Live')) || (month !== 'LIVE' && txt.includes(month) || (month === '09' && txt.includes('Sep')) || (month === '08' && txt.includes('Aug')) || (month === '07' && txt.includes('Jul')) || (month === '06' && txt.includes('Jun')) || (month === '05' && txt.includes('May')) || (month === '04' && txt.includes('Apr')) || (month === '03' && txt.includes('Mar')) || (month === '02' && txt.includes('Feb')) || (month === '01' && txt.includes('Jan')));
+    var match = (month === 'LIVE' && txt.includes('Live')) || (month !== 'LIVE' && (
+      (month === '09' && txt.includes('Sep')) ||
+      (month === '08' && txt.includes('Aug')) ||
+      (month === '07' && txt.includes('Jul')) ||
+      (month === '06' && txt.includes('Jun')) ||
+      (month === '05' && txt.includes('May')) ||
+      (month === '04' && txt.includes('Apr')) ||
+      (month === '03' && txt.includes('Mar')) ||
+      (month === '02' && txt.includes('Feb')) ||
+      (month === '01' && txt.includes('Jan')) ||
+      (month === '10' && txt.includes('Oct')) ||
+      (month === '11' && txt.includes('Nov')) ||
+      (month === '12' && txt.includes('Dec'))
+    ));
     if (match) {
       b.style.background = '#6366f1';
       b.style.color = '#fff';
       b.style.borderColor = 'transparent';
+      b.style.boxShadow = '0 0 10px rgba(99,102,241,0.5)';
     } else {
       b.style.background = '#1e293b';
       b.style.color = '#cbd5e1';
       b.style.borderColor = '#334155';
+      b.style.boxShadow = 'none';
     }
   });
-
   empDashboardRender();
 };
 
@@ -11593,7 +11864,142 @@ function parseDateObj(str) {
   return null;
 }
 
+// ── 4. INTELLIGENT MONTHLY SALARY FILE SCANNER ──
+function getMonthlySalaryFileData(year, monthKey) {
+  var files = window.FILES || [];
+  if (!files.length) return { hasFile: false };
+
+  var monthPatterns = {
+    '01': ['jan', 'january', '01-2025', '01_2025', '2025-01'],
+    '02': ['feb', 'february', '02-2025', '02_2025', '2025-02'],
+    '03': ['mar', 'march', '03-2025', '03_2025', '2025-03'],
+    '04': ['apr', 'april', '04-2025', '04_2025', '2025-04'],
+    '05': ['may', '05-2025', '05_2025', '2025-05'],
+    '06': ['jun', 'june', '06-2025', '06_2025', '2025-06'],
+    '07': ['jul', 'july', '07-2025', '07_2025', '2025-07'],
+    '08': ['aug', 'august', '08-2025', '08_2025', '2025-08'],
+    '09': ['sep', 'sept', 'september', '09-2025', '09_2025', '2025-09'],
+    '10': ['oct', 'october', '10-2025', '10_2025', '2025-10'],
+    '11': ['nov', 'november', '11-2025', '11_2025', '2025-11'],
+    '12': ['dec', 'december', '12-2025', '12_2025', '2025-12']
+  };
+
+  var pats = monthPatterns[monthKey] || [];
+  var yStr = String(year);
+
+  // Match file by filename containing month keyword and year
+  var matchedFile = files.find(function(f) {
+    if (!f || !f.name) return false;
+    var nameLower = String(f.name).toLowerCase();
+    var hasMonth = pats.some(function(p) { return nameLower.indexOf(p) >= 0; });
+    var hasYear = (nameLower.indexOf(yStr) >= 0) || (nameLower.indexOf(yStr.slice(2)) >= 0);
+    return hasMonth && hasYear;
+  });
+
+  // Fallback: match by month keyword alone if only single year files
+  if (!matchedFile) {
+    matchedFile = files.find(function(f) {
+      if (!f || !f.name) return false;
+      var nameLower = String(f.name).toLowerCase();
+      return pats.some(function(p) { return nameLower.indexOf(p) >= 0; });
+    });
+  }
+
+  if (!matchedFile || !matchedFile.wb) return { hasFile: false };
+
+  // Parse formula sheet or priority sheet from the file
+  var ws = (typeof findFormulaSheet === 'function') ? findFormulaSheet(matchedFile) : matchedFile.wb.Sheets[matchedFile.wb.SheetNames[0]];
+  if (!ws) return { hasFile: false };
+
+  var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+  if (!rows || rows.length < 2) return { hasFile: false };
+
+  // Detect header row
+  var hdrIdx = 0;
+  for (var r = 0; r < Math.min(rows.length, 10); r++) {
+    var rRow = rows[r] || [];
+    var str = rRow.map(function(c){ return String(c||'').toLowerCase(); }).join(' ');
+    if (str.includes('name') && (str.includes('code') || str.includes('gross') || str.includes('basic') || str.includes('salary'))) {
+      hdrIdx = r;
+      break;
+    }
+  }
+
+  var hdr = rows[hdrIdx] || [];
+  var cols = (typeof detectSalaryCols === 'function') ? detectSalaryCols(hdr) : {};
+
+  var roster = [];
+  var totalGross = 0;
+  var pfCount = 0;
+  var esiCount = 0;
+  var bothCount = 0;
+  var deptMap = {};
+
+  for (var i = hdrIdx + 1; i < rows.length; i++) {
+    var row = rows[i];
+    if (!row || !row.length) continue;
+    var code = String(row[cols.empCode >= 0 ? cols.empCode : 0] || '').trim();
+    var name = String(row[cols.empName >= 0 ? cols.empName : 1] || '').trim();
+    if (!code && !name) continue;
+    if (name.toLowerCase().includes('total') || code.toLowerCase().includes('total')) continue;
+
+    var dept = String(row[cols.dept >= 0 ? cols.dept : 2] || 'General').trim() || 'General';
+    var grossVal = parseFloat(String(row[cols.gross >= 0 ? cols.gross : 3] || 0).replace(/,/g, '')) || 0;
+    var pfVal = parseFloat(String(row[cols.pf >= 0 ? cols.pf : 4] || 0).replace(/,/g, '')) || 0;
+    var esicVal = parseFloat(String(row[cols.esic >= 0 ? cols.esic : 5] || 0).replace(/,/g, '')) || 0;
+    var doj = String(row[cols.doj >= 0 ? cols.doj : -1] || '').trim();
+    var dol = String(row[cols.dol >= 0 ? cols.dol : -1] || '').trim();
+    var pfNo = String(row[cols.pfNumber >= 0 ? cols.pfNumber : -1] || '').trim();
+    var esiNo = String(row[cols.esic >= 0 ? cols.esic : -1] || '').trim();
+
+    var hasPf = (pfVal > 0) || (pfNo && pfNo !== 'NA' && pfNo !== '-');
+    var hasEsi = (esicVal > 0) || (grossVal > 0 && grossVal <= 21000) || (esiNo && esiNo !== 'NA' && esiNo !== '-');
+
+    if (hasPf) pfCount++;
+    if (hasEsi) esiCount++;
+    if (hasPf && hasEsi) bothCount++;
+    totalGross += grossVal;
+
+    if (!deptMap[dept]) deptMap[dept] = { total: 0, pf: 0, esi: 0 };
+    deptMap[dept].total++;
+    if (hasPf) deptMap[dept].pf++;
+    if (hasEsi) deptMap[dept].esi++;
+
+    roster.push({
+      emp_id: code || ('EMP-' + (i - hdrIdx)),
+      name: name || 'Worker ' + (i - hdrIdx),
+      dept: dept,
+      status: 'ACTIVE',
+      gross: grossVal,
+      pf_val: pfVal,
+      esic_val: esicVal,
+      pf_no: hasPf ? (pfNo || 'PF-ENROLLED') : 'NA',
+      esi_no: hasEsi ? 'ESI-ENROLLED' : 'NA',
+      doj: doj || '—',
+      dol: dol || '—'
+    });
+  }
+
+  var activeCount = roster.length;
+  var avgSalary = activeCount > 0 ? Math.round(totalGross / activeCount) : 0;
+
+  return {
+    hasFile: activeCount > 0,
+    fileName: matchedFile.name,
+    activeCount: activeCount,
+    pfCount: pfCount,
+    esiCount: esiCount,
+    bothCount: bothCount,
+    totalPayroll: totalGross,
+    avgSalary: avgSalary,
+    deptMap: deptMap,
+    roster: roster
+  };
+}
+
+// ── 5. MAIN EXECUTIVE DASHBOARD RENDERER ──
 window.empDashboardRender = function() {
+  // Load Employee Master database
   var employees = [];
   if (window.EM && Array.isArray(EM.data) && EM.data.length) {
     employees = EM.data;
@@ -11607,7 +12013,7 @@ window.empDashboardRender = function() {
   }
   if (!employees || !employees.length) employees = [];
 
-  var month = DASH_STATE.month;
+  var month = DASH_STATE.month || '09';
   var year = DASH_STATE.year || 2025;
   var monthNames = {
     '01':'January','02':'February','03':'March','04':'April','05':'May','06':'June',
@@ -11617,118 +12023,257 @@ window.empDashboardRender = function() {
   var isLive = (month === 'LIVE');
   var mNum = isLive ? (new Date().getMonth() + 1) : parseInt(month, 10);
   var targetYear = isLive ? new Date().getFullYear() : year;
-
-  // Calculate start and end date for historical month filtering
   var monthStartDate = new Date(targetYear, mNum - 1, 1);
   var monthEndDate = new Date(targetYear, mNum, 0, 23, 59, 59);
 
-  // Compute active employees in target month
+  // Check if real uploaded salary file exists for this month
+  var fileData = !isLive ? getMonthlySalaryFileData(targetYear, month) : { hasFile: false };
+
   var activeInMonth = [];
   var exitedInMonth = 0;
   var joinedInMonth = 0;
+  var totalReg = employees.length;
 
-  employees.forEach(function(e) {
-    var doj = parseDateObj(e.doj);
-    var dol = parseDateObj(e.dol);
-    var isLeftNow = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol || (e.status && e.status !== 'ACTIVE'));
+  var activeCount = 0;
+  var pfCount = 0;
+  var esiCount = 0;
+  var bothCount = 0;
+  var totalPayroll = 0;
+  var avgSalary = 0;
+  var isFileSynced = Boolean(fileData && fileData.hasFile);
 
-    if (isLive) {
-      if (!isLeftNow) activeInMonth.push(e);
-      return;
-    }
+  if (isFileSynced) {
+    // Exact figures from the uploaded salary file
+    activeInMonth = fileData.roster;
+    activeCount = fileData.activeCount;
+    pfCount = fileData.pfCount;
+    esiCount = fileData.esiCount;
+    bothCount = fileData.bothCount;
+    totalPayroll = fileData.totalPayroll;
+    avgSalary = fileData.avgSalary;
+    if (totalReg < activeCount) totalReg = activeCount;
+    // Exits calculation from master for this period
+    employees.forEach(function(e) {
+      var dol = parseDateObj(e.dol);
+      if (dol && dol >= monthStartDate && dol <= monthEndDate) exitedInMonth++;
+    });
+  } else {
+    // Computed from Employee Master database using joining & exit dates
+    employees.forEach(function(e) {
+      var doj = parseDateObj(e.doj);
+      var dol = parseDateObj(e.dol);
+      var isLeftNow = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol || (e.status && e.status !== 'ACTIVE'));
+      if (isLive) {
+        if (!isLeftNow) activeInMonth.push(e);
+        return;
+      }
+      var joinedBeforeEnd = !doj || (doj <= monthEndDate);
+      var notLeftBeforeStart = !dol || (dol >= monthStartDate);
+      if (joinedBeforeEnd && notLeftBeforeStart) {
+        activeInMonth.push(e);
+      }
+      if (doj && doj >= monthStartDate && doj <= monthEndDate) joinedInMonth++;
+      if (dol && dol >= monthStartDate && dol <= monthEndDate) exitedInMonth++;
+    });
 
-    // Historical month evaluation:
-    // Joined on or before month end:
-    var joinedBeforeEnd = !doj || (doj <= monthEndDate);
-    // Not exited before month start:
-    var notLeftBeforeStart = !dol || (dol >= monthStartDate);
+    activeCount = activeInMonth.length;
+    pfCount = activeInMonth.filter(function(e){ return Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-'); }).length;
+    esiCount = activeInMonth.filter(function(e){ return Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-'); }).length;
+    bothCount = activeInMonth.filter(function(e){
+      var p = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+      var s = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+      return p && s;
+    }).length;
 
-    if (joinedBeforeEnd && notLeftBeforeStart) {
-      activeInMonth.push(e);
-    }
-
-    if (doj && doj >= monthStartDate && doj <= monthEndDate) {
-      joinedInMonth++;
-    }
-    if (dol && dol >= monthStartDate && dol <= monthEndDate) {
-      exitedInMonth++;
-    }
-  });
+    totalPayroll = activeInMonth.reduce(function(acc, e){
+      var g = parseFloat(String(e.gross || 0).replace(/,/g, '')) || 0;
+      return acc + g;
+    }, 0);
+    avgSalary = activeCount > 0 ? Math.round(totalPayroll / activeCount) : 0;
+  }
 
   DASH_STATE.roster = activeInMonth;
   DASH_STATE.filteredRoster = activeInMonth.slice();
 
-  // Metrics
-  var totalReg = employees.length;
-  var activeCount = activeInMonth.length;
   var leftCount = isLive ? (totalReg - activeCount) : exitedInMonth;
-
-  var pfCount = activeInMonth.filter(function(e){ return Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-'); }).length;
-  var esiCount = activeInMonth.filter(function(e){ return Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-'); }).length;
-  var bothCount = activeInMonth.filter(function(e){
-    var p = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
-    var s = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
-    return p && s;
-  }).length;
-
-  var pfOnly = pfCount - bothCount;
-  var esiOnly = esiCount - bothCount;
-  var neitherCount = activeCount - (pfOnly + esiOnly + bothCount);
-
-  var totalPayroll = activeInMonth.reduce(function(acc, e){
-    var g = parseFloat(String(e.gross || 0).replace(/,/g, '')) || 0;
-    return acc + g;
-  }, 0);
-  var avgSalary = activeCount > 0 ? Math.round(totalPayroll / activeCount) : 0;
+  var pfOnly = Math.max(0, pfCount - bothCount);
+  var esiOnly = Math.max(0, esiCount - bothCount);
+  var neitherCount = Math.max(0, activeCount - (pfOnly + esiOnly + bothCount));
 
   var activePct = totalReg > 0 ? ((activeCount / totalReg) * 100).toFixed(1) : '0';
   var pfPct = activeCount > 0 ? ((pfCount / activeCount) * 100).toFixed(1) : '0';
   var esiPct = activeCount > 0 ? ((esiCount / activeCount) * 100).toFixed(1) : '0';
 
-  // Update UI Elements
+  // Helper text updater
   var setTxt = function(id, val) {
     var el = document.getElementById(id);
     if (el) el.textContent = val;
   };
 
-  var pTitle = isLive ? 'Current Live Workforce Overview' : (monthNames[month] + ' ' + year + ' Workforce & Statutory Compliance');
-  setTxt('dashPeriodTitle', pTitle);
-  setTxt('dashPeriodSubtitle', isLive ? 'Real-time live active employees & statutory enrolled count' : ('Data calculated for ' + monthNames[month] + ' ' + year + ' based on joining & exit records'));
-  setTxt('dashPeriodActivePill', activeCount + ' Active in ' + (isLive ? 'Live' : (monthNames[month].slice(0,3) + ' ' + year)));
-  setTxt('dashYearTitle', year);
+  // Header Data Source Badge
+  var fileCount = (window.FILES || []).length;
+  var hrDocsList = (typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : (JSON.parse(localStorage.getItem('ATPL_HR_DOCS_STORE') || '[]')));
+  var topBadge = document.getElementById('dashDataSourceBadge');
+  if (topBadge) {
+    topBadge.innerHTML = '⚡ Synced: ' + fileCount + ' Files • ' + employees.length + ' Master • ' + hrDocsList.length + ' HR Docs';
+  }
 
+  // Active Period Banner
+  var pTitle = isLive ? 'Current Live Workforce Overview' : (monthNames[month] + ' ' + targetYear + ' Workforce & Statutory Compliance');
+  setTxt('dashPeriodTitle', pTitle);
+
+  var subText = '';
+  if (isLive) {
+    subText = 'Real-time live active employees & statutory enrolled count from Master Database';
+  } else if (isFileSynced) {
+    subText = '🟢 Exact Figures Synced from Salary File: "' + fileData.fileName + '" (Actual Payroll & Statutory Amounts)';
+  } else {
+    subText = '🏢 Computed from Employee Master Database for ' + monthNames[month] + ' ' + targetYear + ' (Based on Joining & Exit Dates)';
+  }
+  setTxt('dashPeriodSubtitle', subText);
+
+  var pBadge = document.getElementById('dashPeriodSourceBadge');
+  if (pBadge) {
+    if (isFileSynced) {
+      pBadge.style.background = 'rgba(16,185,129,0.2)';
+      pBadge.style.color = '#34d399';
+      pBadge.style.borderColor = '#10b981';
+      pBadge.textContent = '📄 File: ' + fileData.fileName.substring(0, 22) + (fileData.fileName.length > 22 ? '...' : '');
+    } else {
+      pBadge.style.background = '#1e293b';
+      pBadge.style.color = '#94a3b8';
+      pBadge.style.borderColor = '#475569';
+      pBadge.textContent = isLive ? '⚡ Live Database' : '🏢 Master Projected';
+    }
+  }
+
+  setTxt('dashPeriodActivePill', activeCount + ' Active Workers (' + (isLive ? 'Live' : (monthNames[month].slice(0,3) + ' ' + targetYear)) + ')');
+  setTxt('dashYearTitle', targetYear);
+
+  // Update KPI Cards
   setTxt('kpiTotalEmp', totalReg);
   setTxt('kpiActiveEmp', activeCount);
   setTxt('kpiActiveRate', activePct + '% of database');
   setTxt('kpiLeftEmp', isLive ? leftCount : exitedInMonth);
   setTxt('kpiLeftRate', isLive ? ((leftCount/totalReg*100).toFixed(1)+'% total turnover') : (exitedInMonth + ' exited in this month'));
-
   setTxt('kpiPfEmp', pfCount);
   setTxt('kpiPfRate', pfPct + '% statutory PF coverage');
   setTxt('kpiEsiEmp', esiCount);
   setTxt('kpiEsiRate', esiPct + '% statutory ESIC coverage');
   setTxt('kpiBothEmp', bothCount);
   setTxt('kpiBothRate', (activeCount>0?((bothCount/activeCount*100).toFixed(1)):'0') + '% dual coverage');
-
   setTxt('kpiPayroll', totalPayroll > 0 ? ('₹' + totalPayroll.toLocaleString('en-IN')) : '₹—');
   setTxt('kpiAvgSalary', avgSalary > 0 ? ('₹' + avgSalary.toLocaleString('en-IN')) : '₹—');
 
-  // Render 12-Month Annual Trend Table
-  renderAnnualTrendTable(employees, year, month);
+  // Update HR Compliance KPI Card (Card 9)
+  var hrTotal = hrDocsList.length;
+  var hrExpired = 0;
+  var hrDueSoon = 0;
+  var hrValid = 0;
+  var now = new Date();
+  hrDocsList.forEach(function(d) {
+    if (!d.expiry_date) {
+      hrValid++;
+      return;
+    }
+    var exp = new Date(d.expiry_date);
+    if (isNaN(exp.getTime())) { hrValid++; return; }
+    var diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) hrExpired++;
+    else if (diffDays <= 30) hrDueSoon++;
+    else hrValid++;
+  });
+  setTxt('kpiHrHealth', hrValid + ' / ' + hrTotal + ' Verified');
+  setTxt('kpiHrAlerts', hrExpired + ' Expired • ' + hrDueSoon + ' Due Soon');
+
+  // Render 12-Month Mini Bar Visualizer
+  renderAnnualTrendVisualChart(employees, targetYear, month);
+
+  // Render 12-Month Annual Trend Table (Zero White Line Glitch)
+  renderAnnualTrendTable(employees, targetYear, month);
 
   // Render Department Breakdown
-  renderDepartmentBreakdown(activeInMonth);
+  renderDepartmentBreakdown(activeInMonth, fileData && fileData.deptMap);
 
   // Render Statutory Bars & Gender Box
   renderStatutoryAndGender(activeInMonth, activeCount, pfOnly, esiOnly, bothCount, neitherCount);
+
+  // Render HR Docs Widget in 3rd column
+  renderHrDocsDashboardWidget(hrTotal, hrValid, hrDueSoon, hrExpired);
 
   // Render Roster Table
   empDashboardFilterRoster();
 };
 
+// ── 6. RENDER 12-MONTH INTERACTIVE MINI BAR VISUALIZER ──
+function renderAnnualTrendVisualChart(employees, year, currentMonthKey) {
+  var chartBox = document.getElementById('dashAnnualVisualChart');
+  if (!chartBox) return;
+
+  var months = [
+    {k:'01',n:'Jan'},{k:'02',n:'Feb'},{k:'03',n:'Mar'},{k:'04',n:'Apr'},
+    {k:'05',n:'May'},{k:'06',n:'Jun'},{k:'07',n:'Jul'},{k:'08',n:'Aug'},
+    {k:'09',n:'Sep'},{k:'10',n:'Oct'},{k:'11',n:'Nov'},{k:'12',n:'Dec'}
+  ];
+
+  var maxVal = 1;
+  var monthStats = months.map(function(m) {
+    var mData = getMonthlySalaryFileData(year, m.k);
+    var act = 0, pf = 0, esi = 0, hasF = false;
+    if (mData && mData.hasFile) {
+      act = mData.activeCount;
+      pf = mData.pfCount;
+      esi = mData.esiCount;
+      hasF = true;
+    } else {
+      var mNum = parseInt(m.k, 10);
+      var startD = new Date(year, mNum - 1, 1);
+      var endD = new Date(year, mNum, 0, 23, 59, 59);
+      employees.forEach(function(e) {
+        var doj = parseDateObj(e.doj);
+        var dol = parseDateObj(e.dol);
+        if ((!doj || doj <= endD) && (!dol || dol >= startD)) {
+          act++;
+          if (e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-') pf++;
+          if (e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-') esi++;
+        }
+      });
+    }
+    if (act > maxVal) maxVal = act;
+    return { k: m.k, n: m.n, act: act, pf: pf, esi: esi, hasF: hasF };
+  });
+
+  var html = '';
+  monthStats.forEach(function(m) {
+    var isSel = (currentMonthKey === m.k);
+    var actH = Math.max(6, Math.round((m.act / maxVal) * 44));
+    var pfH = Math.max(4, Math.round((m.pf / maxVal) * 44));
+    var esiH = Math.max(4, Math.round((m.esi / maxVal) * 44));
+
+    var activeCls = isSel ? 'active' : '';
+
+    html += '<div class="dash-trend-bar-col ' + activeCls + '" onclick="empDashboardSetPeriod(\'' + m.k + '\',' + year + ')" title="' + m.n + ' ' + year + ': ' + m.act + ' Active (' + (m.hasF ? 'File Synced' : 'Master') + ')">';
+    html += '  <div style="font-size:9px;font-weight:800;color:' + (isSel ? '#a5b4fc' : '#94a3b8') + ';margin-bottom:6px">' + m.act + '</div>';
+    html += '  <div style="display:flex;align-items:flex-end;gap:3px;height:46px;margin-bottom:6px">';
+    html += '    <div style="width:7px;height:' + actH + 'px;background:#34d399;border-radius:2px" title="Active: ' + m.act + '"></div>';
+    html += '    <div style="width:7px;height:' + pfH + 'px;background:#818cf8;border-radius:2px" title="PF: ' + m.pf + '"></div>';
+    html += '    <div style="width:7px;height:' + esiH + 'px;background:#38bdf8;border-radius:2px" title="ESIC: ' + m.esi + '"></div>';
+    html += '  </div>';
+    html += '  <div style="display:flex;align-items:center;gap:3px">';
+    if (m.hasF) html += '<span style="display:inline-block;width:5px;height:5px;background:#10b981;border-radius:50%" title="File Synced"></span>';
+    html += '    <span style="font-size:10px;font-weight:' + (isSel ? '800' : '600') + ';color:' + (isSel ? '#fff' : '#cbd5e1') + '">' + m.n + '</span>';
+    html += '  </div>';
+    html += '</div>';
+  });
+
+  chartBox.innerHTML = html;
+}
+
+// ── 7. RENDER 12-MONTH DATA MATRIX (ZERO WHITE LINE ARTIFACTS) ──
 function renderAnnualTrendTable(employees, year, currentMonthKey) {
   var tbody = document.getElementById('dashAnnualTrendBody');
   if (!tbody) return;
+
   var months = [
     {k:'01',n:'January'},{k:'02',n:'February'},{k:'03',n:'March'},{k:'04',n:'April'},
     {k:'05',n:'May'},{k:'06',n:'June'},{k:'07',n:'July'},{k:'08',n:'August'},
@@ -11741,62 +12286,95 @@ function renderAnnualTrendTable(employees, year, currentMonthKey) {
     var startD = new Date(year, mNum - 1, 1);
     var endD = new Date(year, mNum, 0, 23, 59, 59);
 
+    var fileData = getMonthlySalaryFileData(year, m.k);
+    var hasFile = Boolean(fileData && fileData.hasFile);
+
     var mActive = 0, mPf = 0, mEsi = 0, mBoth = 0, mJoined = 0, mExited = 0;
 
-    employees.forEach(function(e) {
-      var doj = parseDateObj(e.doj);
-      var dol = parseDateObj(e.dol);
-      var joinedBeforeEnd = !doj || (doj <= endD);
-      var notLeftBeforeStart = !dol || (dol >= startD);
-
-      if (joinedBeforeEnd && notLeftBeforeStart) {
-        mActive++;
-        var hasPf = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
-        var hasEsi = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
-        if (hasPf) mPf++;
-        if (hasEsi) mEsi++;
-        if (hasPf && hasEsi) mBoth++;
-      }
-      if (doj && doj >= startD && doj <= endD) mJoined++;
-      if (dol && dol >= startD && dol <= endD) mExited++;
-    });
+    if (hasFile) {
+      mActive = fileData.activeCount;
+      mPf = fileData.pfCount;
+      mEsi = fileData.esiCount;
+      mBoth = fileData.bothCount;
+      employees.forEach(function(e) {
+        var dol = parseDateObj(e.dol);
+        var doj = parseDateObj(e.doj);
+        if (dol && dol >= startD && dol <= endD) mExited++;
+        if (doj && doj >= startD && doj <= endD) mJoined++;
+      });
+    } else {
+      employees.forEach(function(e) {
+        var doj = parseDateObj(e.doj);
+        var dol = parseDateObj(e.dol);
+        var joinedBeforeEnd = !doj || (doj <= endD);
+        var notLeftBeforeStart = !dol || (dol >= startD);
+        if (joinedBeforeEnd && notLeftBeforeStart) {
+          mActive++;
+          var hasPfVal = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+          var hasEsiVal = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+          if (hasPfVal) mPf++;
+          if (hasEsiVal) mEsi++;
+          if (hasPfVal && hasEsiVal) mBoth++;
+        }
+        if (doj && doj >= startD && doj <= endD) mJoined++;
+        if (dol && dol >= startD && dol <= endD) mExited++;
+      });
+    }
 
     var isSelected = (currentMonthKey === m.k);
-    var rowBg = isSelected ? 'background:rgba(99,102,241,0.2);border:1px solid #6366f1' : 'background:#0f172a';
+    var rowBg = isSelected ? 'background:rgba(99,102,241,0.22)' : 'background:#0f172a';
+    var leftIndicator = isSelected ? 'border-left:3px solid #6366f1;' : 'border-left:3px solid transparent;';
 
-    html += '<tr style="' + rowBg + ';border-bottom:1px solid #1e293b;transition:background .15s" onmouseover="this.style.background=\'#1e1b4b\'" onmouseout="this.style.background=\'' + (isSelected ? 'rgba(99,102,241,0.2)' : '#0f172a') + '\'">';
-    html += '  <td style="padding:8px 12px;font-weight:700;color:' + (isSelected ? '#a5b4fc' : '#f8fafc') + '">' + (isSelected ? '👉 ' : '') + m.n + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;font-weight:800;color:#34d399">' + mActive + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#818cf8">' + mPf + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#38bdf8">' + mEsi + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;font-family:monospace;color:#fbbf24">' + mBoth + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;color:#6ee7b7">+' + mJoined + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:center;color:#f87171">-' + mExited + '</td>';
-    html += '  <td style="padding:8px 12px;text-align:right">';
-    html += '    <button type="button" onclick="empDashboardSetPeriod(\'' + m.k + '\',' + year + ')" style="padding:3px 8px;background:' + (isSelected ? '#6366f1' : '#1e293b') + ';color:#fff;border:1px solid #334155;border-radius:4px;font-size:10px;cursor:pointer;font-weight:700">' + (isSelected ? 'Active View' : 'Select') + '</button>';
+    html += '<tr class="dash-trend-row ' + (isSelected ? 'active' : '') + '" onclick="empDashboardSetPeriod(\'' + m.k + '\',' + year + ')" style="' + rowBg + ';box-shadow:inset 0 -1px 0 #1e293b">';
+    html += '  <td style="padding:10px 12px;font-weight:700;color:' + (isSelected ? '#a5b4fc' : '#f8fafc') + ';' + leftIndicator + 'border-top-left-radius:6px;border-bottom-left-radius:6px">';
+    html += '    <div style="display:flex;align-items:center;gap:6px">' + (isSelected ? '👉 ' : '') + '<span>' + m.n + '</span></div>';
+    html += '  </td>';
+    html += '  <td style="padding:10px 12px;text-align:center">';
+    if (hasFile) {
+      html += '    <span style="padding:3px 8px;background:rgba(16,185,129,0.2);color:#34d399;border-radius:12px;font-size:10px;font-weight:700">📄 File Synced</span>';
+    } else {
+      html += '    <span style="padding:3px 8px;background:rgba(100,116,139,0.2);color:#94a3b8;border-radius:12px;font-size:10px;font-weight:600">🏢 Master Data</span>';
+    }
+    html += '  </td>';
+    html += '  <td style="padding:10px 12px;text-align:center;font-weight:800;color:#34d399">' + mActive + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:center;font-family:monospace;color:#818cf8;font-weight:700">' + mPf + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:center;font-family:monospace;color:#38bdf8;font-weight:700">' + mEsi + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:center;font-family:monospace;color:#fbbf24;font-weight:700">' + mBoth + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:center;color:#6ee7b7;font-weight:600">+' + mJoined + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:center;color:#f87171;font-weight:600">-' + mExited + '</td>';
+    html += '  <td style="padding:10px 12px;text-align:right;border-top-right-radius:6px;border-bottom-right-radius:6px">';
+    html += '    <button type="button" style="padding:4px 10px;background:' + (isSelected ? '#6366f1' : '#1e293b') + ';color:#fff;border:none;border-radius:6px;font-size:10px;cursor:pointer;font-weight:700;outline:none">' + (isSelected ? 'Active View ✓' : 'View') + '</button>';
     html += '  </td>';
     html += '</tr>';
   });
+
   tbody.innerHTML = html;
 }
 
-function renderDepartmentBreakdown(activeList) {
+// ── 8. RENDER DEPARTMENT BREAKDOWN ──
+function renderDepartmentBreakdown(activeList, fileDepts) {
   var box = document.getElementById('dashDeptBreakdown');
   if (!box) return;
-  var depts = {};
-  activeList.forEach(function(e) {
-    var d = (e.dept || 'General').trim() || 'General';
-    if (!depts[d]) depts[d] = { total: 0, pf: 0, esi: 0 };
-    depts[d].total++;
-    if (e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-') depts[d].pf++;
-    if (e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-') depts[d].esi++;
-  });
 
-  var entries = Object.keys(depts).map(function(k){ return { name: k, total: depts[k].total, pf: depts[k].pf, esi: depts[k].esi }; });
+  var depts = fileDepts || {};
+  if (!fileDepts || Object.keys(fileDepts).length === 0) {
+    depts = {};
+    activeList.forEach(function(e) {
+      var d = (e.dept || 'General').trim() || 'General';
+      if (!depts[d]) depts[d] = { total: 0, pf: 0, esi: 0 };
+      depts[d].total++;
+      if (e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-') depts[d].pf++;
+      if (e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-') depts[d].esi++;
+    });
+  }
+
+  var entries = Object.keys(depts).map(function(k){
+    return { name: k, total: depts[k].total, pf: depts[k].pf, esi: depts[k].esi };
+  });
   entries.sort(function(a, b){ return b.total - a.total; });
 
   if (!entries.length) {
-    box.innerHTML = '<div style="color:#64748b;font-size:11px;padding:12px;text-align:center">No department data available.</div>';
+    box.innerHTML = '<div style="color:#64748b;font-size:11px;padding:12px;text-align:center">No department records available.</div>';
     return;
   }
 
@@ -11804,8 +12382,8 @@ function renderDepartmentBreakdown(activeList) {
   var html = '';
   entries.slice(0, 10).forEach(function(dept) {
     var pct = Math.round((dept.total / maxTotal) * 100);
-    var pfRate = Math.round((dept.pf / dept.total) * 100);
-    var esiRate = Math.round((dept.esi / dept.total) * 100);
+    var pfRate = Math.round((dept.pf / (dept.total || 1)) * 100);
+    var esiRate = Math.round((dept.esi / (dept.total || 1)) * 100);
 
     html += '<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:8px 10px">';
     html += '  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:11px">';
@@ -11824,6 +12402,7 @@ function renderDepartmentBreakdown(activeList) {
   box.innerHTML = html;
 }
 
+// ── 9. RENDER STATUTORY & GENDER DISTRIBUTION ──
 function renderStatutoryAndGender(activeList, totalActive, pfOnly, esiOnly, bothCount, neitherCount) {
   var statBox = document.getElementById('dashStatutoryBars');
   if (statBox) {
@@ -11855,7 +12434,6 @@ function renderStatutoryAndGender(activeList, totalActive, pfOnly, esiOnly, both
     var female = activeList.length - male;
     var mPct = totalActive > 0 ? ((male / totalActive) * 100).toFixed(1) : '0';
     var fPct = totalActive > 0 ? ((female / totalActive) * 100).toFixed(1) : '0';
-
     genBox.innerHTML = 
       '<div style="flex:1;background:#0f172a;border:1px solid #1e3a8a;border-radius:8px;padding:10px;text-align:center">' +
         '<div style="font-size:11px;color:#93c5fd;font-weight:700">👨 Male</div>' +
@@ -11870,20 +12448,64 @@ function renderStatutoryAndGender(activeList, totalActive, pfOnly, esiOnly, both
   }
 }
 
+// ── 10. RENDER HR DOCS DASHBOARD WIDGET ──
+function renderHrDocsDashboardWidget(total, valid, dueSoon, expired) {
+  var box = document.getElementById('dashHrDocBreakdown');
+  if (!box) return;
+
+  var html = '';
+  html += '<div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">';
+  html += '  <span style="font-size:11px;color:#cbd5e1;font-weight:700">Total Registered Policies/Certificates:</span>';
+  html += '  <span style="font-size:14px;font-weight:800;color:#f8fafc">' + total + '</span>';
+  html += '</div>';
+
+  html += '<div style="background:#0f172a;border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">';
+  html += '  <span style="font-size:11px;color:#6ee7b7;font-weight:700">✅ 100% Compliant &amp; Active:</span>';
+  html += '  <span style="font-size:14px;font-weight:800;color:#34d399">' + valid + '</span>';
+  html += '</div>';
+
+  html += '<div style="background:#0f172a;border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">';
+  html += '  <span style="font-size:11px;color:#fde68a;font-weight:700">⚠️ Renewal Due (Next 30 Days):</span>';
+  html += '  <span style="font-size:14px;font-weight:800;color:#fbbf24">' + dueSoon + '</span>';
+  html += '</div>';
+
+  html += '<div style="background:#0f172a;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px;display:flex;justify-content:space-between;align-items:center">';
+  html += '  <span style="font-size:11px;color:#fca5a5;font-weight:700">🔴 Expired / Action Needed:</span>';
+  html += '  <span style="font-size:14px;font-weight:800;color:#f87171">' + expired + '</span>';
+  html += '</div>';
+
+  box.innerHTML = html;
+}
+
+// ── 11. ROSTER SEARCH, FILTER & EXPORT ──
 window.empDashboardFilterRoster = function() {
   var q = (document.getElementById('dashRosterSearch') ? document.getElementById('dashRosterSearch').value : '').toLowerCase().trim();
+  var filterType = document.getElementById('dashRosterFilter') ? document.getElementById('dashRosterFilter').value : 'ALL';
   var roster = DASH_STATE.roster || [];
-  if (!q) {
-    DASH_STATE.filteredRoster = roster.slice();
-  } else {
-    DASH_STATE.filteredRoster = roster.filter(function(e) {
-      return (String(e.name||'').toLowerCase().indexOf(q) >= 0) ||
+
+  DASH_STATE.filteredRoster = roster.filter(function(e) {
+    // 1. Text search
+    var matchSearch = true;
+    if (q) {
+      matchSearch = (String(e.name||'').toLowerCase().indexOf(q) >= 0) ||
         (String(e.emp_id||'').toLowerCase().indexOf(q) >= 0) ||
         (String(e.dept||'').toLowerCase().indexOf(q) >= 0) ||
         (String(e.pf_no||'').toLowerCase().indexOf(q) >= 0) ||
         (String(e.esi_no||'').toLowerCase().indexOf(q) >= 0);
-    });
-  }
+    }
+    if (!matchSearch) return false;
+
+    // 2. Status / Category Filter
+    var isLeft = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol || (e.status && e.status !== 'ACTIVE'));
+    var hasPf = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
+    var hasEsi = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
+
+    if (filterType === 'ACTIVE') return !isLeft;
+    if (filterType === 'LEFT') return isLeft;
+    if (filterType === 'PF') return hasPf;
+    if (filterType === 'ESIC') return hasEsi;
+    return true;
+  });
 
   var countSpan = document.getElementById('dashRosterCount');
   if (countSpan) countSpan.textContent = DASH_STATE.filteredRoster.length;
@@ -11892,7 +12514,7 @@ window.empDashboardFilterRoster = function() {
   if (!tbody) return;
 
   if (!DASH_STATE.filteredRoster.length) {
-    tbody.innerHTML = '<tr><td colspan="10" style="padding:24px;text-align:center;color:#64748b">Koi matching employee nahi mila.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:24px;text-align:center;color:#64748b">Koi matching employee record nahi mila.</td></tr>';
     return;
   }
 
@@ -11900,21 +12522,22 @@ window.empDashboardFilterRoster = function() {
   DASH_STATE.filteredRoster.slice(0, 100).forEach(function(e, i) {
     var hasPf = Boolean(e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '-');
     var hasEsi = Boolean(e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '-');
-    var isLeft = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol);
+    var isLeft = (typeof emIsLeft === 'function') ? emIsLeft(e) : Boolean(e.dol || (e.status && e.status !== 'ACTIVE'));
 
     html += '<tr style="border-bottom:1px solid #1e293b;' + (i%2===0?'background:#111827':'background:#0f172a') + '">';
-    html += '  <td style="padding:6px 10px;color:#64748b">' + (i + 1) + '</td>';
-    html += '  <td style="padding:6px 10px;font-family:monospace;font-weight:700;color:#818cf8">' + (e.emp_id || '—') + '</td>';
-    html += '  <td style="padding:6px 10px;font-weight:700;color:#f8fafc">' + (e.name || '—') + '</td>';
-    html += '  <td style="padding:6px 10px">' + (isLeft ? '<span style="color:#f87171;font-weight:700">🔴 LEFT</span>' : '<span style="color:#34d399;font-weight:700">🟢 ACTIVE</span>') + '</td>';
-    html += '  <td style="padding:6px 10px;font-family:monospace;color:#94a3b8">' + (e.doj || '—') + '</td>';
-    html += '  <td style="padding:6px 10px;font-family:monospace;color:#94a3b8">' + (e.dol || '—') + '</td>';
-    html += '  <td style="padding:6px 10px;font-family:monospace;color:' + (hasPf ? '#a5b4fc' : '#475569') + '">' + (hasPf ? e.pf_no : 'NA') + '</td>';
-    html += '  <td style="padding:6px 10px;font-family:monospace;color:' + (hasEsi ? '#7dd3fc' : '#475569') + '">' + (hasEsi ? e.esi_no : 'NA') + '</td>';
-    html += '  <td style="padding:6px 10px;color:#cbd5e1">' + (e.dept || '—') + '</td>';
-    html += '  <td style="padding:6px 10px;text-align:right;font-family:monospace;color:#34d399;font-weight:700">₹' + (parseFloat(String(e.gross||0).replace(/,/g,''))||0).toLocaleString('en-IN') + '</td>';
+    html += '  <td style="padding:7px 10px;color:#64748b">' + (i + 1) + '</td>';
+    html += '  <td style="padding:7px 10px;font-family:monospace;font-weight:700;color:#818cf8">' + (e.emp_id || '—') + '</td>';
+    html += '  <td style="padding:7px 10px;font-weight:700;color:#f8fafc">' + (e.name || '—') + '</td>';
+    html += '  <td style="padding:7px 10px">' + (isLeft ? '<span style="color:#f87171;font-weight:700">🔴 LEFT</span>' : '<span style="color:#34d399;font-weight:700">🟢 ACTIVE</span>') + '</td>';
+    html += '  <td style="padding:7px 10px;font-family:monospace;color:#94a3b8">' + (e.doj || '—') + '</td>';
+    html += '  <td style="padding:7px 10px;font-family:monospace;color:#94a3b8">' + (e.dol || '—') + '</td>';
+    html += '  <td style="padding:7px 10px;font-family:monospace;color:' + (hasPf ? '#a5b4fc' : '#475569') + '">' + (hasPf ? e.pf_no : 'NA') + '</td>';
+    html += '  <td style="padding:7px 10px;font-family:monospace;color:' + (hasEsi ? '#7dd3fc' : '#475569') + '">' + (hasEsi ? e.esi_no : 'NA') + '</td>';
+    html += '  <td style="padding:7px 10px;color:#cbd5e1">' + (e.dept || '—') + '</td>';
+    html += '  <td style="padding:7px 10px;text-align:right;font-family:monospace;color:#34d399;font-weight:700">₹' + (parseFloat(String(e.gross||0).replace(/,/g,''))||0).toLocaleString('en-IN') + '</td>';
     html += '</tr>';
   });
+
   tbody.innerHTML = html;
 };
 
@@ -11948,6 +12571,7 @@ window.empDashboardExportExcel = function() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  if (window.showToast) window.showToast('✅ Selected Month Roster exported to Excel/CSV!');
 };
 
 // Hook into goPage so opening 'empdashboard' automatically runs render
