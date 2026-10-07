@@ -2699,8 +2699,14 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
         <!-- TAB 1: SINGLE ADD/EDIT — Excel row style -->
         <div id="emTabPanel-single" style="flex:1;overflow:auto;padding:0">
+          <div style="padding:7px 14px;background:#0b1120;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;left:0;z-index:6">
+            <div style="font-size:11px;color:#a5b4fc;font-weight:700;display:flex;align-items:center;gap:6px">
+              <span>🖱️ <strong>Mouse se Columns Drag & Drop Karein:</strong> Kisi bhi column ko mouse se seedha pakad kar aage-peeche shift karein (Excel sequence ke hisaab se)</span>
+            </div>
+            <button type="button" onclick="emResetColOrder()" style="padding:3px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset Column Order</button>
+          </div>
           <!-- Column headers like Excel -->
-          <div style="display:grid;grid-template-columns:90px 160px 150px 120px 120px 150px 140px 150px 130px 130px 80px 160px 130px 110px 110px 100px 100px 100px;gap:0;background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content">
+          <div class="em-xls-hdr" style="display:grid;grid-template-columns:90px 160px 150px 120px 120px 150px 140px 150px 130px 130px 80px 160px 130px 110px 110px 100px 100px 100px;gap:0;background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content">
             <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">EMP CODE</div>
             <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">NAME</div>
             <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">FATHER'S NAME</div>
@@ -2723,7 +2729,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <!-- Populated by JS -->
           </div>
           <!-- Instructions -->
-          <div style="padding:16px 20px;background:#0f172a;border-top:1px solid #1e293b;margin-top:8px">
+          <div class="em-xls-instructions" style="padding:16px 20px;background:#0f172a;border-top:1px solid #1e293b;margin-top:8px">
             <div style="font-size:10px;color:#475569;line-height:1.8">
               💡 <strong style="color:#94a3b8">Tip:</strong> Excel mein ek row copy karo → "Paste from Excel" button click karo → data auto-fill ho jaayega |
               Ya manually bhi bhar sakte ho har cell mein |
@@ -2738,7 +2744,20 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           <div style="padding:12px 20px;background:#1e1b4b;border-bottom:1px solid #3730a3;flex-shrink:0">
             <div style="font-size:11px;color:#a5b4fc;line-height:1.8">
               <strong>Excel se multiple rows copy karo</strong> → Ctrl+V yahan paste karo → Preview check karo → Save karo<br>
-              <span style="color:#64748b">Expected columns: Code | Name | Father | DOB | DOJ | PF No | ESI No | Bank | IFSC | Account | Gender | Dept | Category | Basic | HRA | Gross</span>
+              <span style="color:#64748b">Aap neeche mouse se columns ka sequence change kar sakte hain taaki Excel ka order match kare.</span>
+            </div>
+          </div>
+          <!-- Drag & Drop Column Mapping Bar -->
+          <div style="padding:10px 20px 0;flex-shrink:0">
+            <div style="background:#0b1120;border:1px solid #334155;border-radius:10px;padding:10px 14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div style="font-size:11px;font-weight:700;color:#c7d2fe;display:flex;align-items:center;gap:6px">
+                  <span>🖱️ Excel Column Order (Mouse se pakad kar aage-peeche Drag & Drop karein):</span>
+                  <span style="font-size:10px;color:#94a3b8;font-weight:400">(Excel file ke sequence ke anusaar set karein)</span>
+                </div>
+                <button type="button" onclick="emResetColOrder()" style="padding:3px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset Order</button>
+              </div>
+              <div id="emColChipsContainer" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;align-items:center"></div>
             </div>
           </div>
           <!-- Paste area -->
@@ -8637,7 +8656,144 @@ var EM_COLS = [
   {key:'gross',      label:'GROSS (₹)',   w:'100px', type:'number'},
 ];
 
+var DEFAULT_EM_COLS = EM_COLS.slice();
 var EM_BULK_ROWS = []; // parsed bulk rows
+window._emDragColIdx = -1;
+
+function emGetSingleRowValues() {
+  var vals = {};
+  if (typeof EM_COLS !== 'undefined') {
+    EM_COLS.forEach(function(c){
+      var el = document.getElementById('emf_' + c.key);
+      if (el) vals[c.key] = el.value;
+    });
+  }
+  return vals;
+}
+
+function emSaveColOrder() {
+  try {
+    localStorage.setItem('ATPL_EM_COLS_ORDER', JSON.stringify(EM_COLS.map(function(c){ return c.key; })));
+  } catch(e) {}
+}
+
+function emLoadSavedColOrder() {
+  try {
+    var saved = localStorage.getItem('ATPL_EM_COLS_ORDER');
+    if (saved) {
+      var keys = JSON.parse(saved);
+      if (Array.isArray(keys) && keys.length) {
+        var newCols = [];
+        keys.forEach(function(k) {
+          var found = EM_COLS.find(function(c){ return c.key === k; });
+          if (found) newCols.push(found);
+        });
+        EM_COLS.forEach(function(c) {
+          if (!newCols.some(function(nc){ return nc.key === c.key; })) {
+            newCols.push(c);
+          }
+        });
+        if (newCols.length === EM_COLS.length) {
+          EM_COLS = newCols;
+        }
+      }
+    }
+  } catch(e) {}
+}
+emLoadSavedColOrder();
+
+window.emResetColOrder = function() {
+  EM_COLS = DEFAULT_EM_COLS.slice();
+  emSaveColOrder();
+  var curVals = emGetSingleRowValues();
+  if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  if (window.showToast) window.showToast('↺ Columns standard sequence mein reset ho gaye');
+};
+
+window.emMoveCol = function(fromIdx, toIdx) {
+  if (fromIdx === toIdx || fromIdx < 0 || toIdx < 0 || fromIdx >= EM_COLS.length || toIdx >= EM_COLS.length) return;
+  var curVals = emGetSingleRowValues();
+  var item = EM_COLS.splice(fromIdx, 1)[0];
+  EM_COLS.splice(toIdx, 0, item);
+  emSaveColOrder();
+  if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  if (window.showToast) {
+    window.showToast('↔ Column "' + item.label + '" position ' + (toIdx + 1) + ' par shift ho gaya');
+  }
+};
+
+window.emShiftCol = function(idx, dir) {
+  var target = idx + dir;
+  if (target >= 0 && target < EM_COLS.length) {
+    emMoveCol(idx, target);
+  }
+};
+
+window.emRenderColChips = function() {
+  var container = document.getElementById('emColChipsContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  var colors = {pf_no:'#6ee7b7', esi_no:'#93c5fd', basic:'#fcd34d', hra:'#fcd34d', gross:'#6ee7b7', status:'#f472b6'};
+
+  EM_COLS.forEach(function(c, ci) {
+    var chip = document.createElement('div');
+    chip.draggable = true;
+    chip.setAttribute('data-bulk-col-idx', ci);
+    chip.style.cssText = 'padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:700;color:' + (colors[c.key] || '#e2e8f0') + ';user-select:none;transition:all .15s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.2)';
+    chip.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
+
+    chip.innerHTML = '<span style="color:#818cf8;font-size:13px;font-weight:900;cursor:grab" title="Drag with mouse">⋮⋮</span> ' +
+      '<span style="color:#64748b;font-size:10px">' + (ci + 1) + '.</span> ' +
+      '<span>' + c.label + '</span>' +
+      '<span style="display:inline-flex;gap:2px;margin-left:4px">' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Shift Left" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">◀</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Shift Right" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">▶</button>' +
+      '</span>';
+
+    chip.addEventListener('dragstart', function(ev){
+      ev.dataTransfer.setData('text/plain', String(ci));
+      ev.dataTransfer.effectAllowed = 'move';
+      chip.style.opacity = '0.3';
+      chip.style.borderColor = '#6366f1';
+      window._emDragColIdx = ci;
+    });
+
+    chip.addEventListener('dragend', function(){
+      chip.style.opacity = '1';
+      chip.style.borderColor = '#334155';
+      chip.style.boxShadow = '';
+      window._emDragColIdx = -1;
+    });
+
+    chip.addEventListener('dragover', function(ev){
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      chip.style.boxShadow = 'inset 4px 0 0 #6366f1';
+      chip.style.background = '#1e1b4b';
+    });
+
+    chip.addEventListener('dragleave', function(){
+      chip.style.boxShadow = '';
+      chip.style.background = '#1e293b';
+    });
+
+    chip.addEventListener('drop', function(ev){
+      ev.preventDefault();
+      chip.style.boxShadow = '';
+      chip.style.background = '#1e293b';
+      var src = window._emDragColIdx >= 0 ? window._emDragColIdx : parseInt(ev.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(src) && src !== ci && src >= 0 && src < EM_COLS.length) {
+        emMoveCol(src, ci);
+      }
+    });
+
+    container.appendChild(chip);
+  });
+};
 
 // ── Tab switch ──
 function emSwitchTab(tab) {
@@ -8657,6 +8813,9 @@ function emSwitchTab(tab) {
     tabBulk.style.color      = tab==='bulk' ? '#6366f1' : '#64748b';
     tabBulk.style.borderBottomColor = tab==='bulk' ? '#6366f1' : 'transparent';
   }
+  if(tab==='bulk' && typeof emRenderColChips==='function') {
+    emRenderColChips();
+  }
 }
 
 // ── Render single row Excel-style ──
@@ -8664,14 +8823,66 @@ function emRenderSingleRow(e) {
   e = e || {};
   var gridCols = EM_COLS.map(function(c){return c.w;}).join(' ');
 
-  // Header row
+  // Header row with mouse drag-and-drop
   var hdrDiv = document.createElement('div');
-  hdrDiv.style.cssText = 'display:grid;grid-template-columns:'+gridCols+';background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content';
+  hdrDiv.className = 'em-xls-hdr';
+  hdrDiv.style.cssText = 'display:grid;grid-template-columns:'+gridCols+';background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content;user-select:none';
   EM_COLS.forEach(function(c, ci) {
     var th = document.createElement('div');
-    var colors = {pf_no:'#6ee7b7', esi_no:'#93c5fd', basic:'#fcd34d', hra:'#fcd34d', gross:'#6ee7b7'};
-    th.style.cssText = 'padding:8px 10px;font-size:9px;font-weight:700;color:'+(colors[c.key]||'#64748b')+';text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b;white-space:nowrap';
-    th.textContent = c.label;
+    var colors = {pf_no:'#6ee7b7', esi_no:'#93c5fd', basic:'#fcd34d', hra:'#fcd34d', gross:'#6ee7b7', status:'#f472b6'};
+    th.draggable = true;
+    th.setAttribute('data-col-idx', ci);
+    th.style.cssText = 'padding:7px 8px;font-size:9px;font-weight:800;color:'+(colors[c.key]||'#94a3b8')+';text-transform:uppercase;letter-spacing:0.7px;border-right:1px solid #1e293b;white-space:nowrap;cursor:grab;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:all .15s;background:#0f172a;';
+    th.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
+
+    th.innerHTML = '<span style="display:flex;align-items:center;gap:3px;overflow:hidden;text-overflow:ellipsis">' +
+      '<span style="color:#818cf8;font-size:12px;font-weight:900;cursor:grab" title="Drag with mouse">⋮⋮</span> ' +
+      '<span style="color:#64748b;font-size:8px">' + (ci + 1) + '.</span> ' +
+      '<span>' + c.label + '</span>' +
+      '</span>' +
+      '<span style="display:inline-flex;gap:1px;margin-left:2px">' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Move Left" style="padding:0 2px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">◀</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Move Right" style="padding:0 2px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">▶</button>' +
+      '</span>';
+
+    // Drag & Drop handlers
+    th.addEventListener('dragstart', function(ev){
+      ev.dataTransfer.setData('text/plain', String(ci));
+      ev.dataTransfer.effectAllowed = 'move';
+      th.style.opacity = '0.35';
+      th.style.background = '#1e1b4b';
+      window._emDragColIdx = ci;
+    });
+
+    th.addEventListener('dragend', function(){
+      th.style.opacity = '1';
+      th.style.background = '#0f172a';
+      th.style.boxShadow = '';
+      window._emDragColIdx = -1;
+    });
+
+    th.addEventListener('dragover', function(ev){
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      th.style.boxShadow = 'inset 4px 0 0 #6366f1';
+      th.style.background = '#1e293b';
+    });
+
+    th.addEventListener('dragleave', function(){
+      th.style.boxShadow = '';
+      th.style.background = '#0f172a';
+    });
+
+    th.addEventListener('drop', function(ev){
+      ev.preventDefault();
+      th.style.boxShadow = '';
+      th.style.background = '#0f172a';
+      var src = window._emDragColIdx >= 0 ? window._emDragColIdx : parseInt(ev.dataTransfer.getData('text/plain'), 10);
+      if (!isNaN(src) && src !== ci && src >= 0 && src < EM_COLS.length) {
+        emMoveCol(src, ci);
+      }
+    });
+
     hdrDiv.appendChild(th);
   });
 
@@ -10852,12 +11063,32 @@ window.emParseBulkPaste=function(){
   var lines=raw.replace(/\r/g,'').split('\n').filter(function(x){return x.trim()!=='';});
   var rows=lines.map(function(l){return l.split('\t');});
   var h=aroraFindHeader(rows),headerRow=h.row;
+  var emps;
   if(headerRow<0||h.score<2){
-    /* If there is no header, use the app's exact Employee Master order. */
-    var defaultHeader=['EMP CODE','NAME',"FATHER'S NAME",'D.O.B','D.O.J','PF NO','ESI NO','BANK NAME','IFSC CODE','ACCOUNT NO','GENDER','DEPARTMENT','DESIGNATION','CATEGORY 01','CATEGORY 02','BASIC (₹)','HRA (₹)','GROSS (₹)'];
-    rows.unshift(defaultHeader);headerRow=0;
+    /* Positional parsing using user's customized EM_COLS sequence (mouse drag & drop) */
+    emps = [];
+    rows.forEach(function(r){
+      if(!r.some(function(v){return String(v==null?'':v).trim()!=='';}))return;
+      var first = String(r[0]||'').trim().toLowerCase();
+      if(first==='code'||first==='emp id'||first==='employee id'||first==='s.no'||first==='sno'||first==='#') return;
+      var emp = {};
+      EM_COLS.forEach(function(col, ci){
+        var val = r[ci];
+        if(val===undefined || val===null) val = '';
+        if(col.key==='dob'||col.key==='doj') val = (typeof aroraToDate==='function'?aroraToDate(val):val);
+        else if(col.type==='number') val = (typeof aroraNumber==='function'?aroraNumber(val):(parseFloat(String(val).replace(/,/g,''))||0));
+        else val = String(val).trim().toUpperCase();
+        if(col.key==='gender'){
+          var g = String(val).toUpperCase();
+          val = /FEMALE|WOMAN|F/.test(g)?'FEMALE':(/MALE|MAN|M/.test(g)?'MALE':g);
+        }
+        emp[col.key] = val;
+      });
+      if(emp.emp_id || emp.name) emps.push(emp);
+    });
+  } else {
+    emps = aroraRowsToEmployees(rows,headerRow);
   }
-  var emps=aroraRowsToEmployees(rows,headerRow);
   EM_BULK_ROWS=emps;
   if(typeof renderBulkPreview==='function')renderBulkPreview();
   var btn=document.getElementById('emBulkSaveBtn');
