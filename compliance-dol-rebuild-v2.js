@@ -1711,9 +1711,18 @@ async function boot(){
     if(!(vaultApi()&&vaultApi().authority==='supabase'))setTimeout(function(){repairHistoricalOriginals('pf',false);repairHistoricalOriginals('esic',false)},1800)
   });
   root.addEventListener('atpl-dol-supabase-change',function(e){
-    var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();if(type!=='pf'&&type!=='esic')return;
+    var type=String(e&&e.detail&&e.detail.type||'').toLowerCase();
+    if(type==='all'){
+      sharedDeleteTombstones['pf']=[];sharedDeleteLoadedAt['pf']=Date.now();cloudLastSync['pf']=0;
+      sharedDeleteTombstones['esic']=[];sharedDeleteLoadedAt['esic']=Date.now();cloudLastSync['esic']=0;
+      var act=activeDolType();
+      if(act)syncCloudType(act,true);
+      else{syncCloudType('pf',true);syncCloudType('esic',true);}
+      return;
+    }
+    if(type!=='pf'&&type!=='esic')return;
     sharedDeleteTombstones[type]=[];sharedDeleteLoadedAt[type]=Date.now();cloudLastSync[type]=0;
-    if(activeDolType()===type)syncCloudType(type,true)
+    syncCloudType(type,true);
   });
 }
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}

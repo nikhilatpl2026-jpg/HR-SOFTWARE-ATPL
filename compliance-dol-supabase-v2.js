@@ -13,6 +13,45 @@ var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession
 var legacy=root.ATPLDOLCloudV4||null;
 if(legacy&&!root.ATPLDOLCloudV4Legacy)root.ATPLDOLCloudV4Legacy=legacy;
 var rawCache={pf:null,esic:null},rawCacheAt={pf:0,esic:0},RAW_CACHE_MS=1800;
+var metaCache = { pf: null, esic: null };
+function loadMetaCache(type) {
+  if (metaCache[type]) return metaCache[type];
+  var out = {};
+  try {
+    var raw = root.localStorage.getItem("ATPL_DOL_METACACHE_V3_" + type);
+    if (raw) out = JSON.parse(raw) || {};
+  } catch (_) {}
+  metaCache[type] = out;
+  return out;
+}
+function saveMetaCache(type, cache) {
+  metaCache[type] = cache;
+  try {
+    root.localStorage.setItem("ATPL_DOL_METACACHE_V3_" + type, JSON.stringify(cache));
+  } catch (_) {}
+}
+function broadcastComplianceEvent(type, action, data) {
+  try {
+    if (root.UniversalEngine && typeof root.UniversalEngine.broadcastChange === "function") {
+      root.UniversalEngine.broadcastChange(Object.assign({
+        module: type,
+        action: action,
+        timestamp: new Date().toISOString()
+      }, data || {}));
+    }
+    if (typeof BroadcastChannel !== "undefined") {
+      var bc = new BroadcastChannel("atpl-local-tab-sync");
+      bc.postMessage(Object.assign({ module: type, action: action }, data || {}));
+      bc.close();
+    }
+  } catch (_) {}
+  try {
+    root.dispatchEvent(new CustomEvent("atpl-dol-supabase-change", {
+      detail: Object.assign({ type: type, action: action, at: Date.now() }, data || {})
+    }));
+  } catch (_) {}
+}
+
 var rtClient=null,rtChannel=null,rtStarting=null,warmPromise=null;
 
 function tok(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'')}catch(_){return''}}
@@ -93,7 +132,7 @@ function mapRow(r){
   }
 }
 async function listRaw(type,force){
-  type=String(type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
+  type=String(type||"").toLowerCase();if(type!=="pf"&&type!=="esic")throw new Error("Invalid challan type");
   if(!force&&rawCache[type]&&Date.now()-rawCacheAt[type]<RAW_CACHE_MS)return rawCache[type];
   var rows=[];
   var edgeLoaded=false;
@@ -105,35 +144,73 @@ async function listRaw(type,force){
         edgeLoaded=true;
       }
     }catch(e){
-      console.warn('Edge list fallback to direct Supabase',e);
+      console.warn("Edge list fallback to direct Supabase",e);
     }
   }
   try{
-    var sbRows=await sbDirectRest('hr_files?doc_type=eq.'+type+'&select=id,filename,size,uploaded_at,payload,version&order=uploaded_at.desc');
-    var tombRows=await sbDirectRest('hr_files?doc_type=eq.'+type+'_tombstone&select=filename,uploaded_at');
+    var sbRows=await sbDirectRest("hr_files?doc_type=eq."+type+"&select=id,filename,size,uploaded_at,version&order=uploaded_at.desc");
+    var tombRows=await sbDirectRest("hr_files?doc_type=eq."+type+"_tombstone&select=filename,uploaded_at");
     var tombstones=new Set();
     if(Array.isArray(tombRows)){
       tombRows.forEach(function(t){if(t&&t.filename)tombstones.add(String(t.filename).toLowerCase().trim())});
     }
     if(Array.isArray(sbRows)){
+      var cache=loadMetaCache(type);
+      var missingIds=[];
       var directRows=[];
       sbRows.forEach(function(sr){
-        var fn=String(sr.filename||'').toLowerCase().trim();
+        var fn=String(sr.filename||"").toLowerCase().trim();
         if(tombstones.has(fn))return;
-        var p={};
-        try{p=typeof sr.payload==='string'?JSON.parse(sr.payload||'{}'):(sr.payload||{})}catch(_){}
+        var sId=String(sr.id);
+        var cached=cache[sId];
+        if(!cached||cached.uploaded_at!==sr.uploaded_at){
+          missingIds.push(sId);
+        }
+      });
+      if(missingIds.length>0){
+        for(var mi=0;mi<missingIds.length;mi+=25){
+          var batch=missingIds.slice(mi,mi+25);
+          try{
+            var fetched=await sbDirectRest("hr_files?id=in.("+batch.join(",")+")&select=id,payload");
+            if(Array.isArray(fetched)){
+              fetched.forEach(function(fr){
+                var p={};
+                try{p=typeof fr.payload==="string"?JSON.parse(fr.payload||"{}"):(fr.payload||{})}catch(_){}
+                cache[String(fr.id)]={
+                  id:String(fr.id),
+                  name:p.name||"Challan",
+                  hash:String(p.hash||p.fileHash||p.fingerprint||"").toLowerCase(),
+                  period:String(p.period||""),
+                  member_ids:arr(p.ids||p.member_ids),
+                  contributions:arr(p.contributions),
+                  uploaded_by:String(p.uploaded_by||"admin"),
+                  uploaded_at:(sbRows.find(function(x){return String(x.id)===String(fr.id)})||{}).uploaded_at||new Date().toISOString()
+                };
+              });
+            }
+          }catch(batchErr){
+            console.warn("[ATPL Sync] Error fetching missing metadata batch:",batchErr);
+          }
+        }
+        saveMetaCache(type,cache);
+      }
+      sbRows.forEach(function(sr){
+        var fn=String(sr.filename||"").toLowerCase().trim();
+        if(tombstones.has(fn))return;
+        var sId=String(sr.id);
+        var p=cache[sId]||{};
         directRows.push({
-          id:String(sr.id||''),
+          id:sId,
           challan_type:type,
-          file_name:sr.filename||p.name||'Challan',
+          file_name:sr.filename||p.name||"Challan",
           file_size:Number(sr.size||0),
-          file_hash:String(p.hash||p.fileHash||p.fingerprint||'').toLowerCase(),
-          period:String(p.period||''),
-          member_ids:arr(p.ids||p.member_ids),
+          file_hash:String(p.hash||"").toLowerCase(),
+          period:String(p.period||""),
+          member_ids:arr(p.member_ids),
           contributions:arr(p.contributions),
           created_at:sr.uploaded_at||new Date().toISOString(),
           updated_at:sr.uploaded_at||new Date().toISOString(),
-          uploaded_by:String(p.uploaded_by||'admin'),
+          uploaded_by:String(p.uploaded_by||"admin"),
           file_path:sr.filename,
           hasOriginalFile:true
         });
@@ -142,15 +219,14 @@ async function listRaw(type,force){
         rows=directRows;
       }else{
         var seen=new Set();
-        rows.forEach(function(r){var k=String(r.file_hash||r.fileHash||r.file_name||r.name||'').toLowerCase();if(k)seen.add(k)});
-        directRows.forEach(function(dr){var k=String(dr.file_hash||dr.file_name||'').toLowerCase();if(!seen.has(k)){rows.push(dr);seen.add(k)}});
+        rows.forEach(function(r){var k=String(r.file_hash||r.fileHash||r.file_name||r.name||"").toLowerCase();if(k)seen.add(k)});
+        directRows.forEach(function(dr){var k=String(dr.file_hash||dr.file_name||"").toLowerCase();if(!seen.has(k)){rows.push(dr);seen.add(k)}});
       }
     }
   }catch(err){
-    console.warn('Direct Supabase hr_files query error',err);
+    console.warn("Direct Supabase hr_files query error",err);
   }
-  rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows
-}
+  rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows}
 async function list(type){
   return (await listRaw(type,true)).map(mapRow)
 }
@@ -230,6 +306,25 @@ async function upload(rec,buf,progress){
     member_ids:ids,contributions:arr(rec&&rec.contributions),created_at:new Date().toISOString(),
     file_path:rec.name,hasOriginalFile:true
   });
+  var cObj=loadMetaCache(type);
+  cObj[String(rowObj.id)]={
+    id:String(rowObj.id),
+    name:rec.name,
+    hash:String(rec&&rec.hash||rec&&rec.fileHash||"").toLowerCase(),
+    period:rec.period||"",
+    member_ids:ids,
+    contributions:arr(rec&&rec.contributions),
+    uploaded_by:currentUserId()||"admin",
+    uploaded_at:new Date().toISOString()
+  };
+  saveMetaCache(type,cObj);
+  broadcastComplianceEvent(type,"save",{
+    filename:rec.name,
+    id:String(rowObj.id),
+    period:rec.period||"",
+    hash:String(rec&&rec.hash||rec&&rec.fileHash||"").toLowerCase(),
+    isDeleted:false
+  });
   rawCache[type]=null;rawCacheAt[type]=0;if(progress)progress(100);
   return{duplicate:false,restoredDeleted:false,record:mappedDirect,index:{ok:true,count:ids.length,record:mappedDirect}};
 }async function update(rec){
@@ -270,6 +365,14 @@ async function remove(rec){
       });
     }
   }catch(_){}
+  var cDel=loadMetaCache(type);
+  delete cDel[String(id)];
+  saveMetaCache(type,cDel);
+  broadcastComplianceEvent(type,"delete",{
+    filename:name,
+    id:String(id),
+    isDeleted:true
+  });
   rawCache[type]=null;rawCacheAt[type]=0;return{ok:true,deleted:true};
 }
 async function signedFile(rec){

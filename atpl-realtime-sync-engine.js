@@ -27,6 +27,8 @@
   var nativeFb = window.ATPLFirebase || null;
   var isReconciling = false;
   var lastReconcileTime = 0;
+  var hrDocSaveInFlight = new Set();
+  var lastKnownComplianceTime = 0;
 
   // Safe Base64 & Buffer helpers (Bulletproof across all modern and mobile browsers)
   function base64ToArrayBuffer(base64) {
@@ -137,6 +139,7 @@
   }
 
   function broadcastChange(payload) {
+    if (!realtimeChannel) initRealtimeChannel();
     if (realtimeChannel) {
       try {
         realtimeChannel.send({
@@ -146,6 +149,22 @@
         });
       } catch (_) {}
     }
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        var bc = new BroadcastChannel('atpl-local-tab-sync');
+        bc.postMessage(payload);
+        bc.close();
+      } catch (_) {}
+    }
+  }
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      var localBc = new BroadcastChannel('atpl-local-tab-sync');
+      localBc.onmessage = function(ev) {
+        if (ev && ev.data) handleIncomingBroadcast(ev.data);
+      };
+    } catch (_) {}
   }
 
   // Handle incoming live broadcast from another browser/phone
@@ -184,7 +203,57 @@
       }
     } else {
       // If a file was uploaded on any browser, trigger immediate download and refresh
+      if (module === 'pf' || module === 'esic') {
+        try {
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('atpl-dol-supabase-change', {
+              detail: { type: module, action: 'save', filename: name, id: id, at: Date.now() }
+            }));
+          }
+          if (window.syncCloudType && typeof window.syncCloudType === 'function') {
+            window.syncCloudType(module, true);
+          }
+        } catch (_) {}
+      } else if (module === 'hr_doc' || id.indexOf('HRD-') === 0) {
+        if (id) {
+          syncSingleHrDoc(id);
+        }
+      }
       triggerUniversalReconciliation();
+    }
+  }
+
+
+  async function syncSingleHrDoc(docId) {
+    if (!docId) return;
+    try {
+      var cleanId = String(docId).trim();
+      var rows = await sbRest('hr_files?filename=eq.' + encodeURIComponent(cleanId) + '&doc_type=eq.hr_doc&select=id,filename,payload,uploaded_at&order=uploaded_at.desc&limit=1');
+      if (Array.isArray(rows) && rows[0] && rows[0].payload) {
+        var d = typeof rows[0].payload === 'string' ? JSON.parse(rows[0].payload) : rows[0].payload;
+        if (d && d.id) {
+          var docs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : null;
+          if (Array.isArray(docs)) {
+            var cId = String(d.id).toLowerCase().trim();
+            var idx = docs.findIndex(function(x) { return x && String(x.id).toLowerCase().trim() === cId; });
+            if (idx >= 0) docs[idx] = d;
+            else docs.push(d);
+            try {
+              var r = indexedDB.open('AroraTextilesHRDocs', 1);
+              r.onsuccess = function(ev) {
+                var db = ev.target.result;
+                if (db.objectStoreNames.contains('documents')) {
+                  var tx = db.transaction('documents', 'readwrite');
+                  tx.objectStore('documents').put(d);
+                }
+              };
+            } catch (_) {}
+            if (typeof window.hrDocRender === 'function') window.hrDocRender();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[ATPL Sync] Error syncing single HR doc:', docId, e);
     }
   }
 
@@ -419,6 +488,29 @@
         };
       } catch(_) {}
 
+            try {
+        var req2 = indexedDB.open('ATPL_COMPLIANCE_DOL_V2', 1);
+        req2.onsuccess = function(e) {
+          var db = e.target.result;
+          if (db.objectStoreNames.contains('challans')) {
+            var tx = db.transaction('challans', 'readwrite');
+            var store = tx.objectStore('challans');
+            var curReq = store.openCursor();
+            curReq.onsuccess = function(ev) {
+              var cursor = ev.target.result;
+              if (cursor) {
+                var rec = cursor.value;
+                if (rec && String(rec.type || '').toLowerCase() === String(module).toLowerCase()) {
+                  if (String(rec.name || rec.id || '').toLowerCase().trim() === target || String(rec.cloudRecordId || '').toLowerCase().trim() === target) {
+                    cursor.delete();
+                  }
+                }
+                cursor.continue();
+              }
+            };
+          }
+        };
+      } catch (_) {}
       if (window.ATPLComplianceDolV1 && typeof window.ATPLComplianceDolV1.pullCloud === 'function') {
         window.ATPLComplianceDolV1.pullCloud(module);
       }
@@ -658,12 +750,11 @@
     }
   }
 
-  // Fetch active HR Documents, auto-prune deleted, auto-download missing
+  // Fetch active HR Documents metadata-first, auto-prune deleted, download only missing
   async function reconcileHrDocs() {
     try {
-      var rows = await sbRest('hr_files?select=filename,payload,uploaded_at&doc_type=eq.hr_doc');
+      var rows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.hr_doc&order=uploaded_at.desc');
       if (!Array.isArray(rows)) return;
-
       var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.hr_doc_tombstone');
       var hrTombs = {};
       if (Array.isArray(tombRows)) {
@@ -671,35 +762,28 @@
           if (t && t.filename) hrTombs[String(t.filename).toLowerCase().trim()] = t.uploaded_at;
         });
       }
-
-      var activeServerDocs = new Map();
+      var latestServerDocs = new Map();
       rows.forEach(function(r) {
-        try {
-          var d = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
-          if (d && d.id) {
-            var dId = String(d.id).toLowerCase().trim();
-            var tStamp = hrTombs[dId];
-            if (tStamp && Date.parse(tStamp) >= Date.parse(d.updated_at || r.uploaded_at || '0')) {
-              return; // Explicitly tombstoned!
-            }
-            activeServerDocs.set(dId, d);
-          }
-        } catch(_) {}
+        if (!r || !r.filename) return;
+        var fn = String(r.filename).toLowerCase().trim();
+        var tStamp = hrTombs[fn];
+        if (tStamp && Date.parse(tStamp) >= Date.parse(r.uploaded_at || '0')) return;
+        if (!latestServerDocs.has(fn)) {
+          latestServerDocs.set(fn, r);
+        }
       });
-
       var changed = false;
       var localDocs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : null;
       if (Array.isArray(localDocs)) {
-        // Prune ONLY if explicitly tombstoned with a newer timestamp!
         var origCount = localDocs.length;
         var remaining = localDocs.filter(function(d) {
           if (!d || !d.id) return false;
           var lid = String(d.id).toLowerCase().trim();
           var tStamp = hrTombs[lid];
           if (tStamp && Date.parse(tStamp) >= Date.parse(d.updated_at || '0')) {
-            return false; // Explicitly tombstoned by user
+            return false;
           }
-          return true; // Keep local edited/created document!
+          return true;
         });
         if (remaining.length !== origCount) {
           localDocs.length = 0;
@@ -707,67 +791,48 @@
           changed = true;
         }
 
-        // Auto-upload local documents to server if server is missing them
-        for (var i = 0; i < localDocs.length; i++) {
-          var ld = localDocs[i];
-          if (ld && ld.id) {
-            var lId = String(ld.id).toLowerCase().trim();
-            if (!activeServerDocs.has(lId) && !hrTombs[lId]) {
-              try { UniversalEngine.saveHrDoc(ld); } catch(_) {}
+        var localIds = new Set();
+        localDocs.forEach(function(x) { if (x && x.id) localIds.add(String(x.id).toLowerCase().trim()); });
+
+        var missingRows = [];
+        for (var [fnLower, sRow] of latestServerDocs.entries()) {
+          if (!localIds.has(fnLower)) {
+            missingRows.push(sRow);
+          }
+        }
+
+        if (missingRows.length > 0) {
+          for (var i = 0; i < missingRows.length; i++) {
+            var mRow = missingRows[i];
+            try {
+              var pData = await sbRest('hr_files?id=eq.' + mRow.id + '&select=id,filename,payload,uploaded_at');
+              if (Array.isArray(pData) && pData[0] && pData[0].payload) {
+                var d = typeof pData[0].payload === 'string' ? JSON.parse(pData[0].payload) : pData[0].payload;
+                if (d && d.id) {
+                  var dId = String(d.id).toLowerCase().trim();
+                  if (!localDocs.some(function(x) { return x && String(x.id).toLowerCase().trim() === dId; })) {
+                    localDocs.push(d);
+                    try {
+                      var r = indexedDB.open('AroraTextilesHRDocs', 1);
+                      r.onsuccess = function(ev) {
+                        var db = ev.target.result;
+                        if (db.objectStoreNames.contains('documents')) {
+                          var tx = db.transaction('documents', 'readwrite');
+                          tx.objectStore('documents').put(d);
+                        }
+                      };
+                    } catch (_) {}
+                    changed = true;
+                    if (typeof window.hrDocRender === 'function') window.hrDocRender();
+                  }
+                }
+              }
+            } catch (errDl) {
+              console.warn('[ATPL Sync] Error downloading missing HR doc:', mRow.filename, errDl);
             }
           }
         }
-
-        // Add missing docs from server to local
-        for (var [dId, sDoc] of activeServerDocs.entries()) {
-          var exists = localDocs.some(function(x) { return x && String(x.id).toLowerCase().trim() === dId; });
-          if (!exists && !hrTombs[dId]) {
-            localDocs.push(sDoc);
-            // Save to IndexedDB
-            try {
-              var r = indexedDB.open('AroraTextilesHRDocs', 1);
-              r.onsuccess = function(ev) {
-                var db = ev.target.result;
-                if (db.objectStoreNames.contains('documents')) {
-                  var tx = db.transaction('documents', 'readwrite');
-                  tx.objectStore('documents').put(sDoc);
-                }
-              };
-            } catch(_) {}
-            changed = true;
-          }
-        }
       }
-
-      // In IndexedDB documents store: ONLY delete if explicitly tombstoned!
-      try {
-        var req = indexedDB.open('AroraTextilesHRDocs', 1);
-        req.onsuccess = function(ev) {
-          var db = ev.target.result;
-          if (db.objectStoreNames.contains('documents')) {
-            var tx = db.transaction('documents', 'readwrite');
-            var store = tx.objectStore('documents');
-            var curReq = store.openCursor();
-            curReq.onsuccess = function(e) {
-              var cursor = e.target.result;
-              if (cursor) {
-                var doc = cursor.value;
-                if (doc && doc.id) {
-                  var docId = String(doc.id).toLowerCase().trim();
-                  var tStamp = hrTombs[docId];
-                  if (tStamp && Date.parse(tStamp) >= Date.parse(doc.updated_at || '0')) {
-                    cursor.delete();
-                  } else if (!activeServerDocs.has(docId) && !hrTombs[docId]) {
-                    try { UniversalEngine.saveHrDoc(doc); } catch(_) {}
-                  }
-                }
-                cursor.continue();
-              }
-            };
-          }
-        };
-      } catch(_) {}
-
       if (changed && typeof window.hrDocRender === 'function') {
         window.hrDocRender();
       }
@@ -788,6 +853,21 @@
             purgeLocalCompliance(dt.replace('_tombstone', ''), t.filename);
           }
         });
+      }
+      var latestComp = await sbRest('hr_files?doc_type=in.(pf,esic)&select=id,filename,doc_type,uploaded_at&order=uploaded_at.desc&limit=1');
+      if (Array.isArray(latestComp) && latestComp[0]) {
+        var topTime = Date.parse(latestComp[0].uploaded_at || '0') || 0;
+        if (topTime > lastKnownComplianceTime) {
+          lastKnownComplianceTime = topTime;
+          if (window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('atpl-dol-supabase-change', {
+              detail: { type: latestComp[0].doc_type, action: 'save', filename: latestComp[0].filename, at: Date.now() }
+            }));
+          }
+          if (window.syncCloudType && typeof window.syncCloudType === 'function') {
+            window.syncCloudType(latestComp[0].doc_type, true);
+          }
+        }
       }
     } catch (_) {}
   }
