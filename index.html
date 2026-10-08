@@ -9499,7 +9499,13 @@ function emRenderSingleRow(e) {
       inp.placeholder = c.label;
       inp.style.cssText = 'width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;';
       inp.addEventListener('focus', function(){ this.parentElement.style.boxShadow='inset 0 0 0 2px #6366f1'; this.style.background='#1e1b4b'; });
-      inp.addEventListener('blur',  function(){ this.parentElement.style.boxShadow=''; this.style.background='transparent'; });
+      inp.addEventListener('blur',  function(){
+        this.parentElement.style.boxShadow=''; this.style.background='transparent';
+        if((c.key==='dob'||c.key==='doj'||c.key==='dol')&&this.value.trim()&&typeof window.normalizeDate==='function'){
+          var n=window.normalizeDate(this.value.trim());
+          if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)) this.value=n;
+        }
+      });
       // Tab = next input
       inp.addEventListener('keydown', function(ev){
         if(ev.key==='Tab') {
@@ -9573,6 +9579,12 @@ function emSaveModal() {
     if(!el) return;
     var val = el.value ? el.value.trim() : '';
     if((c.key==='emp_id'||c.key==='name') && !val){ el.style.border='2px solid #dc2626'; valid=false; return; }
+    if(c.key==='dob'||c.key==='doj'||c.key==='dol'){
+      if(val && typeof window.normalizeDate==='function'){
+        var norm=window.normalizeDate(val);
+        if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)){val=norm;el.value=norm;}
+      }
+    }
     if(c.type==='number') newEmp[c.key] = parseFloat(val)||0;
     else newEmp[c.key] = val ? val.toUpperCase() : '';
   });
@@ -11478,6 +11490,10 @@ function aroraNormHeader(v){
 }
 function aroraToDate(v){
   if(v==null||v==='') return '';
+  if(typeof window.normalizeDate==='function'){
+    var norm=window.normalizeDate(v);
+    if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)) return norm;
+  }
   if(v instanceof Date && !isNaN(v.getTime())){
     return String(v.getDate()).padStart(2,'0')+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+v.getFullYear();
   }

@@ -68,6 +68,12 @@ function fieldsToEmployee(){
   cols.forEach(function(c){
     var el=g.document.getElementById('emf_'+c.key);if(!el)return;var val=el.value?el.value.trim():'';
     if((c.key==='emp_id'||c.key==='name')&&!val){el.style.border='2px solid #dc2626';valid=false;return}
+    if(c.key==='dob'||c.key==='doj'||c.key==='dol'){
+      if(val && typeof g.normalizeDate==='function'){
+        var norm=g.normalizeDate(val);
+        if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)){val=norm;el.value=norm;}
+      }
+    }
     if(c.type==='number')out[c.key]=parseFloat(val)||0;else out[c.key]=val?val.toUpperCase():''
   });
   return valid?out:null
@@ -75,6 +81,7 @@ function fieldsToEmployee(){
 async function confirmedSingleSave(){
   if(busy)return;ensureUi();
   if(!g.EM||!Array.isArray(g.EM.data)){paint('failed','Save Failed — Retry',confirmedSingleSave);return}
+  if(typeof g.validateSingle==='function'&&!g.validateSingle())return;
   var entered=fieldsToEmployee();if(!entered){alert('Employee Code aur Name mandatory hain!');return}
   var edit=Number(g.EM.editIdx),original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null,candidate=Object.assign({},original||{},entered),c=cloud();
   if(!c||typeof c.saveMaster!=='function'){paint('failed','Save Failed — Retry',confirmedSingleSave);info('Shared backend save service unavailable. Data ko Saved mark nahi kiya gaya.',true);return}

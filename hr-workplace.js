@@ -7,13 +7,94 @@ var L={emp_id:'Employee Code',name:'Employee Name',father:"Father's Name",dob:'D
 var A={emp_id:['code','emp code','employee code'],name:['name','employee name'],father:['father','father name','fathers name'],dob:['dob','date of birth'],doj:['doj','date of joining'],pf_no:['pf no','uan','uan no'],esi_no:['esi no','esic no','ip no'],bank_name:['bank','bank name'],ifsc:['ifsc','ifsc code'],account_no:['account','account no','account number','a c no'],gender:['gender','sex'],dept:['dept','department'],cat1:['category','category 1','category 01'],basic:['basic','basic salary'],hra:['hra'],gross:['gross','gross salary'],aadhaar_no:['aadhaar','aadhaar no','aadhaar number','aadhar'],phone_no:['phone','phone no','phone number','mobile','mobile no'],qualification:['qualification','education'],present_address:['present address','current address'],permanent_address:['permanent address'],marital_status:['marital status','marital'],nominee_name:['nominee','nominee name'],nominee_relation:['relationship with nominee','relation with nominee','nominee relation'],nominee_dob:['nominee dob','nominee date of birth']};
 function n(v){return String(v==null?'':v).toLowerCase().replace(/[.\-_\/\\()&:#]+/g,' ').replace(/\s+/g,' ').trim()}
 function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function cv(k,v){var s=String(v==null?'':v).trim();if(k==='basic'||k==='hra'||k==='gross'){var z=parseFloat(s.replace(/,/g,''));return isFinite(z)?z:0}return s}
-function validDate(v){var m=String(v||'').trim().match(/^(\d{2})-(\d{2})-(\d{4})$/);if(!m)return false;var d=+m[1],mo=+m[2],y=+m[3],dt=new Date(y,mo-1,d);return y>=1900&&dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d}
+function normalizeDate(v){
+  if(v==null) return '';
+  var s=String(v).trim();
+  if(!s||s==='—'||s==='NA'||s==='-'||s==='null'||s==='undefined') return '';
+  if(v instanceof Date && !isNaN(v.getTime())){
+    return String(v.getDate()).padStart(2,'0')+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+v.getFullYear();
+  }
+  if(typeof v==='number'&&v>1000&&v<80000){
+    var dt=new Date(Math.round((v-25569)*86400*1000));
+    if(!isNaN(dt.getTime())){
+      return String(dt.getUTCDate()).padStart(2,'0')+'-'+String(dt.getUTCMonth()+1).padStart(2,'0')+'-'+dt.getUTCFullYear();
+    }
+  }
+  var m1=s.match(/^(\d{1,2})[\/\-.\s](\d{1,2})[\/\-.\s](\d{2,4})$/);
+  if(m1){
+    var d=parseInt(m1[1],10),mo=parseInt(m1[2],10),y=parseInt(m1[3],10);
+    if(y<100) y=(y>30?1900:2000)+y;
+    var dt=new Date(y,mo-1,d);
+    if(y>=1900&&y<=2100&&dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d){
+      return String(d).padStart(2,'0')+'-'+String(mo).padStart(2,'0')+'-'+y;
+    }
+  }
+  var m2=s.match(/^(\d{4})[\/\-.\s](\d{1,2})[\/\-.\s](\d{1,2})$/);
+  if(m2){
+    var y=parseInt(m2[1],10),mo=parseInt(m2[2],10),d=parseInt(m2[3],10);
+    var dt=new Date(y,mo-1,d);
+    if(y>=1900&&y<=2100&&dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d){
+      return String(d).padStart(2,'0')+'-'+String(mo).padStart(2,'0')+'-'+y;
+    }
+  }
+  var digits=s.replace(/\D/g,'');
+  if(digits.length===8){
+    var d3=parseInt(digits.slice(0,2),10),mo3=parseInt(digits.slice(2,4),10),y3=parseInt(digits.slice(4,8),10);
+    var dt3=new Date(y3,mo3-1,d3);
+    if(y3>=1900&&y3<=2100&&dt3.getFullYear()===y3&&dt3.getMonth()===mo3-1&&dt3.getDate()===d3){
+      return String(d3).padStart(2,'0')+'-'+String(mo3).padStart(2,'0')+'-'+y3;
+    }
+    var y3b=parseInt(digits.slice(0,4),10),mo3b=parseInt(digits.slice(4,6),10),d3b=parseInt(digits.slice(6,8),10);
+    var dt3b=new Date(y3b,mo3b-1,d3b);
+    if(y3b>=1900&&y3b<=2100&&dt3b.getFullYear()===y3b&&dt3b.getMonth()===mo3b-1&&dt3b.getDate()===d3b){
+      return String(d3b).padStart(2,'0')+'-'+String(mo3b).padStart(2,'0')+'-'+y3b;
+    }
+  }
+  return s;
+}
+window.normalizeDate = normalizeDate;
+function cv(k,v){var s=String(v==null?'':v).trim();if(k==='basic'||k==='hra'||k==='gross'){var z=parseFloat(s.replace(/,/g,''));return isFinite(z)?z:0}if(k==='dob'||k==='doj'||k==='dol'){if(s){var norm=normalizeDate(s);if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm))return norm;}}return s}
+function validDate(v){if(v==null)return true;var s=String(v).trim();if(!s||s==='—'||s==='NA'||s==='-')return true;var norm=normalizeDate(s);var m=norm.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(!m)return false;var d=+m[1],mo=+m[2],y=+m[3],dt=new Date(y,mo-1,d);return y>=1900&&y<=2100&&dt.getFullYear()===y&&dt.getMonth()===mo-1&&dt.getDate()===d}
+window.validDate = validDate;
 function validIFSC(v){return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(v||'').trim().toUpperCase())}
 function mark(el,bad){if(el)el.style.border=bad?'2px solid #dc2626':''}
-function setupValidation(){var dob=document.getElementById('emf_dob'),ifs=document.getElementById('emf_ifsc');if(dob){dob.type='text';dob.placeholder='DD-MM-YYYY';dob.maxLength=10;dob.setAttribute('inputmode','numeric');dob.oninput=function(){var x=this.value.replace(/\D/g,'').slice(0,8);this.value=x.slice(0,2)+(x.length>2?'-'+x.slice(2,4):'')+(x.length>4?'-'+x.slice(4,8):'');mark(this,this.value.length===10&&!validDate(this.value))}}if(ifs){ifs.maxLength=11;ifs.style.textTransform='uppercase';ifs.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,11);mark(this,this.value.length===11&&!validIFSC(this.value))}}}
-function validateSingle(){var dob=document.getElementById('emf_dob'),ifs=document.getElementById('emf_ifsc');if(dob&&dob.value.trim()&&!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return false}if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return false}return true}
-function validateRows(out){for(var i=0;i<out.length;i++){if(out[i].dob&&!validDate(out[i].dob))return 'Row '+(i+1)+': D.O.B '+out[i].dob+' invalid hai. Required format DD-MM-YYYY.';if(out[i].ifsc&&!validIFSC(out[i].ifsc))return 'Row '+(i+1)+': IFSC '+out[i].ifsc+' invalid hai. IFSC exact 11 characters aur valid format me hona chahiye.'}return ''}
+function bindDateInput(dob){
+  if(!dob) return;
+  dob.type='text';
+  dob.placeholder='DD-MM-YYYY';
+  dob.maxLength=10;
+  dob.setAttribute('inputmode','numeric');
+  dob.setAttribute('autocomplete','off');
+  dob.oninput=function(){
+    var v=this.value;
+    if(/^\d{8}$/.test(v)){
+      var n=normalizeDate(v);
+      if(n&&n.length===10) this.value=n;
+    }
+    if(this.value.length===10){
+      var n=normalizeDate(this.value);
+      if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)) this.value=n;
+      mark(this,!validDate(this.value));
+    } else {
+      mark(this,false);
+    }
+  };
+  dob.onblur=function(){
+    var v=this.value.trim();
+    if(!v){mark(this,false);return;}
+    var n=normalizeDate(v);
+    if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)){
+      this.value=n;
+      mark(this,false);
+    } else {
+      mark(this,!validDate(this.value));
+    }
+  };
+}
+function setupValidation(){var dob=document.getElementById('emf_dob'),ifs=document.getElementById('emf_ifsc');bindDateInput(dob);if(ifs){ifs.maxLength=11;ifs.style.textTransform='uppercase';ifs.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,11);mark(this,this.value.length===11&&!validIFSC(this.value))}}}
+function validateSingle(){var dob=document.getElementById('emf_dob'),ifs=document.getElementById('emf_ifsc');if(dob&&dob.value.trim()){var n=normalizeDate(dob.value.trim());if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)){dob.value=n;mark(dob,false)}else if(!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return false}}if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return false}return true}
+window.validateSingle = validateSingle;
+function validateRows(out){for(var i=0;i<out.length;i++){if(out[i].dob){var n=normalizeDate(out[i].dob);if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n))out[i].dob=n;if(!validDate(out[i].dob))return 'Row '+(i+1)+': D.O.B '+out[i].dob+' invalid hai. Required format DD-MM-YYYY.';}if(out[i].ifsc&&!validIFSC(out[i].ifsc))return 'Row '+(i+1)+': IFSC '+out[i].ifsc+' invalid hai. IFSC exact 11 characters aur valid format me hona chahiye.'}return ''}
 function expected(){var b=document.getElementById('emTabPanel-bulk');if(!b)return;Array.prototype.some.call(b.querySelectorAll('span'),function(s){if((s.textContent||'').trim().indexOf('Expected columns:')===0){s.textContent='Expected columns: '+O.map(function(k){return L[k].replace('Employee ','')}).join(' | ');s.style.whiteSpace='normal';s.style.lineHeight='1.7';return true}return false})}
 function mapper(){var b=document.getElementById('emTabPanel-bulk');if(!b)return;var old=document.getElementById('atplMapper');if(old&&b.contains(old)){draw();return}if(old)old.remove();var q=document.createElement('div');q.id='atplMapper';q.innerHTML='<div class="atplMT"><b>↔ Excel Column Order</b><span>Excel ke order ke hisaab se fields ko ◀ ▶ se aage-piche karo</span><button type="button" id="atplReset">Reset</button></div><div id="atplML"></div>';var ta=document.getElementById('emBulkPasteArea');if(ta&&ta.parentNode)ta.parentNode.insertBefore(q,ta);else b.appendChild(q);var r=document.getElementById('atplReset');if(r)r.onclick=function(){M=O.slice();draw()};draw()}
 function draw(){var d=document.getElementById('atplML');if(!d)return;d.innerHTML='';M.forEach(function(k,i){var x=document.createElement('div');x.className='atplChip';x.innerHTML='<b>'+(i+1)+'</b><span>'+esc(L[k].replace('Employee ',''))+'</span><button type="button" data-d="-1">◀</button><button type="button" data-d="1">▶</button>';Array.prototype.forEach.call(x.querySelectorAll('button'),function(bt){bt.onclick=function(){var p=M.indexOf(k),to=p+parseInt(bt.dataset.d,10);if(to<0||to>=M.length)return;var t=M[p];M[p]=M[to];M[to]=t;draw()}});d.appendChild(x)})}
@@ -26,9 +107,9 @@ function more(){var old=document.getElementById('atplMore');if(old)old.remove();
 var VKEYS=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'].concat(X.map(function(x){return x[0]}));
 function viewBox(){var v=document.getElementById('atplEmployeeView');if(v)return v;v=document.createElement('div');v.id='atplEmployeeView';v.innerHTML='<div class="atplVCard"><div class="atplVHead"><div><b>👤 View Employee Details</b><span>Edit and save employee information</span></div><button type="button" id="atplVClose">×</button></div><div id="atplVBody"></div><div class="atplVFoot"><button type="button" id="atplVSave">💾 Save Changes</button><button type="button" id="atplVClose2">✕ Close</button></div></div>';document.body.appendChild(v);function close(){v.style.display='none'}document.getElementById('atplVClose').onclick=close;document.getElementById('atplVClose2').onclick=close;document.getElementById('atplVSave').onclick=saveView;v.onclick=function(ev){if(ev.target===v)close()};return v}
 function vf(k,v){var type=(k==='basic'||k==='hra'||k==='gross')?'number':'text',extra=X.find(function(x){return x[0]===k}),h='<div class="atplVF"><label>'+esc(L[k]||k)+(k==='emp_id'||k==='name'?' *':'')+'</label>';if(k==='present_address'||k==='permanent_address')h+='<textarea id="atplv_'+k+'">'+esc(v)+'</textarea>';else if(k==='gender')h+='<select id="atplv_'+k+'"><option value="">Select</option><option>MALE</option><option>FEMALE</option><option>OTHER</option></select>';else if(k==='marital_status')h+='<select id="atplv_'+k+'"><option value="">Select</option><option>SINGLE</option><option>MARRIED</option><option>DIVORCED</option><option>WIDOWED</option><option>SEPARATED</option></select>';else if(k==='dob')h+='<input id="atplv_dob" type="text" maxlength="10" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(v)+'">';else if(k==='ifsc')h+='<input id="atplv_ifsc" type="text" maxlength="11" value="'+esc(v)+'">';else h+='<input id="atplv_'+k+'" type="'+(extra&&extra[2]==='tel'?'tel':type)+'" value="'+esc(v)+'">';return h+'</div>'}
-function setupViewValidation(){var dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');if(dob)dob.oninput=function(){var x=this.value.replace(/\D/g,'').slice(0,8);this.value=x.slice(0,2)+(x.length>2?'-'+x.slice(2,4):'')+(x.length>4?'-'+x.slice(4,8):'');mark(this,this.value.length===10&&!validDate(this.value))};if(ifs){ifs.style.textTransform='uppercase';ifs.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,11);mark(this,this.value.length===11&&!validIFSC(this.value))}}}
+function setupViewValidation(){var dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');bindDateInput(dob);if(ifs){ifs.style.textTransform='uppercase';ifs.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,11);mark(this,this.value.length===11&&!validIFSC(this.value))}}}
 function showView(i){try{var d=EM.data[i];if(!d)return;var v=viewBox(),h='<div class="atplVGrid">';v.dataset.idx=String(i);VKEYS.forEach(function(k){var z=d[k];if(z===undefined||z===null)z='';h+=vf(k,z)});h+='</div>';document.getElementById('atplVBody').innerHTML=h;VKEYS.forEach(function(k){var el=document.getElementById('atplv_'+k);if(el&&el.tagName==='SELECT')el.value=String(d[k]||'').toUpperCase()});setupViewValidation();v.style.display='flex'}catch(_){}}
-function saveView(){try{var v=document.getElementById('atplEmployeeView'),i=parseInt(v.dataset.idx,10);if(!isFinite(i)||!EM.data[i])return;var emp=document.getElementById('atplv_emp_id'),name=document.getElementById('atplv_name'),dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');if(!emp.value.trim()){alert('Employee Code mandatory hai!');emp.focus();return}if(!name.value.trim()){alert('Employee Name mandatory hai!');name.focus();return}if(dob&&dob.value.trim()&&!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return}if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return}var u={};VKEYS.forEach(function(k){var el=document.getElementById('atplv_'+k);if(!el)return;var val=String(el.value||'').trim();if(k==='basic'||k==='hra'||k==='gross'){var num=parseFloat(val.replace(/,/g,''));u[k]=isFinite(num)?num:0}else if(k==='ifsc')u[k]=val.toUpperCase();else u[k]=val});EM.data[i]=Object.assign({},EM.data[i],u);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));if(typeof window.emFilter==='function')window.emFilter();if(typeof window.emUpdateStats==='function')window.emUpdateStats();alert('Employee details saved successfully.');showView(i)}catch(e){alert('Employee details save nahi ho paayi. Please try again.')}}
+function saveView(){try{var v=document.getElementById('atplEmployeeView'),i=parseInt(v.dataset.idx,10);if(!isFinite(i)||!EM.data[i])return;var emp=document.getElementById('atplv_emp_id'),name=document.getElementById('atplv_name'),dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');if(!emp.value.trim()){alert('Employee Code mandatory hai!');emp.focus();return}if(!name.value.trim()){alert('Employee Name mandatory hai!');name.focus();return}if(dob&&dob.value.trim()){var n=normalizeDate(dob.value.trim());if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)){dob.value=n;mark(dob,false)}else if(!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return}}if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return}var u={};VKEYS.forEach(function(k){var el=document.getElementById('atplv_'+k);if(!el)return;var val=String(el.value||'').trim();if(k==='basic'||k==='hra'||k==='gross'){var num=parseFloat(val.replace(/,/g,''));u[k]=isFinite(num)?num:0}else if(k==='ifsc')u[k]=val.toUpperCase();else u[k]=val});EM.data[i]=Object.assign({},EM.data[i],u);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));if(typeof window.emFilter==='function')window.emFilter();if(typeof window.emUpdateStats==='function')window.emUpdateStats();alert('Employee details saved successfully.');showView(i)}catch(e){alert('Employee details save nahi ho paayi. Please try again.')}}
 function hooks(){if(!window.__atplO10&&typeof window.emOpenAdd==='function'){var a=window.emOpenAdd;window.emOpenAdd=function(){var r=a.apply(this,arguments);more();setupValidation();return r};window.__atplO10=1}if(!window.__atplE10&&typeof window.emOpenEdit==='function'){var q=window.emOpenEdit;window.emOpenEdit=function(){var r=q.apply(this,arguments);more();setupValidation();return r};window.__atplE10=1}if(!window.__atplS10&&typeof window.emSaveModal==='function'){var s=window.emSaveModal;window.emSaveModal=function(){if(!validateSingle())return;var idx=typeof EM!=='undefined'?EM.editIdx:-1,code=(document.getElementById('emf_emp_id')||{}).value||'',x={};X.forEach(function(f){var z=document.getElementById('atpl_'+f[0]);x[f[0]]=z?String(z.value||'').trim():''});var r=s.apply(this,arguments);try{var p=idx>=0?idx:EM.data.findIndex(function(v){return String(v.emp_id||'')===String(code)});if(p>=0){Object.assign(EM.data[p],x);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data))}}catch(_){ }return r};window.__atplS10=1}if(!window.__atplT10&&typeof window.emSwitchTab==='function'){var t=window.emSwitchTab;window.emSwitchTab=function(tab){var r=t.apply(this,arguments);if(tab==='bulk'){expected();mapper()}return r};window.__atplT10=1}if(typeof window.emViewEmp==='function')window.emViewEmp=function(i){showView(i)}}
 function css(){if(document.getElementById('atplCss10'))return;var s=document.createElement('style');s.id='atplCss10';s.textContent='#atplMapper{margin:0 20px 14px;padding:12px;border:1px solid #6366f1;border-radius:10px;background:#101827}.atplMT{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#fff;font-size:11px}.atplMT span{color:#a5b4fc}.atplMT button{margin-left:auto;background:#334155;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer}#atplML{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.atplChip{display:flex;align-items:center;gap:4px;background:#172033;border:1px solid #475569;border-radius:7px;padding:5px;color:#e2e8f0;font-size:10px}.atplChip b{background:#4f46e5;border-radius:50%;min-width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center}.atplChip button{border:0;border-radius:4px;background:#334155;color:#fff;cursor:pointer;padding:2px 5px}#atplMore{min-width:100%;padding:12px 16px;background:#0f172a;border-top:1px solid #334155}#atplMoreBtn{padding:8px 14px;border:1px solid #6366f1;border-radius:8px;background:#312e81;color:#fff;font-size:11px;font-weight:800;cursor:pointer}#atplMoreBody{display:none;margin-top:12px;padding:14px;border:1px solid #334155;border-radius:10px;background:#111827}#atplMoreBody.open{display:block}.atplF{margin-bottom:10px}.atplF label{display:block;margin-bottom:5px;font-size:9px;font-weight:800;color:#94a3b8}.atplF input,.atplF textarea,.atplF select{width:100%;box-sizing:border-box;padding:9px;border:1px solid #475569;border-radius:7px;background:#0b1220;color:#fff}.atplF textarea{min-height:70px}.atplPVTitle{font-size:10px;font-weight:800;color:#10b981;margin:6px 0}.atplPVScroll{overflow:auto;max-width:100%;border:1px solid #334155}.atplPVScroll table{border-collapse:collapse;min-width:2300px;width:100%;font-size:9px}.atplPVScroll th,.atplPVScroll td{padding:6px 8px;border-right:1px solid #334155;border-bottom:1px solid #334155;white-space:nowrap}.atplPVScroll th{background:#0f172a;color:#94a3b8}.atplPVScroll td{background:#111827;color:#fff}#atplEmployeeView{position:fixed;inset:0;z-index:100050;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(2,6,23,.78)}.atplVCard{width:min(880px,96vw);max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.45)}.atplVHead{display:flex;align-items:center;padding:15px 18px;background:linear-gradient(135deg,#075985,#0ea5e9);color:#fff}.atplVHead>div{display:flex;flex-direction:column}.atplVHead b{font-size:16px}.atplVHead span{font-size:10px;opacity:.9;margin-top:2px}.atplVHead button{margin-left:auto;width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer}#atplVBody{padding:16px 18px;overflow:auto;background:#fff}.atplVGrid{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px}.atplVF label{display:block;margin-bottom:4px;font-size:9px;font-weight:900;color:#475569;text-transform:uppercase}.atplVF input,.atplVF textarea,.atplVF select{width:100%;box-sizing:border-box;min-height:38px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#0f172a;font-size:12px;outline:none}.atplVF textarea{min-height:68px;resize:vertical}.atplVFoot{padding:10px 18px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end}.atplVFoot button{padding:8px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-weight:700;cursor:pointer}#atplVSave{background:#0284c7!important;border-color:#0284c7!important;color:#fff!important}@media(max-width:650px){.atplVGrid{grid-template-columns:1fr}}';document.head.appendChild(s)}
 function delegatedView(ev){var el=ev.target&&ev.target.closest?ev.target.closest('[onclick]'):null;if(!el)return;var oc=el.getAttribute('onclick')||'',m=oc.match(/emViewEmp\s*\(\s*(\d+)\s*\)/i);if(!m)return;ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation();showView(parseInt(m[1],10))}
