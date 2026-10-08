@@ -5,7 +5,15 @@ const crypto = require('crypto');
 const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const args = process.argv.slice(2);
+let parsedPort = 3000;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--port' && args[i + 1]) {
+    parsedPort = parseInt(args[i + 1], 10);
+    break;
+  }
+}
+const PORT = parsedPort || 3000;
 
 // CORS Support for multi-browser and external origins (Cloud Run, local dev, GitHub Pages)
 app.use((req, res, next) => {
