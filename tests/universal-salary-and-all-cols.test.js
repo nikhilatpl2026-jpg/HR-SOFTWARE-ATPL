@@ -76,4 +76,66 @@ test('Universal Salary Header Reader & Complete 29-Column Drag/Edit/Remove Syste
     ctx.emCloseAddColModal();
     assert.equal(modal.style.display, "none", "emColModal display must be none after close");
   });
+  await t.test("6. Cross-browser column state persists removed columns without force-readding them", () => {
+    const store = {};
+    const mockDoc = {
+      getElementById: () => ({ style: {}, appendChild: () => {} }),
+      createElement: () => ({ style: {}, setAttribute: () => {}, addEventListener: () => {} }),
+      addEventListener: () => {}
+    };
+    const ctx = {
+      document: mockDoc,
+      window: {},
+      localStorage: {
+        getItem: (k) => store[k] || null,
+        setItem: (k, v) => { store[k] = String(v); },
+        removeItem: (k) => { delete store[k]; }
+      },
+      alert: () => {},
+      prompt: () => "NEW_COL"
+    };
+    ctx.window = ctx;
+    const marker = "// EMPLOYEE MASTER — Excel Style Editor Functions";
+    const scriptStart = html.indexOf(marker);
+    const scriptEnd = html.indexOf("</script>", scriptStart);
+    const code = html.slice(scriptStart, scriptEnd);
+    const vm = require("vm");
+    vm.runInNewContext(code, ctx);
+
+    // Initial length 29
+    assert.equal(ctx.EM_COLS.length, 29);
+    // Remove one column (e.g., dol exit)
+    const dolIdx = ctx.EM_COLS.findIndex(c => c.key === "dol");
+    assert(dolIdx >= 0, "dol must exist");
+    ctx.EM_COLS.splice(dolIdx, 1);
+    assert.equal(ctx.EM_COLS.length, 28);
+    ctx.emSaveColOrder();
+
+    assert(store["ATPL_EM_COLS_Setting"], "Must save ATPL_EM_COLS_Setting");
+
+    // Create fresh context simulating new tab or another browser window
+    const freshCtx = {
+      document: mockDoc,
+      window: {},
+      localStorage: {
+        getItem: (k) => store[k] || null,
+        setItem: (k, v) => { store[k] = String(v); },
+        removeItem: (k) => { delete store[k]; }
+      },
+      alert: () => {},
+      prompt: () => "NEW_COL"
+    };
+    freshCtx.window = freshCtx;
+    vm.runInNewContext(code, freshCtx);
+
+    // After loading from storage, dol must remain removed!
+    assert.equal(freshCtx.EM_COLS.length, 28, "Deleted column must NOT be forcefully restored on reload");
+    assert(!freshCtx.EM_COLS.some(c => c.key === "dol"), "dol column must stay deleted");
+  });
+
+  await t.test("7. Single row header contains Rename ✏️ button and erp-durable includes ATPL_EM_COLS_", () => {
+    assert(html.includes("title=\"Rename Header (✏️)\""), "Single row header must include Rename ✏️ button");
+    const durableCode = fs.readFileSync(path.join(__dirname, "../erp-durable-everything-v1.js"), "utf8");
+    assert(durableCode.includes("ATPL_EM_COLS_"), "erp-durable-everything must sync ATPL_EM_COLS_");
+  });
 });

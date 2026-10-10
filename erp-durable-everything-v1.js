@@ -93,7 +93,7 @@ async function fetchRemoteKinds(kinds){
   return all.filter(function(r){return r&&allow[text(r.object_kind)]})
 }
 
-  function allowedLocalKey(k){k=String(k||'');if(!k||k===STAMP)return false;if(/token|session|password|credential|secret/i.test(k))return false;if(k==='ATPL_UserAccess_V1'||k==='AroraTextilesEmployeeMasterV3')return false;if(/^hrdoc_/i.test(k))return false;return /^ATPL_MamCompliance_/i.test(k)||/^ATPL_BankVerifier_/i.test(k)||/^ATPL_.*(?:UI|State|Profile|Rule|Setting|Preference|Auditor)/i.test(k)||/^AroraTextilesHRDocTypes/i.test(k)||/^arora_hr_doc_types$/i.test(k)}
+  function allowedLocalKey(k){k=String(k||'');if(!k||k===STAMP)return false;if(/token|session|password|credential|secret/i.test(k))return false;if(k==='ATPL_UserAccess_V1'||k==='AroraTextilesEmployeeMasterV3')return false;if(/^hrdoc_/i.test(k))return false;return /^ATPL_MamCompliance_/i.test(k)||/^ATPL_BankVerifier_/i.test(k)||/^ATPL_.*(?:UI|State|Profile|Rule|Setting|Preference|Auditor)/i.test(k)||/^ATPL_EM_COLS_/i.test(k)||/^AroraTextilesHRDocTypes/i.test(k)||/^arora_hr_doc_types$/i.test(k)}
   function collectState(){var values={};try{for(var i=0;i<root.localStorage.length;i++){var k=root.localStorage.key(i);if(allowedLocalKey(k))values[k]=root.localStorage.getItem(k)}}catch(_){}var stamp=Number(root.localStorage.getItem(STAMP)||0)||0;return{version:1,updatedAt:stamp,values:values}}
   function hashState(o){var s=JSON.stringify(o&&o.values||{}),h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return String(h>>>0)}
   function touchState(){try{root.localStorage.setItem(STAMP,String(Date.now()))}catch(_){}schedule(1200)}

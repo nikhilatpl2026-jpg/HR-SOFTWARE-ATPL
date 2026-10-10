@@ -9437,34 +9437,138 @@ function emGetSingleRowValues() {
 
 function emSaveColOrder() {
   try {
+    var colData = EM_COLS.map(function(c) {
+      return {
+        key: c.key,
+        label: c.label,
+        w: c.w || '130px',
+        type: c.type || 'text',
+        opts: c.opts || null,
+        required: !!c.required,
+        custom: !!c.custom
+      };
+    });
+    localStorage.setItem('ATPL_EM_COLS_Setting', JSON.stringify(colData));
     localStorage.setItem('ATPL_EM_COLS_ORDER', JSON.stringify(EM_COLS.map(function(c){ return c.key; })));
-  } catch(e) {}
+    localStorage.setItem('ATPL_EM_COLS_UPDATED_AT', String(Date.now()));
+
+    var customCols = (ALL_STANDARD_EM_COLS || []).filter(function(c){ return !!c.custom; });
+    localStorage.setItem('ATPL_EM_CUSTOM_COLS_Setting', JSON.stringify(customCols));
+
+    // Instant Cross-Browser / Cross-Tab BroadcastChannel
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        var bc = new BroadcastChannel('atpl-local-tab-sync');
+        bc.postMessage({ type: 'ATPL_EM_COLS_UPDATED', cols: colData, customCols: customCols, ts: Date.now() });
+      } catch(_) {}
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('atpl-em-cols-synced', { detail: { cols: colData } }));
+    } catch(_) {}
+  } catch(e) {
+    console.warn('[EM] Save columns failed:', e);
+  }
+}
+
+function emApplyRemoteColConfig(savedCols, savedCustom) {
+  if (Array.isArray(savedCustom)) {
+    savedCustom.forEach(function(cc) {
+      if (cc && cc.key && !ALL_STANDARD_EM_COLS.some(function(c){ return c.key === cc.key; })) {
+        ALL_STANDARD_EM_COLS.push(cc);
+      }
+    });
+  }
+  if (Array.isArray(savedCols) && savedCols.length > 0) {
+    var restored = [];
+    savedCols.forEach(function(item) {
+      if (!item || !item.key) return;
+      var std = ALL_STANDARD_EM_COLS.find(function(c){ return c.key === item.key; });
+      var col = Object.assign({}, std || {}, item);
+      if (!col.w) col.w = '130px';
+      if (!col.type) col.type = 'text';
+      restored.push(col);
+    });
+    if (restored.length > 0) {
+      EM_COLS = restored;
+      return true;
+    }
+  }
+  return false;
 }
 
 function emLoadSavedColOrder() {
   try {
+    var savedCustom = null;
+    try { savedCustom = JSON.parse(localStorage.getItem('ATPL_EM_CUSTOM_COLS_Setting') || 'null'); } catch(_) {}
+    if (Array.isArray(savedCustom)) {
+      savedCustom.forEach(function(cc) {
+        if (cc && cc.key && !ALL_STANDARD_EM_COLS.some(function(c){ return c.key === cc.key; })) {
+          ALL_STANDARD_EM_COLS.push(cc);
+        }
+      });
+    }
+
+    var savedCols = null;
+    try { savedCols = JSON.parse(localStorage.getItem('ATPL_EM_COLS_Setting') || 'null'); } catch(_) {}
+    if (Array.isArray(savedCols) && savedCols.length > 0) {
+      if (emApplyRemoteColConfig(savedCols, savedCustom)) return;
+    }
+
     var saved = localStorage.getItem('ATPL_EM_COLS_ORDER');
     if (saved) {
       var keys = JSON.parse(saved);
       if (Array.isArray(keys) && keys.length) {
         var newCols = [];
         keys.forEach(function(k) {
-          var found = EM_COLS.find(function(c){ return c.key === k; });
-          if (found) newCols.push(found);
+          var found = ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+          if (found) newCols.push(Object.assign({}, found));
         });
-        EM_COLS.forEach(function(c) {
-          if (!newCols.some(function(nc){ return nc.key === c.key; })) {
-            newCols.push(c);
-          }
-        });
-        if (newCols.length === EM_COLS.length) {
+        if (newCols.length > 0) {
           EM_COLS = newCols;
         }
       }
     }
-  } catch(e) {}
+  } catch(e) {
+    console.warn('[EM] Error loading saved col order:', e);
+  }
 }
 emLoadSavedColOrder();
+
+// Realtime listeners for Cross-Browser, Multi-Tab and Cloud Sync
+if (typeof BroadcastChannel !== 'undefined') {
+  try {
+    var emBc = new BroadcastChannel('atpl-local-tab-sync');
+    emBc.addEventListener('message', function(ev) {
+      if (ev && ev.data && ev.data.type === 'ATPL_EM_COLS_UPDATED') {
+        emApplyRemoteColConfig(ev.data.cols, ev.data.customCols);
+        var curVals = emGetSingleRowValues();
+        if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+        if (typeof emRenderColChips === 'function') emRenderColChips();
+        if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+      }
+    });
+  } catch(_) {}
+}
+
+if (typeof window.addEventListener === 'function') { window.addEventListener('storage', function(ev) {
+  if (ev && ev.key && (ev.key === 'ATPL_EM_COLS_Setting' || ev.key === 'ATPL_EM_CUSTOM_COLS_Setting' || ev.key === 'ATPL_EM_COLS_ORDER')) {
+    emLoadSavedColOrder();
+    var curVals = emGetSingleRowValues();
+    if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+    if (typeof emRenderColChips === 'function') emRenderColChips();
+    if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  }
+}); }
+
+if (typeof document.addEventListener === 'function') { document.addEventListener('atpl-state-synced', function(ev) {
+  if (ev && ev.detail && ev.detail.values && (ev.detail.values['ATPL_EM_COLS_Setting'] || ev.detail.values['ATPL_EM_CUSTOM_COLS_Setting'])) {
+    emLoadSavedColOrder();
+    var curVals = emGetSingleRowValues();
+    if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+    if (typeof emRenderColChips === 'function') emRenderColChips();
+    if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  }
+}); }
 
 window.emResetColOrder = function() {
   EM_COLS = DEFAULT_EM_COLS.slice();
@@ -9667,9 +9771,10 @@ function emRenderSingleRow(e) {
       '<span>' + c.label + '</span>' +
       '</span>' +
       '<span style="display:inline-flex;gap:2px;margin-left:2px;align-items:center">' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Move Left" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">◀</button>' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Move Right" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">▶</button>' +
-      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein" style="padding:0 3px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:2px;font-size:8px;font-weight:800;cursor:pointer">✕</button>' : '') +
+      '<button type="button" onclick="event.stopPropagation();emEditCol('+ci+')" title="Rename Header (✏️)" style="padding:0 4px;background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;border-radius:2px;font-size:8px;font-weight:bold;cursor:pointer">✏️</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Move Left (◀)" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">◀</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Move Right (▶)" style="padding:0 3px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:2px;font-size:8px;cursor:pointer">▶</button>' +
+      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein (✕)" style="padding:0 3px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:2px;font-size:8px;font-weight:800;cursor:pointer">✕</button>' : '') +
       '</span>';
 
     // Drag & Drop handlers

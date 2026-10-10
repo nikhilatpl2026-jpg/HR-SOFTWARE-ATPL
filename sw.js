@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v5-supabase-final-force-clear';
+const CACHE_NAME = 'atpl-cache-v6-universal-cols-sync';
 const ASSETS = [
   './',
   './index.html',
