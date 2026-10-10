@@ -96,7 +96,15 @@ function validateSingle(){var dob=document.getElementById('emf_dob'),ifs=documen
 window.validateSingle = validateSingle;
 function validateRows(out){for(var i=0;i<out.length;i++){if(out[i].dob){var n=normalizeDate(out[i].dob);if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n))out[i].dob=n;if(!validDate(out[i].dob))return 'Row '+(i+1)+': D.O.B '+out[i].dob+' invalid hai. Required format DD-MM-YYYY.';}if(out[i].ifsc&&!validIFSC(out[i].ifsc))return 'Row '+(i+1)+': IFSC '+out[i].ifsc+' invalid hai. IFSC exact 11 characters aur valid format me hona chahiye.'}return ''}
 function expected(){var b=document.getElementById('emTabPanel-bulk');if(!b)return;Array.prototype.some.call(b.querySelectorAll('span'),function(s){if((s.textContent||'').trim().indexOf('Expected columns:')===0){s.textContent='Expected columns: '+O.map(function(k){return L[k].replace('Employee ','')}).join(' | ');s.style.whiteSpace='normal';s.style.lineHeight='1.7';return true}return false})}
-function mapper(){var b=document.getElementById('emTabPanel-bulk');if(!b)return;var old=document.getElementById('atplMapper');if(old&&b.contains(old)){draw();return}if(old)old.remove();var q=document.createElement('div');q.id='atplMapper';q.innerHTML='<div class="atplMT"><b>↔ Excel Column Order</b><span>Excel ke order ke hisaab se fields ko ◀ ▶ se aage-piche karo</span><button type="button" id="atplReset">Reset</button></div><div id="atplML"></div>';var ta=document.getElementById('emBulkPasteArea');if(ta&&ta.parentNode)ta.parentNode.insertBefore(q,ta);else b.appendChild(q);var r=document.getElementById('atplReset');if(r)r.onclick=function(){M=O.slice();draw()};draw()}
+function mapper(){
+  var b=document.getElementById("emTabPanel-bulk");
+  if(!b)return;
+  var old=document.getElementById("atplMapper");
+  if(old)old.remove();
+  if(window.EM_COLS&&Array.isArray(window.EM_COLS)){
+    M=window.EM_COLS.map(function(c){return c.key});
+  }
+}
 function draw(){var d=document.getElementById('atplML');if(!d)return;d.innerHTML='';M.forEach(function(k,i){var x=document.createElement('div');x.className='atplChip';x.innerHTML='<b>'+(i+1)+'</b><span>'+esc(L[k].replace('Employee ',''))+'</span><button type="button" data-d="-1">◀</button><button type="button" data-d="1">▶</button>';Array.prototype.forEach.call(x.querySelectorAll('button'),function(bt){bt.onclick=function(){var p=M.indexOf(k),to=p+parseInt(bt.dataset.d,10);if(to<0||to>=M.length)return;var t=M[p];M[p]=M[to];M[to]=t;draw()}});d.appendChild(x)})}
 function headerMap(r){var m={};Object.keys(A).forEach(function(k){m[k]=-1});r.forEach(function(v,i){var z=n(v);Object.keys(A).forEach(function(k){if(m[k]<0&&A[k].some(function(a){return z===n(a)}))m[k]=i})});return m}
 function score(r){var s=0;(r||[]).forEach(function(v){var z=n(v);if(Object.keys(A).some(function(k){return A[k].some(function(a){return z===n(a)})}))s++});return s}

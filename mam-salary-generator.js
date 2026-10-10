@@ -74,9 +74,9 @@ function columnIndex(headers,list){
   for(const x of a){const i=h.indexOf(x);if(i>=0)return i}
   return -1;
 }
-const CODE_ALIASES=aliases('code','emp code','employee code','employee id','emp id','card no','employee no');
-const NAME_ALIASES=aliases('name','emp name','employee name','name of employee','employee');
-const AMOUNT_ALIASES=aliases('manual amount','manual amt','amount','total','salary amount','mam amount','net amount');
+const CODE_ALIASES=aliases('code','emp code','employee code','employee id','emp id','card no','employee no','emp no','e code','ecode','token no','token','badge no','staff no','staff code','worker code','worker id','worker no','personnel no','id','member id','badli no');
+const NAME_ALIASES=aliases('name','emp name','employee name','name of employee','employee','worker name','staff name','full name','member name','name of worker','candidate name','associate name');
+const AMOUNT_ALIASES=aliases('manual amount','manual amt','amount','total','salary amount','mam amount','net amount','net pay','net payable','net salary','take home','gross salary','gross total salary','gross','gross amount','total gross');
 
 function mamHeader(rows){
   for(let i=0;i<Math.min(30,rows.length);i++){

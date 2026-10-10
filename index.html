@@ -2824,15 +2824,21 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           <!-- Drag & Drop Column Mapping Bar -->
           <div style="padding:10px 20px 0;flex-shrink:0">
             <div style="background:#0b1120;border:1px solid #334155;border-radius:10px;padding:10px 14px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
                 <div style="font-size:11px;font-weight:700;color:#c7d2fe;display:flex;align-items:center;gap:6px">
-                  <span>🖱️ Excel Column Order (Mouse se pakad kar aage-peeche Drag & Drop karein):</span>
-                  <span style="font-size:10px;color:#94a3b8;font-weight:400">(Excel file ke sequence ke anusaar set karein)</span>
+                  <span>🖱️ Excel Column Order (Mouse se pakad kar aage-peeche Drag & Drop karein | ✏️ Rename | ✕ Delete):</span>
                 </div>
-                <div style="display:flex;gap:6px">
-                <button type="button" onclick="emOpenAddColModal()" style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">➕ Add / Restore Column</button>
-                <button type="button" onclick="emResetColOrder()" style="padding:4px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All Columns</button>
-              </div>
+                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                  <!-- Presets buttons -->
+                  <div style="display:inline-flex;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:2px;gap:2px">
+                    <button type="button" onclick="emApplyPreset('all')" title="All 29 Fields with KYC, Address, Nominees" style="padding:3px 8px;background:#1e293b;color:#a5b4fc;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">⭐ All 29 Fields</button>
+                    <button type="button" onclick="emApplyPreset('standard')" title="Standard 18 Fields" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">📋 Standard 18</button>
+                    <button type="button" onclick="emApplyPreset('salary')" title="Salary & Bank Only (10 Fields)" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">💰 Salary/Bank</button>
+                    <button type="button" onclick="emApplyPreset('kyc')" title="Statutory KYC Only" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">🏛️ KYC</button>
+                  </div>
+                  <button type="button" onclick="emOpenAddColModal()" style="padding:5px 12px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px">➕ Add / Restore Column</button>
+                  <button type="button" onclick="emResetColOrder()" style="padding:5px 10px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All</button>
+                </div>
               </div>
               <div id="emColChipsContainer" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;align-items:center"></div>
             </div>
@@ -5209,75 +5215,215 @@ function findFormulaSheet(f) {
   return f.wb.Sheets[f.wb.SheetNames[0]];
 }
 
-function detectSalaryCols(hdr) {
-  var cols={empCode:-1,empName:-1,dept:-1,doj:-1,dol:-1,gross:-1,basic:-1,hra:-1,workDays:-1,pf:-1,esic:-1,netEarning:-1,netPayment:-1,manual:-1,pfNumber:-1,advance:-1,loan:-1};
+// ── UNIVERSAL HUMAN-LIKE SALARY SHEET & HEADER PARSER ──
+function universalDetectSalaryCols(hdr, sampleRows) {
+  var cols = {
+    empCode: -1, empName: -1, dept: -1, desig: -1, category: -1,
+    father: -1, dob: -1, doj: -1, dol: -1, gross: -1, basic: -1, hra: -1,
+    workDays: -1, otHours: -1, otAmount: -1, pf: -1, esic: -1,
+    netEarning: -1, netPayment: -1, manual: -1, pfNumber: -1, esiNumber: -1,
+    advance: -1, loan: -1, bankName: -1, ifsc: -1, accountNo: -1,
+    aadhaar: -1, phone: -1, gender: -1
+  };
+  if (!Array.isArray(hdr) || !hdr.length) return cols;
 
-  hdr.forEach(function(h,i){
-    var hh = String(h||'').trim().toLowerCase().replace(/\./g,'').replace(/\s+/g,' ');
+  function clean(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[₹$,/\\()_.:[\]#\-+@*]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
 
-    // ── EMP CODE ──
-    if(hh==='emp code'||hh==='empcode'||hh==='employee code'||hh==='code') cols.empCode=i;
+  var ALIASES = {
+    empCode: [
+      'emp code', 'empcode', 'employee code', 'code', 'emp id', 'empid', 'employee id',
+      'e code', 'ecode', 'emp no', 'empno', 'employee no', 'employee number', 'token no',
+      'token', 'card no', 'badge no', 'staff no', 'staff code', 'worker code', 'worker id',
+      'worker no', 'personnel no', 'emp #', 'id', 'emp_code', 'emp_id', 'staff id',
+      'badli no', 'member id'
+    ],
+    empName: [
+      'emp name', 'empname', 'employee name', 'name of employee', 'name', 'worker name',
+      'staff name', 'full name', 'member name', 'name of worker', 'candidate name',
+      'person name', 'employee s name', 'employees name', 'associate name', 'staff'
+    ],
+    father: [
+      'father', 'father name', 'fathers name', 'father s name', 'husband name', 'f h name',
+      'guardian name', 'father husband name'
+    ],
+    dob: ['dob', 'd o b', 'date of birth', 'birth date', 'dt of birth', 'b date'],
+    doj: ['doj', 'd o j', 'date of joining', 'joining date', 'date of join', 'dt of joining', 'appointment date'],
+    dol: ['dol', 'd o l', 'date of leaving', 'date of exit', 'exit date', 'relieving date', 'leaving date', 'date of relieving'],
+    gender: ['gender', 'sex'],
+    dept: ['department', 'dept', 'dept name', 'section', 'cost center', 'branch', 'unit', 'plant'],
+    desig: ['designation', 'desig', 'post', 'job title', 'role', 'trade'],
+    category: ['category', 'cat', 'category 1', 'cat 1', 'category 01', 'catgrory 01', 'category 2', 'cat 2'],
+    basic: [
+      'basic salary', 'basic pay', 'basic wage', 'basic wages', 'basic', 'basic rate',
+      'earned basic', 'actual basic', 'fixed basic', 'rate of basic', 'basic amt', 'basic amount'
+    ],
+    hra: ['hra', 'h r a', 'house rent allowance', 'house rent', 'earned hra', 'hra allowance'],
+    gross: [
+      'gross salary', 'gross total salary', 'total gross salary', 'gross', 'gross pay',
+      'gross wages', 'earned gross', 'earned gross salary', 'total earnings', 'total gross',
+      'gross earning salary', 'gross earned salary', 'gross amount', 'earned salary', 'gross wage'
+    ],
+    netPayment: [
+      'net salary payable', 'net payment', 'net pay', 'net salary', 'take home', 'in hand',
+      'net payable', 'net amount', 'net paid', 'total payable', 'payable amount', 'total net',
+      'net amount payable', 'net sal'
+    ],
+    netEarning: ['net earning', 'net earnings'],
+    workDays: [
+      'paid days', 'working days', 'actual working days', 'present days', 'duty days',
+      'days worked', 'pdays', 'p days', 'total days', 'pay days', 'total present', 'p', 'att days', 'att'
+    ],
+    otHours: ['over time hours', 'overtime hours', 'ot hours', 'ot hrs', 'ot time', 'overtime hrs', 'ot'],
+    otAmount: ['ot amount', 'ot amt', 'overtime amount', 'ot wages', 'overtime wages'],
+    pf: [
+      'pf amt', 'pf 12%', 'pf amount', 'epf', 'pf', 'p f', 'pf ded', 'pf deduction',
+      'provident fund', 'epf deduction', 'pf 12', 'epfo', 'emp pf', 'pf employee'
+    ],
+    pfNumber: ['pf number', 'uan', 'uan no', 'universal account number', 'pf no', 'pf member id', 'uan number'],
+    esic: [
+      'esiamt', 'esic 075%', 'esic amount', 'esicamt', 'esi', 'e s i', 'esic', 'esi ded',
+      'esic ded', 'esic deduction', 'esi amount', 'esi 0 75', 'esic 0 75', 'ip ded', 'esi employee'
+    ],
+    esiNumber: ['esi no', 'esic no', 'ip no', 'insurance no', 'esi number', 'ip number'],
+    bankName: ['bank name', 'bank', 'bank a c', 'bank account'],
+    ifsc: ['ifsc code', 'ifsc', 'branch ifsc'],
+    accountNo: ['account number', 'account no', 'account', 'a c no', 'ac no', 'bank account no'],
+    aadhaar: ['aadhaar number', 'aadhaar no', 'aadhaar', 'aadhar number', 'aadhar no', 'aadhar'],
+    phone: ['phone number', 'phone no', 'mobile number', 'mobile no', 'phone', 'mobile', 'contact no'],
+    manual: ['manual amount', 'manual amt', 'mam amount'],
+    advance: ['advance pay', 'advance', 'salary advance', 'staff advance', 'adv ded', 'adv'],
+    loan: ['loan', 'loan deduction']
+  };
 
-    // ── EMP NAME ──
-    if(hh==='emp name'||hh==='employee name'||hh==='name') cols.empName=i;
-
-    // ── DEPARTMENT ──
-    if(hh==='department'||hh==='dept'||hh==='category') cols.dept=i;
-
-    // ── DOJ — STRICT: only exact known header names ──
-    if(hh==='date of joining'||hh==='doj'||hh==='d o j'||hh==='joining date') cols.doj=i;
-
-    // ── DOL — STRICT: only exact known header names ──
-    if(hh==='date of reileaving'||hh==='date of relieving'||hh==='date of leaving'||hh==='dol'||hh==='relieving date'||hh==='leaving date') cols.dol=i;
-
-    // ── BASIC SALARY ──
-    if(hh==='basic salary'||hh==='basic') cols.basic=i;
-
-    // ── HRA ──
-    if(hh==='house rent allowance'||hh==='hra') cols.hra=i;
-
-    // ── GROSS SALARY — pick LAST gross-type column (earned gross is preferred) ──
-    if(hh==='gross salary'||hh==='earned gross salary'||hh==='total earned salary'||
-       hh==='gross earning salary'||hh==='gross earned salary'||hh==='total gross salary') cols.gross=i;
-
-    // ── WORKING DAYS / PAID DAYS ──
-    // Exact match only: 'PDays' or 'P' (present) column, not broad match
-    if(hh==='pdays'||hh==='p'||hh==='working days'||hh==='actual working days'||hh==='days worked'||hh==='w d') cols.workDays=i;
-
-    // ── PF AMOUNT ──
-    if(hh==='pfamt'||hh==='pf 12%'||hh==='pf amount'||hh==='epf') cols.pf=i;
-
-    // ── PF NUMBER (to check eligibility) ──
-    if(hh==='pf number'||hh==='uan') cols.pfNumber=i;
-
-    // ── ESIC ──
-    if(hh==='esiamt'||hh==='esic 075%'||hh==='esic amount'||hh==='esicamt') cols.esic=i;
-
-    // ── NET EARNING ──
-    if(hh==='net earning'||hh==='net earnings') cols.netEarning=i;
-
-    // ── NET PAYMENT / NET SALARY PAYABLE ──
-    if(hh==='net salary payable'||hh==='net payment'||hh==='net pay') cols.netPayment=i;
-
-    // ── MANUAL AMOUNT — exact match only ──
-    if(hh==='manual amount'||hh==='manual amt') cols.manual=i;
-
-    // ── ADVANCE ──
-    if(hh==='advance pay'||hh==='advance') cols.advance=i;
-
-    // ── LOAN ──
-    if(hh==='loan') cols.loan=i;
+  // Phase 1: Exact / Prefix / Suffix match
+  hdr.forEach(function(h, i) {
+    var raw = clean(h);
+    if (!raw) return;
+    Object.keys(ALIASES).forEach(function(field) {
+      if (cols[field] >= 0) return;
+      var matches = ALIASES[field];
+      for (var k = 0; k < matches.length; k++) {
+        var alias = clean(matches[k]);
+        if (raw === alias || raw === alias + 's' || raw.indexOf(alias) === 0 || raw.endsWith(' ' + alias)) {
+          cols[field] = i;
+          break;
+        }
+      }
+    });
   });
 
-  // Safety: if empCode not found, try position-based fallback only if name found too
-  if(cols.empCode<0 && cols.empName<0) {
-    // Try index 1 for empCode, 2 for empName as last resort
-    if(hdr.length > 2) { cols.empCode=1; cols.empName=2; }
+  // Phase 2: Substring search for missing core columns
+  ['empCode', 'empName', 'gross', 'basic', 'netPayment', 'pf', 'esic', 'workDays'].forEach(function(field) {
+    if (cols[field] >= 0) return;
+    hdr.forEach(function(h, i) {
+      if (cols[field] >= 0) return;
+      var raw = clean(h);
+      if (!raw) return;
+      var alreadyClaimed = Object.keys(cols).some(function(k){ return cols[k] === i; });
+      if (alreadyClaimed) return;
+      var matches = ALIASES[field];
+      for (var k = 0; k < matches.length; k++) {
+        var alias = clean(matches[k]);
+        if (raw.indexOf(alias) >= 0) {
+          cols[field] = i;
+          break;
+        }
+      }
+    });
+  });
+
+  // Phase 3: Data type sniffing fallback from sample data rows
+  if ((cols.empCode < 0 || cols.empName < 0) && Array.isArray(sampleRows) && sampleRows.length > 0) {
+    var colStats = [];
+    var numCols = hdr.length;
+    for (var c = 0; c < numCols; c++) {
+      var numericCount = 0, alphaCount = 0, totalCount = 0;
+      for (var r = 0; r < Math.min(15, sampleRows.length); r++) {
+        var val = sampleRows[r] ? String(sampleRows[r][c] || '').trim() : '';
+        if (!val) continue;
+        totalCount++;
+        if (/^\d{1,8}$/.test(val) || /^[A-Z]{1,3}\d{1,6}$/i.test(val)) numericCount++;
+        else if (/^[A-Za-z\s.]{3,35}$/.test(val)) alphaCount++;
+      }
+      colStats.push({ col: c, numeric: numericCount, alpha: alphaCount, total: totalCount });
+    }
+    if (cols.empCode < 0) {
+      var bestCode = colStats.filter(function(s){ return s.col !== cols.empName && s.numeric >= 2; })
+                             .sort(function(a,b){ return (b.numeric / (b.total||1)) - (a.numeric / (a.total||1)); })[0];
+      if (bestCode) cols.empCode = bestCode.col;
+    }
+    if (cols.empName < 0) {
+      var bestName = colStats.filter(function(s){ return s.col !== cols.empCode && s.alpha >= 2; })
+                             .sort(function(a,b){ return (b.alpha / (b.total||1)) - (a.alpha / (a.total||1)); })[0];
+      if (bestName) cols.empName = bestName.col;
+    }
+  }
+
+  // Final safety index fallback
+  if (cols.empCode < 0 && cols.empName < 0 && hdr.length >= 2) {
+    cols.empCode = 0;
+    cols.empName = 1;
+  } else if (cols.empCode < 0 && cols.empName >= 1) {
+    cols.empCode = cols.empName === 0 ? 1 : 0;
+  } else if (cols.empName < 0 && cols.empCode >= 0) {
+    cols.empName = cols.empCode === 0 ? 1 : 0;
   }
 
   return cols;
 }
 
+function findUniversalHeaderRow(rowsRaw) {
+  if (!Array.isArray(rowsRaw) || !rowsRaw.length) return 0;
+  var bestIdx = 0, maxScore = -1;
+  var KEYWORDS = ['emp', 'code', 'name', 'basic', 'gross', 'salary', 'pf', 'esi', 'days', 'dept', 'desig', 'doj', 'father', 'total', 'payable', 'uan'];
+  var maxSearch = Math.min(25, rowsRaw.length);
+  for (var i = 0; i < maxSearch; i++) {
+    var row = rowsRaw[i];
+    if (!Array.isArray(row)) continue;
+    var rowStr = row.map(function(c){ return String(c||'').toLowerCase(); }).join(' ');
+    var score = 0;
+    KEYWORDS.forEach(function(kw) {
+      if (rowStr.indexOf(kw) >= 0) score++;
+    });
+    if ((rowStr.indexOf('emp') >= 0 || rowStr.indexOf('code') >= 0) && (rowStr.indexOf('name') >= 0 || rowStr.indexOf('basic') >= 0)) {
+      score += 3;
+    }
+    if (score > maxScore) {
+      maxScore = score;
+      bestIdx = i;
+    }
+  }
+
+  if (bestIdx > 0 && maxScore >= 2) {
+    var prevRow = rowsRaw[bestIdx - 1];
+    if (Array.isArray(prevRow)) {
+      var prevStr = prevRow.join(' ').toLowerCase();
+      if (prevStr.indexOf('earning') >= 0 || prevStr.indexOf('deduction') >= 0 || prevStr.indexOf('salary') >= 0) {
+        var merged = [];
+        var maxLen = Math.max(prevRow.length, rowsRaw[bestIdx].length);
+        var lastPrefix = '';
+        for (var c = 0; c < maxLen; c++) {
+          var top = String(prevRow[c] || '').trim();
+          if (top) lastPrefix = top;
+          var bot = String(rowsRaw[bestIdx][c] || '').trim();
+          merged.push(bot ? (lastPrefix && bot.indexOf(lastPrefix) < 0 ? (lastPrefix + ' ' + bot) : bot) : top);
+        }
+        rowsRaw[bestIdx] = merged;
+      }
+    }
+  }
+  return bestIdx;
+}
+
+function detectSalaryCols(hdr, sampleRows) {
+  return universalDetectSalaryCols(hdr, sampleRows);
+}
 // ── SMART DATE PARSER — handles Indian formats, Excel serials, text dates ──
 function smartParseDate(val) {
   if(!val || String(val).trim()==='' || String(val).trim()==='0') return null;
@@ -9080,48 +9226,38 @@ document.addEventListener('keydown', function(e){
 // ══════════════════════════════════════════════════════
 
 // Column definitions — order matches Excel paste order
-var EM_COLS = [
-  {key:'emp_id',     label:'EMP CODE',    w:'90px',  type:'text'},
-  {key:'name',       label:'NAME',        w:'160px', type:'text'},
-  {key:'status',     label:'STATUS',      w:'110px', type:'select', opts:['ACTIVE','LEFT']},
-  {key:'dol',        label:'DOL (EXIT)',  w:'120px', type:'text'},
-  {key:'father',     label:"FATHER'S NAME",w:'150px',type:'text'},
-  {key:'dob',        label:'D.O.B',       w:'120px', type:'text'},
-  {key:'doj',        label:'D.O.J',       w:'120px', type:'text'},
-  {key:'pf_no',      label:'PF NO',       w:'150px', type:'text'},
-  {key:'esi_no',     label:'ESI NO',      w:'140px', type:'text'},
-  {key:'bank_name',  label:'BANK NAME',   w:'150px', type:'text'},
-  {key:'ifsc',       label:'IFSC CODE',   w:'130px', type:'text'},
-  {key:'account_no', label:'ACCOUNT NO',  w:'130px', type:'text'},
-  {key:'gender',     label:'GENDER',      w:'80px',  type:'select', opts:['MALE','FEMALE']},
-  {key:'dept',       label:'DEPARTMENT',  w:'160px', type:'text'},
-  {key:'cat1',       label:'CATEGORY',    w:'130px', type:'text'},
-  {key:'basic',      label:'BASIC (₹)',   w:'110px', type:'number'},
-  {key:'hra',        label:'HRA (₹)',     w:'110px', type:'number'},
-  {key:'gross',      label:'GROSS (₹)',   w:'100px', type:'number'},
-];
-
+var EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var ALL_STANDARD_EM_COLS = [
-  {key:'emp_id',     label:'EMP CODE',    w:'90px',  type:'text', required:true},
-  {key:'name',       label:'NAME',        w:'160px', type:'text', required:true},
-  {key:'status',     label:'STATUS',      w:'110px', type:'select', opts:['ACTIVE','LEFT']},
-  {key:'dol',        label:'DOL (EXIT)',  w:'120px', type:'text'},
-  {key:'father',     label:"FATHER'S NAME",w:'150px',type:'text'},
-  {key:'dob',        label:'D.O.B',       w:'120px', type:'text'},
-  {key:'doj',        label:'D.O.J',       w:'120px', type:'text'},
-  {key:'pf_no',      label:'PF NO',       w:'150px', type:'text'},
-  {key:'esi_no',     label:'ESI NO',      w:'140px', type:'text'},
-  {key:'bank_name',  label:'BANK NAME',   w:'150px', type:'text'},
-  {key:'ifsc',       label:'IFSC CODE',   w:'130px', type:'text'},
-  {key:'account_no', label:'ACCOUNT NO',  w:'130px', type:'text'},
-  {key:'gender',     label:'GENDER',      w:'80px',  type:'select', opts:['MALE','FEMALE']},
-  {key:'dept',       label:'DEPARTMENT',  w:'160px', type:'text'},
-  {key:'cat1',       label:'CATEGORY',    w:'130px', type:'text'},
-  {key:'basic',      label:'BASIC (₹)',   w:'110px', type:'number'},
-  {key:'hra',        label:'HRA (₹)',     w:'110px', type:'number'},
-  {key:'gross',      label:'GROSS (₹)',   w:'100px', type:'number'},
+  {key:'emp_id',            label:'EMP CODE',                  w:'100px', type:'text', required:true},
+  {key:'name',              label:'NAME',                      w:'160px', type:'text', required:true},
+  {key:'father',            label:'FATHER\'S NAME',             w:'150px', type:'text'},
+  {key:'dob',               label:'D.O.B',                     w:'120px', type:'text'},
+  {key:'doj',               label:'D.O.J',                     w:'120px', type:'text'},
+  {key:'dol',               label:'DOL (EXIT)',                w:'120px', type:'text'},
+  {key:'status',            label:'STATUS',                    w:'110px', type:'select', opts:['ACTIVE','LEFT']},
+  {key:'gender',            label:'GENDER',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER']},
+  {key:'pf_no',             label:'PF NO / UAN',               w:'150px', type:'text'},
+  {key:'esi_no',            label:'ESI NO / IP',               w:'140px', type:'text'},
+  {key:'bank_name',         label:'BANK NAME',                 w:'150px', type:'text'},
+  {key:'ifsc',              label:'IFSC CODE',                 w:'130px', type:'text'},
+  {key:'account_no',        label:'ACCOUNT NO',                w:'140px', type:'text'},
+  {key:'dept',              label:'DEPARTMENT',                w:'150px', type:'text'},
+  {key:'desig',             label:'DESIGNATION',               w:'140px', type:'text'},
+  {key:'cat1',              label:'CATEGORY 01',               w:'130px', type:'text'},
+  {key:'cat2',              label:'CATEGORY 02',               w:'130px', type:'text'},
+  {key:'basic',             label:'BASIC (₹)',                 w:'110px', type:'number'},
+  {key:'hra',               label:'HRA (₹)',                   w:'110px', type:'number'},
+  {key:'gross',             label:'GROSS (₹)',                 w:'110px', type:'number'},
+  {key:'aadhaar_no',        label:'AADHAAR NUMBER',            w:'140px', type:'text'},
+  {key:'phone_no',          label:'PHONE NUMBER',              w:'130px', type:'tel'},
+  {key:'qualification',     label:'QUALIFICATION',             w:'140px', type:'text'},
+  {key:'present_address',   label:'PRESENT ADDRESS',           w:'180px', type:'textarea'},
+  {key:'permanent_address', label:'PERMANENT ADDRESS',         w:'180px', type:'textarea'},
+  {key:'marital_status',    label:'MARITAL STATUS',            w:'120px', type:'select', opts:['SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},
+  {key:'nominee_name',      label:'NOMINEE NAME',              w:'150px', type:'text'},
+  {key:'nominee_relation',  label:'RELATION W/ NOMINEE',       w:'160px', type:'text'},
+  {key:'nominee_dob',       label:'NOMINEE D.O.B',             w:'120px', type:'text'}
 ];
-
 var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_BULK_ROWS = []; // parsed bulk rows
 window._emDragColIdx = -1;
@@ -9136,7 +9272,6 @@ window.emRemoveCol = function(idx) {
   }
   var confirmMsg = 'Kya aap column "' + col.label + '" ko Excel editor se hatana chahte hain?';
   if (!confirm(confirmMsg)) return;
-
   var curVals = emGetSingleRowValues();
   EM_COLS.splice(idx, 1);
   emSaveColOrder();
@@ -9144,10 +9279,57 @@ window.emRemoveCol = function(idx) {
   if (typeof emRenderColChips === 'function') emRenderColChips();
   if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
   if (window.showToast) {
-    window.showToast('🗑 Column "' + col.label + '" hata diya gaya. Excel paste mein ab yeh nahi maanga jaayega.');
+    window.showToast('🗑 Column "' + col.label + '" hata diya gaya.');
   }
 };
 
+window.emEditCol = function(idx) {
+  if (idx < 0 || idx >= EM_COLS.length) return;
+  var col = EM_COLS[idx];
+  var newLabel = prompt('Column Header / Label rename karein:', col.label);
+  if (newLabel === null) return;
+  newLabel = newLabel.trim();
+  if (!newLabel) {
+    alert('Column header khali nahi ho sakta.');
+    return;
+  }
+  col.label = newLabel.toUpperCase();
+  emSaveColOrder();
+  var curVals = emGetSingleRowValues();
+  if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  if (window.showToast) {
+    window.showToast('✏️ Column rename ho gaya: ' + col.label);
+  }
+};
+
+window.emApplyPreset = function(presetName) {
+  var curVals = emGetSingleRowValues();
+  if (presetName === 'all') {
+    EM_COLS = ALL_STANDARD_EM_COLS.slice();
+  } else if (presetName === 'standard') {
+    var stdKeys = ['emp_id','name','father','dob','doj','dol','status','gender','pf_no','esi_no','bank_name','ifsc','account_no','dept','cat1','basic','hra','gross'];
+    EM_COLS = stdKeys.map(function(k){
+      return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+    }).filter(Boolean);
+  } else if (presetName === 'salary') {
+    var salKeys = ['emp_id','name','bank_name','ifsc','account_no','dept','basic','hra','gross','status'];
+    EM_COLS = salKeys.map(function(k){
+      return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+    }).filter(Boolean);
+  } else if (presetName === 'kyc') {
+    var kycKeys = ['emp_id','name','father','dob','gender','aadhaar_no','phone_no','pf_no','esi_no','present_address'];
+    EM_COLS = kycKeys.map(function(k){
+      return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+    }).filter(Boolean);
+  }
+  emSaveColOrder();
+  if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
+  if (typeof emRenderColChips === 'function') emRenderColChips();
+  if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+  if (window.showToast) window.showToast('✅ Column preset set hua: ' + presetName.toUpperCase());
+};
 window.emOpenAddColModal = function() {
   var modal = document.getElementById('emColModal');
   if (!modal) return;
@@ -9307,67 +9489,114 @@ window.emShiftCol = function(idx, dir) {
 };
 
 window.emRenderColChips = function() {
-  var container = document.getElementById('emColChipsContainer');
+  var container = document.getElementById("emColChipsContainer");
   if (!container) return;
-  container.innerHTML = '';
-  var colors = {pf_no:'#6ee7b7', esi_no:'#93c5fd', basic:'#fcd34d', hra:'#fcd34d', gross:'#6ee7b7', status:'#f472b6'};
+  container.innerHTML = "";
+  var colors = {pf_no:"#6ee7b7", esi_no:"#93c5fd", basic:"#fcd34d", hra:"#fcd34d", gross:"#6ee7b7", status:"#f472b6", aadhaar_no:"#a78bfa", phone_no:"#38bdf8"};
 
   EM_COLS.forEach(function(c, ci) {
-    var chip = document.createElement('div');
+    var chip = document.createElement("div");
     chip.draggable = true;
-    chip.setAttribute('data-bulk-col-idx', ci);
-    chip.style.cssText = 'padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:700;color:' + (colors[c.key] || '#e2e8f0') + ';user-select:none;transition:all .15s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.2)';
-    chip.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
+    chip.setAttribute("data-bulk-col-idx", ci);
+    chip.className = "em-col-chip";
+    chip.style.cssText = "padding:6px 11px;background:#1e293b;border:1px solid #334155;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:700;color:" + (colors[c.key] || "#e2e8f0") + ";user-select:none;-webkit-user-select:none;transition:transform .12s, border-color .12s, box-shadow .12s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.2);position:relative;";
+    chip.title = "Mouse se drag & drop karein | ✏️ Rename karein | ✕ Remove karein (" + (ci + 1) + ". " + c.label + ")";
 
-    var canRemove = (c.key !== 'emp_id' && c.key !== 'name');
-    chip.innerHTML = '<span style="color:#818cf8;font-size:13px;font-weight:900;cursor:grab" title="Drag with mouse">⋮⋮</span> ' +
-      '<span style="color:#64748b;font-size:10px">' + (ci + 1) + '.</span> ' +
-      '<span>' + c.label + '</span>' +
-      '<span style="display:inline-flex;gap:2px;margin-left:4px;align-items:center">' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Shift Left" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">◀</button>' +
-      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Shift Right" style="padding:1px 4px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer">▶</button>' +
-      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein" style="padding:1px 4px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:4px;font-size:9px;font-weight:800;cursor:pointer;margin-left:2px">✕</button>' : '') +
+    var canRemove = (c.key !== "emp_id" && c.key !== "name");
+    chip.innerHTML = '<span class="em-drag-grip" style="color:#818cf8;font-size:14px;font-weight:900;cursor:grab;pointer-events:none;line-height:1" title="Drag Handle (Mouse se pakad kar aage-piche karein)">⋮⋮</span> ' +
+      '<span style="color:#64748b;font-size:10px;pointer-events:none">' + (ci + 1) + '.</span> ' +
+      '<span style="pointer-events:none;cursor:default">' + c.label + '</span>' +
+      '<span style="display:inline-flex;gap:3px;margin-left:5px;align-items:center;pointer-events:auto">' +
+      '<button type="button" onclick="event.stopPropagation();emEditCol('+ci+')" title="Header Rename / Edit (✏️)" style="padding:1px 5px;background:#1e3a5f;border:1px solid #3b82f6;color:#93c5fd;border-radius:4px;font-size:9px;cursor:pointer;font-weight:bold;line-height:1.2">✏️</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',-1)" title="Shift Left (◀)" style="padding:1px 5px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer;font-weight:bold;line-height:1.2">◀</button>' +
+      '<button type="button" onclick="event.stopPropagation();emShiftCol('+ci+',1)" title="Shift Right (▶)" style="padding:1px 5px;background:#0f172a;border:1px solid #334155;color:#94a3b8;border-radius:4px;font-size:9px;cursor:pointer;font-weight:bold;line-height:1.2">▶</button>' +
+      (canRemove ? '<button type="button" onclick="event.stopPropagation();emRemoveCol('+ci+')" title="Column Hatayein (✕)" style="padding:1px 5px;background:#450a0a;border:1px solid #dc2626;color:#fca5a5;border-radius:4px;font-size:9px;font-weight:800;cursor:pointer;margin-left:2px;line-height:1.2">✕</button>' : '') +
       '</span>';
 
-    chip.addEventListener('dragstart', function(ev){
-      ev.dataTransfer.setData('text/plain', String(ci));
-      ev.dataTransfer.effectAllowed = 'move';
-      chip.style.opacity = '0.3';
-      chip.style.borderColor = '#6366f1';
+    chip.addEventListener("dragstart", function(ev){
+      ev.dataTransfer.setData("text/plain", String(ci));
+      ev.dataTransfer.effectAllowed = "move";
       window._emDragColIdx = ci;
+      chip.style.opacity = "0.4";
+      chip.style.transform = "scale(0.96)";
+      chip.style.borderColor = "#6366f1";
+      chip.style.cursor = "grabbing";
     });
 
-    chip.addEventListener('dragend', function(){
-      chip.style.opacity = '1';
-      chip.style.borderColor = '#334155';
-      chip.style.boxShadow = '';
+    chip.addEventListener("dragend", function(){
+      chip.style.opacity = "1";
+      chip.style.transform = "";
+      chip.style.borderColor = "#334155";
+      chip.style.boxShadow = "";
+      chip.style.borderLeft = "1px solid #334155";
+      chip.style.borderRight = "1px solid #334155";
+      chip.style.background = "#1e293b";
+      chip.style.cursor = "grab";
       window._emDragColIdx = -1;
+      Array.prototype.forEach.call(container.children, function(ch){
+        ch.style.borderLeft = "1px solid #334155";
+        ch.style.borderRight = "1px solid #334155";
+        ch.style.background = "#1e293b";
+      });
     });
 
-    chip.addEventListener('dragover', function(ev){
+    chip.addEventListener("dragover", function(ev){
       ev.preventDefault();
-      ev.dataTransfer.dropEffect = 'move';
-      chip.style.boxShadow = 'inset 4px 0 0 #6366f1';
-      chip.style.background = '#1e1b4b';
+      ev.dataTransfer.dropEffect = "move";
+      var rect = chip.getBoundingClientRect();
+      var isRight = ev.clientX > (rect.left + rect.width / 2);
+      if (isRight) {
+        chip.style.borderRight = "3px solid #6366f1";
+        chip.style.borderLeft = "1px solid #334155";
+      } else {
+        chip.style.borderLeft = "3px solid #6366f1";
+        chip.style.borderRight = "1px solid #334155";
+      }
+      chip.style.background = "#1e1b4b";
     });
 
-    chip.addEventListener('dragleave', function(){
-      chip.style.boxShadow = '';
-      chip.style.background = '#1e293b';
+    chip.addEventListener("dragleave", function(ev){
+      var rect = chip.getBoundingClientRect();
+      if (ev.clientX < rect.left || ev.clientX > rect.right || ev.clientY < rect.top || ev.clientY > rect.bottom) {
+        chip.style.borderLeft = "1px solid #334155";
+        chip.style.borderRight = "1px solid #334155";
+        chip.style.background = "#1e293b";
+      }
     });
 
-    chip.addEventListener('drop', function(ev){
+    chip.addEventListener("drop", function(ev){
       ev.preventDefault();
-      chip.style.boxShadow = '';
-      chip.style.background = '#1e293b';
-      var src = window._emDragColIdx >= 0 ? window._emDragColIdx : parseInt(ev.dataTransfer.getData('text/plain'), 10);
-      if (!isNaN(src) && src !== ci && src >= 0 && src < EM_COLS.length) {
-        emMoveCol(src, ci);
+      chip.style.borderLeft = "1px solid #334155";
+      chip.style.borderRight = "1px solid #334155";
+      chip.style.background = "#1e293b";
+      var src = window._emDragColIdx >= 0 ? window._emDragColIdx : parseInt(ev.dataTransfer.getData("text/plain"), 10);
+      if (isNaN(src) || src < 0 || src >= EM_COLS.length) return;
+
+      var rect = chip.getBoundingClientRect();
+      var isRight = ev.clientX > (rect.left + rect.width / 2);
+      var targetIdx = isRight ? (ci + 1) : ci;
+      if (src < targetIdx) targetIdx--;
+      if (targetIdx !== src && targetIdx >= 0 && targetIdx < EM_COLS.length) {
+        emMoveCol(src, targetIdx);
       }
     });
 
     container.appendChild(chip);
   });
+
+  container.ondragover = function(ev){
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+  };
+  container.ondrop = function(ev){
+    if (ev.target === container) {
+      ev.preventDefault();
+      var src = window._emDragColIdx;
+      if (src >= 0 && src < EM_COLS.length - 1) {
+        emMoveCol(src, EM_COLS.length - 1);
+      }
+    }
+  };
 };
 
 // ── Tab switch ──
