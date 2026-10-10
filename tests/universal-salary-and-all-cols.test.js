@@ -29,4 +29,51 @@ test('Universal Salary Header Reader & Complete 29-Column Drag/Edit/Remove Syste
     assert(html.includes('universalDetectSalaryCols'), 'Must have universalDetectSalaryCols');
     assert(html.includes('findUniversalHeaderRow'), 'Must have findUniversalHeaderRow');
   });
+  await t.test("5. Modal opens, closes, and variable initialization order is valid without TypeError", () => {
+    const domElements = {};
+    const mockDoc = {
+      getElementById: (id) => {
+        if (!domElements[id]) {
+          domElements[id] = {
+            id,
+            style: { display: "none", setProperty: function(k, v) { this[k] = v; } },
+            innerHTML: "",
+            appendChild: function(c) { this.children = this.children || []; this.children.push(c); },
+            value: ""
+          };
+        }
+        return domElements[id];
+      },
+      createElement: () => ({ style: { setProperty: function(k, v) { this[k] = v; } }, setAttribute: () => {}, addEventListener: () => {} }),
+      addEventListener: () => {}
+    };
+    const ctx = {
+      document: mockDoc,
+      window: {},
+      localStorage: { getItem: () => null, setItem: () => {} },
+      alert: () => {},
+      prompt: () => "NEW_COL"
+    };
+    ctx.window = ctx;
+
+    const marker = "// EMPLOYEE MASTER — Excel Style Editor Functions";
+    const scriptStart = html.indexOf(marker);
+    const scriptEnd = html.indexOf("</script>", scriptStart);
+    const code = html.slice(scriptStart, scriptEnd);
+
+    const vm = require("vm");
+    vm.runInNewContext(code, ctx);
+
+    assert.equal(ctx.ALL_STANDARD_EM_COLS.length, 29, "Must have 29 standard columns");
+    assert.equal(ctx.EM_COLS.length, 29, "Must initialize 29 columns");
+    assert.equal(typeof ctx.emOpenAddColModal, "function", "emOpenAddColModal must be defined");
+    assert.equal(typeof ctx.emCloseAddColModal, "function", "emCloseAddColModal must be defined");
+
+    ctx.emOpenAddColModal();
+    const modal = ctx.document.getElementById("emColModal");
+    assert.equal(modal.style.display, "flex", "emColModal display must be flex after open");
+
+    ctx.emCloseAddColModal();
+    assert.equal(modal.style.display, "none", "emColModal display must be none after close");
+  });
 });

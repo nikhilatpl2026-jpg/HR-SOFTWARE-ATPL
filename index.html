@@ -9226,7 +9226,6 @@ document.addEventListener('keydown', function(e){
 // ══════════════════════════════════════════════════════
 
 // Column definitions — order matches Excel paste order
-var EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var ALL_STANDARD_EM_COLS = [
   {key:'emp_id',            label:'EMP CODE',                  w:'100px', type:'text', required:true},
   {key:'name',              label:'NAME',                      w:'160px', type:'text', required:true},
@@ -9258,6 +9257,9 @@ var ALL_STANDARD_EM_COLS = [
   {key:'nominee_relation',  label:'RELATION W/ NOMINEE',       w:'160px', type:'text'},
   {key:'nominee_dob',       label:'NOMINEE D.O.B',             w:'120px', type:'text'}
 ];
+var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
+var EM_COLS = ALL_STANDARD_EM_COLS.slice();
+
 var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_BULK_ROWS = []; // parsed bulk rows
 window._emDragColIdx = -1;
@@ -9332,14 +9334,18 @@ window.emApplyPreset = function(presetName) {
 };
 window.emOpenAddColModal = function() {
   var modal = document.getElementById('emColModal');
-  if (!modal) return;
+  if (!modal) {
+    console.warn('[EM] emColModal not found');
+    return;
+  }
   var list = document.getElementById('emHiddenColsList');
   if (list) {
     list.innerHTML = '';
-    var activeKeys = new Set(EM_COLS.map(function(c){ return c.key; }));
-    var hidden = ALL_STANDARD_EM_COLS.filter(function(c){ return !activeKeys.has(c.key); });
+    var activeKeys = {};
+    (EM_COLS || []).forEach(function(c){ if(c && c.key) activeKeys[c.key] = true; });
+    var hidden = (ALL_STANDARD_EM_COLS || []).filter(function(c){ return c && !activeKeys[c.key]; });
     if (!hidden.length) {
-      list.innerHTML = '<span style="font-size:11px;color:#64748b;padding:4px">Sabhi standard columns pehle se active hain! Naya custom column bana sakte hain.</span>';
+      list.innerHTML = '<span style="font-size:11px;color:#94a3b8;padding:8px;display:block">Sabhi 29 standard columns pehle se active hain! Aap neeche Form se naya Custom Column bana sakte hain.</span>';
     } else {
       hidden.forEach(function(c) {
         var btn = document.createElement('button');
@@ -9353,12 +9359,15 @@ window.emOpenAddColModal = function() {
       });
     }
   }
-  modal.style.display = 'flex';
+  modal.style.setProperty('display', 'flex', 'important');
+  modal.style.zIndex = "9999999";
 };
 
 window.emCloseAddColModal = function() {
   var modal = document.getElementById('emColModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) {
+    modal.style.setProperty('display', 'none', 'important');
+  }
 };
 
 window.emAddStandardCol = function(key) {
@@ -9583,6 +9592,18 @@ window.emRenderColChips = function() {
 
     container.appendChild(chip);
   });
+
+    // Quick Add Column Chip at end of container
+  var addBtnChip = document.createElement("button");
+  addBtnChip.type = "button";
+  addBtnChip.className = "em-add-col-btn-chip";
+  addBtnChip.style.cssText = "padding:6px 12px;background:linear-gradient(135deg,#4f46e5,#6366f1);border:1px dashed #818cf8;border-radius:8px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;font-size:11px;font-weight:800;color:#ffffff;flex-shrink:0;box-shadow:0 2px 6px rgba(79,70,229,0.3);";
+  addBtnChip.innerHTML = "<span>➕ Add Column</span>";
+  addBtnChip.onclick = function(e) {
+    e.stopPropagation();
+    emOpenAddColModal();
+  };
+  container.appendChild(addBtnChip);
 
   container.ondragover = function(ev){
     ev.preventDefault();
