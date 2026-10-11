@@ -2832,7 +2832,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
                 <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                   <!-- Presets buttons -->
                   <div style="display:inline-flex;background:#0f172a;border:1px solid #334155;border-radius:6px;padding:2px;gap:2px">
-                    <button type="button" onclick="emApplyPreset('all')" title="All 29 Fields with KYC, Address, Nominees" style="padding:3px 8px;background:#1e293b;color:#a5b4fc;border:none;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer">⭐ All 29 Fields</button>
+                    <button type="button" onclick="emApplyPreset('all')" title="Exact ATPL 40-Column Master Format" style="padding:3px 9px;background:#312e81;color:#c7d2fe;border:1px solid #6366f1;border-radius:4px;font-size:10px;font-weight:800;cursor:pointer">⭐ ATPL Master 40 Cols</button>
+                    <button type="button" onclick="emApplyPreset('family')" title="Family & Nominees" style="padding:3px 7px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">👨‍👩‍👧 Family</button>
                     <button type="button" onclick="emApplyPreset('standard')" title="Standard 18 Fields" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">📋 Standard 18</button>
                     <button type="button" onclick="emApplyPreset('salary')" title="Salary & Bank Only (10 Fields)" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">💰 Salary/Bank</button>
                     <button type="button" onclick="emApplyPreset('kyc')" title="Statutory KYC Only" style="padding:3px 8px;background:transparent;color:#94a3b8;border:none;border-radius:4px;font-size:10px;cursor:pointer">🏛️ KYC</button>
@@ -9086,21 +9087,29 @@ function emDoDownload(mode) {
     ? [...EM.selectedRows].map(function(i){return EM.data[i];})
     : EM.data;
 
-  var hdrs = ['S.No','Employee ID','Name','Father\'s Name','D.O.B','D.O.J','PF NO','ESI NO',
-    'Bank Name','IFSC Code','Account No','Gender','Department','Designation',
-    'Category 01','Category 02','Basic','HRA','Gross'];
-
+  var hdrs = [
+    'Employee ID','Name of employee','Name Of Fathers','D.O.B','Marital','Gender',
+    'Phone No','Aadhar No.','Pan No','Qualification','Present House /Street No','District','State',
+    'Permanent House /Street No','District','State','Date Of Birth Fathers','Mothers Name','Date Of Birth Mothers',
+    'Name Of NOMINEE','Date OF NOMINEE','Name Of Son','Date of Birth Son','Name Of Daughter','Date Of Birth Daughter',
+    'Bank Name','Account No','IFSC Code','Branch Address','D-O-J','Department','Designation','Catgrory','Skill',
+    'PF NO','ESI NO','Gross Total Salary','New Basic','New HRA','Gross Total Salary (New)'
+  ];
   // ── VALUES SHEET ──
   function buildValueRows() {
     var rows = [hdrs];
-    dataToExport.forEach(function(e,i){
+    dataToExport.forEach(function(e){
       rows.push([
-        i+1, e.emp_id, e.name, e.father||'', e.dob||'', e.doj||'',
-        e.pf_no||'NA', e.esi_no||'NA',
-        e.bank_name||'', e.ifsc||'', e.account_no||'',
-        e.gender||'MALE', e.dept||'', e.desig||e.dept||'',
-        e.cat1||'', e.cat2||'',
-        Math.round(e.basic||0), Math.round(e.hra||0), Math.round(e.gross||0)
+        e.emp_id||'', e.name||'', e.father||'', e.dob||'', e.marital_status||'UNMARRIED', e.gender||'MALE',
+        e.phone_no||'', e.aadhaar_no||'', e.pan_no||'', e.qualification||'',
+        e.present_address||'', e.present_district||'', e.present_state||'',
+        e.permanent_address||'', e.permanent_district||'', e.permanent_state||'',
+        e.father_dob||'', e.mother_name||'', e.mother_dob||'', e.nominee_name||'', e.nominee_dob||'',
+        e.son_name||'', e.son_dob||'', e.daughter_name||'', e.daughter_dob||'',
+        e.bank_name||'', e.account_no||'', e.ifsc||'', e.branch_address||'',
+        e.doj||'', e.dept||'', e.desig||'', e.cat1||'', e.skill||'',
+        e.pf_no||'', e.esi_no||'',
+        Math.round(e.gross||0), Math.round(e.basic||0), Math.round(e.hra||0), Math.round(e.new_gross||e.gross||0)
       ]);
     });
     return rows;
@@ -9176,35 +9185,57 @@ document.addEventListener('keydown', function(e){
 
 // Column definitions — order matches Excel paste order
 var ALL_STANDARD_EM_COLS = [
-  {key:'emp_id',            label:'EMP CODE',                  w:'100px', type:'text', required:true},
-  {key:'name',              label:'NAME',                      w:'160px', type:'text', required:true},
-  {key:'father',            label:'FATHER\'S NAME',             w:'150px', type:'text'},
-  {key:'dob',               label:'D.O.B',                     w:'120px', type:'text'},
-  {key:'doj',               label:'D.O.J',                     w:'120px', type:'text'},
-  {key:'dol',               label:'DOL (EXIT)',                w:'120px', type:'text'},
-  {key:'status',            label:'STATUS',                    w:'110px', type:'select', opts:['ACTIVE','LEFT']},
-  {key:'gender',            label:'GENDER',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER']},
-  {key:'pf_no',             label:'PF NO / UAN',               w:'150px', type:'text'},
-  {key:'esi_no',            label:'ESI NO / IP',               w:'140px', type:'text'},
-  {key:'bank_name',         label:'BANK NAME',                 w:'150px', type:'text'},
-  {key:'ifsc',              label:'IFSC CODE',                 w:'130px', type:'text'},
-  {key:'account_no',        label:'ACCOUNT NO',                w:'140px', type:'text'},
-  {key:'dept',              label:'DEPARTMENT',                w:'150px', type:'text'},
-  {key:'desig',             label:'DESIGNATION',               w:'140px', type:'text'},
-  {key:'cat1',              label:'CATEGORY 01',               w:'130px', type:'text'},
-  {key:'cat2',              label:'CATEGORY 02',               w:'130px', type:'text'},
-  {key:'basic',             label:'BASIC (₹)',                 w:'110px', type:'number'},
-  {key:'hra',               label:'HRA (₹)',                   w:'110px', type:'number'},
-  {key:'gross',             label:'GROSS (₹)',                 w:'110px', type:'number'},
-  {key:'aadhaar_no',        label:'AADHAAR NUMBER',            w:'140px', type:'text'},
-  {key:'phone_no',          label:'PHONE NUMBER',              w:'130px', type:'tel'},
-  {key:'qualification',     label:'QUALIFICATION',             w:'140px', type:'text'},
-  {key:'present_address',   label:'PRESENT ADDRESS',           w:'180px', type:'textarea'},
-  {key:'permanent_address', label:'PERMANENT ADDRESS',         w:'180px', type:'textarea'},
-  {key:'marital_status',    label:'MARITAL STATUS',            w:'120px', type:'select', opts:['SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},
-  {key:'nominee_name',      label:'NOMINEE NAME',              w:'150px', type:'text'},
-  {key:'nominee_relation',  label:'RELATION W/ NOMINEE',       w:'160px', type:'text'},
-  {key:'nominee_dob',       label:'NOMINEE D.O.B',             w:'120px', type:'text'}
+  // 1-10: Personal Details & KYC
+  {key:'emp_id',              label:'EMPLOYEE ID',               w:'110px', type:'text', required:true},
+  {key:'name',                label:'NAME OF EMPLOYEE',          w:'170px', type:'text', required:true},
+  {key:'father',              label:'NAME OF FATHERS',           w:'160px', type:'text'},
+  {key:'dob',                 label:'D.O.B',                     w:'110px', type:'text'},
+  {key:'marital_status',      label:'MARITAL',                   w:'110px', type:'select', opts:['MARRIED','UNMARRIED','SINGLE','DIVORCED','WIDOWED']},
+  {key:'gender',              label:'GENDER',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER']},
+  {key:'phone_no',            label:'PHONE NO',                  w:'120px', type:'tel'},
+  {key:'aadhaar_no',          label:'AADHAR NO.',                w:'140px', type:'text'},
+  {key:'pan_no',              label:'PAN NO',                    w:'120px', type:'text'},
+  {key:'qualification',       label:'QUALIFICATION',             w:'130px', type:'text'},
+
+  // 11-16: Present & Permanent Address
+  {key:'present_address',     label:'PRESENT HOUSE /STREET NO',  w:'190px', type:'text'},
+  {key:'present_district',    label:'DISTRICT (PRESENT)',        w:'130px', type:'text'},
+  {key:'present_state',       label:'STATE (PRESENT)',           w:'120px', type:'text'},
+  {key:'permanent_address',   label:'PERMANENT HOUSE /STREET NO',w:'190px', type:'text'},
+  {key:'permanent_district',  label:'DISTRICT (PERMANENT)',      w:'130px', type:'text'},
+  {key:'permanent_state',     label:'STATE (PERMANENT)',         w:'120px', type:'text'},
+
+  // 17-25: Family & Nominee Information
+  {key:'father_dob',          label:'DATE OF BIRTH FATHERS',     w:'140px', type:'text'},
+  {key:'mother_name',         label:'MOTHERS NAME',              w:'150px', type:'text'},
+  {key:'mother_dob',          label:'DATE OF BIRTH MOTHERS',     w:'140px', type:'text'},
+  {key:'nominee_name',        label:'NAME OF NOMINEE',           w:'150px', type:'text'},
+  {key:'nominee_dob',         label:'DATE OF NOMINEE',           w:'130px', type:'text'},
+  {key:'son_name',            label:'NAME OF SON',               w:'130px', type:'text'},
+  {key:'son_dob',             label:'DATE OF BIRTH SON',         w:'130px', type:'text'},
+  {key:'daughter_name',       label:'NAME OF DAUGHTER',          w:'130px', type:'text'},
+  {key:'daughter_dob',        label:'DATE OF BIRTH DAUGHTER',    w:'130px', type:'text'},
+
+  // 26-29: Bank Details
+  {key:'bank_name',           label:'BANK NAME',                 w:'150px', type:'text'},
+  {key:'account_no',          label:'ACCOUNT NO',                w:'150px', type:'text'},
+  {key:'ifsc',                label:'IFSC CODE',                 w:'130px', type:'text'},
+  {key:'branch_address',      label:'BRANCH ADDRESS',            w:'160px', type:'text'},
+
+  // 30-36: Employment & Statutory
+  {key:'doj',                 label:'D-O-J',                     w:'120px', type:'text'},
+  {key:'dept',                label:'DEPARTMENT',                w:'140px', type:'text'},
+  {key:'desig',               label:'DESIGNATION',               w:'140px', type:'text'},
+  {key:'cat1',                label:'CATGRORY',                  w:'120px', type:'text'},
+  {key:'skill',               label:'SKILL',                     w:'110px', type:'text'},
+  {key:'pf_no',               label:'PF NO',                     w:'140px', type:'text'},
+  {key:'esi_no',              label:'ESI NO',                    w:'140px', type:'text'},
+
+  // 37-40: Salary Structure
+  {key:'gross',               label:'GROSS TOTAL SALARY',        w:'130px', type:'number'},
+  {key:'basic',               label:'NEW BASIC',                 w:'120px', type:'number'},
+  {key:'hra',                 label:'NEW HRA',                   w:'120px', type:'number'},
+  {key:'new_gross',           label:'GROSS TOTAL SALARY (NEW)',  w:'140px', type:'number'}
 ];
 var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_COLS = ALL_STANDARD_EM_COLS.slice();
@@ -9257,21 +9288,26 @@ window.emEditCol = function(idx) {
 
 window.emApplyPreset = function(presetName) {
   var curVals = emGetSingleRowValues();
-  if (presetName === 'all') {
+  if (presetName === 'all' || presetName === 'atpl_40') {
     EM_COLS = ALL_STANDARD_EM_COLS.slice();
   } else if (presetName === 'standard') {
-    var stdKeys = ['emp_id','name','father','dob','doj','dol','status','gender','pf_no','esi_no','bank_name','ifsc','account_no','dept','cat1','basic','hra','gross'];
+    var stdKeys = ['emp_id','name','father','dob','marital_status','gender','phone_no','aadhaar_no','pan_no','bank_name','account_no','ifsc','doj','dept','desig','cat1','pf_no','esi_no','gross','basic','hra'];
     EM_COLS = stdKeys.map(function(k){
       return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
     }).filter(Boolean);
   } else if (presetName === 'salary') {
-    var salKeys = ['emp_id','name','bank_name','ifsc','account_no','dept','basic','hra','gross','status'];
+    var salKeys = ['emp_id','name','bank_name','account_no','ifsc','branch_address','gross','basic','hra','new_gross'];
     EM_COLS = salKeys.map(function(k){
       return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
     }).filter(Boolean);
   } else if (presetName === 'kyc') {
-    var kycKeys = ['emp_id','name','father','dob','gender','aadhaar_no','phone_no','pf_no','esi_no','present_address'];
+    var kycKeys = ['emp_id','name','father','dob','gender','marital_status','phone_no','aadhaar_no','pan_no','present_address','present_district','present_state','permanent_address','permanent_district','permanent_state'];
     EM_COLS = kycKeys.map(function(k){
+      return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+    }).filter(Boolean);
+  } else if (presetName === 'family') {
+    var famKeys = ['emp_id','name','father','father_dob','mother_name','mother_dob','nominee_name','nominee_dob','son_name','son_dob','daughter_name','daughter_dob'];
+    EM_COLS = famKeys.map(function(k){
       return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
     }).filter(Boolean);
   }
@@ -9279,8 +9315,9 @@ window.emApplyPreset = function(presetName) {
   if (typeof emRenderSingleRow === 'function') emRenderSingleRow(curVals);
   if (typeof emRenderColChips === 'function') emRenderColChips();
   if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
-  if (window.showToast) window.showToast('✅ Column preset set hua: ' + presetName.toUpperCase());
+  if (window.showToast) window.showToast('✅ Preset set: ' + presetName.toUpperCase());
 };
+
 window.emOpenAddColModal = function() {
   var modal = document.getElementById('emColModal');
   if (!modal) {
@@ -9447,6 +9484,15 @@ function emApplyRemoteColConfig(savedCols, savedCustom) {
 
 function emLoadSavedColOrder() {
   try {
+    var curVer = localStorage.getItem('ATPL_EM_COLS_FORMAT_VER');
+    if (curVer !== 'v2026_atpl_40_master') {
+      localStorage.removeItem('ATPL_EM_COLS_ORDER');
+      localStorage.removeItem('ATPL_EM_COLS_Setting');
+      localStorage.setItem('ATPL_EM_COLS_FORMAT_VER', 'v2026_atpl_40_master');
+      EM_COLS = ALL_STANDARD_EM_COLS.slice();
+      DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
+      return;
+    }
     var savedCustom = null;
     try { savedCustom = JSON.parse(localStorage.getItem('ATPL_EM_CUSTOM_COLS_Setting') || 'null'); } catch(_) {}
     if (Array.isArray(savedCustom)) {
@@ -9456,13 +9502,11 @@ function emLoadSavedColOrder() {
         }
       });
     }
-
     var savedCols = null;
     try { savedCols = JSON.parse(localStorage.getItem('ATPL_EM_COLS_Setting') || 'null'); } catch(_) {}
     if (Array.isArray(savedCols) && savedCols.length > 0) {
       if (emApplyRemoteColConfig(savedCols, savedCustom)) return;
     }
-
     var saved = localStorage.getItem('ATPL_EM_COLS_ORDER');
     if (saved) {
       var keys = JSON.parse(saved);
@@ -9554,7 +9598,7 @@ window.emRenderColChips = function() {
   var container = document.getElementById("emColChipsContainer");
   if (!container) return;
   container.innerHTML = "";
-  var colors = {pf_no:"#6ee7b7", esi_no:"#93c5fd", basic:"#fcd34d", hra:"#fcd34d", gross:"#6ee7b7", status:"#f472b6", aadhaar_no:"#a78bfa", phone_no:"#38bdf8"};
+  var colors = {emp_id:'#818cf8', name:'#ffffff', father:'#cbd5e1', dob:'#94a3b8', marital_status:'#cbd5e1', gender:'#38bdf8', phone_no:'#38bdf8', aadhaar_no:'#a78bfa', pan_no:'#a78bfa', qualification:'#cbd5e1', present_address:'#2dd4bf', present_district:'#2dd4bf', present_state:'#2dd4bf', permanent_address:'#14b8a6', permanent_district:'#14b8a6', permanent_state:'#14b8a6', father_dob:'#fed7aa', mother_name:'#fed7aa', mother_dob:'#fed7aa', nominee_name:'#fb923c', nominee_dob:'#fb923c', son_name:'#fdba74', son_dob:'#fdba74', daughter_name:'#fdba74', daughter_dob:'#fdba74', bank_name:'#facc15', account_no:'#facc15', ifsc:'#facc15', branch_address:'#facc15', doj:'#86efac', dept:'#4ade80', desig:'#4ade80', cat1:'#4ade80', skill:'#22c55e', pf_no:'#6ee7b7', esi_no:'#93c5fd', gross:'#fcd34d', basic:'#fde047', hra:'#fde047', new_gross:'#34d399', status:'#f472b6'};
 
   EM_COLS.forEach(function(c, ci) {
     var chip = document.createElement("div");
@@ -9707,7 +9751,7 @@ function emRenderSingleRow(e) {
   hdrDiv.style.cssText = 'display:grid;grid-template-columns:'+gridCols+';background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content;user-select:none';
   EM_COLS.forEach(function(c, ci) {
     var th = document.createElement('div');
-    var colors = {pf_no:'#6ee7b7', esi_no:'#93c5fd', basic:'#fcd34d', hra:'#fcd34d', gross:'#6ee7b7', status:'#f472b6'};
+    var colors = {emp_id:'#818cf8', name:'#ffffff', father:'#cbd5e1', dob:'#94a3b8', marital_status:'#cbd5e1', gender:'#38bdf8', phone_no:'#38bdf8', aadhaar_no:'#a78bfa', pan_no:'#a78bfa', qualification:'#cbd5e1', present_address:'#2dd4bf', present_district:'#2dd4bf', present_state:'#2dd4bf', permanent_address:'#14b8a6', permanent_district:'#14b8a6', permanent_state:'#14b8a6', father_dob:'#fed7aa', mother_name:'#fed7aa', mother_dob:'#fed7aa', nominee_name:'#fb923c', nominee_dob:'#fb923c', son_name:'#fdba74', son_dob:'#fdba74', daughter_name:'#fdba74', daughter_dob:'#fdba74', bank_name:'#facc15', account_no:'#facc15', ifsc:'#facc15', branch_address:'#facc15', doj:'#86efac', dept:'#4ade80', desig:'#4ade80', cat1:'#4ade80', skill:'#22c55e', pf_no:'#6ee7b7', esi_no:'#93c5fd', gross:'#fcd34d', basic:'#fde047', hra:'#fde047', new_gross:'#34d399', status:'#f472b6'};
     th.draggable = true;
     th.setAttribute('data-col-idx', ci);
     th.style.cssText = 'padding:7px 8px;font-size:9px;font-weight:800;color:'+(colors[c.key]||'#94a3b8')+';text-transform:uppercase;letter-spacing:0.7px;border-right:1px solid #1e293b;white-space:nowrap;cursor:grab;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:all .15s;background:#0f172a;';
@@ -9929,7 +9973,17 @@ async function emPasteFromClipboard() {
 }
 
 function emFillSingleFromText(text) {
-  var cols = text.trim().split('\t');
+  if(!text) return;
+  var lines = text.trim().split('\n').filter(function(l){ return l.trim(); });
+  if(!lines.length) return;
+  var dataLine = lines[0];
+  if(lines.length > 1) {
+    var firstLow = lines[0].toLowerCase();
+    if(firstLow.includes('employe') || firstLow.includes('code') || firstLow.includes('name of')) {
+      dataLine = lines[1];
+    }
+  }
+  var cols = dataLine.split('\t');
   var keys = EM_COLS.map(function(c){return c.key;});
   keys.forEach(function(key, i){
     var el = document.getElementById('emf_'+key);
@@ -9940,7 +9994,9 @@ function emFillSingleFromText(text) {
       if(key === 'status') {
         el.value = (upper === 'LEFT' || upper === 'INACTIVE' || upper === 'EXITED') ? 'LEFT' : 'ACTIVE';
       } else if (key === 'gender') {
-        el.value = (upper === 'FEMALE') ? 'FEMALE' : 'MALE';
+        el.value = (upper === 'FEMALE' || upper === 'F') ? 'FEMALE' : 'MALE';
+      } else if (key === 'marital_status') {
+        el.value = (upper === 'UNMARRIED' || upper === 'SINGLE') ? 'UNMARRIED' : 'MARRIED';
       } else {
         el.value = val;
       }
@@ -11811,26 +11867,50 @@ function aroraNumber(v){
   var n=parseFloat(String(v).replace(/,/g,'').replace(/[₹$]/g,'').trim());
   return isFinite(n)?n:0;
 }
-var ARORA_IMPORT_ALIASES={
-  emp_id:['emp code','employee code','employee id','emp id','employee no','employee number','emp no','emp number','code','employee sr no'],
-  name:['name','employee name','employee full name','emp name','worker name','staff name'],
-  father:['father','father name','father s name','fathers name','fathername','guardian name'],
-  dob:['dob','d o b','date of birth','birth date','birthdate'],
-  doj:['doj','d o j','date of joining','joining date','join date','date joined'],
-  pf_no:['pf no','pf number','pf account','pf account no','pf account number','uan','uan no','uan number'],
-  esi_no:['esi no','esi number','esic no','esic number','ip no','ip number','insurance no','insurance number','esic ip'],
-  bank_name:['bank','bank name','banker','banker name'],
-  ifsc:['ifsc','ifsc code','ifsc number'],
-  account_no:['account','account no','account number','bank account','bank account no','bank account number','a c no','a c number'],
-  gender:['gender','sex'],
-  dept:['department','dept','department name'],
-  desig:['designation','desig','post','job title'],
-  cat1:['category','category 01','category 1','cat','cat 1','employee category'],
-  cat2:['category 02','category 2','cat 2','sub category','subcategory','category 02 name'],
-  basic:['basic','basic salary','basic wages','basic pay','basic wage'],
-  hra:['hra','house rent allowance','house rent','hra allowance'],
-  gross:['gross','gross salary','gross wages','gross earning','gross earnings','gross pay']
+var ARORA_IMPORT_ALIASES = {
+  emp_id: ["employee id","emp code","employee code","emp id","employee no","employee number","emp no","emp number","code","employee sr no"],
+  name: ["name of employee","name","employee name","employee full name","emp name","worker name","staff name"],
+  father: ["name of fathers","name of father","father","father name","father s name","fathers name","fathername","guardian name"],
+  dob: ["d.o.b","dob","d o b","date of birth","birth date","birthdate"],
+  marital_status: ["marital","marital status","marital_status","marriage status"],
+  gender: ["gender","sex"],
+  phone_no: ["phone no","phone n","phone","mobile","mobile no","contact no","phone number"],
+  aadhaar_no: ["aadhar no.","aadhar no","aadhaar no","aadhaar number","aadhar","aadhaar","adhar no","uid"],
+  pan_no: ["pan no","pan","pan no.","pan number"],
+  qualification: ["qualification","quali fication","qualif","education","edu"],
+  present_address: ["present house /street no","present house","present street","present address","present add"],
+  present_district: ["present district","district present"],
+  present_state: ["present state","state present"],
+  permanent_address: ["permanent house /street no","permanent house","permanent street","permanent address","perm address"],
+  permanent_district: ["permanent district","district permanent"],
+  permanent_state: ["permanent state","state permanent"],
+  father_dob: ["date of birth fathers","date of birth father","father dob","fathers dob","dob father"],
+  mother_name: ["mothers name","mother name","mother"],
+  mother_dob: ["date of birth mothers","mother dob","mothers dob","dob mother"],
+  nominee_name: ["name of nominee","nominee name","nominee"],
+  nominee_dob: ["date of nominee","nominee dob","date of birth nominee","dob nominee"],
+  son_name: ["name of son","son name","son"],
+  son_dob: ["date of birth son","son dob","birth son","dob son"],
+  daughter_name: ["name of daughter","name of daught","daughter name","daughter"],
+  daughter_dob: ["date of birth daughter","daughter dob","dob daughter"],
+  bank_name: ["bank name","bank","banker","banker name"],
+  account_no: ["account no","account number","bank account","bank account no","bank account number","a c no","a/c no","account"],
+  ifsc: ["ifsc code","ifsc","ifsc number"],
+  branch_address: ["branch address","branch ad","branch name","branch"],
+  doj: ["d-o-j","doj","d o j","date of joining","joining date","join date","date joined"],
+  dept: ["department","dept","department name"],
+  desig: ["designation","desig","post","job title"],
+  cat1: ["catgrory","category","category 01","category 1","cat","cat 1","employee category"],
+  cat2: ["category 02","category 2","cat 2","sub category","subcategory"],
+  skill: ["skill","sk","skill level","skill type"],
+  pf_no: ["pf no","pf no.","pf number","pf account","pf account no","pf account number","uan","uan no","uan number"],
+  esi_no: ["esi no","esi no.","esi number","esic no","esic number","ip no","ip number","insurance no","insurance number","esic ip"],
+  gross: ["gross total salary","gross total sala","gross salary","gross wages","gross earning","gross earnings","gross pay","gross"],
+  basic: ["new basic","new bas","basic salary","basic wages","basic pay","basic wage","basic"],
+  hra: ["new hra","new hr","hra","house rent allowance","house rent","hra allowance"],
+  new_gross: ["gross total salary (new)","new gross","new gross total","new gross salary"]
 };
+
 function aroraFindHeader(rows){
   var best={row:-1,score:0};
   for(var r=0;r<Math.min(rows.length,30);r++){
@@ -11840,7 +11920,7 @@ function aroraFindHeader(rows){
       Object.keys(ARORA_IMPORT_ALIASES).some(function(k){
         return ARORA_IMPORT_ALIASES[k].some(function(a){
           var aa=aroraNormHeader(a);
-          if(h===aa || (aa.length>=5 && (h.indexOf(aa)>=0 || aa.indexOf(h)>=0))){sc++;return true;}
+          if(h===aa || (aa.length>=4 && (h.indexOf(aa)>=0 || aa.indexOf(h)>=0))){sc++;return true;}
           return false;
         });
       });
@@ -11849,38 +11929,67 @@ function aroraFindHeader(rows){
   }
   return best;
 }
+
 function aroraMapHeaders(header){
   var map={};
-  Object.keys(ARORA_IMPORT_ALIASES).forEach(function(k){
-    var idx=-1,best=-1;
-    for(var i=0;i<header.length;i++){
-      var h=aroraNormHeader(header[i]);if(!h)continue;
+  var districtCount=0, stateCount=0, grossCount=0;
+  for(var i=0;i<header.length;i++){
+    var h=aroraNormHeader(header[i]);if(!h)continue;
+    // Disambiguate duplicate header names from ATPL Excel format
+    if(h==='district'){
+      districtCount++;
+      if(districtCount===1){map['present_district']=i;continue;}
+      else{map['permanent_district']=i;continue;}
+    }
+    if(h==='state'){
+      stateCount++;
+      if(stateCount===1){map['present_state']=i;continue;}
+      else{map['permanent_state']=i;continue;}
+    }
+    if(h==='gross total salary'||h==='gross total sala'){
+      grossCount++;
+      if(grossCount===1){map['gross']=i;continue;}
+      else{map['new_gross']=i;continue;}
+    }
+
+    Object.keys(ARORA_IMPORT_ALIASES).forEach(function(k){
+      if(map[k]!==undefined)return;
       ARORA_IMPORT_ALIASES[k].forEach(function(a){
         var aa=aroraNormHeader(a);
-        if(h===aa){idx=i;best=100;return;}
-        if(best<50 && aa.length>=5 && (h.indexOf(aa)>=0||aa.indexOf(h)>=0)){idx=i;best=50;}
+        if(h===aa){map[k]=i;return;}
+        if(map[k]===undefined && aa.length>=4 && (h.indexOf(aa)>=0||aa.indexOf(h)>=0)){map[k]=i;}
       });
-      if(best===100)break;
-    }
-    map[k]=idx;
-  });
+    });
+  }
   return map;
 }
+
 function aroraRowsToEmployees(rows,headerRow){
   var header=rows[headerRow]||[],map=aroraMapHeaders(header),out=[];
-  var fields=['emp_id','name','father','dob','doj','pf_no','esi_no','bank_name','ifsc','account_no','gender','dept','desig','cat1','cat2','basic','hra','gross'];
+  var fields=[
+    'emp_id','name','father','dob','marital_status','gender','phone_no','aadhaar_no','pan_no','qualification',
+    'present_address','present_district','present_state','permanent_address','permanent_district','permanent_state',
+    'father_dob','mother_name','mother_dob','nominee_name','nominee_dob','son_name','son_dob','daughter_name','daughter_dob',
+    'bank_name','account_no','ifsc','branch_address',
+    'doj','dept','desig','cat1','skill','pf_no','esi_no',
+    'gross','basic','hra','new_gross'
+  ];
   for(var r=headerRow+1;r<rows.length;r++){
     var row=rows[r]||[];
     if(!row.some(function(v){return String(v==null?'':v).trim()!=='';}))continue;
     var e={};
     fields.forEach(function(k){
       var idx=map[k],v=idx>=0?row[idx]:'';
-      if(k==='dob'||k==='doj')v=aroraToDate(v);
-      else if(k==='basic'||k==='hra'||k==='gross')v=aroraNumber(v);
+      if(['dob','doj','father_dob','mother_dob','nominee_dob','son_dob','daughter_dob'].includes(k)) v=aroraToDate(v);
+      else if(['basic','hra','gross','new_gross'].includes(k)) v=aroraNumber(v);
       else v=String(v==null?'':v).trim();
       if(k==='gender'){
         var g=String(v).toUpperCase();
         v=/FEMALE|WOMAN|F/.test(g)?'FEMALE':(/MALE|MAN|M/.test(g)?'MALE':g);
+      }
+      if(k==='marital_status'){
+        var m=String(v).toUpperCase();
+        v=/UNMARRIED|SINGLE/.test(m)?'UNMARRIED':(/MARRIED/.test(m)?'MARRIED':m);
       }
       e[k]=v;
     });
@@ -12907,7 +13016,7 @@ window.empDashboardExportExcel = function() {
   };
 })();
 
-/* Replace the fragile bulk parser with header-aware parsing. */
+/* Replace the fragile bulk parser with header-aware parsing in ATPL 40-col format. */
 window.emParseBulkPaste=function(){
   var area=document.getElementById('emBulkPasteArea');if(!area)return;
   var raw=area.value||'';if(!raw.trim())return;
@@ -12916,7 +13025,7 @@ window.emParseBulkPaste=function(){
   var h=aroraFindHeader(rows),headerRow=h.row;
   var emps;
   if(headerRow<0||h.score<2){
-    /* Positional parsing using user's customized EM_COLS sequence (mouse drag & drop) */
+    /* Positional parsing using user's customized EM_COLS sequence (exact 40-col ATPL Excel match) */
     emps = [];
     rows.forEach(function(r){
       if(!r.some(function(v){return String(v==null?'':v).trim()!=='';}))return;
@@ -12926,12 +13035,20 @@ window.emParseBulkPaste=function(){
       EM_COLS.forEach(function(col, ci){
         var val = r[ci];
         if(val===undefined || val===null) val = '';
-        if(col.key==='dob'||col.key==='doj') val = (typeof aroraToDate==='function'?aroraToDate(val):val);
-        else if(col.type==='number') val = (typeof aroraNumber==='function'?aroraNumber(val):(parseFloat(String(val).replace(/,/g,''))||0));
-        else val = String(val).trim().toUpperCase();
+        if(['dob','doj','father_dob','mother_dob','nominee_dob','son_dob','daughter_dob'].includes(col.key)){
+          val = (typeof aroraToDate==='function'?aroraToDate(val):val);
+        } else if(col.type==='number'){
+          val = (typeof aroraNumber==='function'?aroraNumber(val):(parseFloat(String(val).replace(/,/g,''))||0));
+        } else {
+          val = String(val).trim().toUpperCase();
+        }
         if(col.key==='gender'){
           var g = String(val).toUpperCase();
           val = /FEMALE|WOMAN|F/.test(g)?'FEMALE':(/MALE|MAN|M/.test(g)?'MALE':g);
+        }
+        if(col.key==='marital_status'){
+          var m = String(val).toUpperCase();
+          val = /UNMARRIED|SINGLE/.test(m)?'UNMARRIED':(/MARRIED/.test(m)?'MARRIED':m);
         }
         emp[col.key] = val;
       });
@@ -12946,9 +13063,8 @@ window.emParseBulkPaste=function(){
   if(btn){btn.disabled=!emps.length;btn.style.opacity=emps.length?'1':'.4';}
   var info=document.getElementById('emPasteInfo'),bar=document.getElementById('emPasteBar');
   if(bar)bar.style.display='flex';
-  if(info)info.textContent='✅ '+emps.length+' employee rows detected. Headers auto-mapped — review then Save All.';
+  if(info)info.textContent='✅ '+emps.length+' employee rows detected in ATPL 40-Column Master format. Review & Save All.';
 };
-
 /* Make bulk save persistent and update all UI. */
 window.emSaveBulk=function(){
   if(!EM_BULK_ROWS.length)return;
