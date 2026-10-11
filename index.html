@@ -2780,29 +2780,301 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <button type="button" onclick="emResetColOrder()" style="padding:4px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All Columns</button>
             </div>
           </div>
-          <!-- Column headers like Excel -->
-          <div class="em-xls-hdr" style="display:grid;grid-template-columns:90px 160px 150px 120px 120px 150px 140px 150px 130px 130px 80px 160px 130px 110px 110px 100px 100px 100px;gap:0;background:#0f172a;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content">
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">EMP CODE</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">NAME</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">FATHER'S NAME</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">D.O.B</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">D.O.J</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#6ee7b7;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">PF NO</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#93c5fd;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">ESI NO</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">BANK NAME</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">IFSC CODE</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">ACCOUNT NO</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">GENDER</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">DEPARTMENT</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">CATEGORY</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#fcd34d;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">BASIC (₹)</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#fcd34d;text-transform:uppercase;letter-spacing:1px;border-right:1px solid #1e293b">HRA (₹)</div>
-            <div style="padding:8px 10px;font-size:9px;font-weight:700;color:#6ee7b7;text-transform:uppercase;letter-spacing:1px">GROSS (₹)</div>
-          </div>
-          <!-- Single data row — all inputs in one row like Excel -->
-          <div style="display:grid;grid-template-columns:90px 160px 150px 120px 120px 150px 140px 150px 130px 130px 80px 160px 130px 110px 110px 100px 100px 100px;gap:0;background:#111827;min-width:max-content" id="emSingleRow">
-            <!-- Populated by JS -->
-          </div>
+          <!-- Column headers matching ATPL 40-Column Excel Format from Image -->
+<div class="em-xls-hdr" style="display:grid;grid-template-columns:120px 170px 160px 110px 110px 90px 120px 140px 120px 130px 190px 130px 120px 190px 130px 120px 140px 150px 140px 150px 130px 130px 130px 130px 130px 150px 150px 130px 160px 120px 140px 140px 120px 110px 140px 140px 130px 120px 120px 140px;gap:0;border-bottom:2px solid #334155;position:sticky;top:0;z-index:5;min-width:max-content">
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>1. Employee ID</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>2. Name of employee</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>3. Name Of Fathers</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>4. D.O.B</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>5. Marital</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>6. Gender</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>7. Phone N</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>8. Aadhar No.</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>9. Pan No</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>10. Qualification</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>11. Present House /Street No</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>12. District</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>13. State</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>14. Permanent House /Street No</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>15. District</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#d9e1f2;color:#1e3a8a;border-right:1px solid #b4c6e7;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>16. State</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>17. Date Of Birth Fathers</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>18. Mothers Name</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>19. Date Of Birth Mothers</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>20. Name Of NOMINEE</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>21. Date OF NOMINEE</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>22. Name Of Son</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>23. Date of Birth Son</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>24. Name Of Daughter</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fce4d6;color:#843c0c;border-right:1px solid #f8cbad;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>25. Date Of Birth Daughter</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fff2cc;color:#7f6000;border-right:1px solid #ffe699;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>26. Bank Name</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fff2cc;color:#7f6000;border-right:1px solid #ffe699;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>27. Account No</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fff2cc;color:#7f6000;border-right:1px solid #ffe699;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>28. IFSC Code</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#fff2cc;color:#7f6000;border-right:1px solid #ffe699;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>29. Branch Address</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>30. D-O-J</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>31. Department</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>32. Designation</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>33. Catgrory</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>34. Skill</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>35. PF NO</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#e2efda;color:#375623;border-right:1px solid #c6e0b4;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>36. ESI NO</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#ffe699;color:#833c0c;border-right:1px solid #ffd966;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>37. Gross Total Salary</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#ffe699;color:#833c0c;border-right:1px solid #ffd966;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>38. New Basic</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#ffe699;color:#833c0c;border-right:1px solid #ffd966;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>39. New HRA</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+  <div style="padding:7px 10px;font-size:11px;font-weight:800;background:#ffe699;color:#833c0c;border-right:1px solid #ffd966;display:flex;align-items:center;justify-content:space-between;gap:4px;white-space:nowrap;font-family:inherit">
+    <span>40. Gross Total Salary</span>
+    <span style="font-size:9px;opacity:0.6;background:rgba(0,0,0,0.06);padding:1px 3px;border-radius:2px">▾</span>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:120px 170px 160px 110px 110px 90px 120px 140px 120px 130px 190px 130px 120px 190px 130px 120px 140px 150px 140px 150px 130px 130px 130px 130px 130px 150px 150px 130px 160px 120px 140px 140px 120px 110px 140px 140px 130px 120px 120px 140px;gap:0;background:#111827;min-width:max-content" id="emSingleRow">
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_emp_id" type="text" placeholder="Employee ID" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_name" type="text" placeholder="Name of employee" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_father" type="text" placeholder="Name Of Fathers" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_dob" type="text" placeholder="D.O.B" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <select id="emf_marital_status" style="width:100%;height:100%;padding:8px 10px;background:#111827;border:none;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer;font-family:inherit">
+      <option value="MARRIED">MARRIED</option>
+      <option value="UNMARRIED">UNMARRIED</option>
+      <option value="SINGLE">SINGLE</option>
+      <option value="DIVORCED">DIVORCED</option>
+      <option value="WIDOWED">WIDOWED</option>
+    </select>
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <select id="emf_gender" style="width:100%;height:100%;padding:8px 10px;background:#111827;border:none;color:#f1f5f9;font-size:12px;outline:none;cursor:pointer;font-family:inherit">
+      <option value="MALE">MALE</option>
+      <option value="FEMALE">FEMALE</option>
+      <option value="OTHER">OTHER</option>
+    </select>
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_phone_no" type="text" placeholder="Phone N" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_aadhaar_no" type="text" placeholder="Aadhar No." style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_pan_no" type="text" placeholder="Pan No" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_qualification" type="text" placeholder="Qualification" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_present_address" type="text" placeholder="Present House /Street No" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_present_district" type="text" placeholder="District" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_present_state" type="text" placeholder="State" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_permanent_address" type="text" placeholder="Permanent House /Street No" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_permanent_district" type="text" placeholder="District" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_permanent_state" type="text" placeholder="State" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_father_dob" type="text" placeholder="Date Of Birth Fathers" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_mother_name" type="text" placeholder="Mothers Name" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_mother_dob" type="text" placeholder="Date Of Birth Mothers" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_nominee_name" type="text" placeholder="Name Of NOMINEE" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_nominee_dob" type="text" placeholder="Date OF NOMINEE" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_son_name" type="text" placeholder="Name Of Son" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_son_dob" type="text" placeholder="Date of Birth Son" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_daughter_name" type="text" placeholder="Name Of Daughter" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_daughter_dob" type="text" placeholder="Date Of Birth Daughter" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_bank_name" type="text" placeholder="Bank Name" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_account_no" type="text" placeholder="Account No" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_ifsc" type="text" placeholder="IFSC Code" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_branch_address" type="text" placeholder="Branch Address" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_doj" type="text" placeholder="D-O-J" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_dept" type="text" placeholder="Department" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_desig" type="text" placeholder="Designation" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_cat1" type="text" placeholder="Catgrory" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_skill" type="text" placeholder="Skill" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_pf_no" type="text" placeholder="PF NO" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_esi_no" type="text" placeholder="ESI NO" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_gross" type="number" placeholder="Gross Total Salary" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_basic" type="number" placeholder="New Basic" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_hra" type="number" placeholder="New HRA" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+  <div style="border-right:1px solid #1e293b;border-bottom:1px solid #1e293b;position:relative">
+    <input id="emf_new_gross" type="number" placeholder="Gross Total Salary" style="width:100%;height:100%;padding:8px 10px;background:transparent;border:none;color:#f1f5f9;font-size:12px;font-family:monospace;outline:none;">
+  </div>
+</div>
           <!-- Instructions -->
           <div class="em-xls-instructions" style="padding:16px 20px;background:#0f172a;border-top:1px solid #1e293b;margin-top:8px">
             <div style="font-size:10px;color:#475569;line-height:1.8">
@@ -9594,6 +9866,13 @@ window.emShiftCol = function(idx, dir) {
   }
 };
 
+function getAtplExcelColStyle(idx) {
+  if (idx >= 0 && idx < 16) return { bg: "#d9e1f2", color: "#1e3a8a", border: "#b4c6e7", group: "Personal & KYC" };
+  if (idx >= 16 && idx < 25) return { bg: "#fce4d6", color: "#843c0c", border: "#f8cbad", group: "Family & Nominee" };
+  if (idx >= 25 && idx < 29) return { bg: "#fff2cc", color: "#7f6000", border: "#ffe699", group: "Bank Details" };
+  if (idx >= 29 && idx < 36) return { bg: "#e2efda", color: "#375623", border: "#c6e0b4", group: "Employment & Statutory" };
+  return { bg: "#ffe699", color: "#833c0c", border: "#ffd966", group: "Salary Structure" };
+}
 window.emRenderColChips = function() {
   var container = document.getElementById("emColChipsContainer");
   if (!container) return;
@@ -9605,7 +9884,8 @@ window.emRenderColChips = function() {
     chip.draggable = true;
     chip.setAttribute("data-bulk-col-idx", ci);
     chip.className = "em-col-chip";
-    chip.style.cssText = "padding:6px 11px;background:#1e293b;border:1px solid #334155;border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:700;color:" + (colors[c.key] || "#e2e8f0") + ";user-select:none;-webkit-user-select:none;transition:transform .12s, border-color .12s, box-shadow .12s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.2);position:relative;";
+    var st = getAtplExcelColStyle(ci);
+chip.style.cssText = "padding:6px 11px;background:"+st.bg+";border:1px solid "+st.border+";border-radius:8px;display:inline-flex;align-items:center;gap:6px;cursor:grab;white-space:nowrap;font-size:11px;font-weight:800;color:"+st.color+";user-select:none;-webkit-user-select:none;transition:transform .12s;flex-shrink:0;box-shadow:0 2px 5px rgba(0,0,0,0.15);position:relative;";
     chip.title = "Mouse se drag & drop karein | ✏️ Rename karein | ✕ Remove karein (" + (ci + 1) + ". " + c.label + ")";
 
     var canRemove = (c.key !== "emp_id" && c.key !== "name");
@@ -9754,7 +10034,8 @@ function emRenderSingleRow(e) {
     var colors = {emp_id:'#818cf8', name:'#ffffff', father:'#cbd5e1', dob:'#94a3b8', marital_status:'#cbd5e1', gender:'#38bdf8', phone_no:'#38bdf8', aadhaar_no:'#a78bfa', pan_no:'#a78bfa', qualification:'#cbd5e1', present_address:'#2dd4bf', present_district:'#2dd4bf', present_state:'#2dd4bf', permanent_address:'#14b8a6', permanent_district:'#14b8a6', permanent_state:'#14b8a6', father_dob:'#fed7aa', mother_name:'#fed7aa', mother_dob:'#fed7aa', nominee_name:'#fb923c', nominee_dob:'#fb923c', son_name:'#fdba74', son_dob:'#fdba74', daughter_name:'#fdba74', daughter_dob:'#fdba74', bank_name:'#facc15', account_no:'#facc15', ifsc:'#facc15', branch_address:'#facc15', doj:'#86efac', dept:'#4ade80', desig:'#4ade80', cat1:'#4ade80', skill:'#22c55e', pf_no:'#6ee7b7', esi_no:'#93c5fd', gross:'#fcd34d', basic:'#fde047', hra:'#fde047', new_gross:'#34d399', status:'#f472b6'};
     th.draggable = true;
     th.setAttribute('data-col-idx', ci);
-    th.style.cssText = 'padding:7px 8px;font-size:9px;font-weight:800;color:'+(colors[c.key]||'#94a3b8')+';text-transform:uppercase;letter-spacing:0.7px;border-right:1px solid #1e293b;white-space:nowrap;cursor:grab;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:all .15s;background:#0f172a;';
+    var st = getAtplExcelColStyle(ci);
+th.style.cssText = 'padding:7px 8px;font-size:10px;font-weight:800;color:'+st.color+';background:'+st.bg+';border-right:1px solid '+st.border+';white-space:nowrap;cursor:grab;display:flex;align-items:center;justify-content:space-between;gap:4px;transition:all .15s;';
     th.title = 'Mouse se pakad kar aage-peeche drag & drop karein (Column ' + (ci + 1) + ')';
 
     var canRemove = (c.key !== 'emp_id' && c.key !== 'name');
@@ -10304,7 +10585,7 @@ function renderBulkPreview() {
   var html='<div style="font-size:11px;font-weight:700;color:#6ee7b7;margin-bottom:8px">✅ '+EM_BULK_ROWS.length+' rows ready to save:</div>';
   html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10px;width:100%">';
   html+='<thead><tr style="background:#0f172a">';
-  EM_COLS.forEach(function(c){ html+='<th style="padding:6px 10px;text-align:left;color:#64748b;white-space:nowrap;border:1px solid #1e293b">'+c.label+'</th>'; });
+  EM_COLS.forEach(function(c, ci){ var st = getAtplExcelColStyle(ci); html+='<th style="padding:7px 10px;text-align:left;color:'+st.color+';background:'+st.bg+';white-space:nowrap;border:1px solid '+st.border+';font-size:10px;font-weight:800">'+(ci+1)+'. '+c.label+' ▾</th>'; });
   html+='<th style="padding:6px 10px;color:#64748b;border:1px solid #1e293b">STATUS</th>';
   html+='</tr></thead><tbody>';
 

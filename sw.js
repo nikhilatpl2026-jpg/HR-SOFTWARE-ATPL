@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v11-master-40col-excel';
+const CACHE_NAME = 'atpl-cache-v12-excel-master-exact-ui';
 const ASSETS = [
   './',
   './index.html',
