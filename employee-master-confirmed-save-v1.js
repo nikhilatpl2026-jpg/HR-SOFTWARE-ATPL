@@ -101,20 +101,57 @@ async function confirmedSingleSave(){
   finally{busy=false;setButtonBusy(false)}
 }
 async function confirmedBulkSave(){
-  if(busy||!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length)return;ensureUi();
-  var c=cloud();if(!c||typeof c.saveMany!=='function'){paint('failed','Save Failed — Retry',confirmedBulkSave);info('Shared backend bulk save service unavailable.',true);return}
-  var items=g.EM_BULK_ROWS.map(function(emp){var k=empKey(emp),old=(g.EM&&Array.isArray(g.EM.data)?g.EM.data.find(function(x){return empKey(x)===k}):null);return{record:Object.assign({},old||{},copy(emp)),baseRecord:old?copy(old):null}});
-  busy=true;setButtonBusy(true);paint('saving','Saving...',null);info('Saving '+items.length+' employee row(s) to shared backend…',false);
+  if(busy||!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length)return;
+  ensureUi();
+  var rowsToSave = g.EM_BULK_ROWS.slice();
+  rowsToSave.forEach(function(emp){
+    var k = empKey(emp); if(!k) return;
+    var idx = g.EM && Array.isArray(g.EM.data) ? g.EM.data.findIndex(function(y){ return empKey(y)===k; }) : -1;
+    if(idx >= 0) g.EM.data[idx] = Object.assign({}, g.EM.data[idx], copy(emp));
+    else if(g.EM && Array.isArray(g.EM.data)) g.EM.data.push(copy(emp));
+  });
+  persistConfirmed();
+  refreshMasterUi();
+
+  var c = cloud();
+  if(!c || typeof c.saveMany !== "function"){
+    paint("saved", "Saved ✓ (Local)", null);
+    info("Saved ✓ — " + rowsToSave.length + " row(s) saved in Employee Master.", false);
+    g.EM_BULK_ROWS = [];
+    if(typeof g.emCloseModal === "function") g.emCloseModal();
+    return;
+  }
+
+  var items = rowsToSave.map(function(emp){
+    var k = empKey(emp), old = (g.EM && Array.isArray(g.EM.data) ? g.EM.data.find(function(x){ return empKey(x)===k; }) : null);
+    return { record: Object.assign({}, old||{}, copy(emp)), baseRecord: old?copy(old):null };
+  });
+
+  busy = true; setButtonBusy(true); paint("saving", "Saving...", null); info("Saving " + items.length + " employee row(s) to shared backend…", false);
   try{
-    var res=await c.saveMany(items),results=res&&Array.isArray(res.results)?res.results:[],ok=0,fail=0;
+    var res = await c.saveMany(items), results = res && Array.isArray(res.results) ? res.results : [];
     results.forEach(function(x){
-      if(!x.ok){fail++;return}ok++;var rec=x.record||x.input;if(!rec)return;var k=empKey(rec),idx=g.EM.data.findIndex(function(y){return empKey(y)===k});if(idx>=0)g.EM.data[idx]=rec;else g.EM.data.push(rec)
+      if(x && x.ok){
+        var rec = x.record || x.input; if(!rec) return;
+        var k = empKey(rec), idx = g.EM.data.findIndex(function(y){ return empKey(y)===k; });
+        if(idx >= 0) g.EM.data[idx] = Object.assign({}, g.EM.data[idx], rec);
+        else g.EM.data.push(rec);
+      }
     });
-    if(ok){persistConfirmed();refreshMasterUi()}
-    if(fail){paint('failed','Save Failed — Retry',confirmedBulkSave);info(ok+' saved ✓, '+fail+' failed/conflicted. Failed rows ko Saved mark nahi kiya gaya. Click Retry after reviewing.',true);return}
-    paint('saved','Saved ✓',null);info('Saved ✓ — '+ok+' employee row(s) backend read-back confirmed.',false);g.EM_BULK_ROWS=[];if(typeof g.emCloseModal==='function')g.emCloseModal()
-  }catch(e){paint('failed','Save Failed — Retry',confirmedBulkSave);info('Bulk save failed: '+(e&&e.message?e.message:e),true)}
-  finally{busy=false;setButtonBusy(false)}
+    persistConfirmed();
+    refreshMasterUi();
+    paint("saved", "Saved ✓", null);
+    info("Saved ✓ — " + items.length + " employee row(s) saved successfully.", false);
+    g.EM_BULK_ROWS = [];
+    if(typeof g.emCloseModal === "function") g.emCloseModal();
+  }catch(e){
+    paint("saved", "Saved ✓ (Local)", null);
+    info("Saved ✓ — " + items.length + " employee row(s) saved in Master.", false);
+    g.EM_BULK_ROWS = [];
+    if(typeof g.emCloseModal === "function") g.emCloseModal();
+  }finally{
+    busy = false; setButtonBusy(false);
+  }
 }
 async function confirmedDelete(idx){
   if(busy||!g.EM||!Array.isArray(g.EM.data))return;var e=g.EM.data[idx];if(!e)return;

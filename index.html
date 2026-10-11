@@ -9455,8 +9455,42 @@ document.addEventListener('keydown', function(e){
 // EMPLOYEE MASTER — Excel Style Editor Functions
 // ══════════════════════════════════════════════════════
 
-// Column definitions — order matches Excel paste order (Exact 40-Column ATPL Master Layout)
+// Column definitions — order matches Excel paste order
 var ALL_STANDARD_EM_COLS = [
+  {key:'emp_id',            label:'EMP CODE',                  w:'100px', type:'text', required:true},
+  {key:'name',              label:'NAME',                      w:'160px', type:'text', required:true},
+  {key:'father',            label:'FATHER\'S NAME',             w:'150px', type:'text'},
+  {key:'dob',               label:'D.O.B',                     w:'120px', type:'text'},
+  {key:'doj',               label:'D.O.J',                     w:'120px', type:'text'},
+  {key:'dol',               label:'DOL (EXIT)',                w:'120px', type:'text'},
+  {key:'status',            label:'STATUS',                    w:'110px', type:'select', opts:['ACTIVE','LEFT']},
+  {key:'gender',            label:'GENDER',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER']},
+  {key:'pf_no',             label:'PF NO / UAN',               w:'150px', type:'text'},
+  {key:'esi_no',            label:'ESI NO / IP',               w:'140px', type:'text'},
+  {key:'bank_name',         label:'BANK NAME',                 w:'150px', type:'text'},
+  {key:'ifsc',              label:'IFSC CODE',                 w:'130px', type:'text'},
+  {key:'account_no',        label:'ACCOUNT NO',                w:'140px', type:'text'},
+  {key:'dept',              label:'DEPARTMENT',                w:'150px', type:'text'},
+  {key:'desig',             label:'DESIGNATION',               w:'140px', type:'text'},
+  {key:'cat1',              label:'CATEGORY 01',               w:'130px', type:'text'},
+  {key:'cat2',              label:'CATEGORY 02',               w:'130px', type:'text'},
+  {key:'basic',             label:'BASIC (₹)',                 w:'110px', type:'number'},
+  {key:'hra',               label:'HRA (₹)',                   w:'110px', type:'number'},
+  {key:'gross',             label:'GROSS (₹)',                 w:'110px', type:'number'},
+  {key:'aadhaar_no',        label:'AADHAAR NUMBER',            w:'140px', type:'text'},
+  {key:'phone_no',          label:'PHONE NUMBER',              w:'130px', type:'tel'},
+  {key:'qualification',     label:'QUALIFICATION',             w:'140px', type:'text'},
+  {key:'present_address',   label:'PRESENT ADDRESS',           w:'180px', type:'textarea'},
+  {key:'permanent_address', label:'PERMANENT ADDRESS',         w:'180px', type:'textarea'},
+  {key:'marital_status',    label:'MARITAL STATUS',            w:'120px', type:'select', opts:['SINGLE','MARRIED','DIVORCED','WIDOWED','SEPARATED']},
+  {key:'nominee_name',      label:'NOMINEE NAME',              w:'150px', type:'text'},
+  {key:'nominee_relation',  label:'RELATION W/ NOMINEE',       w:'160px', type:'text'},
+  {key:'nominee_dob',       label:'NOMINEE D.O.B',             w:'120px', type:'text'}
+];
+var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
+var EM_COLS = ALL_STANDARD_EM_COLS.slice();
+
+var ATPL_40_EXCEL_COLS = [
   // 1-16 Light Blue (#d9e1f2)
   {key:'emp_id',              label:'Employee ID',               w:'120px', type:'text', required:true, bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
   {key:'name',                label:'Name of employee',          w:'170px', type:'text', required:true, bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
@@ -9507,11 +9541,6 @@ var ALL_STANDARD_EM_COLS = [
   {key:'hra',                 label:'New HRA',                   w:'120px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'},
   {key:'new_gross',           label:'Gross Total Salary',        w:'140px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'}
 ];
-var ATPL_40_EXCEL_COLS = ALL_STANDARD_EM_COLS;
-var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
-var EM_COLS = ALL_STANDARD_EM_COLS.slice();
-
-var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_BULK_ROWS = []; // parsed bulk rows
 window._emDragColIdx = -1;
 
@@ -9559,9 +9588,7 @@ window.emEditCol = function(idx) {
 
 window.emApplyPreset = function(presetName) {
   var curVals = emGetSingleRowValues();
-  if (presetName === 'all' || presetName === 'atpl_40') {
-    EM_COLS = ALL_STANDARD_EM_COLS.slice();
-  } else if (presetName === 'standard') {
+  if (presetName === 'all' || presetName === 'atpl_40') { EM_COLS = ATPL_40_EXCEL_COLS.slice(); } else if (presetName === 'standard') {
     var stdKeys = ['emp_id','name','father','dob','marital_status','gender','phone_no','aadhaar_no','pan_no','bank_name','account_no','ifsc','doj','dept','desig','cat1','pf_no','esi_no','gross','basic','hra'];
     EM_COLS = stdKeys.map(function(k){
       return ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
@@ -9755,15 +9782,6 @@ function emApplyRemoteColConfig(savedCols, savedCustom) {
 
 function emLoadSavedColOrder() {
   try {
-    var curVer = localStorage.getItem('ATPL_EM_COLS_FORMAT_VER');
-    if (curVer !== 'v2026_atpl_40_master_final' || !EM_COLS || EM_COLS.length < 40) {
-      localStorage.removeItem('ATPL_EM_COLS_ORDER');
-      localStorage.removeItem('ATPL_EM_COLS_Setting');
-      localStorage.setItem('ATPL_EM_COLS_FORMAT_VER', 'v2026_atpl_40_master_final');
-      EM_COLS = ALL_STANDARD_EM_COLS.slice();
-      DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
-      return;
-    }
     var savedCustom = null;
     try { savedCustom = JSON.parse(localStorage.getItem('ATPL_EM_CUSTOM_COLS_Setting') || 'null'); } catch(_) {}
     if (Array.isArray(savedCustom)) {
@@ -9784,7 +9802,8 @@ function emLoadSavedColOrder() {
       if (Array.isArray(keys) && keys.length) {
         var newCols = [];
         keys.forEach(function(k) {
-          var found = ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; });
+          var found = ALL_STANDARD_EM_COLS.find(function(c){ return c.key === k; }) ||
+                      (typeof ATPL_40_EXCEL_COLS !== 'undefined' ? ATPL_40_EXCEL_COLS.find(function(c){ return c.key === k; }) : null);
           if (found) newCols.push(Object.assign({}, found));
         });
         if (newCols.length > 0) {

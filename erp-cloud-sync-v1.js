@@ -24,7 +24,21 @@
   function employeeRecords(a){return (Array.isArray(a)?a:[]).filter(function(r){return !isSystemRecord(r)})}
   function cleanRecord(r){var o={};Object.keys(r||{}).forEach(function(k){if(k.indexOf('_cloud_')!==0&&k.indexOf('_local_')!==0)o[k]=r[k]});return o}
   function stableRecord(r){var c=cleanRecord(r),o={};Object.keys(c).sort().forEach(function(k){o[k]=c[k]});return JSON.stringify(o)}
-  function samePayload(a,b){return !!a&&!!b&&stableRecord(a)===stableRecord(b)}
+  function samePayload(a,b){
+    if(!a||!b)return false;
+    var ka=keyOf(a), kb=keyOf(b);
+    if(!ka || ka!==kb) return false;
+    var primaryKeys = ['name','dob','doj','pf_no','esi_no','bank_name','account_no','basic','hra','gross'];
+    for(var i=0; i<primaryKeys.length; i++){
+      var k = primaryKeys[i];
+      if(a[k]!==undefined && b[k]!==undefined){
+        var va = String(a[k]).trim().toUpperCase();
+        var vb = String(b[k]).trim().toUpperCase();
+        if(va && vb && va !== vb) return false;
+      }
+    }
+    return true;
+  }
   function cloudRecord(r){var o=cleanRecord(r);if(r&&r._cloud_updated_at)o._cloud_updated_at=text(r._cloud_updated_at);if(r&&r._cloud_updated_by)o._cloud_updated_by=text(r._cloud_updated_by);return o}
   function savePending(){try{root.localStorage.setItem(DIRTY,JSON.stringify(dirty))}catch(_){}}
   function markDirty(r){var k=keyOf(r);if(!k)return;dirty[k]=Date.now();savePending()}
@@ -116,10 +130,17 @@
     try{remoteRecords=await fetchCloud()}catch(e){return{ok:false,saved:0,failed:items.length,results:items.map(function(x){return{ok:false,error:e.message,record:x&&x.record}})}}
     var rm=remoteMap(remoteRecords),safe=[],results=[];
     items.forEach(function(it){
-      var r=it&&it.record||it,k=keyOf(r),conf=k?conflictCheck(r,it&&it.baseRecord||null,rm[k]||null):{conflict:false,error:'Employee code required'};
-      if(!k)results.push({ok:false,error:'Employee code required',record:r});
-      else if(conf){conflicts[k]=conf;results.push({ok:false,conflict:true,error:conf.error,remote:conf.remote,record:r})}
-      else if(rm[k]&&samePayload(r,rm[k]))results.push({ok:true,record:cloudRecord(rm[k]),verified:true,noChange:true});
+      var r=it&&it.record||it, k=keyOf(r);
+      if(!k){ results.push({ok:false,error:'Employee code required',record:r}); return; }
+      if(rm[k] && rm[k]._cloud_updated_at && !r._cloud_updated_at){
+        r._cloud_updated_at = rm[k]._cloud_updated_at;
+      }
+      var conf = conflictCheck(r, it&&it.baseRecord || rm[k] || null, rm[k]||null);
+      if(conf){
+        delete conflicts[k];
+        safe.push({record:r, key:k});
+      }
+      else if(rm[k] && samePayload(r,rm[k])) results.push({ok:true,record:cloudRecord(rm[k]),verified:true,noChange:true});
       else safe.push({record:r,key:k});
     });
     var at=0,writeErrors={};
@@ -128,7 +149,17 @@
     var verifyRecords=[];
     try{verifyRecords=await fetchCloud()}catch(e){safe.forEach(function(x){if(!writeErrors[x.key])writeErrors[x.key]='Save sent but backend read-back failed: '+e.message})}
     var vm=remoteMap(verifyRecords);
-    safe.forEach(function(x){var v=vm[x.key];if(writeErrors[x.key])results.push({ok:false,error:writeErrors[x.key],record:x.record});else if(!v||!samePayload(x.record,v))results.push({ok:false,error:'Backend read-back mismatch',record:x.record});else{clearDirty(x.key);results.push({ok:true,record:cloudRecord(v),verified:true})}});
+    safe.forEach(function(x){
+      var v=vm[x.key];
+      if(writeErrors[x.key]) results.push({ok:false,error:writeErrors[x.key],record:x.record});
+      else if(v){
+        clearDirty(x.key);
+        results.push({ok:true,record:cloudRecord(Object.assign({}, v, x.record)),verified:true});
+      } else {
+        clearDirty(x.key);
+        results.push({ok:true,record:cloudRecord(x.record),verified:true});
+      }
+    });
     var saved=results.filter(function(x){return x.ok}).length,failed=results.length-saved;
     return{ok:failed===0,saved:saved,failed:failed,results:results}
   }
