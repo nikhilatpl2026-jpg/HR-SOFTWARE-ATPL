@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v6-universal-cols-sync';
+const CACHE_NAME = 'atpl-cache-v7-cross-erp-rpa-bot';
 const ASSETS = [
   './',
   './index.html',

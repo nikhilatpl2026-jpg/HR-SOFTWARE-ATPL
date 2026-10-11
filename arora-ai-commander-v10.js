@@ -436,6 +436,29 @@
       AIChatContext.lastActiveEmpCode = cleanCode(directCodeMatch[0]);
     }
 
+    // ── 0. CROSS-ERP RPA AUTO-ENTRY & BILL/PROCESS ROBOTIC CONNECTOR ──
+    if (lower.match(/(?:dusre|doosre|other|external|second|tally|busy|marg|zoho|sap|boss).*?(?:erp|software|portal|entry|bill|bills|voucher|vouchers|process|login)/i) ||
+        lower.match(/(?:cross[- ]?erp|rpa[- ]?bot|auto[- ]?entry|bill[- ]?entry|voucher[- ]?entry|post[- ]?bills|login.*?karke.*?entry)/i)) {
+      if (window.ATPLCrossErpBot && typeof window.ATPLCrossErpBot.open === 'function') {
+        setTimeout(function() { window.ATPLCrossErpBot.open('queue'); }, 300);
+      }
+      return {
+        html: '<div style="background:linear-gradient(135deg, rgba(234,88,12,0.2) 0%, rgba(15,23,42,0.9) 100%); border:1px solid #ea580c; border-radius:12px; padding:14px; box-shadow:0 8px 20px rgba(0,0,0,0.4)">' +
+          '<div style="font-size:15px; font-weight:800; color:#fb923c; margin-bottom:8px; display:flex; align-items:center; gap:8px">🤖 <strong>Haan Bhai! Cross-ERP Autonomous RPA Bot Ready Hai!</strong></div>' +
+          '<div style="font-size:12px; color:#cbd5e1; line-height:1.6; margin-bottom:12px">' +
+          'Aapko dusre ERP (Tally Prime, Busy, Marg, SAP, ya Head Office Web Portal) me jakar manually haath se type ya copy-paste karne ki zaroorat nahi hai:<br>' +
+          '• <strong>Autonomous Session Login:</strong> External ERP credentials securely stored hain.<br>' +
+          '• <strong>One-Command Auto-Entry:</strong> Bills, Expenses, Purchase Vouchers aur Salary Journals auto-post ho jate hain.<br>' +
+          '• <strong>Tally XML Gateway & 1-Click Web RPA:</strong> Port 9000 direct push ya Browser bookmarklet se ek click me form bhar jata hai.' +
+          '</div>' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap">' +
+          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.open(\'queue\')">📋 Open Entry Queue</button>' +
+          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.executeBulkPending()" style="background:#16a34a">🚀 Auto-Post Pending Bills</button>' +
+          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.generateSalaryJournalEntry()" style="background:#ea580c">💰 Auto-Gen Salary Journal</button>' +
+          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.open(\'profiles\')" style="background:#475569">🌐 ERP Login Credentials</button>' +
+          '</div></div>'
+      };
+    }
     // ── 0. DIRECT STATUTORY CHALLAN / ECR TRIGGER ──
     if (lower.match(/challan|ecr|pf.*return|esic.*return|pf.*file|esic.*file|portal.*upload/i)) {
       if (typeof window.goPage === 'function') window.goPage('challan');
