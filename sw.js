@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v7-cross-erp-rpa-bot';
+const CACHE_NAME = 'atpl-cache-v8-arora-cloud-run-cross-erp';
 const ASSETS = [
   './',
   './index.html',
