@@ -10381,71 +10381,173 @@ function emNormalizeDateValue(val) {
 }
 window.emNormalizeDateValue = emNormalizeDateValue;
 
-function matchColumnHeader(header) {
+function parseExcelClipboard(text) {
+  var rows = [];
+  var curRow = [];
+  var curField = '';
+  var inQuotes = false;
+  var len = text.length;
+
+  for (var i = 0; i < len; i++) {
+    var c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (i + 1 < len && text[i + 1] === '"') {
+          curField += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        curField += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === '\t') {
+        curRow.push(curField.trim());
+        curField = '';
+      } else if (c === '\r') {
+        if (i + 1 < len && text[i + 1] === '\n') i++;
+        curRow.push(curField.trim());
+        curField = '';
+        if (curRow.length > 0 && curRow.some(function(x){ return x !== ''; })) {
+          rows.push(curRow);
+        }
+        curRow = [];
+      } else if (c === '\n') {
+        curRow.push(curField.trim());
+        curField = '';
+        if (curRow.length > 0 && curRow.some(function(x){ return x !== ''; })) {
+          rows.push(curRow);
+        }
+        curRow = [];
+      } else {
+        curField += c;
+      }
+    }
+  }
+  if (curField.length > 0 || curRow.length > 0) {
+    curRow.push(curField.trim());
+    if (curRow.length > 0 && curRow.some(function(x){ return x !== ''; })) {
+      rows.push(curRow);
+    }
+  }
+  return rows;
+}
+window.parseExcelClipboard = parseExcelClipboard;
+
+function matchColumnHeader(header, counts) {
+  counts = counts || { district: 0, state: 0, gross: 0 };
   var raw = String(header || '').trim();
   var s = raw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s) return '';
 
   if (/^(s\s*no|sr\s*no|sl\s*no|sno|serial\s*no|#|seq)$/i.test(s)) return '__skip__';
 
+  // Check District & State duplicate disambiguation (Present vs Permanent)
+  if (s === 'district' || /present\s*district/.test(s)) {
+    counts.district++;
+    return counts.district === 1 ? 'present_district' : 'permanent_district';
+  }
+  if (/permanent\s*district/.test(s)) return 'permanent_district';
+
+  if (s === 'state' || /present\s*state/.test(s)) {
+    counts.state++;
+    return counts.state === 1 ? 'present_state' : 'permanent_state';
+  }
+  if (/permanent\s*state/.test(s)) return 'permanent_state';
+
+  // Check IFSC FIRST (before anything with "code")
   if (/(?:^|\s)(?:ifsc|ifs|rtgs|neft)(?:\s|$)/i.test(s) || /ifsc/i.test(raw)) return 'ifsc';
 
+  // Check Bank Account (supports A.C, A/C, A.C NO, ACC NO, etc.)
   if (/(?:^|\s)(?:account|ac|acc)(?:\s|$)/i.test(s) || /\b(?:a\s+c)\b/i.test(s) || /a[\/.]c/i.test(raw.toLowerCase())) {
     if (!/pf|esi|uan/i.test(s)) return 'account_no';
   }
 
+  // Check Bank Name
   if (/(?:^|\s)(?:bank|bank\s*name)(?:\s|$)/i.test(s) && !/account|ac|ifsc/i.test(s)) return 'bank_name';
 
+  // Check Branch Address
   if (/\bbranch\b/i.test(s)) return 'branch_address';
 
-  if (/father.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'father_dob';
+  // Check Family members DOB (both "father dob" and "date of birth father")
+  if (/(?:dob|birth|d\s*o\s*b).*father|father.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'father_dob';
   if (/father|guardian|f\s*name/i.test(s)) return 'father';
-  if (/mother.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'mother_dob';
+
+  if (/(?:dob|birth|d\s*o\s*b).*mother|mother.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'mother_dob';
   if (/mother/i.test(s)) return 'mother_name';
-  if (/(?:nominee|wife|spouse).*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'nominee_dob';
+
+  if (/(?:dob|birth|d\s*o\s*b).*(?:nominee|wife|spouse)|(?:nominee|wife|spouse).*(?:dob|birth|d\s*o\s*b)|date\s*of\s*nominee/i.test(s)) return 'nominee_dob';
+  if (/relation.*nominee|nominee.*relation|relationship/i.test(s)) return 'nominee_relation';
   if (/nominee|wife|spouse/i.test(s)) return 'nominee_name';
-  if (/son.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'son_dob';
+
+  if (/(?:dob|birth|d\s*o\s*b).*son|son.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'son_dob';
   if (/\bson\b/i.test(s)) return 'son_name';
-  if (/daughter.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'daughter_dob';
+
+  if (/(?:dob|birth|d\s*o\s*b).*daughter|daughter.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'daughter_dob';
   if (/daughter/i.test(s)) return 'daughter_name';
 
+  // Check Marital Status (BEFORE general status)
+  if (/\b(?:marital|marital\s*status|married|unmarried)\b/i.test(s)) return 'marital_status';
+
+  // Check Employee Name
   if (/^(?:name\s*of\s*employee|employee\s*name|emp\s*name|worker\s*name|staff\s*name|candidate\s*name|name)$/i.test(s) ||
       (/name/i.test(s) && !/father|mother|nominee|wife|son|daughter|bank|branch/i.test(s))) return 'name';
 
+  // Check Employee ID / Code
   if (/^(?:employee\s*id|emp\s*id|emp\s*code|employee\s*code|code|token|token\s*no|card\s*no|id|empid|emp_code|emp_no)$/i.test(s) ||
       (/(?:emp|employee).*(?:code|id|no)/i.test(s) && !/name|pf|esi|uan/i.test(s))) return 'emp_id';
 
+  // Check DOB (Date of Birth)
   if (/(?:^|\s)(?:dob|birth)(?:\s|$)/i.test(s) || /d[\/.\-]o[\/.\-]b/i.test(raw) || /date\s*of\s*birth/i.test(s)) return 'dob';
 
+  // Check DOJ (Date of Joining)
   if (/\b(?:d\s*o\s*j|doj|joining|date\s*of\s*joining|appointment)\b/i.test(s)) return 'doj';
 
+  // Check DOL (Date of Leaving)
   if (/\b(?:d\s*o\s*l|dol|leaving|date\s*of\s*leaving|exit|exit\s*date)\b/i.test(s)) return 'dol';
 
+  // Check Status
+  if (/\bstatus\b|employment\s*status/i.test(s)) return 'status';
+
+  // Check Gender
   if (/\b(?:gender|sex)\b/i.test(s)) return 'gender';
 
-  if (/\b(?:marital|marital\s*status|married)\b/i.test(s)) return 'marital_status';
-
+  // Check Phone
   if (/\b(?:phone|mobile|contact|cell)\b/i.test(s)) return 'phone_no';
 
+  // Check Aadhaar
   if (/\b(?:aadhaar|aadhar|adhar|uid)\b/i.test(s)) return 'aadhaar_no';
 
+  // Check PAN
   if (/\b(?:pan|pan\s*no|pan\s*number)\b/i.test(s)) return 'pan_no';
 
+  // Check PF / UAN
   if (/\b(?:pf|uan|pf\s*no|uan\s*no)\b/i.test(s)) return 'pf_no';
 
+  // Check ESI / IP
   if (/\b(?:esi|esic|ip\s*no|ip\s*number)\b/i.test(s)) return 'esi_no';
 
-  if (/gross.*total|total.*gross|^gross$|gross\s*salary|gross\s*wages/i.test(s)) return 'gross';
+  // Check Salary fields
+  if (/new\s*gross/i.test(s)) return 'new_gross';
+  if (/gross.*total|total.*gross|^gross$|gross\s*salary|gross\s*wages/i.test(s)) {
+    counts.gross++;
+    return counts.gross === 1 ? 'gross' : 'new_gross';
+  }
   if (/basic.*salary|^basic$|basic\s*wages|new\s*basic/i.test(s)) return 'basic';
   if (/^hra$|house\s*rent|new\s*hra/i.test(s)) return 'hra';
-  if (/new\s*gross|gross\s*total/i.test(s)) return 'new_gross';
 
+  // Check Designation / Department / Category / Skill
   if (/\b(?:designation|desig|post|role)\b/i.test(s)) return 'desig';
   if (/\b(?:department|dept|section)\b/i.test(s)) return 'dept';
+  if (/category\s*0?2|cat\s*0?2|sub\s*category/i.test(s)) return 'cat2';
   if (/\b(?:category|cat|catgrory|cat1)\b/i.test(s)) return 'cat1';
   if (/\b(?:skill|skills)\b/i.test(s)) return 'skill';
   if (/\b(?:qualification|education|highest\s*qualification)\b/i.test(s)) return 'qualification';
 
+  // Check Address
   if (/perm.*(?:address|house|street)/i.test(s)) return 'permanent_address';
   if (/pres.*(?:address|house|street)|address|house|street/i.test(s)) return 'present_address';
 
@@ -10455,17 +10557,34 @@ window.matchColumnHeader = matchColumnHeader;
 
 function auditAndCleanEmployee(emp, rawCols) {
   if (!emp) return emp;
+
+  // 1. Text field cleanup (strip quotes, newlines in addresses to commas)
+  var textFields = [
+    'emp_id','name','father','qualification',
+    'present_address','present_district','present_state',
+    'permanent_address','permanent_district','permanent_state',
+    'mother_name','nominee_name','son_name','daughter_name',
+    'bank_name','branch_address','dept','desig','cat1','cat2','skill','pf_no','esi_no'
+  ];
+  textFields.forEach(function(f){
+    if (emp[f] !== undefined && emp[f] !== null) {
+      var s = String(emp[f]).replace(/["'=]/g, '').trim();
+      if (f.indexOf('address') >= 0) s = s.replace(/[\r\n]+/g, ', ').replace(/,\s*,/g, ',').trim();
+      emp[f] = s;
+    }
+  });
+
+  // 2. IFSC & Account No
   if (emp.ifsc) emp.ifsc = cleanIfsc(emp.ifsc);
   if (emp.account_no) emp.account_no = cleanAccountNo(emp.account_no);
-  if (emp.dob) emp.dob = emNormalizeDateValue(emp.dob);
-  if (emp.father_dob) emp.father_dob = emNormalizeDateValue(emp.father_dob);
-  if (emp.mother_dob) emp.mother_dob = emNormalizeDateValue(emp.mother_dob);
-  if (emp.nominee_dob) emp.nominee_dob = emNormalizeDateValue(emp.nominee_dob);
-  if (emp.son_dob) emp.son_dob = emNormalizeDateValue(emp.son_dob);
-  if (emp.daughter_dob) emp.daughter_dob = emNormalizeDateValue(emp.daughter_dob);
-  if (emp.doj) emp.doj = emNormalizeDateValue(emp.doj);
-  if (emp.dol) emp.dol = emNormalizeDateValue(emp.dol);
 
+  // 3. Dates
+  var dateFields = ['dob','father_dob','mother_dob','nominee_dob','son_dob','daughter_dob','doj','dol'];
+  dateFields.forEach(function(df){
+    if (emp[df]) emp[df] = emNormalizeDateValue(emp[df]);
+  });
+
+  // 4. SMART IFSC vs ACCOUNT_NO SWAP & RESCUE
   var isIfsc = function(x) { return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(x); };
   var isAc = function(x) { return /^\d{9,22}$/.test(x); };
 
@@ -10475,6 +10594,7 @@ function auditAndCleanEmployee(emp, rawCols) {
     emp.ifsc = oldAc;
   }
 
+  // Scan raw cells for misplaced IFSC code
   if (!isIfsc(emp.ifsc) && Array.isArray(rawCols)) {
     for (var i = 0; i < rawCols.length; i++) {
       var cIfsc = cleanIfsc(rawCols[i]);
@@ -10485,6 +10605,7 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   }
 
+  // Scan raw cells for misplaced Account Number
   if (!isAc(emp.account_no) && Array.isArray(rawCols)) {
     for (var j = 0; j < rawCols.length; j++) {
       var cAc = cleanAccountNo(rawCols[j]);
@@ -10495,10 +10616,23 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   }
 
+  // 5. Scan raw cells for DOB if missing
+  if ((!emp.dob || !/^\d{2}-\d{2}-\d{4}$/.test(emp.dob)) && Array.isArray(rawCols)) {
+    for (var k = 0; k < rawCols.length; k++) {
+      var norm = emNormalizeDateValue(rawCols[k]);
+      if (/^\d{2}-\d{2}-\d{4}$/.test(norm) && norm !== emp.doj && norm !== emp.father_dob) {
+        emp.dob = norm;
+        break;
+      }
+    }
+  }
+
+  // 6. Phone, Aadhaar, PAN
   if (emp.phone_no) emp.phone_no = String(emp.phone_no).replace(/[^0-9]/g, '').slice(-10);
   if (emp.aadhaar_no) emp.aadhaar_no = String(emp.aadhaar_no).replace(/[^0-9]/g, '').slice(0, 12);
   if (emp.pan_no) emp.pan_no = String(emp.pan_no).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
 
+  // 7. Gender & Marital Status
   if (emp.gender) {
     var g = String(emp.gender).toUpperCase().trim();
     emp.gender = (/FEMALE|WOMAN|F|GIRL/.test(g)) ? 'FEMALE' : 'MALE';
@@ -10507,6 +10641,13 @@ function auditAndCleanEmployee(emp, rawCols) {
     var m = String(emp.marital_status).toUpperCase().trim();
     emp.marital_status = (/UNMARRIED|SINGLE/.test(m)) ? 'UNMARRIED' : 'MARRIED';
   }
+
+  // 8. Number fields
+  ['gross','basic','hra','new_gross'].forEach(function(numField){
+    if (emp[numField] !== undefined && emp[numField] !== null && emp[numField] !== '') {
+      emp[numField] = parseFloat(String(emp[numField]).replace(/,/g, '')) || 0;
+    }
+  });
 
   return emp;
 }
@@ -10965,12 +11106,13 @@ function emParseBulkPaste() {
     if (typeof emRenderColChips === 'function') emRenderColChips();
   }
 
-  var lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(function(x){ return x.trim() !== ''; });
-  if (!lines.length) return;
-  var rows = lines.map(function(l){ return l.split('\t'); });
+  // RFC-4180 robust clipboard parsing (preserves multi-line address cells without breaking rows)
+  var rows = parseExcelClipboard(raw);
+  if (!rows || !rows.length) return;
 
+  var counts = { district: 0, state: 0, gross: 0 };
   var firstRow = rows[0].map(function(s){ return String(s || '').trim(); });
-  var matchedHeaders = firstRow.map(matchColumnHeader);
+  var matchedHeaders = firstRow.map(function(h){ return matchColumnHeader(h, counts); });
   var validHeaders = matchedHeaders.filter(function(k){ return k && k !== '__skip__'; }).length;
   var hasHeader = (validHeaders >= 2 || (firstRow.length === 1 && validHeaders >= 1));
 
@@ -10985,27 +11127,42 @@ function emParseBulkPaste() {
       matchedHeaders.forEach(function(k, idx) {
         if (!k || k === '__skip__' || row[idx] === undefined) return;
         var val = String(row[idx] == null ? '' : row[idx]).trim();
-        var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined') ? ATPL_40_EXCEL_COLS.find(function(c){ return c.key === k; }) : null;
-        if (cDef && cDef.type === 'number') emp[k] = parseFloat(val.replace(/,/g, '')) || 0;
-        else emp[k] = val;
+        emp[k] = val;
       });
     } else {
       var r = row;
+      // If column 0 is a Serial Number (1, 2, 3...)
       var firstCell = String(r[0] || '').trim();
       if (/^\d{1,4}$/.test(firstCell) && r.length > 2) {
         var secondCell = String(r[1] || '').trim();
-        if (secondCell.length > 0 && isNaN(Number(secondCell))) r = row.slice(1);
+        if (secondCell.length > 0 && isNaN(Number(secondCell))) {
+          r = row.slice(1);
+        }
       }
-      var keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){ return c.key; }) : []);
+
+      // Detect if 29-column standard or 40-column ATPL sequence
+      var keys;
+      if (r.length < 35 && (typeof ALL_STANDARD_EM_COLS !== 'undefined') && Array.isArray(ALL_STANDARD_EM_COLS)) {
+        // If col 4 looks like a date (DOJ) or col 7 is gender (M/F)
+        var c4 = String(r[4] || '').trim();
+        var c7 = String(r[7] || '').toUpperCase().trim();
+        if (/\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}/.test(c4) || c7 === 'MALE' || c7 === 'FEMALE') {
+          keys = ALL_STANDARD_EM_COLS.map(function(c){ return c.key; });
+        } else {
+          keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : EM_COLS.map(function(c){ return c.key; });
+        }
+      } else {
+        keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : EM_COLS.map(function(c){ return c.key; });
+      }
+
       keys.forEach(function(k, ci) {
         var val = r[ci];
         if (val === undefined || val === null) val = '';
-        var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[ci]) ? ATPL_40_EXCEL_COLS[ci] : null;
-        if (cDef && cDef.type === 'number') emp[k] = parseFloat(String(val).replace(/,/g, '')) || 0;
-        else emp[k] = String(val).trim();
+        emp[k] = String(val).trim();
       });
     }
 
+    // Comprehensive audit and field cleanup
     emp = auditAndCleanEmployee(emp, row);
     if (emp.emp_id || emp.name) emps.push(emp);
   });
@@ -11023,38 +11180,66 @@ function emParseBulkPaste() {
   var info = document.getElementById('emPasteInfo');
   if (bar) bar.style.display = 'flex';
   if (info) {
-    info.innerHTML = '✅ <strong>' + emps.length + ' employee rows</strong> parse ho gaye! (IFSC, A/C, DOB auto-verified). Review karke <strong>Save All Rows</strong> par click karein.';
+    info.innerHTML = '✅ <strong>' + emps.length + ' employee rows</strong> auto-verified and ready! Sabhi fields (IFSC, A/C, DOB, Address, Salary) match ho chuke hain. <strong>Save All Rows</strong> par click karein.';
   }
 }
 
-function renderBulkPreview() {
-  if(!EM_BULK_ROWS.length) {
-    document.getElementById('emBulkPreview').innerHTML='<div style="padding:20px;text-align:center;color:#64748b">Koi valid data nahi mila. Check karo tab-separated format hai ya nahi.</div>';
+function renderBulkPreview(showAll) {
+  var container = document.getElementById('emBulkPreview');
+  if (!container) return;
+  if (!EM_BULK_ROWS.length) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b">Koi valid data nahi mila. Check karo Excel se data copy karke yahan paste kiya gaya hai ya nahi.</div>';
     return;
   }
 
-  var html='<div style="font-size:11px;font-weight:700;color:#6ee7b7;margin-bottom:8px">✅ '+EM_BULK_ROWS.length+' rows ready to save:</div>';
-  html+='<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10px;width:100%">';
-  html+='<thead><tr style="background:#0f172a">';
-  EM_COLS.forEach(function(c, ci){ var st = getAtplExcelColStyle(ci); html+='<th style="padding:7px 10px;text-align:left;color:'+st.color+';background:'+st.bg+';white-space:nowrap;border:1px solid '+st.border+';font-size:10px;font-weight:800">'+(ci+1)+'. '+c.label+' ▾</th>'; });
-  html+='<th style="padding:6px 10px;color:#64748b;border:1px solid #1e293b">STATUS</th>';
-  html+='</tr></thead><tbody>';
+  // Ensure 40 columns for preview
+  var cols = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) ? ATPL_40_EXCEL_COLS : (EM_COLS || []);
+  var totalRows = EM_BULK_ROWS.length;
+  var displayLimit = showAll ? totalRows : Math.min(100, totalRows);
 
-  EM_BULK_ROWS.forEach(function(emp, i){
-    var existing = EM.data.find(function(e){ return String(e.emp_id)===String(emp.emp_id); });
-    var status = existing ? '<span style="color:#fcd34d;font-weight:700">UPDATE</span>' : '<span style="color:#6ee7b7;font-weight:700">NEW</span>';
-    var bg = i%2===0 ? '#111827' : '#0f172a';
-    html+='<tr style="background:'+bg+'">';
-    EM_COLS.forEach(function(c){
-      var val = emp[c.key]||'';
-      html+='<td style="padding:5px 10px;border:1px solid #1e293b;font-family:monospace;white-space:nowrap;color:#e2e8f0">'+val+'</td>';
-    });
-    html+='<td style="padding:5px 10px;border:1px solid #1e293b;text-align:center">'+status+'</td>';
-    html+='</tr>';
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<div style="font-size:11px;font-weight:700;color:#6ee7b7">✅ ' + totalRows + ' Employee Rows Preview Ready:</div>';
+  if (totalRows > 100 && !showAll) {
+    html += '<button type="button" onclick="renderBulkPreview(true)" style="padding:4px 10px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">👁 Sabhi ' + totalRows + ' rows preview mein dekhein (100 shown)</button>';
+  } else if (showAll && totalRows > 100) {
+    html += '<button type="button" onclick="renderBulkPreview(false)" style="padding:4px 10px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">Compact view (100 rows)</button>';
+  }
+  html += '</div>';
+
+  html += '<div style="overflow-x:auto;max-height:480px;border:1px solid #1e293b;border-radius:6px"><table style="border-collapse:collapse;font-size:10px;width:100%">';
+  html += '<thead style="position:sticky;top:0;z-index:5"><tr style="background:#0f172a">';
+  cols.forEach(function(c, ci){
+    var st = (typeof getAtplExcelColStyle === 'function') ? getAtplExcelColStyle(ci) : { color: '#93c5fd', bg: '#0f172a', border: '#334155' };
+    html += '<th style="padding:6px 9px;text-align:left;color:'+st.color+';background:'+st.bg+';white-space:nowrap;border:1px solid '+st.border+';font-size:10px;font-weight:800">'+(ci+1)+'. '+c.label+'</th>';
   });
-  html+='</tbody></table></div>';
-  document.getElementById('emBulkPreview').innerHTML=html;
+  html += '<th style="padding:6px 10px;color:#64748b;border:1px solid #1e293b;background:#0f172a">STATUS</th>';
+  html += '</tr></thead><tbody>';
+
+  var existingMap = {};
+  if (g && g.EM && Array.isArray(g.EM.data)) {
+    g.EM.data.forEach(function(e){ if (e && e.emp_id) existingMap[String(e.emp_id).toUpperCase().trim()] = true; });
+  }
+
+  for (var i = 0; i < displayLimit; i++) {
+    var emp = EM_BULK_ROWS[i];
+    var isUpdate = emp.emp_id && existingMap[String(emp.emp_id).toUpperCase().trim()];
+    var status = isUpdate ? '<span style="color:#fcd34d;font-weight:700">UPDATE</span>' : '<span style="color:#6ee7b7;font-weight:700">NEW</span>';
+    var bg = i % 2 === 0 ? '#111827' : '#0f172a';
+    html += '<tr style="background:'+bg+'">';
+    cols.forEach(function(c){
+      var val = emp[c.key] !== undefined && emp[c.key] !== null ? emp[c.key] : '';
+      html += '<td style="padding:4px 8px;border:1px solid #1e293b;font-family:monospace;white-space:nowrap;color:#e2e8f0;font-size:10px">'+val+'</td>';
+    });
+    html += '<td style="padding:4px 8px;border:1px solid #1e293b;text-align:center">'+status+'</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  if (totalRows > displayLimit) {
+    html += '<div style="margin-top:6px;font-size:10px;color:#94a3b8;text-align:center">Showing ' + displayLimit + ' of ' + totalRows + ' rows. Sabhi ' + totalRows + ' rows Save par database mein store ho jayenge.</div>';
+  }
+  container.innerHTML = html;
 }
+window.renderBulkPreview = renderBulkPreview;
 
 // ── Save Bulk ──
 function emSaveBulk() {
