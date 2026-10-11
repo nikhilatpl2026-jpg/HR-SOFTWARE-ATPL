@@ -9455,60 +9455,59 @@ document.addEventListener('keydown', function(e){
 // EMPLOYEE MASTER — Excel Style Editor Functions
 // ══════════════════════════════════════════════════════
 
-// Column definitions — order matches Excel paste order
+// Column definitions — order matches Excel paste order (Exact 40-Column ATPL Master Layout)
 var ALL_STANDARD_EM_COLS = [
-  // 1-10: Personal Details & KYC
-  {key:'emp_id',              label:'EMPLOYEE ID',               w:'110px', type:'text', required:true},
-  {key:'name',                label:'NAME OF EMPLOYEE',          w:'170px', type:'text', required:true},
-  {key:'father',              label:'NAME OF FATHERS',           w:'160px', type:'text'},
-  {key:'dob',                 label:'D.O.B',                     w:'110px', type:'text'},
-  {key:'marital_status',      label:'MARITAL',                   w:'110px', type:'select', opts:['MARRIED','UNMARRIED','SINGLE','DIVORCED','WIDOWED']},
-  {key:'gender',              label:'GENDER',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER']},
-  {key:'phone_no',            label:'PHONE NO',                  w:'120px', type:'tel'},
-  {key:'aadhaar_no',          label:'AADHAR NO.',                w:'140px', type:'text'},
-  {key:'pan_no',              label:'PAN NO',                    w:'120px', type:'text'},
-  {key:'qualification',       label:'QUALIFICATION',             w:'130px', type:'text'},
+  // 1-16 Light Blue (#d9e1f2)
+  {key:'emp_id',              label:'Employee ID',               w:'120px', type:'text', required:true, bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'name',                label:'Name of employee',          w:'170px', type:'text', required:true, bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'father',              label:'Name Of Fathers',           w:'160px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'dob',                 label:'D.O.B',                     w:'110px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'marital_status',      label:'Marital',                   w:'110px', type:'select', opts:['MARRIED','UNMARRIED','SINGLE','DIVORCED','WIDOWED'], bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'gender',              label:'Gender',                    w:'90px',  type:'select', opts:['MALE','FEMALE','OTHER'], bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'phone_no',            label:'Phone N',                   w:'120px', type:'tel', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'aadhaar_no',          label:'Aadhar No.',                w:'140px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'pan_no',              label:'Pan No',                    w:'120px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'qualification',       label:'Qualification',             w:'130px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'present_address',     label:'Present House /Street No',  w:'190px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'present_district',    label:'District',                  w:'130px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'present_state',       label:'State',                     w:'120px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'permanent_address',   label:'Permanent House /Street No',w:'190px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'permanent_district',  label:'District',                  w:'130px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
+  {key:'permanent_state',     label:'State',                     w:'120px', type:'text', bg:'#d9e1f2', color:'#1e3a8a', border:'#b4c6e7'},
 
-  // 11-16: Present & Permanent Address
-  {key:'present_address',     label:'PRESENT HOUSE /STREET NO',  w:'190px', type:'text'},
-  {key:'present_district',    label:'DISTRICT (PRESENT)',        w:'130px', type:'text'},
-  {key:'present_state',       label:'STATE (PRESENT)',           w:'120px', type:'text'},
-  {key:'permanent_address',   label:'PERMANENT HOUSE /STREET NO',w:'190px', type:'text'},
-  {key:'permanent_district',  label:'DISTRICT (PERMANENT)',      w:'130px', type:'text'},
-  {key:'permanent_state',     label:'STATE (PERMANENT)',         w:'120px', type:'text'},
+  // 17-25 Light Peach (#fce4d6)
+  {key:'father_dob',          label:'Date Of Birth Fathers',     w:'140px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'mother_name',         label:'Mothers Name',              w:'150px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'mother_dob',          label:'Date Of Birth Mothers',     w:'140px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'nominee_name',        label:'Name Of NOMINEE',           w:'150px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'nominee_dob',         label:'Date OF NOMINEE',           w:'130px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'son_name',            label:'Name Of Son',               w:'130px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'son_dob',             label:'Date of Birth Son',         w:'130px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'daughter_name',       label:'Name Of Daughter',          w:'130px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
+  {key:'daughter_dob',        label:'Date Of Birth Daughter',    w:'130px', type:'text', bg:'#fce4d6', color:'#843c0c', border:'#f8cbad'},
 
-  // 17-25: Family & Nominee Information
-  {key:'father_dob',          label:'DATE OF BIRTH FATHERS',     w:'140px', type:'text'},
-  {key:'mother_name',         label:'MOTHERS NAME',              w:'150px', type:'text'},
-  {key:'mother_dob',          label:'DATE OF BIRTH MOTHERS',     w:'140px', type:'text'},
-  {key:'nominee_name',        label:'NAME OF NOMINEE',           w:'150px', type:'text'},
-  {key:'nominee_dob',         label:'DATE OF NOMINEE',           w:'130px', type:'text'},
-  {key:'son_name',            label:'NAME OF SON',               w:'130px', type:'text'},
-  {key:'son_dob',             label:'DATE OF BIRTH SON',         w:'130px', type:'text'},
-  {key:'daughter_name',       label:'NAME OF DAUGHTER',          w:'130px', type:'text'},
-  {key:'daughter_dob',        label:'DATE OF BIRTH DAUGHTER',    w:'130px', type:'text'},
+  // 26-29 Light Yellow (#fff2cc)
+  {key:'bank_name',           label:'Bank Name',                 w:'150px', type:'text', bg:'#fff2cc', color:'#7f6000', border:'#ffe699'},
+  {key:'account_no',          label:'Account No',                w:'150px', type:'text', bg:'#fff2cc', color:'#7f6000', border:'#ffe699'},
+  {key:'ifsc',                label:'IFSC Code',                 w:'130px', type:'text', bg:'#fff2cc', color:'#7f6000', border:'#ffe699'},
+  {key:'branch_address',      label:'Branch Address',            w:'160px', type:'text', bg:'#fff2cc', color:'#7f6000', border:'#ffe699'},
 
-  // 26-29: Bank Details
-  {key:'bank_name',           label:'BANK NAME',                 w:'150px', type:'text'},
-  {key:'account_no',          label:'ACCOUNT NO',                w:'150px', type:'text'},
-  {key:'ifsc',                label:'IFSC CODE',                 w:'130px', type:'text'},
-  {key:'branch_address',      label:'BRANCH ADDRESS',            w:'160px', type:'text'},
+  // 30-36 Light Green (#e2efda)
+  {key:'doj',                 label:'D-O-J',                     w:'120px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'dept',                label:'Department',                w:'140px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'desig',               label:'Designation',               w:'140px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'cat1',                label:'Catgrory',                  w:'120px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'skill',               label:'Skill',                     w:'110px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'pf_no',               label:'PF NO',                     w:'140px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
+  {key:'esi_no',              label:'ESI NO',                    w:'140px', type:'text', bg:'#e2efda', color:'#375623', border:'#c6e0b4'},
 
-  // 30-36: Employment & Statutory
-  {key:'doj',                 label:'D-O-J',                     w:'120px', type:'text'},
-  {key:'dept',                label:'DEPARTMENT',                w:'140px', type:'text'},
-  {key:'desig',               label:'DESIGNATION',               w:'140px', type:'text'},
-  {key:'cat1',                label:'CATGRORY',                  w:'120px', type:'text'},
-  {key:'skill',               label:'SKILL',                     w:'110px', type:'text'},
-  {key:'pf_no',               label:'PF NO',                     w:'140px', type:'text'},
-  {key:'esi_no',              label:'ESI NO',                    w:'140px', type:'text'},
-
-  // 37-40: Salary Structure
-  {key:'gross',               label:'GROSS TOTAL SALARY',        w:'130px', type:'number'},
-  {key:'basic',               label:'NEW BASIC',                 w:'120px', type:'number'},
-  {key:'hra',                 label:'NEW HRA',                   w:'120px', type:'number'},
-  {key:'new_gross',           label:'GROSS TOTAL SALARY (NEW)',  w:'140px', type:'number'}
+  // 37-40 Light Gold (#ffe699)
+  {key:'gross',               label:'Gross Total Salary',        w:'130px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'},
+  {key:'basic',               label:'New Basic',                 w:'120px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'},
+  {key:'hra',                 label:'New HRA',                   w:'120px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'},
+  {key:'new_gross',           label:'Gross Total Salary',        w:'140px', type:'number', bg:'#ffe699', color:'#833c0c', border:'#ffd966'}
 ];
+var ATPL_40_EXCEL_COLS = ALL_STANDARD_EM_COLS;
 var DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
 var EM_COLS = ALL_STANDARD_EM_COLS.slice();
 
@@ -9757,10 +9756,10 @@ function emApplyRemoteColConfig(savedCols, savedCustom) {
 function emLoadSavedColOrder() {
   try {
     var curVer = localStorage.getItem('ATPL_EM_COLS_FORMAT_VER');
-    if (curVer !== 'v2026_atpl_40_master') {
+    if (curVer !== 'v2026_atpl_40_master_final' || !EM_COLS || EM_COLS.length < 40) {
       localStorage.removeItem('ATPL_EM_COLS_ORDER');
       localStorage.removeItem('ATPL_EM_COLS_Setting');
-      localStorage.setItem('ATPL_EM_COLS_FORMAT_VER', 'v2026_atpl_40_master');
+      localStorage.setItem('ATPL_EM_COLS_FORMAT_VER', 'v2026_atpl_40_master_final');
       EM_COLS = ALL_STANDARD_EM_COLS.slice();
       DEFAULT_EM_COLS = ALL_STANDARD_EM_COLS.slice();
       return;
