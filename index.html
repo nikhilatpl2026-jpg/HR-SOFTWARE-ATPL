@@ -10293,16 +10293,224 @@ var ATPL_40_COL_KEYS = [
   'gross', 'basic', 'hra', 'new_gross'
 ];
 
-function emNormalizeDateValue(val) {
-  if (!val) return '';
-  var s = String(val).replace(/[.\/]/g, '-').trim();
-  var m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
-  if (m) {
-    var y = m[3].length === 2 ? '20' + m[3] : m[3];
-    return String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0') + '-' + y;
+function cleanIfsc(v) {
+  if (!v) return '';
+  var s = String(v).replace(/["'=]/g, '').replace(/\s+/g, '').toUpperCase().trim();
+  s = s.replace(/^(?:IFSC(?:\s*CODE)?[:\-]?\s*)/i, '');
+  if (/^[A-Z]{4}O\d{6}$/.test(s)) {
+    s = s.slice(0, 4) + '0' + s.slice(5);
   }
   return s;
 }
+window.cleanIfsc = cleanIfsc;
+
+function cleanAccountNo(v) {
+  if (!v) return '';
+  var s = String(v).replace(/["'=]/g, '').trim();
+  s = s.replace(/^(?:A\/?C(?:\s*NO\.?)?|A\.C(?:\s*NO\.?)?|ACC(?:\s*NO\.?)?|ACCOUNT(?:\s*NO\.?)?)[:\-]?\s*/i, '');
+  s = s.replace(/[\s\-_]/g, '');
+  if (/^(\d+(?:\.\d+)?)[eE]\+(\d+)$/.test(s)) {
+    try {
+      var n = Number(s);
+      if (!isNaN(n)) s = BigInt(Math.round(n)).toString();
+    } catch (_) {}
+  }
+  s = s.replace(/\.0+$/, '');
+  return s.toUpperCase();
+}
+window.cleanAccountNo = cleanAccountNo;
+
+function emNormalizeDateValue(val) {
+  if (!val) return '';
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return String(val.getDate()).padStart(2, '0') + '-' + String(val.getMonth() + 1).padStart(2, '0') + '-' + val.getFullYear();
+  }
+  var s = String(val).replace(/["'=]/g, '').trim();
+  s = s.replace(/\s+\d{1,2}:\d{2}(?::\d{2})?.*$/, '').replace(/T\d{2}:\d{2}.*$/, '').trim();
+
+  if (/^\d{5}$/.test(s)) {
+    var serial = parseInt(s, 10);
+    if (serial >= 10000 && serial <= 65000) {
+      var utcDays = serial - 25569;
+      var d = new Date(utcDays * 86400 * 1000);
+      if (!isNaN(d.getTime())) {
+        var day = String(d.getUTCDate()).padStart(2, '0');
+        var mon = String(d.getUTCMonth() + 1).padStart(2, '0');
+        var yr = d.getUTCFullYear();
+        return day + '-' + mon + '-' + yr;
+      }
+    }
+  }
+
+  var months = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+  };
+  var mNameMatch = s.match(/^(\d{1,2})[\s\-\/.]([a-zA-Z]{3,9})[\s\-\/.]((\d{2,4}))$/);
+  if (mNameMatch) {
+    var monKey = mNameMatch[2].slice(0, 3).toLowerCase();
+    if (months[monKey]) {
+      var dStr = String(mNameMatch[1]).padStart(2, '0');
+      var mStr = months[monKey];
+      var yStr = mNameMatch[3];
+      if (yStr.length === 2) {
+        var yNum = parseInt(yStr, 10);
+        yStr = (yNum > 30 ? '19' : '20') + yStr;
+      }
+      return dStr + '-' + mStr + '-' + yStr;
+    }
+  }
+
+  var ymdMatch = s.match(/^(\d{4})[\-\/.]((\d{1,2}))[\-\/.]((\d{1,2}))$/);
+  if (ymdMatch) {
+    return String(ymdMatch[3]).padStart(2, '0') + '-' + String(ymdMatch[2]).padStart(2, '0') + '-' + ymdMatch[1];
+  }
+
+  s = s.replace(/[.\/]/g, '-').trim();
+  var dmyMatch = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (dmyMatch) {
+    var y = dmyMatch[3];
+    if (y.length === 2) {
+      var yrNum = parseInt(y, 10);
+      y = (yrNum > 30 ? '19' : '20') + y;
+    }
+    return String(dmyMatch[1]).padStart(2, '0') + '-' + String(dmyMatch[2]).padStart(2, '0') + '-' + y;
+  }
+
+  return s;
+}
+window.emNormalizeDateValue = emNormalizeDateValue;
+
+function matchColumnHeader(header) {
+  var raw = String(header || '').trim();
+  var s = raw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+
+  if (/^(s\s*no|sr\s*no|sl\s*no|sno|serial\s*no|#|seq)$/i.test(s)) return '__skip__';
+
+  if (/(?:^|\s)(?:ifsc|ifs|rtgs|neft)(?:\s|$)/i.test(s) || /ifsc/i.test(raw)) return 'ifsc';
+
+  if (/(?:^|\s)(?:account|ac|acc)(?:\s|$)/i.test(s) || /\b(?:a\s+c)\b/i.test(s) || /a[\/.]c/i.test(raw.toLowerCase())) {
+    if (!/pf|esi|uan/i.test(s)) return 'account_no';
+  }
+
+  if (/(?:^|\s)(?:bank|bank\s*name)(?:\s|$)/i.test(s) && !/account|ac|ifsc/i.test(s)) return 'bank_name';
+
+  if (/\bbranch\b/i.test(s)) return 'branch_address';
+
+  if (/father.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'father_dob';
+  if (/father|guardian|f\s*name/i.test(s)) return 'father';
+  if (/mother.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'mother_dob';
+  if (/mother/i.test(s)) return 'mother_name';
+  if (/(?:nominee|wife|spouse).*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'nominee_dob';
+  if (/nominee|wife|spouse/i.test(s)) return 'nominee_name';
+  if (/son.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'son_dob';
+  if (/\bson\b/i.test(s)) return 'son_name';
+  if (/daughter.*(?:dob|birth|d\s*o\s*b)/i.test(s)) return 'daughter_dob';
+  if (/daughter/i.test(s)) return 'daughter_name';
+
+  if (/^(?:name\s*of\s*employee|employee\s*name|emp\s*name|worker\s*name|staff\s*name|candidate\s*name|name)$/i.test(s) ||
+      (/name/i.test(s) && !/father|mother|nominee|wife|son|daughter|bank|branch/i.test(s))) return 'name';
+
+  if (/^(?:employee\s*id|emp\s*id|emp\s*code|employee\s*code|code|token|token\s*no|card\s*no|id|empid|emp_code|emp_no)$/i.test(s) ||
+      (/(?:emp|employee).*(?:code|id|no)/i.test(s) && !/name|pf|esi|uan/i.test(s))) return 'emp_id';
+
+  if (/(?:^|\s)(?:dob|birth)(?:\s|$)/i.test(s) || /d[\/.\-]o[\/.\-]b/i.test(raw) || /date\s*of\s*birth/i.test(s)) return 'dob';
+
+  if (/\b(?:d\s*o\s*j|doj|joining|date\s*of\s*joining|appointment)\b/i.test(s)) return 'doj';
+
+  if (/\b(?:d\s*o\s*l|dol|leaving|date\s*of\s*leaving|exit|exit\s*date)\b/i.test(s)) return 'dol';
+
+  if (/\b(?:gender|sex)\b/i.test(s)) return 'gender';
+
+  if (/\b(?:marital|marital\s*status|married)\b/i.test(s)) return 'marital_status';
+
+  if (/\b(?:phone|mobile|contact|cell)\b/i.test(s)) return 'phone_no';
+
+  if (/\b(?:aadhaar|aadhar|adhar|uid)\b/i.test(s)) return 'aadhaar_no';
+
+  if (/\b(?:pan|pan\s*no|pan\s*number)\b/i.test(s)) return 'pan_no';
+
+  if (/\b(?:pf|uan|pf\s*no|uan\s*no)\b/i.test(s)) return 'pf_no';
+
+  if (/\b(?:esi|esic|ip\s*no|ip\s*number)\b/i.test(s)) return 'esi_no';
+
+  if (/gross.*total|total.*gross|^gross$|gross\s*salary|gross\s*wages/i.test(s)) return 'gross';
+  if (/basic.*salary|^basic$|basic\s*wages|new\s*basic/i.test(s)) return 'basic';
+  if (/^hra$|house\s*rent|new\s*hra/i.test(s)) return 'hra';
+  if (/new\s*gross|gross\s*total/i.test(s)) return 'new_gross';
+
+  if (/\b(?:designation|desig|post|role)\b/i.test(s)) return 'desig';
+  if (/\b(?:department|dept|section)\b/i.test(s)) return 'dept';
+  if (/\b(?:category|cat|catgrory|cat1)\b/i.test(s)) return 'cat1';
+  if (/\b(?:skill|skills)\b/i.test(s)) return 'skill';
+  if (/\b(?:qualification|education|highest\s*qualification)\b/i.test(s)) return 'qualification';
+
+  if (/perm.*(?:address|house|street)/i.test(s)) return 'permanent_address';
+  if (/pres.*(?:address|house|street)|address|house|street/i.test(s)) return 'present_address';
+
+  return '';
+}
+window.matchColumnHeader = matchColumnHeader;
+
+function auditAndCleanEmployee(emp, rawCols) {
+  if (!emp) return emp;
+  if (emp.ifsc) emp.ifsc = cleanIfsc(emp.ifsc);
+  if (emp.account_no) emp.account_no = cleanAccountNo(emp.account_no);
+  if (emp.dob) emp.dob = emNormalizeDateValue(emp.dob);
+  if (emp.father_dob) emp.father_dob = emNormalizeDateValue(emp.father_dob);
+  if (emp.mother_dob) emp.mother_dob = emNormalizeDateValue(emp.mother_dob);
+  if (emp.nominee_dob) emp.nominee_dob = emNormalizeDateValue(emp.nominee_dob);
+  if (emp.son_dob) emp.son_dob = emNormalizeDateValue(emp.son_dob);
+  if (emp.daughter_dob) emp.daughter_dob = emNormalizeDateValue(emp.daughter_dob);
+  if (emp.doj) emp.doj = emNormalizeDateValue(emp.doj);
+  if (emp.dol) emp.dol = emNormalizeDateValue(emp.dol);
+
+  var isIfsc = function(x) { return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(x); };
+  var isAc = function(x) { return /^\d{9,22}$/.test(x); };
+
+  if (isIfsc(emp.account_no) && !isIfsc(emp.ifsc)) {
+    var oldAc = emp.account_no;
+    emp.account_no = isAc(emp.ifsc) ? emp.ifsc : '';
+    emp.ifsc = oldAc;
+  }
+
+  if (!isIfsc(emp.ifsc) && Array.isArray(rawCols)) {
+    for (var i = 0; i < rawCols.length; i++) {
+      var cIfsc = cleanIfsc(rawCols[i]);
+      if (isIfsc(cIfsc)) {
+        emp.ifsc = cIfsc;
+        break;
+      }
+    }
+  }
+
+  if (!isAc(emp.account_no) && Array.isArray(rawCols)) {
+    for (var j = 0; j < rawCols.length; j++) {
+      var cAc = cleanAccountNo(rawCols[j]);
+      if (isAc(cAc) && cAc !== emp.aadhaar_no && cAc !== emp.phone_no && cAc !== emp.emp_id) {
+        emp.account_no = cAc;
+        break;
+      }
+    }
+  }
+
+  if (emp.phone_no) emp.phone_no = String(emp.phone_no).replace(/[^0-9]/g, '').slice(-10);
+  if (emp.aadhaar_no) emp.aadhaar_no = String(emp.aadhaar_no).replace(/[^0-9]/g, '').slice(0, 12);
+  if (emp.pan_no) emp.pan_no = String(emp.pan_no).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+
+  if (emp.gender) {
+    var g = String(emp.gender).toUpperCase().trim();
+    emp.gender = (/FEMALE|WOMAN|F|GIRL/.test(g)) ? 'FEMALE' : 'MALE';
+  }
+  if (emp.marital_status) {
+    var m = String(emp.marital_status).toUpperCase().trim();
+    emp.marital_status = (/UNMARRIED|SINGLE/.test(m)) ? 'UNMARRIED' : 'MARRIED';
+  }
+
+  return emp;
+}
+window.auditAndCleanEmployee = auditAndCleanEmployee;
 
 function emSaveModal() {
   var newEmp = {};
@@ -10364,7 +10572,6 @@ function emFillSingleFromText(text) {
   var lines = rawText.split('\n').filter(function(l){ return l.trim().length > 0; });
   if (!lines.length) return;
 
-  // Make sure 40 columns active
   if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
     if (typeof EM_COLS === 'undefined' || !Array.isArray(EM_COLS) || EM_COLS.length < 40) {
       EM_COLS = ATPL_40_EXCEL_COLS.slice();
@@ -10375,146 +10582,61 @@ function emFillSingleFromText(text) {
     }
   }
 
-  // Header detection
   var firstLine = lines[0];
-  var firstCols = firstLine.split('\t').map(function(s){ return s.trim(); });
-  var isHeader = false;
-  var headerTokens = [
-    'employee id', 'emp id', 'emp code', 'employee code', 'code', 'name of employee',
-    'emp name', 'name', 'father', 'd.o.b', 'dob', 'marital', 'gender', 'phone',
-    'aadhar', 'pan', 'qualification', 'district', 'state', 'bank', 'account no',
-    'ifsc', 'd-o-j', 'doj', 'department', 'designation', 'catgrory', 'category',
-    'pf no', 'esi no', 'salary', 'basic', 'hra'
-  ];
-  var matchCount = 0;
-  firstCols.forEach(function(col){
-    var cLow = col.toLowerCase();
-    for (var k = 0; k < headerTokens.length; k++) {
-      if (cLow === headerTokens[k] || cLow.indexOf(headerTokens[k]) >= 0) {
-        matchCount++;
-        break;
-      }
-    }
-  });
-  if (matchCount >= 2 || (firstCols.length === 1 && matchCount >= 1)) {
-    isHeader = true;
-  }
+  var firstCols = firstLine.split('\t').map(function(s){ return String(s || '').trim(); });
+  var matchedHeaders = firstCols.map(matchColumnHeader);
+  var validHeaders = matchedHeaders.filter(function(k){ return k && k !== '__skip__'; }).length;
+  var isHeader = (validHeaders >= 2 || (firstCols.length === 1 && validHeaders >= 1));
 
   var dataLine = (isHeader && lines.length > 1) ? lines[1] : lines[0];
-  var cols = dataLine.split('\t');
+  var rawRow = dataLine.split('\t');
+  var emp = {};
 
-  var keys = [];
   if (isHeader) {
-    var headerAliases = {
-      emp_id: ['employee id', 'emp id', 'emp code', 'employee code', 'code', 'id'],
-      name: ['name of employee', 'employee name', 'emp name', 'name'],
-      father: ['name of fathers', 'name of father', 'father name', "father's name", 'father', 'guardian'],
-      dob: ['d.o.b', 'dob', 'date of birth', 'birth date'],
-      marital_status: ['marital', 'marital status'],
-      gender: ['gender', 'sex'],
-      phone_no: ['phone n', 'phone no', 'phone', 'mobile'],
-      aadhaar_no: ['aadhar no.', 'aadhar no', 'aadhar', 'aadhaar'],
-      pan_no: ['pan no', 'pan'],
-      qualification: ['qualification', 'education'],
-      present_address: ['present house /street no', 'present house/street no', 'present address'],
-      present_district: ['present district'],
-      present_state: ['present state'],
-      permanent_address: ['permanent house /street no', 'permanent house/street no', 'permanent address'],
-      permanent_district: ['permanent district'],
-      permanent_state: ['permanent state'],
-      father_dob: ['date of birth fathers', 'father dob'],
-      mother_name: ['mothers name', 'name of mother', 'mother name'],
-      mother_dob: ['date of birth mothers', 'mother dob'],
-      nominee_name: ['name of wife', 'name of nominee', 'wife name', 'nominee name'],
-      nominee_dob: ['date of birth wife', 'date of nominee', 'wife dob', 'nominee dob'],
-      son_name: ['name of son', 'son name'],
-      son_dob: ['date of birth son', 'son dob'],
-      daughter_name: ['name of daughter', 'daughter name'],
-      daughter_dob: ['date of birth daughter', 'daughter dob'],
-      bank_name: ['bank name', 'bank'],
-      account_no: ['account no', 'account number', 'a/c no'],
-      ifsc: ['ifsc code', 'ifsc'],
-      branch_address: ['branch address', 'branch'],
-      doj: ['d-o-j', 'doj', 'date of joining'],
-      dept: ['department', 'dept'],
-      desig: ['designation', 'desig'],
-      cat1: ['catgrory', 'category', 'cat'],
-      skill: ['skill', 'skills'],
-      pf_no: ['pf no', 'pf account no', 'uan'],
-      esi_no: ['esi no', 'esic no', 'ip no'],
-      gross: ['gross total salary', 'gross salary', 'gross'],
-      basic: ['new basic', 'basic'],
-      hra: ['new hra', 'hra'],
-      new_gross: ['gross total salary', 'new gross']
-    };
-    var districtCount = 0;
-    var stateCount = 0;
-    firstCols.forEach(function(h){
-      var hl = h.toLowerCase();
-      if (hl === 'district') {
-        districtCount++;
-        keys.push(districtCount === 1 ? 'present_district' : 'permanent_district');
-        return;
-      }
-      if (hl === 'state') {
-        stateCount++;
-        keys.push(stateCount === 1 ? 'present_state' : 'permanent_state');
-        return;
-      }
-      var foundKey = null;
-      for (var fKey in headerAliases) {
-        for (var a = 0; a < headerAliases[fKey].length; a++) {
-          if (hl === headerAliases[fKey][a] || hl.indexOf(headerAliases[fKey][a]) >= 0) {
-            foundKey = fKey;
-            break;
-          }
-        }
-        if (foundKey) break;
-      }
-      keys.push(foundKey || '');
+    matchedHeaders.forEach(function(k, idx) {
+      if (!k || k === '__skip__' || rawRow[idx] === undefined) return;
+      var val = String(rawRow[idx] == null ? '' : rawRow[idx]).trim();
+      var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined') ? ATPL_40_EXCEL_COLS.find(function(c){ return c.key === k; }) : null;
+      if (cDef && cDef.type === 'number') emp[k] = parseFloat(val.replace(/,/g, '')) || 0;
+      else emp[k] = val;
     });
   } else {
-    if (cols.length >= 30) {
-      keys = ATPL_40_COL_KEYS.slice();
-    } else {
-      keys = (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){return c.key;}) : ATPL_40_COL_KEYS.slice());
+    var r = rawRow;
+    var firstCell = String(r[0] || '').trim();
+    if (/^\d{1,4}$/.test(firstCell) && r.length > 2) {
+      var secondCell = String(r[1] || '').trim();
+      if (secondCell.length > 0 && isNaN(Number(secondCell))) r = rawRow.slice(1);
     }
+    var keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){ return c.key; }) : []);
+    keys.forEach(function(k, ci) {
+      var val = r[ci];
+      if (val === undefined || val === null) val = '';
+      var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[ci]) ? ATPL_40_EXCEL_COLS[ci] : null;
+      if (cDef && cDef.type === 'number') emp[k] = parseFloat(String(val).replace(/,/g, '')) || 0;
+      else emp[k] = String(val).trim();
+    });
   }
 
-  var filledCount = 0;
-  var empCode = '';
-  var empName = '';
+  // Deep audit and clean (IFSC, A/C, DOB auto-swap and format)
+  emp = auditAndCleanEmployee(emp, rawRow);
 
-  keys.forEach(function(key, i){
-    if (!key || cols[i] === undefined) return;
-    var val = (cols[i] || '').trim();
-    if (!val) return;
+  var filledCount = 0;
+  var allKeys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS : Object.keys(emp);
+  allKeys.forEach(function(key) {
+    var val = emp[key];
+    if (val === undefined || val === null || val === '') return;
     var el = getEmfElement(key);
     if (!el) return;
 
-    if (key === 'emp_id') empCode = val;
-    if (key === 'name') empName = val;
-
     if (el.tagName === 'SELECT') {
-      var upper = val.toUpperCase();
-      if (key === 'gender') {
-        el.value = (upper === 'FEMALE' || upper === 'F' || upper === 'WOMAN' || upper === 'GIRL') ? 'FEMALE' : 'MALE';
-      } else if (key === 'marital_status') {
-        el.value = (upper === 'UNMARRIED' || upper === 'SINGLE') ? 'UNMARRIED' : 'MARRIED';
-      } else if (key === 'status') {
-        el.value = (upper === 'LEFT' || upper === 'INACTIVE' || upper === 'EXITED') ? 'LEFT' : 'ACTIVE';
-      } else {
-        el.value = upper;
-      }
+      var upper = String(val).toUpperCase();
+      if (key === 'gender') el.value = (upper === 'FEMALE' || upper === 'F') ? 'FEMALE' : 'MALE';
+      else if (key === 'marital_status') el.value = (upper === 'UNMARRIED' || upper === 'SINGLE') ? 'UNMARRIED' : 'MARRIED';
+      else el.value = upper;
     } else {
-      if (key.indexOf('dob') >= 0 || key.indexOf('doj') >= 0 || key.indexOf('dol') >= 0) {
-        el.value = emNormalizeDateValue(val);
-      } else {
-        el.value = val;
-      }
+      el.value = val;
     }
 
-    // High visibility flash green animation
     el.style.transition = 'all 0.2s ease';
     el.style.background = '#064e3b';
     el.style.borderColor = '#10b981';
@@ -10524,25 +10646,16 @@ function emFillSingleFromText(text) {
       el.style.borderColor = '';
       el.style.color = '#f1f5f9';
     }, 1200);
-
     filledCount++;
-  });
-
-  // Check if multiple data rows were pasted
-  var allDataLines = lines.filter(function(l){
-    var f = l.toLowerCase();
-    return !f.includes('employe') && !f.includes('code\t') && !f.includes('emp id') && !f.includes('s.no');
   });
 
   var bar = document.getElementById('emPasteBar');
   var info = document.getElementById('emPasteInfo');
   if (bar) bar.style.display = 'flex';
   if (info) {
-    var label = '✅ ' + filledCount + ' fields Excel row se auto-fill ho gaye!';
-    if (empCode || empName) label += ' (' + (empCode ? empCode + ' • ' : '') + empName + ')';
-    if (allDataLines.length > 1) {
-      label += ' — <span style="color:#fde047;font-weight:700">Kul ' + allDataLines.length + ' rows clipboard mein hain.</span> ' +
-               '<a href="javascript:void(0)" onclick="emSwitchTab(\'bulk\')" style="color:#6ee7b7;font-weight:bold;text-decoration:underline">Sabhi ' + allDataLines.length + ' rows dekhne ke liye "Bulk Excel Paste" par click karein</a>';
+    var label = '✅ ' + filledCount + ' fields Excel row se auto-fill ho gaye! (IFSC: ' + (emp.ifsc || '—') + ' • A/C: ' + (emp.account_no || '—') + ' • DOB: ' + (emp.dob || '—') + ')';
+    if (lines.length > (isHeader ? 2 : 1)) {
+      label += ' — <a href="javascript:void(0)" onclick="emSwitchTab(\'bulk\')" style="color:#6ee7b7;font-weight:bold;text-decoration:underline">Multiple rows detected. Bulk Excel Paste mein dekhein.</a>';
       var bulkArea = document.getElementById('emBulkPasteArea');
       if (bulkArea) {
         bulkArea.value = rawText;
@@ -10838,58 +10951,79 @@ function emImportExcelFile(input) {
 
 // ── Bulk Paste Parser ──
 function emParseBulkPaste() {
-  var raw = document.getElementById('emBulkPasteArea').value.trim();
-  if(!raw) return;
+  var area = document.getElementById('emBulkPasteArea');
+  if (!area) return;
+  var raw = area.value || '';
+  if (!raw.trim()) {
+    EM_BULK_ROWS = [];
+    if (typeof renderBulkPreview === 'function') renderBulkPreview();
+    return;
+  }
 
   if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
     EM_COLS = ATPL_40_EXCEL_COLS.slice();
     if (typeof emRenderColChips === 'function') emRenderColChips();
   }
 
-  var lines = raw.split(/\r?\n/).filter(function(l){return l.trim();});
-  EM_BULK_ROWS = [];
+  var lines = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(function(x){ return x.trim() !== ''; });
+  if (!lines.length) return;
+  var rows = lines.map(function(l){ return l.split('\t'); });
 
-  var firstCols = lines[0].split('\t').map(function(s){return s.trim();});
-  var headerTokens = ['employee id','emp id','emp code','code','name of employee','emp name','name','father','dob','marital','gender','phone','aadhar','pan','bank','doj','pf'];
-  var matchCount = 0;
-  firstCols.forEach(function(c){
-    var cl = c.toLowerCase();
-    for (var k = 0; k < headerTokens.length; k++) {
-      if (cl === headerTokens[k] || cl.indexOf(headerTokens[k]) >= 0) { matchCount++; break; }
-    }
-  });
-  var isHeader = matchCount >= 2;
-  var dataLines = isHeader ? lines.slice(1) : lines;
+  var firstRow = rows[0].map(function(s){ return String(s || '').trim(); });
+  var matchedHeaders = firstRow.map(matchColumnHeader);
+  var validHeaders = matchedHeaders.filter(function(k){ return k && k !== '__skip__'; }).length;
+  var hasHeader = (validHeaders >= 2 || (firstRow.length === 1 && validHeaders >= 1));
 
-  var keys = (typeof ATPL_40_COL_KEYS !== 'undefined' ? ATPL_40_COL_KEYS.slice() : EM_COLS.map(function(c){return c.key;}));
+  var emps = [];
+  var dataRows = hasHeader ? rows.slice(1) : rows;
 
-  dataLines.forEach(function(line){
-    var cols = line.split('\t');
-    var first = (cols[0]||'').trim().toLowerCase();
-    if(first==='code'||first==='emp id'||first==='employee id'||first==='s.no'||first==='sno'||first==='#') return;
-    if(!cols[0]||!cols[0].trim()) return;
-    if((cols[0]||'').toLowerCase().indexOf('total')>=0) return;
+  dataRows.forEach(function(row) {
+    if (!row.some(function(v){ return String(v == null ? '' : v).trim() !== ''; })) return;
 
     var emp = {};
-    keys.forEach(function(key, i){
-      var val = (cols[i]||'').trim();
-      var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[i]) ? ATPL_40_EXCEL_COLS[i] : null;
-      if (cDef && cDef.type === 'number') {
-        emp[key] = parseFloat(val) || 0;
-      } else if (key.indexOf('dob') >= 0 || key.indexOf('doj') >= 0) {
-        emp[key] = emNormalizeDateValue(val);
-      } else {
-        emp[key] = val.toUpperCase();
+    if (hasHeader) {
+      matchedHeaders.forEach(function(k, idx) {
+        if (!k || k === '__skip__' || row[idx] === undefined) return;
+        var val = String(row[idx] == null ? '' : row[idx]).trim();
+        var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined') ? ATPL_40_EXCEL_COLS.find(function(c){ return c.key === k; }) : null;
+        if (cDef && cDef.type === 'number') emp[k] = parseFloat(val.replace(/,/g, '')) || 0;
+        else emp[k] = val;
+      });
+    } else {
+      var r = row;
+      var firstCell = String(r[0] || '').trim();
+      if (/^\d{1,4}$/.test(firstCell) && r.length > 2) {
+        var secondCell = String(r[1] || '').trim();
+        if (secondCell.length > 0 && isNaN(Number(secondCell))) r = row.slice(1);
       }
-    });
-    if(emp.emp_id || emp.name) EM_BULK_ROWS.push(emp);
+      var keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){ return c.key; }) : []);
+      keys.forEach(function(k, ci) {
+        var val = r[ci];
+        if (val === undefined || val === null) val = '';
+        var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[ci]) ? ATPL_40_EXCEL_COLS[ci] : null;
+        if (cDef && cDef.type === 'number') emp[k] = parseFloat(String(val).replace(/,/g, '')) || 0;
+        else emp[k] = String(val).trim();
+      });
+    }
+
+    emp = auditAndCleanEmployee(emp, row);
+    if (emp.emp_id || emp.name) emps.push(emp);
   });
 
-  renderBulkPreview();
+  EM_BULK_ROWS = emps;
+  if (typeof renderBulkPreview === 'function') renderBulkPreview();
+
   var btn = document.getElementById('emBulkSaveBtn');
   if (btn) {
-    btn.disabled = EM_BULK_ROWS.length === 0;
-    btn.style.opacity = EM_BULK_ROWS.length === 0 ? '0.4' : '1';
+    btn.disabled = emps.length === 0;
+    btn.style.opacity = emps.length === 0 ? '0.4' : '1';
+  }
+
+  var bar = document.getElementById('emPasteBar');
+  var info = document.getElementById('emPasteInfo');
+  if (bar) bar.style.display = 'flex';
+  if (info) {
+    info.innerHTML = '✅ <strong>' + emps.length + ' employee rows</strong> parse ho gaye! (IFSC, A/C, DOB auto-verified). Review karke <strong>Save All Rows</strong> par click karein.';
   }
 }
 
@@ -12446,20 +12580,7 @@ function aroraNormHeader(v){
     .replace(/[.\-_\/\\()&:#]+/g,' ')
     .replace(/\s+/g,' ').trim();
 }
-function aroraToDate(v){
-  if(v==null||v==='') return '';
-  if(typeof window.normalizeDate==='function'){
-    var norm=window.normalizeDate(v);
-    if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)) return norm;
-  }
-  if(v instanceof Date && !isNaN(v.getTime())){
-    return String(v.getDate()).padStart(2,'0')+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+v.getFullYear();
-  }
-  var s=String(v).trim();
-  var m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
-  if(m){var y=m[3].length===2?'20'+m[3]:m[3];return m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+y;}
-  return s;
-}
+function aroraToDate(v){ return emNormalizeDateValue(v); }
 function aroraNumber(v){
   if(v==null||v==='') return 0;
   var n=parseFloat(String(v).replace(/,/g,'').replace(/[₹$]/g,'').trim());
@@ -12469,7 +12590,7 @@ var ARORA_IMPORT_ALIASES = {
   emp_id: ["employee id","emp code","employee code","emp id","employee no","employee number","emp no","emp number","code","employee sr no"],
   name: ["name of employee","name","employee name","employee full name","emp name","worker name","staff name"],
   father: ["name of fathers","name of father","father","father name","father s name","fathers name","fathername","guardian name"],
-  dob: ["d.o.b","dob","d o b","date of birth","birth date","birthdate"],
+  dob: ["d.o.b","dob","d o b","date of birth","birth date","birthdate","d-o-b","d.o.b."],
   marital_status: ["marital","marital status","marital_status","marriage status"],
   gender: ["gender","sex"],
   phone_no: ["phone no","phone n","phone","mobile","mobile no","contact no","phone number"],
@@ -12492,8 +12613,8 @@ var ARORA_IMPORT_ALIASES = {
   daughter_name: ["name of daughter","name of daught","daughter name","daughter"],
   daughter_dob: ["date of birth daughter","daughter dob","dob daughter"],
   bank_name: ["bank name","bank","banker","banker name"],
-  account_no: ["account no","account number","bank account","bank account no","bank account number","a c no","a/c no","account"],
-  ifsc: ["ifsc code","ifsc","ifsc number"],
+  account_no: ["account no","account number","bank account","bank account no","bank account number","a c no","a/c no","account","a.c","a.c no","a/c","a/c number","ac no","ac","bank a/c","bank a.c","bank acc","a c","acc no"],
+  ifsc: ["ifsc code","ifsc","ifsc number","ifs code","ifsc_code","ifsc no","rtgs","neft"],
   branch_address: ["branch address","branch ad","branch name","branch"],
   doj: ["d-o-j","doj","d o j","date of joining","joining date","join date","date joined"],
   dept: ["department","dept","department name"],
@@ -12591,7 +12712,7 @@ function aroraRowsToEmployees(rows,headerRow){
       }
       e[k]=v;
     });
-    if(e.emp_id||e.name)out.push(e);
+    e = auditAndCleanEmployee(e, row); if(e.emp_id||e.name)out.push(e);
   }
   return out;
 }
@@ -13614,55 +13735,11 @@ window.empDashboardExportExcel = function() {
   };
 })();
 
-/* Replace the fragile bulk parser with header-aware parsing in ATPL 40-col format. */
-window.emParseBulkPaste=function(){
-  var area=document.getElementById('emBulkPasteArea');if(!area)return;
-  var raw=area.value||'';if(!raw.trim())return;
-  var lines=raw.replace(/\r/g,'').split('\n').filter(function(x){return x.trim()!=='';});
-  var rows=lines.map(function(l){return l.split('\t');});
-  var h=aroraFindHeader(rows),headerRow=h.row;
-  var emps;
-  if(headerRow<0||h.score<2){
-    /* Positional parsing using user's customized EM_COLS sequence (exact 40-col ATPL Excel match) */
-    emps = [];
-    rows.forEach(function(r){
-      if(!r.some(function(v){return String(v==null?'':v).trim()!=='';}))return;
-      var first = String(r[0]||'').trim().toLowerCase();
-      if(first==='code'||first==='emp id'||first==='employee id'||first==='s.no'||first==='sno'||first==='#') return;
-      var emp = {};
-      EM_COLS.forEach(function(col, ci){
-        var val = r[ci];
-        if(val===undefined || val===null) val = '';
-        if(['dob','doj','father_dob','mother_dob','nominee_dob','son_dob','daughter_dob'].includes(col.key)){
-          val = (typeof aroraToDate==='function'?aroraToDate(val):val);
-        } else if(col.type==='number'){
-          val = (typeof aroraNumber==='function'?aroraNumber(val):(parseFloat(String(val).replace(/,/g,''))||0));
-        } else {
-          val = String(val).trim().toUpperCase();
-        }
-        if(col.key==='gender'){
-          var g = String(val).toUpperCase();
-          val = /FEMALE|WOMAN|F/.test(g)?'FEMALE':(/MALE|MAN|M/.test(g)?'MALE':g);
-        }
-        if(col.key==='marital_status'){
-          var m = String(val).toUpperCase();
-          val = /UNMARRIED|SINGLE/.test(m)?'UNMARRIED':(/MARRIED/.test(m)?'MARRIED':m);
-        }
-        emp[col.key] = val;
-      });
-      if(emp.emp_id || emp.name) emps.push(emp);
-    });
-  } else {
-    emps = aroraRowsToEmployees(rows,headerRow);
-  }
-  EM_BULK_ROWS=emps;
-  if(typeof renderBulkPreview==='function')renderBulkPreview();
-  var btn=document.getElementById('emBulkSaveBtn');
-  if(btn){btn.disabled=!emps.length;btn.style.opacity=emps.length?'1':'.4';}
-  var info=document.getElementById('emPasteInfo'),bar=document.getElementById('emPasteBar');
-  if(bar)bar.style.display='flex';
-  if(info)info.textContent='✅ '+emps.length+' employee rows detected in ATPL 40-Column Master format. Review & Save All.';
+/* Header-aware and format-resilient bulk parser */
+window.emParseBulkPaste = function() {
+  emParseBulkPaste();
 };
+
 /* Make bulk save persistent and update all UI. */
 window.emSaveBulk=function(){
   if(!EM_BULK_ROWS.length)return;
