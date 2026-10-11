@@ -1,4 +1,4 @@
-const CACHE_NAME = 'atpl-cache-v9-arora-autonomous-rpa-hud';
+const CACHE_NAME = 'atpl-cache-v10-clean-erp-stable';
 const ASSETS = [
   './',
   './index.html',

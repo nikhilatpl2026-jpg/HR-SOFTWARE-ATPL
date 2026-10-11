@@ -436,57 +436,6 @@
       AIChatContext.lastActiveEmpCode = cleanCode(directCodeMatch[0]);
     }
 
-        // ── 0. DYNAMIC CROSS-ERP AUTONOMOUS RPA BOT (OPEN CORE MASTER & RUN ENTRY) ──
-    var rpaIntent = (window.ATPLCrossErpBot && typeof window.ATPLCrossErpBot.parseUserIntent === 'function')
-      ? window.ATPLCrossErpBot.parseUserIntent(raw)
-      : null;
-
-    if (
-      rpaIntent ||
-      lower.match(/(?:cores*master|masters*kholo|masters|opens*core|open.*?erp|login.*?erp|erp.*?login)/i) ||
-      lower.match(/(?:515975426507|run.app|erp-system-ui|arora.*?cloud)/i) ||
-      lower.match(/(?:ye|is|iss|dusre|doosre|other|external|second|tally|busy|marg|zoho|sap|boss).*?(?:erp|software|portal).*?(?:entry|bill|bills|voucher|vouchers|process|login|khol|open|core)/i) ||
-      lower.match(/(?:erp.*?me.*?entry|entry.*?karni|cross[- ]?erp|rpa[- ]?bot|auto[- ]?entry|bill[- ]?entry|general.*?process|login.*?karke.*?entry)/i)
-    ) {
-      if (!rpaIntent) {
-        rpaIntent = {
-          action: 'open_module',
-          routeKey: 'core_master',
-          targetName: 'Core Master (General)',
-          fullUrl: 'https://erp-system-ui-515975426507.asia-south1.run.app/masters/general',
-          description: 'Autonomous Core Master Navigation & Entry'
-        };
-      }
-
-      // Immediately trigger autonomous execution engine
-      if (window.ATPLCrossErpBot && typeof window.ATPLCrossErpBot.executeAutonomousIntent === 'function') {
-        setTimeout(function() {
-          window.ATPLCrossErpBot.executeAutonomousIntent(rpaIntent);
-        }, 150);
-      }
-
-      return {
-        html: '<div style="background:linear-gradient(135deg, rgba(30,58,138,0.3) 0%, rgba(15,23,42,0.95) 100%); border:1.5px solid #3b82f6; border-radius:14px; padding:16px; box-shadow:0 12px 28px rgba(0,0,0,0.5)">' +
-          '<div style="font-size:15px; font-weight:800; color:#60a5fa; margin-bottom:6px; display:flex; align-items:center; gap:8px">🤖 <strong>Haan Bhai! ' + rpaIntent.targetName + ' Arora ERP Me Open Ho Raha Hai!</strong></div>' +
-          '<div style="font-size:12px; color:#cbd5e1; line-height:1.6; margin-bottom:12px">' +
-          'Aapke command ke anusaar bot automatically step-by-step execute kar raha hai aur screen par live progress show kar raha hai:<br>' +
-          '• <strong>Step 1:</strong> Arora Cloud ERP Server <code>https://erp-system-ui-515975426507.asia-south1.run.app/</code> se connection verify.<br>' +
-          '• <strong>Step 2:</strong> ATPL single sign-on / credentials auto-verify.<br>' +
-          '• <strong>Step 3:</strong> <code>' + rpaIntent.targetName + '</code> module open & launch.<br>' +
-          '• <strong>Step 4:</strong> Module open hone ke baad aapse poocha jayega ki <strong>"Aage kya karna hai?"</strong>' +
-          '</div>' +
-          '<div style="background:#090d16; border:1px solid #1e293b; border-radius:8px; padding:10px; margin-bottom:12px; font-size:11.5px; color:#93c5fd">' +
-          '⚡ <strong>Live Status:</strong> Screen ke bottom right corner me Live Step HUD chal raha hai jisme har step ka live percentage aur actions dikh rahe hain.' +
-          '</div>' +
-          '<div style="display:flex; gap:6px; flex-wrap:wrap">' +
-          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.executeAutonomousIntent(&quot;' + (rpaIntent.routeKey || 'core_master') + '&quot;)" style="background:#2563eb">🚀 Run Auto-Open Again</button>' +
-          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.open(&quot;queue&quot;)" style="background:#0f766e">📋 Open Full Queue</button>' +
-          '  <button class="ai-act-btn" onclick="window.ATPLCrossErpBot.open(&quot;add&quot;)" style="background:#ea580c">➕ Add Bill / Process</button>' +
-          '  <button class="ai-act-btn" onclick="window.open(&quot;' + rpaIntent.fullUrl + '&quot;, &quot;_blank&quot;)" style="background:#1e293b; border:1px solid #3b82f6">🌐 Direct ERP Link ↗</button>' +
-          '</div></div>'
-      };
-    }
-
     // ── 0. DIRECT STATUTORY CHALLAN / ECR TRIGGER ──
     if (lower.match(/challan|ecr|pf.*return|esic.*return|pf.*file|esic.*file|portal.*upload/i)) {
       if (typeof window.goPage === 'function') window.goPage('challan');

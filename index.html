@@ -1716,7 +1716,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   </div>
   <div class="header-right">
     <button onclick="window.AroraAICommander.open()" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
-    <button onclick="window.ATPLCrossErpBot.open()" id="crossErpBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(234,88,12,0.18);border:1px solid rgba(234,88,12,0.45);color:#fb923c;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre ERP (https://erp-system-ui-515975426507.asia-south1.run.app/) me auto-entry karein"><span style="font-size:14px">🤖</span> <span>Cross-ERP Entry</span></button>
     <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync / restore karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Cross-Browser Sync</span></button>
     <button onclick="toggleDeepScan()" id="dsBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818CF8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" onmouseover="this.style.background='rgba(129,140,248,0.25)'" onmouseout="this.style.background='rgba(129,140,248,0.15)'">
       <span style="font-size:14px">🔬</span> Deep Scan
@@ -1890,7 +1889,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="vnav-sub" id="cat-dash">
       <div class="vitem active" id="vn-cmd" onclick="goPage('cmd')"><span class="vi">⚡</span>Smart Commands</div>
       <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" style="color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
-      <div class="vitem" id="vn-cross-erp" onclick="window.ATPLCrossErpBot.open()" style="background:rgba(234,88,12,0.15);color:#fb923c;font-weight:700"><span class="vi">🤖</span>Cross-ERP Auto-Entry <span class="vbadge" style="background:#ea580c">RPA</span></div>
       <div class="vitem" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
       <div class="vitem" id="vn-test" onclick="goPage('test')" style="background:rgba(99,102,241,0.15);color:#a5b4fc"><span class="vi">🧪</span>Test Feature</div>
     </div>
@@ -1929,7 +1927,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-tools">
       <div class="vitem" id="vn-debugger" onclick="window.ATPLCloudDebugger.open()" style="color:#fbbf24;font-weight:bold"><span class="vi">??</span>Cloud Debugger</div>
-      <div class="vitem" id="vn-tools-cross-erp" onclick="window.ATPLCrossErpBot.open()" style="color:#fb923c;font-weight:bold"><span class="vi">⚡</span>ERP-to-ERP Auto Entry</div>      <div class="vitem" id="vn-esictodol" onclick="goPage('esictodol')"><span class="vi">🩺</span>ESIC → DOL</div>
+      <div class="vitem" id="vn-esictodol" onclick="goPage('esictodol')"><span class="vi">🩺</span>ESIC → DOL</div>
       <div class="vitem" id="vn-pftodol" onclick="goPage('pftodol')"><span class="vi">🧾</span>PF → DOL</div>
     </div>
   </div>
@@ -13669,7 +13667,6 @@ else AInit();
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- AI Commander replaces legacy lazy-loader -->
 <script src="arora-ai-commander-v10.js?v=1790186846404"></script>
-<script src="atpl-cross-erp-rpa-v1.js?v=202610-rpa-v1"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20260918-confirmed2"></script>
 <script src="erp-cloud-sync-v1.js?v=20260919-final-stability"></script>
