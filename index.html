@@ -2631,6 +2631,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <button id="emBulkDeleteBtn" type="button" onclick="emDeleteSelected()" style="display:none;padding:7px 13px;background:#dc2626;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(220,38,38,0.4)">🗑 Delete Selected (<span id="emSelectedCount">0</span>)</button>
             <button type="button" onclick="goPage('empdashboard')" style="padding:7px 13px;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px;box-shadow:0 2px 8px rgba(13,148,136,0.3)">📊 Dashboard</button>
             <button onclick="emOpenAdd()" style="padding:7px 12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">➕ Add</button>
+            <button onclick="emOpenAdd(); setTimeout(emPasteFromClipboard, 150)" style="padding:7px 12px;background:#1e3a5f;border:1px solid #3b82f6;color:#60a5fa;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">📋 Paste from Excel</button>
             <button onclick="emDownloadExcel()" style="padding:7px 12px;background:#059669;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">⬇ Excel</button>
             <button id="emMinimizeBtn" onclick="emToggleWindow()" class="desktop-only-btn" style="padding:7px 12px;background:#334155;color:#e2e8f0;border:1px solid #475569;border-radius:8px;cursor:pointer;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px">↙ Minimize</button>
           </div>
@@ -2771,6 +2772,20 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
         <!-- TAB 1: SINGLE ADD/EDIT — Excel row style -->
         <div id="emTabPanel-single" style="flex:1;overflow:auto;padding:0">
+          <!-- DIRECT EXCEL ROW PASTE BAR -->
+          <div style="padding:9px 14px;background:linear-gradient(90deg,#090d16,#1e1b4b);border-bottom:1px solid #334155;display:flex;align-items:center;gap:10px;position:sticky;left:0;z-index:7">
+            <div style="font-size:11px;font-weight:800;color:#c7d2fe;white-space:nowrap;display:flex;align-items:center;gap:6px">
+              <span>📋 <strong>Direct Excel Row Paste:</strong></span>
+            </div>
+            <input type="text" id="emQuickPasteInput" placeholder="Excel se copy ki gayi row yahan seedha Ctrl+V paste karein (Saare 40 fields turant bhar jayenge)..." 
+              onpaste="var self=this;setTimeout(function(){emFillSingleFromText(self.value);self.value='';},25)"
+              style="flex:1;background:#090d16;border:1.5px dashed #6366f1;border-radius:6px;padding:7px 12px;color:#f8fafc;font-size:11px;font-family:monospace;outline:none;transition:border .15s"
+              onfocus="this.style.borderColor='#a5b4fc';this.style.background='#111827'"
+              onblur="this.style.borderColor='#6366f1';this.style.background='#090d16'">
+            <button type="button" onclick="emPasteFromClipboard()" style="padding:6px 14px;background:#4f46e5;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px">
+              📋 Paste From Clipboard
+            </button>
+          </div>
           <div style="padding:7px 14px;background:#0b1120;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:8px;position:sticky;left:0;z-index:6">
             <div style="font-size:11px;color:#a5b4fc;font-weight:700;display:flex;align-items:center;gap:6px">
               <span>🖱️ <strong>Mouse se Columns Drag & Drop Karein:</strong> Kisi bhi column ko mouse se seedha pakad kar aage-peeche shift karein (Excel sequence ke hisaab se)</span>
@@ -9816,6 +9831,13 @@ function emLoadSavedColOrder() {
   }
 }
 emLoadSavedColOrder();
+if (typeof window !== 'undefined' && window.location && typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
+  var _hasCustom = false;
+  try { _hasCustom = !!localStorage.getItem('ATPL_EM_COLS_Setting') || !!localStorage.getItem('ATPL_EM_COLS_ORDER'); } catch(_) {}
+  if (!_hasCustom) {
+    EM_COLS = ATPL_40_EXCEL_COLS.slice();
+  }
+}
 
 // Realtime listeners for Cross-Browser, Multi-Tab and Cloud Sync
 if (typeof BroadcastChannel !== 'undefined') {
@@ -10191,22 +10213,31 @@ function emToggleWindow() {
 // ── Override existing emOpenAdd / emOpenEdit to use new style ──
 function emOpenAdd() {
   EM.editIdx = -1;
-  document.getElementById('emModalTitle').textContent = '➕ New Employee Add Karo';
+  document.getElementById('emModalTitle').textContent = '➕ New Employee Add Karo (40 Excel Columns)';
+  if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
+    EM_COLS = ATPL_40_EXCEL_COLS.slice();
+  }
   emRenderSingleRow({});
   emSwitchTab('single');
   document.getElementById('emModal').style.display='flex';
   document.getElementById('emModal').style.alignItems='center';
-  // Focus first input
   setTimeout(function(){
-    var first = document.querySelector('#emSingleRow input');
-    if(first) first.focus();
+    var q = document.getElementById('emQuickPasteInput');
+    if (q) q.focus();
+    else {
+      var first = document.querySelector('#emSingleRow input');
+      if(first) first.focus();
+    }
   }, 100);
 }
 
 function emOpenEdit(idx) {
   EM.editIdx = idx;
-  var e = EM.data[idx];
-  document.getElementById('emModalTitle').textContent = '✏️ Edit: '+e.name+' ('+e.emp_id+')';
+  var e = EM.data[idx] || {};
+  document.getElementById('emModalTitle').textContent = '✏️ Edit: '+(e.name||'')+' ('+(e.emp_id||'')+')';
+  if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
+    EM_COLS = ATPL_40_EXCEL_COLS.slice();
+  }
   emRenderSingleRow(e);
   emSwitchTab('single');
   document.getElementById('emModal').style.display='flex';
@@ -10218,15 +10249,71 @@ function emViewEmp(idx) {
 }
 
 // ── Save from single row ──
+function getEmfElement(key) {
+  if (!key) return null;
+  var el = document.getElementById('emf_' + key);
+  if (el) return el;
+  var aliases = {
+    'phone_no': ['emf_phone_no', 'emf_phone', 'emf_mobile'],
+    'phone': ['emf_phone_no', 'emf_phone'],
+    'aadhaar_no': ['emf_aadhaar_no', 'emf_aadhar_no', 'emf_aadhar', 'emf_aadhaar'],
+    'aadhar': ['emf_aadhaar_no', 'emf_aadhar_no', 'emf_aadhar'],
+    'pan_no': ['emf_pan_no', 'emf_pan'],
+    'pan': ['emf_pan_no', 'emf_pan'],
+    'nominee_name': ['emf_nominee_name', 'emf_wife_name'],
+    'wife_name': ['emf_nominee_name', 'emf_wife_name'],
+    'nominee_dob': ['emf_nominee_dob', 'emf_wife_dob'],
+    'wife_dob': ['emf_nominee_dob', 'emf_wife_dob'],
+    'cat1': ['emf_cat1', 'emf_cat', 'emf_category'],
+    'gross': ['emf_gross', 'emf_gross_salary', 'emf_new_gross'],
+    'basic': ['emf_basic', 'emf_basic_salary'],
+    'hra': ['emf_hra', 'emf_hra_salary'],
+    'new_gross': ['emf_new_gross', 'emf_gross']
+  };
+  if (aliases[key]) {
+    for (var i = 0; i < aliases[key].length; i++) {
+      var aEl = document.getElementById(aliases[key][i]);
+      if (aEl) return aEl;
+    }
+  }
+  return null;
+}
+window.getEmfElement = getEmfElement;
+
+var ATPL_40_COL_KEYS = [
+  'emp_id', 'name', 'father', 'dob', 'marital_status', 'gender',
+  'phone_no', 'aadhaar_no', 'pan_no', 'qualification',
+  'present_address', 'present_district', 'present_state',
+  'permanent_address', 'permanent_district', 'permanent_state',
+  'father_dob', 'mother_name', 'mother_dob',
+  'nominee_name', 'nominee_dob',
+  'son_name', 'son_dob', 'daughter_name', 'daughter_dob',
+  'bank_name', 'account_no', 'ifsc', 'branch_address',
+  'doj', 'dept', 'desig', 'cat1', 'skill', 'pf_no', 'esi_no',
+  'gross', 'basic', 'hra', 'new_gross'
+];
+
+function emNormalizeDateValue(val) {
+  if (!val) return '';
+  var s = String(val).replace(/[.\/]/g, '-').trim();
+  var m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+  if (m) {
+    var y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0') + '-' + y;
+  }
+  return s;
+}
+
 function emSaveModal() {
   var newEmp = {};
   var valid = true;
-  EM_COLS.forEach(function(c){
-    var el = document.getElementById('emf_'+c.key);
+  var colsToSave = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) ? ATPL_40_EXCEL_COLS : (EM_COLS || []);
+  colsToSave.forEach(function(c){
+    var el = getEmfElement(c.key);
     if(!el) return;
     var val = el.value ? el.value.trim() : '';
     if((c.key==='emp_id'||c.key==='name') && !val){ el.style.border='2px solid #dc2626'; valid=false; return; }
-    if(c.key==='dob'||c.key==='doj'||c.key==='dol'){
+    if(c.key==='dob'||c.key==='doj'||c.key==='dol'||(c.key&&c.key.indexOf('_dob')>=0)){
       if(val && typeof window.normalizeDate==='function'){
         var norm=window.normalizeDate(val);
         if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)){val=norm;el.value=norm;}
@@ -10245,7 +10332,6 @@ function emSaveModal() {
     EM.data.push(newEmp);
     savedEmp = newEmp;
   }
-
   /* Persist every single-row save, then push it explicitly to the shared backend. */
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
@@ -10253,7 +10339,6 @@ function emSaveModal() {
   if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster==='function') {
     window.ATPLCloudSyncV1.pushMaster(savedEmp);
   }
-
   emCloseModal();
   emFilter();
   emUpdateStats();
@@ -10263,56 +10348,246 @@ function emSaveModal() {
 async function emPasteFromClipboard() {
   try {
     var text = await navigator.clipboard.readText();
-    emFillSingleFromText(text);
-  } catch(e) {
-    // Fallback: ask user to paste
-    var text = prompt('Excel row yahan paste karo (Ctrl+V):');
-    if(text) emFillSingleFromText(text);
-  }
+    if (text && text.trim()) {
+      emFillSingleFromText(text);
+      return;
+    }
+  } catch(e) {}
+  // Fallback: ask user to paste
+  var text = prompt('Excel row yahan paste karo (Ctrl+V):');
+  if(text && text.trim()) emFillSingleFromText(text);
 }
 
 function emFillSingleFromText(text) {
-  if(!text) return;
-  var lines = text.trim().split('\n').filter(function(l){ return l.trim(); });
-  if(!lines.length) return;
-  var dataLine = lines[0];
-  if(lines.length > 1) {
-    var firstLow = lines[0].toLowerCase();
-    if(firstLow.includes('employe') || firstLow.includes('code') || firstLow.includes('name of')) {
-      dataLine = lines[1];
+  if (!text || typeof text !== 'string') return;
+  var rawText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  var lines = rawText.split('\n').filter(function(l){ return l.trim().length > 0; });
+  if (!lines.length) return;
+
+  // Make sure 40 columns active
+  if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
+    if (typeof EM_COLS === 'undefined' || !Array.isArray(EM_COLS) || EM_COLS.length < 40) {
+      EM_COLS = ATPL_40_EXCEL_COLS.slice();
+      if (typeof emRenderSingleRow === 'function') {
+        var curVals = typeof emGetSingleRowValues === 'function' ? emGetSingleRowValues() : {};
+        emRenderSingleRow(curVals);
+      }
     }
   }
+
+  // Header detection
+  var firstLine = lines[0];
+  var firstCols = firstLine.split('\t').map(function(s){ return s.trim(); });
+  var isHeader = false;
+  var headerTokens = [
+    'employee id', 'emp id', 'emp code', 'employee code', 'code', 'name of employee',
+    'emp name', 'name', 'father', 'd.o.b', 'dob', 'marital', 'gender', 'phone',
+    'aadhar', 'pan', 'qualification', 'district', 'state', 'bank', 'account no',
+    'ifsc', 'd-o-j', 'doj', 'department', 'designation', 'catgrory', 'category',
+    'pf no', 'esi no', 'salary', 'basic', 'hra'
+  ];
+  var matchCount = 0;
+  firstCols.forEach(function(col){
+    var cLow = col.toLowerCase();
+    for (var k = 0; k < headerTokens.length; k++) {
+      if (cLow === headerTokens[k] || cLow.indexOf(headerTokens[k]) >= 0) {
+        matchCount++;
+        break;
+      }
+    }
+  });
+  if (matchCount >= 2 || (firstCols.length === 1 && matchCount >= 1)) {
+    isHeader = true;
+  }
+
+  var dataLine = (isHeader && lines.length > 1) ? lines[1] : lines[0];
   var cols = dataLine.split('\t');
-  var keys = EM_COLS.map(function(c){return c.key;});
+
+  var keys = [];
+  if (isHeader) {
+    var headerAliases = {
+      emp_id: ['employee id', 'emp id', 'emp code', 'employee code', 'code', 'id'],
+      name: ['name of employee', 'employee name', 'emp name', 'name'],
+      father: ['name of fathers', 'name of father', 'father name', "father's name", 'father', 'guardian'],
+      dob: ['d.o.b', 'dob', 'date of birth', 'birth date'],
+      marital_status: ['marital', 'marital status'],
+      gender: ['gender', 'sex'],
+      phone_no: ['phone n', 'phone no', 'phone', 'mobile'],
+      aadhaar_no: ['aadhar no.', 'aadhar no', 'aadhar', 'aadhaar'],
+      pan_no: ['pan no', 'pan'],
+      qualification: ['qualification', 'education'],
+      present_address: ['present house /street no', 'present house/street no', 'present address'],
+      present_district: ['present district'],
+      present_state: ['present state'],
+      permanent_address: ['permanent house /street no', 'permanent house/street no', 'permanent address'],
+      permanent_district: ['permanent district'],
+      permanent_state: ['permanent state'],
+      father_dob: ['date of birth fathers', 'father dob'],
+      mother_name: ['mothers name', 'name of mother', 'mother name'],
+      mother_dob: ['date of birth mothers', 'mother dob'],
+      nominee_name: ['name of wife', 'name of nominee', 'wife name', 'nominee name'],
+      nominee_dob: ['date of birth wife', 'date of nominee', 'wife dob', 'nominee dob'],
+      son_name: ['name of son', 'son name'],
+      son_dob: ['date of birth son', 'son dob'],
+      daughter_name: ['name of daughter', 'daughter name'],
+      daughter_dob: ['date of birth daughter', 'daughter dob'],
+      bank_name: ['bank name', 'bank'],
+      account_no: ['account no', 'account number', 'a/c no'],
+      ifsc: ['ifsc code', 'ifsc'],
+      branch_address: ['branch address', 'branch'],
+      doj: ['d-o-j', 'doj', 'date of joining'],
+      dept: ['department', 'dept'],
+      desig: ['designation', 'desig'],
+      cat1: ['catgrory', 'category', 'cat'],
+      skill: ['skill', 'skills'],
+      pf_no: ['pf no', 'pf account no', 'uan'],
+      esi_no: ['esi no', 'esic no', 'ip no'],
+      gross: ['gross total salary', 'gross salary', 'gross'],
+      basic: ['new basic', 'basic'],
+      hra: ['new hra', 'hra'],
+      new_gross: ['gross total salary', 'new gross']
+    };
+    var districtCount = 0;
+    var stateCount = 0;
+    firstCols.forEach(function(h){
+      var hl = h.toLowerCase();
+      if (hl === 'district') {
+        districtCount++;
+        keys.push(districtCount === 1 ? 'present_district' : 'permanent_district');
+        return;
+      }
+      if (hl === 'state') {
+        stateCount++;
+        keys.push(stateCount === 1 ? 'present_state' : 'permanent_state');
+        return;
+      }
+      var foundKey = null;
+      for (var fKey in headerAliases) {
+        for (var a = 0; a < headerAliases[fKey].length; a++) {
+          if (hl === headerAliases[fKey][a] || hl.indexOf(headerAliases[fKey][a]) >= 0) {
+            foundKey = fKey;
+            break;
+          }
+        }
+        if (foundKey) break;
+      }
+      keys.push(foundKey || '');
+    });
+  } else {
+    if (cols.length >= 30) {
+      keys = ATPL_40_COL_KEYS.slice();
+    } else {
+      keys = (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){return c.key;}) : ATPL_40_COL_KEYS.slice());
+    }
+  }
+
+  var filledCount = 0;
+  var empCode = '';
+  var empName = '';
+
   keys.forEach(function(key, i){
-    var el = document.getElementById('emf_'+key);
-    if(!el || cols[i]===undefined) return;
-    var val = (cols[i]||'').trim();
-    if(el.tagName==='SELECT'){
+    if (!key || cols[i] === undefined) return;
+    var val = (cols[i] || '').trim();
+    if (!val) return;
+    var el = getEmfElement(key);
+    if (!el) return;
+
+    if (key === 'emp_id') empCode = val;
+    if (key === 'name') empName = val;
+
+    if (el.tagName === 'SELECT') {
       var upper = val.toUpperCase();
-      if(key === 'status') {
-        el.value = (upper === 'LEFT' || upper === 'INACTIVE' || upper === 'EXITED') ? 'LEFT' : 'ACTIVE';
-      } else if (key === 'gender') {
-        el.value = (upper === 'FEMALE' || upper === 'F') ? 'FEMALE' : 'MALE';
+      if (key === 'gender') {
+        el.value = (upper === 'FEMALE' || upper === 'F' || upper === 'WOMAN' || upper === 'GIRL') ? 'FEMALE' : 'MALE';
       } else if (key === 'marital_status') {
         el.value = (upper === 'UNMARRIED' || upper === 'SINGLE') ? 'UNMARRIED' : 'MARRIED';
+      } else if (key === 'status') {
+        el.value = (upper === 'LEFT' || upper === 'INACTIVE' || upper === 'EXITED') ? 'LEFT' : 'ACTIVE';
+      } else {
+        el.value = upper;
+      }
+    } else {
+      if (key.indexOf('dob') >= 0 || key.indexOf('doj') >= 0 || key.indexOf('dol') >= 0) {
+        el.value = emNormalizeDateValue(val);
       } else {
         el.value = val;
       }
-    } else {
-      el.value = val;
     }
-    // Flash green
-    el.style.background='#022c22';
-    setTimeout(function(){el.style.background='transparent';},600);
+
+    // High visibility flash green animation
+    el.style.transition = 'all 0.2s ease';
+    el.style.background = '#064e3b';
+    el.style.borderColor = '#10b981';
+    el.style.color = '#ecfdf5';
+    setTimeout(function(){
+      el.style.background = 'transparent';
+      el.style.borderColor = '';
+      el.style.color = '#f1f5f9';
+    }, 1200);
+
+    filledCount++;
   });
-  document.getElementById('emPasteBar').style.display='flex';
-  document.getElementById('emPasteInfo').textContent = cols.length+' cells filled from clipboard';
+
+  // Check if multiple data rows were pasted
+  var allDataLines = lines.filter(function(l){
+    var f = l.toLowerCase();
+    return !f.includes('employe') && !f.includes('code\t') && !f.includes('emp id') && !f.includes('s.no');
+  });
+
+  var bar = document.getElementById('emPasteBar');
+  var info = document.getElementById('emPasteInfo');
+  if (bar) bar.style.display = 'flex';
+  if (info) {
+    var label = '✅ ' + filledCount + ' fields Excel row se auto-fill ho gaye!';
+    if (empCode || empName) label += ' (' + (empCode ? empCode + ' • ' : '') + empName + ')';
+    if (allDataLines.length > 1) {
+      label += ' — <span style="color:#fde047;font-weight:700">Kul ' + allDataLines.length + ' rows clipboard mein hain.</span> ' +
+               '<a href="javascript:void(0)" onclick="emSwitchTab(\'bulk\')" style="color:#6ee7b7;font-weight:bold;text-decoration:underline">Sabhi ' + allDataLines.length + ' rows dekhne ke liye "Bulk Excel Paste" par click karein</a>';
+      var bulkArea = document.getElementById('emBulkPasteArea');
+      if (bulkArea) {
+        bulkArea.value = rawText;
+        if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+      }
+    }
+    info.innerHTML = label;
+  }
 }
 
 function emClearPaste() {
-  document.getElementById('emPasteBar').style.display='none';
+  var bar = document.getElementById('emPasteBar');
+  if (bar) bar.style.display = 'none';
   emRenderSingleRow({});
+}
+
+// Global Paste Event Listener: Intercepts Excel row paste anywhere on page or modal
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('paste', function(ev) {
+    var target = ev.target;
+    var inEmModal = !!(target && target.closest && target.closest('#emModal'));
+    var empMasterPage = document.getElementById('page-empmaster');
+    var inEmpMasterPage = !!(empMasterPage && empMasterPage.style.display !== 'none');
+
+    if (!inEmModal && !inEmpMasterPage) return;
+    if (target && target.id === 'emBulkPasteArea') {
+      setTimeout(function(){ if (typeof emParseBulkPaste === 'function') emParseBulkPaste(); }, 60);
+      return;
+    }
+
+    var text = (ev.clipboardData || window.clipboardData) ? (ev.clipboardData || window.clipboardData).getData('text') : '';
+    if (!text || !text.trim()) return;
+
+    var hasTabs = text.indexOf('\t') >= 0;
+    if (!hasTabs) return;
+
+    ev.preventDefault();
+
+    var modal = document.getElementById('emModal');
+    if (!modal || modal.style.display === 'none') {
+      if (typeof emOpenAdd === 'function') emOpenAdd();
+    }
+
+    emFillSingleFromText(text);
+  });
 }
 
 // ── SCANNED PDF / PHOTO OCR IMPORT ─────────────────────────────
@@ -10566,32 +10841,56 @@ function emParseBulkPaste() {
   var raw = document.getElementById('emBulkPasteArea').value.trim();
   if(!raw) return;
 
-  var lines = raw.split('\n').filter(function(l){return l.trim();});
-  EM_BULK_ROWS = [];
-  var keys = EM_COLS.map(function(c){return c.key;});
+  if (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) {
+    EM_COLS = ATPL_40_EXCEL_COLS.slice();
+    if (typeof emRenderColChips === 'function') emRenderColChips();
+  }
 
-  lines.forEach(function(line){
+  var lines = raw.split(/\r?\n/).filter(function(l){return l.trim();});
+  EM_BULK_ROWS = [];
+
+  var firstCols = lines[0].split('\t').map(function(s){return s.trim();});
+  var headerTokens = ['employee id','emp id','emp code','code','name of employee','emp name','name','father','dob','marital','gender','phone','aadhar','pan','bank','doj','pf'];
+  var matchCount = 0;
+  firstCols.forEach(function(c){
+    var cl = c.toLowerCase();
+    for (var k = 0; k < headerTokens.length; k++) {
+      if (cl === headerTokens[k] || cl.indexOf(headerTokens[k]) >= 0) { matchCount++; break; }
+    }
+  });
+  var isHeader = matchCount >= 2;
+  var dataLines = isHeader ? lines.slice(1) : lines;
+
+  var keys = (typeof ATPL_40_COL_KEYS !== 'undefined' ? ATPL_40_COL_KEYS.slice() : EM_COLS.map(function(c){return c.key;}));
+
+  dataLines.forEach(function(line){
     var cols = line.split('\t');
-    // Skip header row if detected
     var first = (cols[0]||'').trim().toLowerCase();
     if(first==='code'||first==='emp id'||first==='employee id'||first==='s.no'||first==='sno'||first==='#') return;
-    // Skip empty or total rows
     if(!cols[0]||!cols[0].trim()) return;
     if((cols[0]||'').toLowerCase().indexOf('total')>=0) return;
 
     var emp = {};
     keys.forEach(function(key, i){
       var val = (cols[i]||'').trim();
-      if(EM_COLS[i] && EM_COLS[i].type==='number') emp[key] = parseFloat(val)||0;
-      else emp[key] = val.toUpperCase();
+      var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[i]) ? ATPL_40_EXCEL_COLS[i] : null;
+      if (cDef && cDef.type === 'number') {
+        emp[key] = parseFloat(val) || 0;
+      } else if (key.indexOf('dob') >= 0 || key.indexOf('doj') >= 0) {
+        emp[key] = emNormalizeDateValue(val);
+      } else {
+        emp[key] = val.toUpperCase();
+      }
     });
     if(emp.emp_id || emp.name) EM_BULK_ROWS.push(emp);
   });
 
   renderBulkPreview();
   var btn = document.getElementById('emBulkSaveBtn');
-  btn.disabled = EM_BULK_ROWS.length===0;
-  btn.style.opacity = EM_BULK_ROWS.length===0 ? '0.4' : '1';
+  if (btn) {
+    btn.disabled = EM_BULK_ROWS.length === 0;
+    btn.style.opacity = EM_BULK_ROWS.length === 0 ? '0.4' : '1';
+  }
 }
 
 function renderBulkPreview() {

@@ -64,19 +64,30 @@ function persistConfirmed(){
   }catch(_){}
 }
 function fieldsToEmployee(){
-  var out={},valid=true,cols=Array.isArray(g.EM_COLS)?g.EM_COLS:[];
+  var out={},valid=true;
+  var cols = (Array.isArray(g.ATPL_40_EXCEL_COLS) && g.ATPL_40_EXCEL_COLS.length >= 40)
+    ? g.ATPL_40_EXCEL_COLS
+    : (Array.isArray(g.EM_COLS) ? g.EM_COLS : []);
   cols.forEach(function(c){
-    var el=g.document.getElementById('emf_'+c.key);if(!el)return;var val=el.value?el.value.trim():'';
-    if((c.key==='emp_id'||c.key==='name')&&!val){el.style.border='2px solid #dc2626';valid=false;return}
-    if(c.key==='dob'||c.key==='doj'||c.key==='dol'){
-      if(val && typeof g.normalizeDate==='function'){
-        var norm=g.normalizeDate(val);
-        if(norm&&/^\d{2}-\d{2}-\d{4}$/.test(norm)){val=norm;el.value=norm;}
+    var el = g.document.getElementById('emf_' + c.key);
+    if(!el && typeof g.getEmfElement === 'function') el = g.getEmfElement(c.key);
+    if(!el) return;
+    var val = el.value ? el.value.trim() : '';
+    if((c.key === 'emp_id' || c.key === 'name') && !val){
+      el.style.border = '2px solid #dc2626';
+      valid = false;
+      return;
+    }
+    if(c.key === 'dob' || c.key === 'doj' || c.key === 'dol' || (c.key && c.key.indexOf('_dob') >= 0)){
+      if(val && typeof g.normalizeDate === 'function'){
+        var norm = g.normalizeDate(val);
+        if(norm && /^\d{2}-\d{2}-\d{4}$/.test(norm)){ val = norm; el.value = norm; }
       }
     }
-    if(c.type==='number')out[c.key]=parseFloat(val)||0;else out[c.key]=val?val.toUpperCase():''
+    if(c.type === 'number') out[c.key] = parseFloat(val) || 0;
+    else out[c.key] = val ? val.toUpperCase() : '';
   });
-  return valid?out:null
+  return valid ? out : null;
 }
 async function confirmedSingleSave(){
   if(busy)return;ensureUi();
