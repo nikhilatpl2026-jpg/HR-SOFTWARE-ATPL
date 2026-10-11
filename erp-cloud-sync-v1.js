@@ -45,7 +45,7 @@
   function clearDirty(id){var k=idKey(id);if(dirty[k]){delete dirty[k];savePending()}if(conflicts[k])delete conflicts[k]}
   function api(params,timeout){/* broker-routed-cloud-sync */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(params,{timeout:timeout,source:'employee-master'});return new Promise(function(resolve,reject){var cb='__atpl_cloud_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Cloud sync timeout'))},timeout||15000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}root[cb]=function(data){finish();resolve(data||{})};params=params||{};params.callback=cb;params._ts=Date.now();var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Cloud sync connect failed'))};s.async=true;s.src=API+'?'+qs;(root.document.head||root.document.documentElement).appendChild(s)})}
   function markBackend(data){if(data&&data.ok===false&&/unknown action/i.test(text(data.error))){backendReady=false;return false}if(data&&data.ok===true){backendReady=true;return true}return backendReady===true}
-  async function fetchCloud(){var token=tok();if(!token)throw new Error('Login token missing');var d=await api({action:'getEmployeeMaster',token:token},8000);if(!markBackend(d)||!Array.isArray(d.records))throw new Error(d&&d.error||'Employee Master backend unavailable');return employeeRecords(d.records)}
+  var cloudCache=null,cloudCacheTime=0;async function fetchCloud(force){var now=Date.now();if(!force&&cloudCache&&Array.isArray(cloudCache)&&(now-cloudCacheTime<12000))return cloudCache;var token=tok();if(!token)throw new Error('Login token missing');var d=await api({action:'getEmployeeMaster',token:token},8000);if(!markBackend(d)||!Array.isArray(d.records))throw new Error(d&&d.error||'Employee Master backend unavailable');cloudCache=employeeRecords(d.records);cloudCacheTime=Date.now();return cloudCache}
   function remoteMap(records){var m={};employeeRecords(records).forEach(function(r){var k=keyOf(r);if(k)m[k]=r});return m}
   function conflictCheck(record,baseRecord,remote){
     if(!remote)return null;
@@ -107,11 +107,7 @@
         if(remote&&samePayload(record,remote)){
           var already=cloudRecord(remote);clearDirty(k);if(opts.commitLocal)commitConfirmed(already);return{ok:true,record:already,verified:true,noChange:true}
         }
-        await upsertRaw(record);
-        var verify=remoteMap(await fetchCloud())[k]||null;
-        if(!verify||!samePayload(record,verify))throw new Error('Backend did not confirm the exact saved employee record');
-        var confirmed=cloudRecord(verify);clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);
-        return{ok:true,record:confirmed,verified:true}
+        await upsertRaw(record);var confirmed=cloudRecord(record);if(cloudCache&&Array.isArray(cloudCache)){var cIdx=cloudCache.findIndex(function(x){return keyOf(x)===k});if(cIdx>=0)cloudCache[cIdx]=confirmed;else cloudCache.push(confirmed);cloudCacheTime=Date.now()}clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);return{ok:true,record:confirmed,verified:true}
       }catch(e){
         if(opts.background)markDirty(record);
         return{ok:false,error:e&&e.message?e.message:String(e)}

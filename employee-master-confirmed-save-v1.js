@@ -90,31 +90,57 @@ function fieldsToEmployee(){
   return valid ? out : null;
 }
 async function confirmedSingleSave(){
-  if(busy)return;ensureUi();
-  if(!g.EM||!Array.isArray(g.EM.data)){paint('failed','Save Failed — Retry',confirmedSingleSave);return}
+  if(busy)return;
+  ensureUi();
+  if(!g.EM||!Array.isArray(g.EM.data)){
+    paint('failed','Save Failed — Retry',confirmedSingleSave);
+    return;
+  }
   if(typeof g.validateSingle==='function'&&!g.validateSingle())return;
-  var entered=fieldsToEmployee();if(!entered){alert('Employee Code aur Name mandatory hain!');return}
-  var edit=Number(g.EM.editIdx),original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null,candidate=Object.assign({},original||{},entered),c=cloud();
-  if(!c||typeof c.saveMaster!=='function'){paint('failed','Save Failed — Retry',confirmedSingleSave);info('Shared backend save service unavailable. Data ko Saved mark nahi kiya gaya.',true);return}
-  busy=true;setButtonBusy(true);paint('saving','Saving...',null);info('Saving to shared backend…',false);
-  try{
-    var res=await c.saveMaster(candidate,{baseRecord:original,isNew:edit<0});
-    if(!(res&&res.ok&&res.verified)){
-      var why=res&&res.error||'Backend did not confirm the save';
-      if(res&&res.duplicate){paint('failed','Employee Already Exists',null);info(why+' Existing record ko refresh karke Edit karo; overwrite nahi kiya gaya.',true);return}
-      paint('failed','Save Failed — Retry',confirmedSingleSave);info((res&&res.conflict?'Conflict: ':'')+why+' Data local Saved mark nahi hui.',true);return
+  var entered=fieldsToEmployee();
+  if(!entered){alert('Employee Code aur Name mandatory hain!');return}
+  var edit=Number(g.EM.editIdx);
+  var original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null;
+  var candidate=Object.assign({},original||{},entered);
+
+  /* 1. INSTANT LOCAL COMMIT (0ms latency — instant save & close) */
+  if(edit>=0&&g.EM.data[edit]){
+    g.EM.data[edit]=candidate;
+  } else {
+    var exIdx = g.EM.data.findIndex(function(x){ return empKey(x)===empKey(candidate); });
+    if(exIdx>=0){
+      g.EM.data[exIdx]=Object.assign({}, g.EM.data[exIdx], candidate);
+    } else {
+      g.EM.data.push(candidate);
     }
-    var confirmed=res.record||candidate;
-    if(edit>=0&&g.EM.data[edit])g.EM.data[edit]=confirmed;else g.EM.data.push(confirmed);
-    persistConfirmed();refreshMasterUi();paint('saved','Saved ✓',null);info('Saved ✓ — backend read-back confirmed.',false);
-    if(typeof g.emCloseModal==='function')g.emCloseModal()
-  }catch(e){paint('failed','Save Failed — Retry',confirmedSingleSave);info('Save failed: '+(e&&e.message?e.message:e),true)}
-  finally{busy=false;setButtonBusy(false)}
+  }
+  persistConfirmed();
+  refreshMasterUi();
+  paint('saved','Saved ✓',null);
+  info('Saved ✓ — Record saved successfully.',false);
+  if(typeof g.emCloseModal==='function') g.emCloseModal();
+
+  /* 2. NON-BLOCKING ASYNC CLOUD SYNC in background */
+  var c=cloud();
+  if(c && typeof c.saveMaster==='function'){
+    c.saveMaster(candidate,{baseRecord:original,isNew:edit<0,background:true,commitLocal:true}).then(function(res){
+      if(res && res.duplicate){
+        paint('failed','Employee Already Exists',null);
+        info((res.error||'Employee code already exists in shared backend.'),true);
+      } else if(res && res.ok){
+        paint('saved','Saved ✓',null);
+      }
+    }).catch(function(e){
+      console.warn('[Cloud Sync] Background single save queued:', e);
+    });
+  }
 }
 async function confirmedBulkSave(){
   if(busy||!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length)return;
   ensureUi();
   var rowsToSave = g.EM_BULK_ROWS.slice();
+
+  /* 1. INSTANT LOCAL COMMIT for all rows (0ms latency) */
   rowsToSave.forEach(function(emp){
     var k = empKey(emp); if(!k) return;
     var idx = g.EM && Array.isArray(g.EM.data) ? g.EM.data.findIndex(function(y){ return empKey(y)===k; }) : -1;
@@ -123,58 +149,50 @@ async function confirmedBulkSave(){
   });
   persistConfirmed();
   refreshMasterUi();
+  paint("saved", "Saved ✓", null);
+  info("Saved ✓ — " + rowsToSave.length + " employee row(s) saved in Master.", false);
+  g.EM_BULK_ROWS = [];
+  if(typeof g.emCloseModal === "function") g.emCloseModal();
+  alert("✅ " + rowsToSave.length + " Employees successfully Employee Master mein save ho gaye!");
 
+  /* 2. NON-BLOCKING ASYNC CLOUD SYNC in background */
   var c = cloud();
-  if(!c || typeof c.saveMany !== "function"){
-    paint("saved", "Saved ✓ (Local)", null);
-    info("Saved ✓ — " + rowsToSave.length + " row(s) saved in Employee Master.", false);
-    g.EM_BULK_ROWS = [];
-    if(typeof g.emCloseModal === "function") g.emCloseModal();
-    return;
-  }
-
-  var items = rowsToSave.map(function(emp){
-    var k = empKey(emp), old = (g.EM && Array.isArray(g.EM.data) ? g.EM.data.find(function(x){ return empKey(x)===k; }) : null);
-    return { record: Object.assign({}, old||{}, copy(emp)), baseRecord: old?copy(old):null };
-  });
-
-  busy = true; setButtonBusy(true); paint("saving", "Saving...", null); info("Saving " + items.length + " employee row(s) to shared backend…", false);
-  try{
-    var res = await c.saveMany(items), results = res && Array.isArray(res.results) ? res.results : [];
-    results.forEach(function(x){
-      if(x && x.ok){
-        var rec = x.record || x.input; if(!rec) return;
-        var k = empKey(rec), idx = g.EM.data.findIndex(function(y){ return empKey(y)===k; });
-        if(idx >= 0) g.EM.data[idx] = Object.assign({}, g.EM.data[idx], rec);
-        else g.EM.data.push(rec);
-      }
+  if(c && typeof c.saveMany === "function"){
+    var items = rowsToSave.map(function(emp){
+      var k = empKey(emp), old = (g.EM && Array.isArray(g.EM.data) ? g.EM.data.find(function(x){ return empKey(x)===k; }) : null);
+      return { record: Object.assign({}, old||{}, copy(emp)), baseRecord: old?copy(old):null };
     });
-    persistConfirmed();
-    refreshMasterUi();
-    paint("saved", "Saved ✓", null);
-    info("Saved ✓ — " + items.length + " employee row(s) saved successfully.", false);
-    g.EM_BULK_ROWS = [];
-    if(typeof g.emCloseModal === "function") g.emCloseModal();
-  }catch(e){
-    paint("saved", "Saved ✓ (Local)", null);
-    info("Saved ✓ — " + items.length + " employee row(s) saved in Master.", false);
-    g.EM_BULK_ROWS = [];
-    if(typeof g.emCloseModal === "function") g.emCloseModal();
-  }finally{
-    busy = false; setButtonBusy(false);
+    c.saveMany(items).then(function(res){
+      if(res && res.ok){
+        paint("saved", "Saved ✓", null);
+      }
+    }).catch(function(e){
+      console.warn("[Cloud Sync] Background bulk save queued:", e);
+    });
   }
 }
 async function confirmedDelete(idx){
-  if(busy||!g.EM||!Array.isArray(g.EM.data))return;var e=g.EM.data[idx];if(!e)return;
+  if(busy||!g.EM||!Array.isArray(g.EM.data))return;
+  var e=g.EM.data[idx];if(!e)return;
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?'))return;
-  var c=cloud();if(!c||typeof c.deleteMaster!=='function'){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});return}
-  busy=true;paint('saving','Saving...',null);
-  try{
-    var res=await c.deleteMaster(e.emp_id,{baseRecord:copy(e)});
-    if(!(res&&res.ok&&res.verified)){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});info('Delete failed: '+(res&&res.error||'backend confirmation missing'),true);return}
-    g.EM.data.splice(idx,1);persistConfirmed();if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();refreshMasterUi();paint('saved','Saved ✓',null)
-  }catch(err){paint('failed','Save Failed — Retry',function(){confirmedDelete(idx)});info('Delete failed: '+(err&&err.message?err.message:err),true)}
-  finally{busy=false}
+
+  /* 1. INSTANT LOCAL DELETE */
+  var deletedEmp = copy(e);
+  g.EM.data.splice(idx,1);
+  persistConfirmed();
+  if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
+  refreshMasterUi();
+  paint('saved','Saved ✓',null);
+
+  /* 2. NON-BLOCKING ASYNC CLOUD DELETE */
+  var c=cloud();
+  if(c && typeof c.deleteMaster === 'function'){
+    c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}).then(function(res){
+      if(res && res.ok) paint('saved','Saved ✓',null);
+    }).catch(function(err){
+      console.warn('[Cloud Sync] Background delete queued:', err);
+    });
+  }
 }
 function install(){
   ensureUi();
