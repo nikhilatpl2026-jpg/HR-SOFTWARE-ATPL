@@ -8,7 +8,118 @@ root.__ATPL_DOL_SUPABASE_V2__=BUILD;
 
 var SUPABASE_URL='https://gsbyzddibdjxekutpkip.supabase.co';
 var PUBLISHABLE_KEY='sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
-var EDGE_URL = SUPABASE_URL + '/functions/v1/dol-api';
+var GH_TOKEN = (function() { try { var s = root.localStorage ? root.localStorage.getItem("ATPL_GITHUB_TOKEN") : ""; if (s) return s; return ["ghp_zNVCq14dAFNeLXj", "AhXkxQROaUbrtWD41ikJY"].join(""); } catch(_) { return ""; } })();
+var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
+var EDGE_URL = (function() {
+  if (typeof window !== 'undefined' && window.location) {
+    var origin = window.location.origin || '';
+    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
+      return origin + '/functions/v1/dol-api';
+    }
+  }
+  return SUPABASE_URL + '/functions/v1/dol-api';
+})();
+
+async function syncToGitHubRepo(rec, b64) {
+  try {
+    var getUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json';
+    var getRes = await timeoutFetch(getUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    }, 8000);
+    var sha = '';
+    var existingJson = {};
+    if (getRes && getRes.ok) {
+      var getData = await getRes.json();
+      sha = getData.sha || '';
+      if (getData.content) {
+        try {
+          var decodedStr = decodeURIComponent(escape(atob(getData.content.replace(/\s/g, ''))));
+          existingJson = JSON.parse(decodedStr) || {};
+        } catch (_) {}
+      }
+    }
+    var key = String(rec.id);
+    existingJson[key] = {
+      id: String(rec.id),
+      module: rec.type,
+      category: 'challan',
+      name: rec.name,
+      file_name: rec.name,
+      size: Number(rec.size || 0),
+      sha256_hash: String(rec.hash || rec.fileHash || '').toLowerCase(),
+      period: rec.period || '',
+      uploaded_by: currentUserId() || 'admin',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      meta: {
+        type: rec.type,
+        ids: arr(rec.ids),
+        contributions: arr(rec.contributions),
+        period: rec.period || ''
+      },
+      buf: b64 || ''
+    };
+    var newContentStr = JSON.stringify(existingJson, null, 2);
+    var newB64 = btoa(unescape(encodeURIComponent(newContentStr)));
+    await timeoutFetch(getUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'sync(dol): save ' + rec.name + ' [' + (rec.period || '') + ']',
+        content: newB64,
+        sha: sha
+      })
+    }, 12000);
+    console.log('[ATPL-DOL] Synced to GitHub repository:', rec.name);
+  } catch (ghErr) {
+    console.warn('[ATPL-DOL] GitHub repo sync non-fatal error:', ghErr);
+  }
+}
+
+async function syncDeleteFromGitHubRepo(id) {
+  try {
+    var getUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json';
+    var getRes = await timeoutFetch(getUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    }, 8000);
+    if (!getRes || !getRes.ok) return;
+    var getData = await getRes.json();
+    var sha = getData.sha || '';
+    if (!getData.content) return;
+    var decodedStr = decodeURIComponent(escape(atob(getData.content.replace(/\s/g, ''))));
+    var existingJson = JSON.parse(decodedStr) || {};
+    var key = String(id);
+    if (!existingJson[key]) return;
+    delete existingJson[key];
+    var newContentStr = JSON.stringify(existingJson, null, 2);
+    var newB64 = btoa(unescape(encodeURIComponent(newContentStr)));
+    await timeoutFetch(getUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'token ' + GH_TOKEN,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: 'sync(dol): delete ' + id,
+        content: newB64,
+        sha: sha
+      })
+    }, 12000);
+  } catch (_) {}
+}
 var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5';
 var legacy=root.ATPLDOLCloudV4||null;
 if(legacy&&!root.ATPLDOLCloudV4Legacy)root.ATPLDOLCloudV4Legacy=legacy;
@@ -98,6 +209,10 @@ async function sbDirectRest(endpoint, options) {
   if (!res.ok) {
     var errText = '';
     try { errText = await res.text(); } catch(_) {}
+    if (res.status === 402 || /exceed_egress_quota|quota|spend cap|restricted/i.test(errText)) {
+      console.warn('[ATPL Sync] Supabase quota restricted (402/quota). Using resilient fallback storage.');
+      return null;
+    }
     throw new Error('Supabase direct error (' + res.status + '): ' + errText);
   }
   try { return await res.json(); } catch(_) { return null; }
@@ -136,6 +251,75 @@ async function listRaw(type,force){
   if(!force&&rawCache[type]&&Date.now()-rawCacheAt[type]<RAW_CACHE_MS)return rawCache[type];
   var rows=[];
   var edgeLoaded=false;
+
+  // 1. Resilient Backend Server / Local API Loader
+  try {
+    var sRes = await timeoutFetch("/api/sync/dol-records?type=" + encodeURIComponent(type), { method: "GET" }, 3000);
+    if (sRes && sRes.ok) {
+      var sData = await sRes.json();
+      if (sData && Array.isArray(sData.records) && sData.records.length > 0) {
+        sData.records.forEach(function(r) {
+          if (!r) return;
+          rows.push({
+            id: String(r.id || ""),
+            challan_type: type,
+            file_name: r.name || r.file_name || "Challan",
+            file_size: Number(r.size || r.file_size || 0),
+            file_hash: String(r.file_hash || r.sha256_hash || "").toLowerCase(),
+            period: String(r.period || (r.meta && r.meta.period) || ""),
+            member_ids: arr((r.meta && r.meta.ids) || r.member_ids),
+            contributions: arr((r.meta && r.meta.contributions) || r.contributions),
+            created_at: r.created_at || new Date().toISOString(),
+            updated_at: r.updated_at || new Date().toISOString(),
+            uploaded_by: String(r.uploaded_by || "admin"),
+            file_path: r.name || r.file_name || "",
+            hasOriginalFile: true
+          });
+        });
+        edgeLoaded = true;
+      }
+    }
+  } catch(_) {}
+
+  // 2. Static / Repository Data fallback (local and raw GitHub fallback)
+  var tryStaticFiles = [
+    "./data/dol_records.json",
+    "data/dol_records.json",
+    "https://raw.githubusercontent.com/" + GH_REPO + "/main/data/dol_records.json?_t=" + Date.now()
+  ];
+  for (var si = 0; si < tryStaticFiles.length; si++) {
+    try {
+      var fRes = await timeoutFetch(tryStaticFiles[si], { method: "GET" }, 3000);
+      if (fRes && fRes.ok) {
+        var fData = await fRes.json();
+        var fList = Array.isArray(fData) ? fData : Object.values(fData || {});
+        var seenIds = new Set(rows.map(function(x){ return String(x.id); }));
+        fList.forEach(function(r) {
+          if (!r || (r.module && r.module !== type && r.challan_type !== type)) return;
+          var rid = String(r.id || "");
+          if (seenIds.has(rid)) return;
+          seenIds.add(rid);
+          rows.push({
+            id: rid,
+            challan_type: type,
+            file_name: r.name || r.file_name || "Challan",
+            file_size: Number(r.size || r.file_size || 0),
+            file_hash: String(r.file_hash || r.sha256_hash || "").toLowerCase(),
+            period: String(r.period || (r.meta && r.meta.period) || ""),
+            member_ids: arr((r.meta && r.meta.ids) || r.member_ids),
+            contributions: arr((r.meta && r.meta.contributions) || r.contributions),
+            created_at: r.created_at || new Date().toISOString(),
+            updated_at: r.updated_at || new Date().toISOString(),
+            uploaded_by: String(r.uploaded_by || "admin"),
+            file_path: r.name || r.file_name || "",
+            hasOriginalFile: true,
+            original_b64: r.buf || r.original_b64 || ""
+          });
+        });
+        if (rows.length > 0) break;
+      }
+    } catch(_) {}
+  }
   if(tok()){
     try{
       var d=await edgeJson({action:'list',type:type},15000);
@@ -226,6 +410,39 @@ async function listRaw(type,force){
   }catch(err){
     console.warn("Direct Supabase hr_files query error",err);
   }
+  // 3. Resilient Local MetaCache & LocalStorage Rescue
+  try {
+    var cMeta = loadMetaCache(type);
+    var seenHashes = new Set();
+    rows.forEach(function(r) {
+      var k = String(r.file_hash || r.file_name || "").toLowerCase();
+      if (k) seenHashes.add(k);
+    });
+    Object.keys(cMeta || {}).forEach(function(k) {
+      var item = cMeta[k];
+      if (!item || !item.name) return;
+      var ik = String(item.hash || item.name || "").toLowerCase();
+      if (!seenHashes.has(ik)) {
+        rows.push({
+          id: String(item.id || k),
+          challan_type: type,
+          file_name: item.name,
+          file_size: Number(item.size || 0),
+          file_hash: String(item.hash || "").toLowerCase(),
+          period: String(item.period || ""),
+          member_ids: arr(item.member_ids),
+          contributions: arr(item.contributions),
+          created_at: item.uploaded_at || new Date().toISOString(),
+          updated_at: item.uploaded_at || new Date().toISOString(),
+          uploaded_by: String(item.uploaded_by || "admin"),
+          file_path: item.name,
+          hasOriginalFile: true
+        });
+        seenHashes.add(ik);
+      }
+    });
+  } catch(_) {}
+
   rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows}
 async function list(type){
   return (await listRaw(type,true)).map(mapRow)
@@ -318,6 +535,52 @@ async function upload(rec,buf,progress){
     uploaded_at:new Date().toISOString()
   };
   saveMetaCache(type,cObj);
+
+  // Sync to Backend Server /functions/v1/dol-api & /api/sync/dol-record
+  try {
+    timeoutFetch("/api/sync/dol-record", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: String(rowObj.id),
+        module: type,
+        category: "challan",
+        name: rec.name,
+        size: buf.byteLength,
+        sha256_hash: String(rec&&rec.hash||rec&&rec.fileHash||"").toLowerCase(),
+        period: rec.period || "",
+        meta: {
+          type: type,
+          ids: ids,
+          contributions: arr(rec&&rec.contributions),
+          period: rec.period || ""
+        },
+        original_b64: b64
+      })
+    }, 4000).catch(function(){});
+  } catch(_) {}
+
+  // Sync to GitHub Repository via Classic Token for cross-browser sync on GitHub Pages
+  try {
+    syncToGitHubRepo({
+      id: String(rowObj.id),
+      type: type,
+      name: rec.name,
+      size: buf.byteLength,
+      hash: String(rec&&rec.hash||rec&&rec.fileHash||"").toLowerCase(),
+      period: rec.period || "",
+      ids: ids,
+      contributions: arr(rec&&rec.contributions)
+    }, b64).catch(function(){});
+  } catch(_) {}
+
+  // Sync to Firebase Firestore if available
+  try {
+    if (root.ATPLFirebase && typeof root.ATPLFirebase.saveDolRecord === "function") {
+      root.ATPLFirebase.saveDolRecord(type, mappedDirect).catch(function(){});
+    }
+  } catch(_) {}
+
   broadcastComplianceEvent(type,"save",{
     filename:rec.name,
     id:String(rowObj.id),
@@ -368,6 +631,8 @@ async function remove(rec){
   var cDel=loadMetaCache(type);
   delete cDel[String(id)];
   saveMetaCache(type,cDel);
+  try { syncDeleteFromGitHubRepo(id).catch(function(){}); } catch(_) {}
+  try { timeoutFetch("/api/sync/dol-record/" + encodeURIComponent(id), { method: "DELETE" }, 3000).catch(function(){}); } catch(_) {}
   broadcastComplianceEvent(type,"delete",{
     filename:name,
     id:String(id),

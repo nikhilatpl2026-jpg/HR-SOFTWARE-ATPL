@@ -1108,8 +1108,24 @@ app.post('/api/sync/dol-record', (req, res) => {
   try {
     const record = req.body || {};
     if (!record || !record.id) return res.status(400).json({ ok: false, error: 'Record ID required' });
+    if (record.original_b64) {
+      try {
+        const rawB64 = record.original_b64.includes(',') ? record.original_b64.split(',')[1] : record.original_b64;
+        const buf = Buffer.from(rawB64, 'base64');
+        fs.writeFileSync(path.join(BLOBS_DIR, `${record.id}.bin`), buf);
+        record.buf = rawB64;
+      } catch (_) {}
+    }
     syncDolRecords[record.id] = record;
+    filesDb.files[record.id] = Object.assign({}, record, {
+      name: record.name || record.file_name || 'Challan.pdf',
+      size: Number(record.size || 0),
+      mime_type: record.mime_type || 'application/pdf'
+    });
+    incrementVersion();
+    writeJsonFile('files_db.json', filesDb);
     writeJsonFile('dol_records.json', syncDolRecords);
+    broadcastEvent('file_saved', filesDb.files[record.id]);
     broadcastEvent('dol_record_saved', record);
     return res.json({ ok: true, saved: true, id: record.id });
   } catch (err) {
@@ -1196,6 +1212,14 @@ app.all('/functions/v1/dol-api', (req, res) => {
           period: period
         }
       };
+      if (p.original_b64) {
+        try {
+          const rawB64 = p.original_b64.includes(',') ? p.original_b64.split(',')[1] : p.original_b64;
+          const buf = Buffer.from(rawB64, 'base64');
+          fs.writeFileSync(path.join(BLOBS_DIR, `${id}.bin`), buf);
+          fileRecord.buf = rawB64;
+        } catch (_) {}
+      }
 
       filesDb.files[id] = fileRecord;
       syncDolRecords[id] = fileRecord;

@@ -69,9 +69,10 @@
           jobs.push(window.ATPLAccountCloudRestoreV1.syncNow(true));
         }
 
-        // 3. Sync Compliance & DOL
+        // 3. Sync Compliance & DOL (Sync both ESIC and PF challans across browsers)
         if (window.ATPLComplianceDOLV2 && typeof window.ATPLComplianceDOLV2.syncCloud === 'function') {
-          jobs.push(window.ATPLComplianceDOLV2.syncCloud());
+          jobs.push(window.ATPLComplianceDOLV2.syncCloud('esic'));
+          jobs.push(window.ATPLComplianceDOLV2.syncCloud('pf'));
         }
 
         // 4. Sync Employee Master
