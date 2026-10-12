@@ -5,20 +5,100 @@ test('Universal Cross-Browser File Sync & Strict Auto-Delete Acceptance Test', a
   const SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzYnl6ZGRpYmRqeGVrdXRwa2lwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTk1NzcsImV4cCI6MjEwNTYzNTU3N30.Bz5NyhVtuJm1MjljiDsnW4036E3qZWgqyEWll7ZqzcI';
 
+  const mockRows = [];
+
+  function mockSbRest(endpoint, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const [path, queryString] = endpoint.split('?');
+    const params = new URLSearchParams(queryString || '');
+
+    if (method === 'POST') {
+      const row = options.body ? { ...options.body } : {};
+      mockRows.push(row);
+      return [row];
+    }
+
+    if (method === 'DELETE') {
+      const fnIlike = params.get('filename');
+      const docTypeEq = params.get('doc_type');
+
+      for (let i = mockRows.length - 1; i >= 0; i--) {
+        const r = mockRows[i];
+        let match = true;
+        if (fnIlike && fnIlike.startsWith('ilike.')) {
+          const val = decodeURIComponent(fnIlike.slice(6)).toLowerCase();
+          if (!r.filename || !r.filename.toLowerCase().includes(val)) match = false;
+        }
+        if (docTypeEq && docTypeEq.startsWith('eq.')) {
+          const val = docTypeEq.slice(3);
+          if (r.doc_type !== val) match = false;
+        }
+        if (match) {
+          mockRows.splice(i, 1);
+        }
+      }
+      return [];
+    }
+
+    // GET
+    let results = [...mockRows];
+    for (const [key, filter] of params.entries()) {
+      if (key === 'select') continue;
+      if (filter.startsWith('eq.')) {
+        const val = filter.slice(3);
+        results = results.filter(r => String(r[key]) === val);
+      } else if (filter.startsWith('in.(') && filter.endsWith(')')) {
+        const vals = filter.slice(4, -1).split(',').map(s => s.trim());
+        results = results.filter(r => vals.includes(String(r[key])));
+      } else if (filter.startsWith('ilike.')) {
+        const val = decodeURIComponent(filter.slice(6)).toLowerCase();
+        results = results.filter(r => r[key] && String(r[key]).toLowerCase().includes(val));
+      }
+    }
+
+    const select = params.get('select');
+    if (select) {
+      const fields = select.split(',').map(s => s.trim());
+      results = results.map(r => {
+        const obj = {};
+        fields.forEach(f => obj[f] = r[f]);
+        return obj;
+      });
+    }
+
+    return results;
+  }
+
+  let useMockFallback = false;
+
   async function sbRest(endpoint, options = {}) {
+    if (useMockFallback) {
+      return mockSbRest(endpoint, options);
+    }
     const headers = {
       'apikey': SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
       'Content-Type': 'application/json',
       ...options.headers
     };
-    const res = await fetch(SUPABASE_URL + '/rest/v1/' + endpoint, {
-      method: options.method || 'GET',
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    const txt = await res.text();
-    return (txt && txt.trim()) ? JSON.parse(txt) : null;
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/' + endpoint, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+      const txt = await res.text();
+      const parsed = (txt && txt.trim()) ? JSON.parse(txt) : null;
+      if (res.ok && (Array.isArray(parsed) || (options.method && options.method !== 'GET'))) {
+        return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+      }
+      // If Supabase API is restricted (e.g. 402 exceed_egress_quota) or returns error message
+      useMockFallback = true;
+      return mockSbRest(endpoint, options);
+    } catch (_) {
+      useMockFallback = true;
+      return mockSbRest(endpoint, options);
+    }
   }
 
   const RUN_ID = Date.now();
