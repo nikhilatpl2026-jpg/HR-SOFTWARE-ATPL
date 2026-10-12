@@ -1287,6 +1287,8 @@ app.post('/api/sync/employee-master', (req, res) => {
 });
 
 // AI HR Document Analysis API endpoint using gemini-3.8-flash
+app.post("/api/chat", async (req, res) => { try { const { message } = req.body; const filesSummary = Object.values(filesDb.files).map(f => "File: " + f.name).join("\n"); const emSummary = JSON.stringify(syncEmployeeMaster.slice(0, 5)); const prompt = `You are the AI Assistant for Arora Textiles HR Software. The user is asking: "${message}"\n\nSystem context:\nFiles:\n${filesSummary}\n\nEmployees snippet:\n${emSummary}\n\nAnswer concisely in Hinglish.`; const response = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt }); res.json({ success: true, text: response.text }); } catch(err) { res.status(500).json({ success: false, error: err.message }); } });
+
 app.post('/api/hr-docs/analyze', async (req, res) => {
   try {
     const { base64, mimeType, fileName } = req.body || {};

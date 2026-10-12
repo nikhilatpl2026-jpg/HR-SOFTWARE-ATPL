@@ -69,7 +69,7 @@
     } catch (_) {}
     var masterMap = {};
     masterList.forEach(function(m) {
-      var c = String(m.code || m.empCode || '').trim();
+      var c = String(m.emp_id || m.code || m.empCode || '').trim();
       if (c) masterMap[c] = m;
     });
 
