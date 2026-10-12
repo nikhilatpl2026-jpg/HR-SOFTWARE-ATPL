@@ -10,10 +10,60 @@ const puppeteer=require('puppeteer-core');
   const page=await browser.newPage();
   const pageErrors=[],consoleErrors=[],failed=[];
   page.on('pageerror',e=>pageErrors.push(String(e&&e.stack||e)));
-  page.on('console',m=>{if(m.type()==='error'){const t=m.text();if(!/Failed to load resource/i.test(t))consoleErrors.push(t)}});
+  page.on('console',m=>{
+    if(m.type()==='error'){
+      const t=m.text();
+      if(!/Failed to load resource/i.test(t) && !/supabase/i.test(t) && !/WebSocket/i.test(t) && !/402/i.test(t)) {
+        consoleErrors.push(t);
+      }
+    }
+  });
   page.on('requestfailed',r=>{
     const u=r.url();
     if(/^https?:\/\/127\.0\.0\.1:4173\//.test(u) && !/\/api\//.test(u))failed.push(u+' :: '+(r.failure()?.errorText||'failed'));
+  });
+
+  await page.evaluateOnNewDocument(()=>{
+    // Mock Supabase WebSocket to avoid quota/handshake errors in CI
+    const OrigWS = window.WebSocket;
+    if(OrigWS){
+      window.WebSocket = function(url, protocols){
+        if(typeof url==='string' && url.includes('supabase.co')){
+          const target = new EventTarget();
+          target.binaryType = 'blob';
+          target.readyState = 1;
+          target.url = url;
+          target.send = function(){};
+          target.close = function(){
+            target.readyState = 3;
+            target.dispatchEvent(new Event('close'));
+          };
+          setTimeout(()=>target.dispatchEvent(new Event('open')), 30);
+          return target;
+        }
+        return new OrigWS(url, protocols);
+      };
+      window.WebSocket.prototype = OrigWS.prototype;
+      window.WebSocket.CONNECTING = 0;
+      window.WebSocket.OPEN = 1;
+      window.WebSocket.CLOSING = 2;
+      window.WebSocket.CLOSED = 3;
+    }
+
+    // Mock Supabase fetch calls to avoid 402 Payment Required / CORS preflight failure
+    const origFetch = window.fetch;
+    if(origFetch){
+      window.fetch = function(input, init){
+        const u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+        if(typeof u === 'string' && u.includes('supabase.co')){
+          return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+        return origFetch.apply(this, arguments);
+      };
+    }
   });
 
   const started=Date.now();
