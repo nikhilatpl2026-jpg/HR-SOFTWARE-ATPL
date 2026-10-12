@@ -3135,13 +3135,15 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           <!-- Paste area -->
           <div style="padding:16px 20px;flex-shrink:0">
             <textarea id="emBulkPasteArea" placeholder="Yahaan Ctrl+V karo — Excel se copied rows..." 
-              onpaste="setTimeout(function(){emParseBulkPaste()},100)"
+              onpaste="setTimeout(function(){emParseBulkPaste()},80)"
+              oninput="emParseBulkPaste()"
+              onchange="emParseBulkPaste()"
               style="width:100%;height:120px;background:#0f172a;border:2px dashed #334155;border-radius:8px;color:#e2e8f0;font-family:monospace;font-size:11px;padding:12px;outline:none;resize:none;transition:border .15s"
               onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#334155'"></textarea>
             <div style="display:flex;gap:8px;margin-top:8px">
-              <button onclick="emParseBulkPaste()" style="padding:7px 16px;background:#6366f1;border:none;border-radius:7px;color:#fff;cursor:pointer;font-size:11px;font-weight:700">🔄 Parse</button>
-              <button onclick="document.getElementById('emBulkPasteArea').value='';document.getElementById('emBulkPreview').innerHTML=''" style="padding:7px 14px;background:#334155;border:none;border-radius:7px;color:#94a3b8;cursor:pointer;font-size:11px">Clear</button>
-              <button onclick="emSaveBulk()" id="emBulkSaveBtn" disabled style="margin-left:auto;padding:7px 20px;background:#059669;border:none;border-radius:7px;color:#fff;cursor:pointer;font-size:11px;font-weight:700;opacity:0.4">✅ Save All Rows</button>
+              <button type="button" onclick="emParseBulkPaste()" style="padding:7px 16px;background:#6366f1;border:none;border-radius:7px;color:#fff;cursor:pointer;font-size:11px;font-weight:700">🔄 Parse</button>
+              <button type="button" onclick="document.getElementById('emBulkPasteArea').value='';document.getElementById('emBulkPreview').innerHTML='';EM_BULK_ROWS=[];var b=document.getElementById('emBulkSaveBtn');if(b){b.style.opacity='0.6';}" style="padding:7px 14px;background:#334155;border:none;border-radius:7px;color:#94a3b8;cursor:pointer;font-size:11px">Clear</button>
+              <button type="button" onclick="emSaveBulk()" id="emBulkSaveBtn" style="margin-left:auto;padding:7px 20px;background:#059669;border:none;border-radius:7px;color:#fff;cursor:pointer;font-size:11px;font-weight:700;box-shadow:0 2px 8px rgba(5,150,105,0.4)">✅ Save All Rows</button>
             </div>
           </div>
           <!-- Preview table -->
@@ -10382,6 +10384,7 @@ function emNormalizeDateValue(val) {
 window.emNormalizeDateValue = emNormalizeDateValue;
 
 function parseExcelClipboard(text) {
+  if (!text || typeof text !== 'string') return [];
   var rows = [];
   var curRow = [];
   var curField = '';
@@ -10433,6 +10436,59 @@ function parseExcelClipboard(text) {
       rows.push(curRow);
     }
   }
+
+  // 1. If text has no tabs or all rows have <= 1 cell, split by 2+ spaces or tabs
+  var hasTabs = text.indexOf('\t') >= 0;
+  if (!hasTabs || (rows.length > 0 && rows.every(function(r){ return r.length <= 1; }))) {
+    var lines = text.split(/\r?\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+    var spaceRows = [];
+    lines.forEach(function(line){
+      var parts = line.split(/\s{2,}|\t/).map(function(s){ return s.trim(); }).filter(Boolean);
+      if (parts.length > 0) spaceRows.push(parts);
+    });
+    if (spaceRows.length > 0) rows = spaceRows;
+  }
+
+  // 2. Multi-line wrapped employee row reconstruction:
+  // If an employee row wraps across multiple lines (e.g. unquoted address line-breaks without new Employee ID)
+  if (rows.length > 1) {
+    var mergedRows = [];
+    var curAccum = null;
+    for (var ri = 0; ri < rows.length; ri++) {
+      var r = rows[ri];
+      var firstCell = String(r[0] || '').trim();
+      var isEmpStart = /^\d{3,7}$/.test(firstCell) || /^(EMP|ATPL|CODE|ID|SR)/i.test(firstCell);
+      if (!isEmpStart && r.length > 1 && !isNaN(Number(firstCell)) && Number(firstCell) < 1000) {
+        isEmpStart = true;
+      }
+
+      if (isEmpStart || curAccum === null) {
+        if (curAccum && curAccum.length > 0) mergedRows.push(curAccum);
+        curAccum = r.slice();
+      } else {
+        curAccum.push.apply(curAccum, r);
+      }
+    }
+    if (curAccum && curAccum.length > 0) mergedRows.push(curAccum);
+    if (mergedRows.length > 0) rows = mergedRows;
+  }
+
+  // 3. Expand combined cells like "MARRIED Female" into two separate cells
+  rows = rows.map(function(r) {
+    var out = [];
+    r.forEach(function(cell) {
+      var str = String(cell == null ? '' : cell).trim();
+      var m = str.match(/^(MARRIED|UNMARRIED|SINGLE|DIVORCED|WIDOWED)\s+(MALE|FEMALE|OTHER)$/i);
+      if (m) {
+        out.push(m[1].toUpperCase());
+        out.push(m[2].toUpperCase());
+      } else {
+        out.push(str);
+      }
+    });
+    return out;
+  });
+
   return rows;
 }
 window.parseExcelClipboard = parseExcelClipboard;
@@ -10649,11 +10705,53 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   });
 
+  // 9. Smart Bank Name rescue
+  if (!emp.bank_name && Array.isArray(rawCols)) {
+    for (var b = 0; b < rawCols.length; b++) {
+      var valB = String(rawCols[b] || '').trim();
+      if (/BANK|SBI|HDFC|ICICI|PNB|BOB|CANARA|AXIS|UNION|KOTAK/i.test(valB)) {
+        emp.bank_name = valB;
+        break;
+      }
+    }
+  }
+
+  // 10. Smart ESI Number rescue
+  if ((!emp.esi_no || emp.esi_no === 'NA') && Array.isArray(rawCols)) {
+    for (var es = 0; es < rawCols.length; es++) {
+      var valEs = String(rawCols[es] || '').replace(/[^0-9]/g, '');
+      if (valEs.length === 10 && valEs !== emp.phone_no && /^[1-3]/.test(valEs)) {
+        emp.esi_no = valEs;
+        break;
+      }
+    }
+  }
+
+  // 11. Smart Salary rescue from trailing cells
+  if ((!emp.gross || emp.gross === 0) && Array.isArray(rawCols)) {
+    var trailing = rawCols.slice(-5).filter(function(x){
+      var clean = String(x || '').replace(/,/g, '').trim();
+      return /^[\d.]+(\.00)?$/.test(clean) && parseFloat(clean) > 50 && clean !== emp.phone_no && clean !== emp.aadhaar_no && clean !== emp.esi_no;
+    });
+    if (trailing.length >= 2) {
+      emp.gross = parseFloat(String(trailing[0]).replace(/,/g, '')) || 0;
+      emp.basic = parseFloat(String(trailing[1]).replace(/,/g, '')) || 0;
+      if (trailing[2]) emp.new_gross = parseFloat(String(trailing[2]).replace(/,/g, '')) || emp.gross;
+    }
+  }
+
   return emp;
 }
 window.auditAndCleanEmployee = auditAndCleanEmployee;
 
 function emSaveModal() {
+  // If user is currently on the Bulk Excel Paste tab, redirect to save bulk data
+  var bulkPanel = document.getElementById('emTabPanel-bulk');
+  if (bulkPanel && bulkPanel.style.display !== 'none') {
+    if (typeof emSaveBulk === 'function') {
+      return emSaveBulk();
+    }
+  }
   var newEmp = {};
   var valid = true;
   var colsToSave = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && Array.isArray(ATPL_40_EXCEL_COLS)) ? ATPL_40_EXCEL_COLS : (EM_COLS || []);
@@ -11243,19 +11341,65 @@ window.renderBulkPreview = renderBulkPreview;
 
 // ── Save Bulk ──
 function emSaveBulk() {
-  if(!EM_BULK_ROWS.length) return;
-  var added=0, updated=0;
-  EM_BULK_ROWS.forEach(function(emp){
-    var idx = EM.data.findIndex(function(e){ return String(e.emp_id)===String(emp.emp_id); });
-    if(idx>=0){ EM.data[idx]=Object.assign({},EM.data[idx],emp); updated++; }
-    else { EM.data.push(emp); added++; }
+  if (!EM_BULK_ROWS || !EM_BULK_ROWS.length) {
+    if (typeof emParseBulkPaste === 'function') {
+      emParseBulkPaste();
+    }
+  }
+  if (!EM_BULK_ROWS || !EM_BULK_ROWS.length) {
+    var area = document.getElementById('emBulkPasteArea');
+    if (area && area.value.trim()) {
+      if (typeof emParseBulkPaste === 'function') emParseBulkPaste();
+    }
+  }
+  if (!EM_BULK_ROWS || !EM_BULK_ROWS.length) {
+    alert('⚠️ Koi valid employee row nahi mili. Check karo data paste kiya gaya hai.');
+    return;
+  }
+  var added = 0, updated = 0;
+  EM_BULK_ROWS.forEach(function(emp) {
+    if (typeof aroraMergeEmployee === 'function') {
+      var s = aroraMergeEmployee(emp);
+      if (s === 'NEW') added++; else if (s === 'UPDATED') updated++;
+    } else if (window.EM && Array.isArray(window.EM.data)) {
+      var idx = window.EM.data.findIndex(function(e){ return String(e.emp_id) === String(emp.emp_id); });
+      if (idx >= 0) { window.EM.data[idx] = Object.assign({}, window.EM.data[idx], emp); updated++; }
+      else { window.EM.data.push(emp); added++; }
+    }
+    if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster === 'function') {
+      window.ATPLCloudSyncV1.pushMaster(emp);
+    }
   });
-  alert('✅ Done! '+added+' new + '+updated+' updated employees saved.');
+
+  try {
+    if (window.EM && Array.isArray(window.EM.data)) {
+      localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(window.EM.data));
+    }
+  } catch (_) {}
+
+  if (typeof aroraSaveMasterSnapshot === 'function') aroraSaveMasterSnapshot();
+  if (typeof aroraRefreshMaster === 'function') aroraRefreshMaster();
+  if (typeof emFilter === 'function') emFilter();
+  if (typeof emUpdateStats === 'function') emUpdateStats();
+
+  EM_BULK_ROWS = [];
+  var area = document.getElementById('emBulkPasteArea');
+  if (area) area.value = '';
+  var prev = document.getElementById('emBulkPreview');
+  if (prev) prev.innerHTML = '';
+  var btn = document.getElementById('emBulkSaveBtn');
+  if (btn) { btn.style.opacity = '0.6'; }
+
   emCloseModal();
-  emFilter();
-  emUpdateStats();
-  EM_BULK_ROWS=[];
+
+  var doneMsg = '✅ Done! ' + added + ' new + ' + updated + ' updated employees saved.';
+  if (window.showToast) {
+    window.showToast(doneMsg);
+  } else {
+    alert(doneMsg);
+  }
 }
+window.emSaveBulk = emSaveBulk;
 
 // ── Modal close ──
 function emCloseModal() {
@@ -13922,14 +14066,9 @@ window.empDashboardExportExcel = function() {
 
 
 /* Make bulk save persistent and update all UI. */
-window.emSaveBulk=function(){
-  if(!EM_BULK_ROWS.length)return;
-  var n=0,u=0;
-  EM_BULK_ROWS.forEach(function(e){var s=aroraMergeEmployee(e);if(s==='NEW')n++;else if(s==='UPDATED')u++;});
-  aroraSaveMasterSnapshot();aroraRefreshMaster();EM_BULK_ROWS=[];
-  alert('✅ Done! '+n+' new + '+u+' updated employees saved.');
-  if(typeof emCloseModal==='function')emCloseModal();
-};
+if (typeof emSaveBulk === 'function') {
+  window.emSaveBulk = emSaveBulk;
+}
 
 /* ============================================================
    2) EMPLOYEE MASTER — robust scanned PDF/photo OCR
