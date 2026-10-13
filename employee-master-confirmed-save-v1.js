@@ -92,6 +92,13 @@ function fieldsToEmployee(){
 async function confirmedSingleSave(){
   if(busy)return;
   ensureUi();
+  var bulkPanel = g.document.getElementById("emTabPanel-bulk");
+  var isBulkTab = bulkPanel && (bulkPanel.style.display === "flex" || bulkPanel.style.display !== "none");
+  var bulkArea = g.document.getElementById("emBulkPasteArea");
+  var hasBulkText = bulkArea && bulkArea.value && bulkArea.value.trim().length > 0;
+  if(isBulkTab || hasBulkText || (Array.isArray(g.EM_BULK_ROWS) && g.EM_BULK_ROWS.length > 0)){
+    return confirmedBulkSave();
+  }
   if(!g.EM||!Array.isArray(g.EM.data)){
     paint('failed','Save Failed — Retry',confirmedSingleSave);
     return;
@@ -136,8 +143,18 @@ async function confirmedSingleSave(){
   }
 }
 async function confirmedBulkSave(){
-  if(busy||!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length)return;
+  if(busy)return;
   ensureUi();
+  if(!Array.isArray(g.EM_BULK_ROWS) || !g.EM_BULK_ROWS.length){
+    var bulkArea = g.document.getElementById("emBulkPasteArea");
+    if(bulkArea && bulkArea.value && bulkArea.value.trim().length > 0){
+      if(typeof g.emParseBulkPaste === "function") g.emParseBulkPaste();
+    }
+  }
+  if(!Array.isArray(g.EM_BULK_ROWS) || !g.EM_BULK_ROWS.length){
+    alert("Koi valid employee row nahi mili. Check karo Excel se data copy karke yahan paste kiya gaya hai ya nahi.");
+    return;
+  }
   var rowsToSave = g.EM_BULK_ROWS.slice();
 
   /* 1. INSTANT LOCAL COMMIT for all rows (0ms latency) */

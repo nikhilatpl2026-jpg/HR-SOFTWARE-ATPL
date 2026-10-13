@@ -539,10 +539,39 @@
   // Fetch active Salary files, auto-prune deleted, auto-download missing
   async function reconcileSalaryFiles() {
     try {
-      var activeRows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.salary');
+      var activeRows = null;
+      var tombRows = null;
+      try {
+        activeRows = await sbRest("hr_files?select=id,filename,size,uploaded_at&doc_type=eq.salary");
+        tombRows = await sbRest("hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone");
+      } catch (sbErr) {
+        try {
+          var cloudUrl = (window.__ATPL_CENTRAL_BACKEND_URL || "https://ais-pre-j7ddc2y2vwgvwkmtwa6a2k-318187434838.asia-southeast1.run.app") + "/api/sync/files-meta";
+          var cRes = await fetch(cloudUrl).catch(function(){ return null; });
+          if (cRes && cRes.ok) {
+            var cData = await cRes.json();
+            if (cData && Array.isArray(cData.salary_files)) {
+              activeRows = cData.salary_files.map(function(f){ return { id: f.name, filename: f.name, uploaded_at: f.saved, size: f.size || 0 }; });
+              tombRows = Object.keys(cData.salary_tombstones || {}).map(function(k){ return { filename: k, uploaded_at: cData.salary_tombstones[k].deleted_at }; });
+            }
+          }
+        } catch (_) {}
+        if (!activeRows) {
+          try {
+            var sRes = await fetch("./data/salary_files.json").catch(function(){ return null; });
+            var tRes = await fetch("./data/salary_tombstones.json").catch(function(){ return null; });
+            if (sRes && sRes.ok) {
+              var sData = await sRes.json();
+              activeRows = Object.values(sData).map(function(f){ return { id: f.name, filename: f.name, uploaded_at: f.saved, size: f.size || 0 }; });
+            }
+            if (tRes && tRes.ok) {
+              var tData = await tRes.json();
+              tombRows = Object.keys(tData).map(function(k){ return { filename: k, uploaded_at: tData[k].deleted_at }; });
+            }
+          } catch (_) {}
+        }
+      }
       if (!Array.isArray(activeRows)) return;
-
-      var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
       var tombs = {};
       if (Array.isArray(tombRows)) {
         tombRows.forEach(function(t) {

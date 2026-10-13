@@ -15,7 +15,7 @@
 (function(window) {
   'use strict';
 
-  var LIVE_CLOUD_RUN_URL = "";
+  var LIVE_CLOUD_RUN_URL = "https://ais-pre-j7ddc2y2vwgvwkmtwa6a2k-318187434838.asia-southeast1.run.app";
 
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
@@ -26,7 +26,7 @@
     var configured = window.__ATPL_CENTRAL_BACKEND_URL;
     if (configured) return configured.replace(/\/+$/, '');
     if (origin.indexOf('github.io') >= 0) {
-      return "";
+      return LIVE_CLOUD_RUN_URL;
     }
     return ''; 
   }
@@ -668,7 +668,7 @@
             var lItemTime = Date.parse((localItem && (localItem.savedAt || localItem.created_at)) || '0') || 0;
             var isExplicitServerTomb = sTombTime > 0 && sTombTime >= lItemTime;
             var fileAge = Date.now() - lItemTime;
-            var isStaleMissing = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId)) && fileAge > 120000 && !localItem.uploading;
+            var isStaleMissing = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId)) && (fileAge > 15000 || lItemTime === 0) && !localItem.uploading;
             if (isExplicitServerTomb || isStaleMissing) {
               console.warn('[CentralSync] Strict auto-prune deleted file:', lName);
               this.fileMap.delete(localKey);
@@ -694,7 +694,7 @@
               var xTime = Date.parse(x.savedAt || x.saved || x.uploaded_at || '0') || 0;
               if (sTombTime > 0 && sTombTime >= xTime) return false;
               var fileAge = Date.now() - xTime;
-              if (!activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi)) && fileAge > 120000 && !x.uploading) {
+              if (!activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi)) && (fileAge > 15000 || xTime === 0) && !x.uploading) {
                 return false;
               }
               return true;
