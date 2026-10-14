@@ -18,10 +18,12 @@
   }
   function badge(){try{if(root.document.getElementById('atplPermanentDataBadge'))return;var h=root.document.querySelector('.header-right');if(!h)return;var b=root.document.createElement('span');b.id='atplPermanentDataBadge';b.textContent='☁ Permanent Data';b.title='Shared ERP data is stored in cloud and re-synced after reconnect/login.';b.style.cssText='display:inline-flex;font-size:9px;padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700';h.appendChild(b)}catch(_){}}
   function boot(){
-    badge();syncToken();if(hasSession()&&syncToken())setTimeout(function(){run(false)},7000);
+    badge();syncToken();// initial pull disabled
+
     root.document.addEventListener('atpl-authenticated',function(){setTimeout(function(){run(false)},2200)});
     root.addEventListener('online',function(){setTimeout(function(){run(false)},1000)});
-    timer=root.setInterval(function(){if(root.document.hidden)return;run(false)},300000);
+    // 5-min interval disabled to prevent wiping employee fields
+    timer=0;
   }
   root.ATPLPersistenceGuardV1={sync:function(){return run(true)},status:function(){return{session:hasSession(),token:!!syncToken(),lastRun:lastRun,running:running}}};
   if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

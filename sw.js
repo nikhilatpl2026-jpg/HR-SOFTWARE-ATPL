@@ -1,33 +1,26 @@
-const CACHE_NAME = 'atpl-cache-v12-excel-master-exact-ui';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
-];
+// ATPL Service Worker - Cache Busting Auto-Update
+const CACHE_NAME = 'atpl-cache-v20261014-network-first-v1';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
-  );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys.map((k) => k !== CACHE_NAME ? caches.delete(k) : null)
+      keys.map((k) => caches.delete(k))
     )).then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Always fetch fresh from network for JS, HTML and API calls
   e.respondWith(
-    fetch(e.request).then((resp) => {
-      const copy = resp.clone();
-      caches.open(CACHE_NAME).then((c) => c.put(e.request, copy));
-      return resp;
-    }).catch(() => caches.match(e.request))
+    fetch(e.request)
+      .then((resp) => {
+        return resp;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

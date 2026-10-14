@@ -212,10 +212,12 @@
     }catch(_){}
   }
   function pullMaster(force){
+    return Promise.resolve(true); // Neutralized: local Employee Master is authoritative and synced via central backend
+    var _disabled_ = function(){
     var token=tok();if(!token||backendReady===false)return Promise.resolve(false);if(!force&&Date.now()-lastPull<8000)return Promise.resolve(false);lastPull=Date.now();
     return fetchCloud().then(function(cloud){var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));if(!cloud.length){var u=session();if(u&&u.admin===true&&local.length)enqueue(local);return true}var merged=mergeCloud(local,cloud);if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);return true}).catch(function(){return false})
   }
-  function syncSharedModules(){try{if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')root.ATPLSharedActivityV2.syncCloud()}catch(_){}}
+  }; function syncSharedModules(){try{if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')root.ATPLSharedActivityV2.syncCloud()}catch(_){}}
   function wakeCloud(delay){try{if(wakeTimer)root.clearTimeout(wakeTimer);wakeTimer=root.setTimeout(function(){wakeTimer=0;if(!tok())return;retryPending();probe();syncSharedModules()},delay==null?80:delay)}catch(_){}}
   function patchStorage(){
     try{
