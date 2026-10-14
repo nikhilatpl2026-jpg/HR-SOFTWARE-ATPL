@@ -849,16 +849,61 @@ async function openViewer(type,id){
   if (ext === "pdf") {
     var sizeKb = Math.round((rec.size || blob.size || 0) / 1024);
     var h = '<div style="width:100%;height:100%;display:flex;flex-direction:column;min-height:0;position:relative;">' +
-      '<div style="padding:8px 14px;background:#0f172a;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;font-size:11px;">' +
+      '<div style="padding:8px 14px;background:#0f172a;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;font-size:11px;flex-shrink:0;">' +
         '<span style="font-weight:700;color:#f8fafc;">📄 ' + esc(rec.name) + ' (' + (rec.period ? periodLabel(rec.period) : "") + ') · ' + sizeKb + ' KB</span>' +
         '<div style="display:flex;gap:8px;">' +
           '<a href="' + blobUrl + '" download="' + esc(rec.name) + '" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#16a34a;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:11px;">⬇ Download PDF</a>' +
           '<a href="' + blobUrl + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:11px;">↗ Open in Tab</a>' +
         '</div>' +
       '</div>' +
-      '<iframe src="' + blobUrl + '#toolbar=1" style="width:100%;height:100%;flex:1;min-height:500px;border:none;background:#525659;" title="PDF Preview"></iframe>' +
+      '<div id="cd2-pdf-canvas-container" style="width:100%;flex:1;min-height:520px;background:#1e293b;overflow-y:auto;display:flex;flex-direction:column;align-items:center;padding:16px;gap:16px;">' +
+        '<div style="color:#94a3b8;font-size:12px;font-weight:700;margin-top:40px;">Rendering Document Pages…</div>' +
+      '</div>' +
     '</div>';
     $('cd2-vbody').innerHTML = h;
+
+    (async function() {
+      try {
+        var ab = await blob.arrayBuffer();
+        var cont = document.getElementById('cd2-pdf-canvas-container');
+        if (!cont) return;
+        var pLib = window.pdfjsLib;
+        if (pLib) {
+          pLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+          var pdf = await pLib.getDocument({ data: ab }).promise;
+          cont.innerHTML = '';
+          var numPages = pdf.numPages;
+          for (var pNo = 1; pNo <= Math.min(numPages, 10); pNo++) {
+            var page = await pdf.getPage(pNo);
+            var viewport = page.getViewport({ scale: 1.35 });
+            var cvs = document.createElement('canvas');
+            cvs.height = viewport.height;
+            cvs.width = viewport.width;
+            cvs.style.maxWidth = '100%';
+            cvs.style.height = 'auto';
+            cvs.style.borderRadius = '4px';
+            cvs.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+            cvs.style.background = '#ffffff';
+            cont.appendChild(cvs);
+            await page.render({ canvasContext: cvs.getContext('2d'), viewport: viewport }).promise;
+          }
+          if (numPages > 10) {
+            var more = document.createElement('div');
+            more.style.cssText = 'color:#94a3b8;font-size:11px;font-weight:700;padding:10px;';
+            more.textContent = 'Showing first 10 of ' + numPages + ' pages. Click "Open in Tab" or "Download PDF" for the complete document.';
+            cont.appendChild(more);
+          }
+        } else {
+          cont.innerHTML = '<iframe src="' + blobUrl + '#toolbar=1" style="width:100%;height:100%;border:none;background:#525659;" title="PDF Preview"></iframe>';
+        }
+      } catch (cvErr) {
+        console.warn('PDF canvas render failed, using fallback:', cvErr);
+        var cont = document.getElementById('cd2-pdf-canvas-container');
+        if (cont) {
+          cont.innerHTML = '<iframe src="' + blobUrl + '#toolbar=1" style="width:100%;height:100%;border:none;background:#525659;" title="PDF Preview"></iframe>';
+        }
+      }
+    })();
     return;
   }
   try{
