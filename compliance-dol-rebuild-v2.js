@@ -384,7 +384,20 @@ async function recordBlob(type,rec,progress){
       rec=Object.assign({},rec,repaired.record,{hash:repairHash,sharedAuthoritative:true,sharedSource:'dedicated'});
       try{cloudLastSync[type]=0}catch(_){}
     }
-    if(!blob)return null;
+    if(!blob){
+    try{
+      var _base=(root.ATPLCentralFileSync&&root.ATPLCentralFileSync.apiBase)||'';
+      var _urls=[
+        _base+'/api/sync/files/'+encodeURIComponent(rec.id||rec.name||'')+'/content',
+        _base+'/api/sync/salary-file/'+encodeURIComponent(rec.name||'')
+      ];
+      for(var _ui=0;_ui<_urls.length;_ui++){
+        var _res=await fetch(_urls[_ui],{cache:'no-store'});
+        if(_res.ok){blob=await _res.blob();break;}
+      }
+    }catch(_){}
+  }
+  if(!blob)return null;
     var authoritativeLocal=Object.assign({},rec,{blob:null,storage:'indexeddb',cloudOnly:false,sharedAuthoritative:true,sharedSource:'dedicated'});
     var authoritativeVaulted=false;try{authoritativeVaulted=await opfsSave(authoritativeLocal,blob)}catch(_){}
     if(!authoritativeVaulted)authoritativeLocal.blob=blob;authoritativeLocal.storage=authoritativeVaulted?'opfs':'indexeddb';
@@ -827,6 +840,7 @@ async function openViewer(type,id){
     $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in cloud storage or this browser.</div>';
     return
   }
+  if(ext==='pdf'&&blob&&blob.type!=='application/pdf'){try{blob=new Blob([await blob.arrayBuffer()],{type:'application/pdf'});}catch(_){}}
   viewer.url=URL.createObjectURL(blob);
   if(btnNewTab)btnNewTab.onclick=function(){window.open(viewer.url,'_blank')};
 
