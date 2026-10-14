@@ -840,36 +840,24 @@ async function openViewer(type,id){
     $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in cloud storage or this browser.</div>';
     return
   }
-  if(ext==='pdf'&&blob&&blob.type!=='application/pdf'){try{blob=new Blob([await blob.arrayBuffer()],{type:'application/pdf'});}catch(_){}}
-  viewer.url=URL.createObjectURL(blob);
-  if(btnNewTab)btnNewTab.onclick=function(){window.open(viewer.url,'_blank')};
+  var ext = String(rec.name || "").split(".").pop().toLowerCase();
+  var pdfBlob = (ext === "pdf" && blob.type !== "application/pdf") ? new Blob([blob], { type: "application/pdf" }) : blob;
+  var blobUrl = URL.createObjectURL(pdfBlob);
+  viewer.url = blobUrl;
+  if (btnNewTab) btnNewTab.onclick = function() { window.open(blobUrl, "_blank"); };
 
-  var ext=String(rec.name||'').split('.').pop().toLowerCase();
-  if(ext==='pdf'){
-    var ab = await blob.arrayBuffer();
-    var bytes = new Uint8Array(ab);
-    var binary = '';
-    var chunkSize = 8192;
-    for(var bi = 0; bi < bytes.length; bi += chunkSize){
-      binary += String.fromCharCode.apply(null, bytes.subarray(bi, bi + chunkSize));
-    }
-    var base64 = btoa(binary);
-    var dataUrl = 'data:application/pdf;base64,' + base64;
-    var blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    
-    if(btnNewTab) btnNewTab.onclick = function(){ window.open(blobUrl, '_blank'); };
-    
+  if (ext === "pdf") {
+    var sizeKb = Math.round((rec.size || blob.size || 0) / 1024);
     var h = '<div style="width:100%;height:100%;display:flex;flex-direction:column;min-height:0;position:relative;">' +
       '<div style="padding:8px 14px;background:#0f172a;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;font-size:11px;">' +
-        '<span style="font-weight:700;color:#f8fafc;">📄 ' + esc(rec.name) + ' (' + (rec.period ? periodLabel(rec.period) : '') + ') · ' + Math.round(ab.byteLength/1024) + ' KB</span>' +
+        '<span style="font-weight:700;color:#f8fafc;">📄 ' + esc(rec.name) + ' (' + (rec.period ? periodLabel(rec.period) : "") + ') · ' + sizeKb + ' KB</span>' +
         '<div style="display:flex;gap:8px;">' +
-          '<a href="' + dataUrl + '" download="' + esc(rec.name) + '" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#16a34a;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:11px;">⬇ Direct Download</a>' +
+          '<a href="' + blobUrl + '" download="' + esc(rec.name) + '" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#16a34a;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:11px;">⬇ Download PDF</a>' +
           '<a href="' + blobUrl + '" target="_blank" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:700;font-size:11px;">↗ Open in Tab</a>' +
         '</div>' +
       '</div>' +
-      '<iframe src="' + dataUrl + '" style="width:100%;height:100%;flex:1;min-height:500px;border:none;background:#525659;" title="PDF Preview"></iframe>' +
+      '<iframe src="' + blobUrl + '#toolbar=1" style="width:100%;height:100%;flex:1;min-height:500px;border:none;background:#525659;" title="PDF Preview"></iframe>' +
     '</div>';
-    
     $('cd2-vbody').innerHTML = h;
     return;
   }
