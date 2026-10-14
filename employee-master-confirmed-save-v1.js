@@ -51,7 +51,7 @@ function persistConfirmed(){
   syncLegacyArray();
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
-      fetch('/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
+      var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
       if(g.BroadcastChannel){
         var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
         bc.postMessage({type:'employee_master_saved',records:g.EM.data});
@@ -158,8 +158,12 @@ async function confirmedBulkSave(){
   var rowsToSave = g.EM_BULK_ROWS.slice();
 
   /* 1. INSTANT LOCAL COMMIT for all rows (0ms latency) */
-  rowsToSave.forEach(function(emp){
-    var k = empKey(emp); if(!k) return;
+  rowsToSave.forEach(function(emp, rIdx){
+    var k = empKey(emp);
+    if (!k) {
+      k = (emp.sr_no ? String(emp.sr_no).replace(/\D/g, "") : "") || ("EMP" + (Date.now().toString().slice(-4)) + (rIdx + 1));
+      emp.emp_id = k;
+    }
     var idx = g.EM && Array.isArray(g.EM.data) ? g.EM.data.findIndex(function(y){ return empKey(y)===k; }) : -1;
     if(idx >= 0) g.EM.data[idx] = Object.assign({}, g.EM.data[idx], copy(emp));
     else if(g.EM && Array.isArray(g.EM.data)) g.EM.data.push(copy(emp));

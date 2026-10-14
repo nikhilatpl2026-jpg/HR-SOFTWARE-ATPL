@@ -15,7 +15,7 @@
 (function(window) {
   'use strict';
 
-  var LIVE_CLOUD_RUN_URL = "https://ais-pre-j7ddc2y2vwgvwkmtwa6a2k-318187434838.asia-southeast1.run.app";
+  var LIVE_CLOUD_RUN_URL = "https://ais-pre-p5lku2yavllqmzex2peyoq-427004433114.asia-southeast1.run.app";
 
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
@@ -146,6 +146,7 @@
       this.connectFirebase();
       this.bindWindowEvents();
       setTimeout(() => { this.reconcileAll(true); }, 300);
+      this.fetchEmployeeMasterOnStartup();
       
       // Smooth background pulse (event-driven WebSockets handle instant changes)
       setInterval(() => {
@@ -197,6 +198,27 @@
       }
     },
 
+    fetchEmployeeMasterOnStartup: function() {
+      var base = this.apiBase || "";
+      fetch(base + "/api/sync/employee-master?_t=" + Date.now(), { cache: "no-store" })
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.ok && Array.isArray(data.records) && data.records.length > 0 && window.EM) {
+            window.EM.data = data.records.slice();
+            if (Array.isArray(window.EMP_MASTER_DATA)) {
+              window.EMP_MASTER_DATA.length = 0;
+              Array.prototype.push.apply(window.EMP_MASTER_DATA, data.records);
+            }
+            try { localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(data.records)); } catch(_) {}
+            if (typeof window.emFilter === "function") window.emFilter();
+            if (typeof window.emUpdateStats === "function") window.emUpdateStats();
+            if (typeof window.initStatutoryChallanTab === "function") {
+              try { window.initStatutoryChallanTab(); } catch(_) {}
+            }
+          }
+        })
+        .catch(() => {});
+    },
     bindWindowEvents: function() {
       window.addEventListener('online', () => {
         this.connectSSE();
@@ -247,6 +269,25 @@
         es.addEventListener('salary_file_saved', (e) => { this.requestReconcile(); });
         es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
+        es.addEventListener("employee_master_updated", (e) => {
+          try {
+            var msg = JSON.parse(e.data || "{}");
+            var recs = msg.records || (msg.data && msg.data.records);
+            if (Array.isArray(recs) && window.EM) {
+              window.EM.data = recs.slice();
+              if (Array.isArray(window.EMP_MASTER_DATA)) {
+                window.EMP_MASTER_DATA.length = 0;
+                Array.prototype.push.apply(window.EMP_MASTER_DATA, recs);
+              }
+              try { localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(recs)); } catch(_) {}
+              if (typeof window.emFilter === "function") window.emFilter();
+              if (typeof window.emUpdateStats === "function") window.emUpdateStats();
+              if (typeof window.initStatutoryChallanTab === "function") {
+                try { window.initStatutoryChallanTab(); } catch(_) {}
+              }
+            }
+          } catch(_) {}
+        });
         es.addEventListener('hr_doc_deleted', (e) => {
           try {
             var msg = JSON.parse(e.data || '{}');

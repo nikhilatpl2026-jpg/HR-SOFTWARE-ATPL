@@ -475,3 +475,12 @@
   };
 
 })();
+
+  // Auto-refresh when files sync from backend
+  if (typeof window !== "undefined") {
+    window.addEventListener("atplVaultUpdated", function() {
+      if (document.getElementById("challanMainApp") && typeof window.initStatutoryChallanTab === "function") {
+        try { window.initStatutoryChallanTab(); } catch(_) {}
+      }
+    });
+  }

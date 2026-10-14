@@ -3622,7 +3622,9 @@ function deleteFromDB(name, cb) {
   }
   // Immediate direct cross-browser sync
   try {
-    if(!atplUsesSharedSalaryCloud())fetch('/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' }).catch(function(){});
+    var _b = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || "";
+    fetch(_b + "/api/sync/salary-file/" + encodeURIComponent(name), { method: "DELETE" }).catch(function(){});
+    fetch(_b + "/api/sync/files/" + encodeURIComponent(name) + "?module=salary", { method: "DELETE" }).catch(function(){});
   } catch(_) {}
 }
 
@@ -11392,10 +11394,22 @@ function smartParseEmployeeRow(cells) {
 
   for (var i = 0; i < candidates.length; i++) {
     var val = candidates[i];
-    if (/^[A-Z]{2,6}\d{4,10}$/i.test(val) || (/^[A-Z]+\d+[A-Z0-9]*$/i.test(val) && val.length >= 4 && val.length <= 15 && !/^CARD/i.test(val))) {
+    if (/^[A-Z]{1,6}[-_/]?\d{1,10}$/i.test(val) || (/^[A-Z]+\d+[A-Z0-9]*$/i.test(val) && val.length >= 2 && val.length <= 15 && !/^CARD/i.test(val))) {
       emp.emp_id = val.toUpperCase();
       break;
     }
+  }
+  if (!emp.emp_id) {
+    for (var i = 0; i < candidates.length; i++) {
+      var val = candidates[i].trim();
+      if (/^\d{1,8}$/.test(val) && val !== emp.phone_no && val !== emp.pf_no && val !== emp.esi_no) {
+        emp.emp_id = val;
+        break;
+      }
+    }
+  }
+  if (!emp.emp_id && emp.sr_no) {
+    emp.emp_id = String(emp.sr_no).replace(/\D/g, "") || String(emp.sr_no);
   }
 
   for (var i = 0; i < candidates.length; i++) {
