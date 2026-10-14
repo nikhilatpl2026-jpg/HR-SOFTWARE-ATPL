@@ -204,6 +204,26 @@
         .then(r => r.json())
         .then(data => {
           if (data && data.ok && Array.isArray(data.records) && data.records.length > 0 && window.EM) {
+            // Non-destructive merge: preserve existing fields like ifsc, bank_account, etc.
+            var local = Array.isArray(window.EM.data) ? window.EM.data : [];
+            var emMap = {};
+            local.forEach(function(e){ if(e && e.emp_id) emMap[String(e.emp_id).toUpperCase().trim()] = Object.assign({}, e); });
+            data.records.forEach(function(r){
+              if(!r || !r.emp_id) return;
+              var k = String(r.emp_id).toUpperCase().trim();
+              if(!emMap[k]) emMap[k] = Object.assign({}, r);
+              else {
+                var exist = emMap[k];
+                Object.keys(r).forEach(function(p){
+                  if(r[p] !== undefined && r[p] !== null && String(r[p]).trim() !== ""){
+                    if(exist[p] === undefined || exist[p] === null || String(exist[p]).trim() === ""){
+                      exist[p] = r[p];
+                    }
+                  }
+                });
+              }
+            });
+            data.records = Object.values(emMap);
             window.EM.data = data.records.slice();
             if (Array.isArray(window.EMP_MASTER_DATA)) {
               window.EMP_MASTER_DATA.length = 0;

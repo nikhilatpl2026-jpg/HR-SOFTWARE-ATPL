@@ -636,10 +636,48 @@ app.delete('/api/sync/files/:id', (req, res) => {
 app.get('/api/sync/files/:id/content', (req, res) => {
   try {
     const rawId = decodeURIComponent(req.params.id || '');
+    const lower = rawId.toLowerCase().trim();
+
+    // 1. Direct filesDb lookup
     let file = filesDb.files[rawId];
     if (!file) {
-      const lower = rawId.toLowerCase();
-      file = Object.values(filesDb.files).find(f => f.name.toLowerCase() === lower);
+      file = Object.values(filesDb.files).find(f => f && f.name && f.name.toLowerCase().trim() === lower);
+    }
+
+    // 2. DOL Records lookup (ESIC / PF challan PDFs)
+    if (!file) {
+      let dolRec = syncDolRecords[rawId];
+      if (!dolRec) {
+        dolRec = Object.values(syncDolRecords).find(d => {
+          if (!d) return false;
+          const dn = String(d.name || d.file_name || '').toLowerCase().trim();
+          return dn === lower || String(d.id || '').toLowerCase().trim() === lower;
+        });
+      }
+      if (dolRec) {
+        const dolBlobPath = path.join(BLOBS_DIR, dolRec.id + '.bin');
+        if (fs.existsSync(dolBlobPath)) {
+          res.setHeader('Content-Type', dolRec.mime_type || 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(dolRec.name || dolRec.file_name || 'Challan.pdf') + '"');
+          return fs.createReadStream(dolBlobPath).pipe(res);
+        }
+        const b64 = dolRec.buf || dolRec.original_b64;
+        if (b64) {
+          const clean = b64.includes(',') ? b64.split(',')[1] : b64;
+          const bin = Buffer.from(clean, 'base64');
+          res.setHeader('Content-Type', dolRec.mime_type || 'application/pdf');
+          res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(dolRec.name || dolRec.file_name || 'Challan.pdf') + '"');
+          return res.send(bin);
+        }
+      }
+    }
+
+    // 3. Direct disk blob lookup
+    const directBlobPath = path.join(BLOBS_DIR, rawId + '.bin');
+    if (fs.existsSync(directBlobPath)) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'inline; filename="' + encodeURIComponent(rawId) + '.pdf"');
+      return fs.createReadStream(directBlobPath).pipe(res);
     }
 
     if (!file) {

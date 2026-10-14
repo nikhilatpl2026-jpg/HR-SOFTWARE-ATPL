@@ -107,6 +107,52 @@ function clearMasterView(){
 }
 function injectMaster(records){
   records=cleanMaster(records);
+  if(!Array.isArray(records) || !records.length) return 0;
+  // Non-destructive deep merge: NEVER wipe existing fields (IFSC, bank_name, account_no, etc.)
+  var local = J(root.localStorage.getItem(MASTER) || "[]", []);
+  var map = {}, order = [];
+  (Array.isArray(local) ? local : []).forEach(function(r){
+    var k = String(r && (r.emp_id || r.id || "")).toUpperCase().trim();
+    if (!k) return;
+    if (!map[k]) order.push(k);
+    map[k] = Object.assign({}, r);
+  });
+  records.forEach(function(r){
+    var k = String(r && (r.emp_id || r.id || "")).toUpperCase().trim();
+    if (!k) return;
+    if (!map[k]) {
+      order.push(k);
+      map[k] = Object.assign({}, r);
+    } else {
+      var exist = map[k];
+      Object.keys(r).forEach(function(p){
+        var v = r[p];
+        if (v !== undefined && v !== null && String(v).trim() !== "") {
+          if (exist[p] === undefined || exist[p] === null || String(exist[p]).trim() === "") {
+            exist[p] = v;
+          }
+        }
+      });
+    }
+  });
+  var merged = order.map(function(k){ return map[k]; });
+  root.localStorage.setItem(MASTER, JSON.stringify(merged));
+  try {
+    if (root.EM && Array.isArray(root.EM.data)) {
+      root.EM.data.length = 0;
+      Array.prototype.push.apply(root.EM.data, merged);
+      if (typeof root.emFilter === "function") root.emFilter();
+      if (typeof root.emUpdateStats === "function") root.emUpdateStats();
+    }
+    if (Array.isArray(root.EMP_MASTER_DATA)) {
+      root.EMP_MASTER_DATA.length = 0;
+      Array.prototype.push.apply(root.EMP_MASTER_DATA, merged);
+    }
+  } catch(e) { console.warn(e); }
+  return merged.length;
+}
+function _old_injectMaster(records){
+  records=cleanMaster(records);
   root.localStorage.setItem(MASTER,JSON.stringify(records));
   try{
     if(root.EM&&Array.isArray(root.EM.data)){root.EM.data.length=0;Array.prototype.push.apply(root.EM.data,records);if(typeof root.emFilter==='function')root.emFilter();if(typeof root.emUpdateStats==='function')root.emUpdateStats()}
@@ -117,6 +163,12 @@ function injectMaster(records){
   return records.length
 }
 async function pullMaster(force){
+  // Local + Central backend is authoritative for Employee Master.
+  // Never wipe with outdated broker records.
+  var local = J(root.localStorage.getItem(MASTER) || "[]", []);
+  if (Array.isArray(local) && local.length > 0) return local.length;
+  var u=current()||sess();if(!canUseMaster(u))return clearMasterView();
+
   var u=current()||sess();if(!canUseMaster(u))return clearMasterView();
   var t=tok();if(!t)return 0;if(!force&&Date.now()-lastMasterPull<8000)return cleanMaster(J(root.localStorage.getItem(MASTER)||'[]',[])).length;
   lastMasterPull=Date.now();var r=await api({action:'getEmployeeMaster',token:t},7000);

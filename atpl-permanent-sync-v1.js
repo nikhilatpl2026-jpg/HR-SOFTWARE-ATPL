@@ -77,7 +77,8 @@
 
         // 4. Sync Employee Master
         if (window.ATPLMobileSharedHardFix && typeof window.ATPLMobileSharedHardFix.pullMaster === 'function') {
-          jobs.push(window.ATPLMobileSharedHardFix.pullMaster());
+          // pullMaster neutralized to protect employee details
+
         }
 
         await Promise.allSettled(jobs);

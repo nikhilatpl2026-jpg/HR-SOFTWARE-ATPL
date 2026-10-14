@@ -10676,7 +10676,7 @@ function auditAndCleanEmployee(emp, rawCols) {
   }
 
   // 2. IFSC & Account No
-  if (emp.ifsc) emp.ifsc = cleanIfsc(emp.ifsc);
+  if (emp.ifsc) { try { emp.ifsc = (typeof cleanIfsc === 'function' ? cleanIfsc(emp.ifsc) : String(emp.ifsc).toUpperCase().trim()); } catch(_) {} }
   if (emp.account_no) emp.account_no = cleanAccountNo(emp.account_no);
 
   // 3. Dates
@@ -12909,7 +12909,26 @@ function hrDocToggleWindow(){
     var p=s.parentElement; if(p){p.style.position='relative';var i=document.createElement('span');i.textContent='🔍';i.style.cssText='position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:13px;color:#64748b;pointer-events:none;z-index:2';p.insertBefore(i,s);}
   }
   function modernRender(){
-    var wrap=qs('hrDocResults'); var DATA=window.hrDocGetDocs?window.hrDocGetDocs():[]; if(!wrap) return;
+    var wrap=qs('hrDocResults');
+    var rawData = window.hrDocGetDocs ? window.hrDocGetDocs() : [];
+    if(!wrap) return;
+    // Strict multi-key Deduplication: prevents repeated files across browsers
+    var seenIds = new Set();
+    var seenNames = new Set();
+    var DATA = [];
+    (Array.isArray(rawData) ? rawData : []).forEach(function(d){
+      if(!d) return;
+      var id = String(d.id || '').toLowerCase().trim();
+      var name = String(d.document_name || d.name || '').toLowerCase().trim();
+      var fn = String(d.file_name || '').toLowerCase().trim();
+      if(id && seenIds.has(id)) return;
+      if(name && seenNames.has(name)) return;
+      if(fn && fn !== 'document' && fn !== 'attachment' && seenNames.has(fn)) return;
+      if(id) seenIds.add(id);
+      if(name) seenNames.add(name);
+      if(fn && fn !== 'document' && fn !== 'attachment') seenNames.add(fn);
+      DATA.push(d);
+    });
     var q=(qs('hrDocSearch')?.value||'').toLowerCase().trim();
     var sf=(qs('hrDocStatusFilter')?.value||'ALL'), tf=(qs('hrDocTypeFilter')?.value||'ALL');
     var att=(qs('hrDocAttachmentFilter')?.value||'ALL');
@@ -15097,7 +15116,7 @@ else AInit();
 <script src="supabase-js-v2.min.js"></script>
 <script src="atpl-realtime-sync-engine.js?v=202610-live-force-v7"></script>
 <!-- ATPL CENTRAL BACKEND-AUTHORITATIVE FILE SYNC ENGINE -->
-<script src="atpl-central-file-sync.js?v=1791968764751"></script>
+<script src="atpl-central-file-sync.js?v=1791971230489"></script>
 <!-- END ENGINE -->
 <!-- atpl-firebase-bundle loaded in head -->
 <script src="erp-cloud-shared-storage-v1.js?v=202610-live-force-v6"></script>
@@ -15112,7 +15131,7 @@ else AInit();
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3"></script>
 <script src="erp-enterprise-ui-v1.js?v=20260918-2"></script>
-<script src="employee-master-confirmed-save-v1.js?v=1791968764751"></script>
+<script src="employee-master-confirmed-save-v1.js?v=1791971230489"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl = document.getElementById("crossSyncBtnLbl");
