@@ -10310,18 +10310,23 @@ function cleanIfsc(v) {
 window.cleanIfsc = cleanIfsc;
 
 function cleanAccountNo(v) {
-  if (!v) return '';
+  if (v == null) return '';
   var s = String(v).replace(/["'=]/g, '').trim();
   s = s.replace(/^(?:A\/?C(?:\s*NO\.?)?|A\.C(?:\s*NO\.?)?|ACC(?:\s*NO\.?)?|ACCOUNT(?:\s*NO\.?)?)[:\-]?\s*/i, '');
   s = s.replace(/[\s\-_]/g, '');
-  if (/^(\d+(?:\.\d+)?)[eE]\+(\d+)$/.test(s)) {
+  if (/^(\d+)(?:\.(\d+))?[eE]\+(\d+)$/.test(s)) {
     try {
-      var n = Number(s);
-      if (!isNaN(n)) s = BigInt(Math.round(n)).toString();
-    } catch (_) {}
+      var m = s.match(/^(\d+)(?:\.(\d+))?[eE]\+(\d+)$/);
+      var intPart = m[1], decPart = m[2] || '', exp = parseInt(m[3], 10);
+      var combined = intPart + decPart, shift = exp - decPart.length;
+      if (shift >= 0) s = combined + '0'.repeat(shift);
+      else s = combined.slice(0, combined.length + shift);
+    } catch (_) {
+      try { s = BigInt(Math.round(Number(s))).toString(); } catch (__) {}
+    }
   }
   s = s.replace(/\.0+$/, '');
-  return s.toUpperCase();
+  return s.toUpperCase().trim();
 }
 window.cleanAccountNo = cleanAccountNo;
 
@@ -10533,7 +10538,7 @@ function matchColumnHeader(header, counts) {
   if (/(?:^|\s)(?:ifsc|ifs|rtgs|neft)(?:\s|$)/i.test(s) || /ifsc/i.test(raw)) return 'ifsc';
 
   // Check Bank Account (supports A.C, A/C, A.C NO, ACC NO, etc.)
-  if (/(?:^|\s)(?:account|ac|acc)(?:\s|$)/i.test(s) || /\b(?:a\s+c)\b/i.test(s) || /a[\/.]c/i.test(raw.toLowerCase())) {
+  if (/(?:^|\s)(?:account|ac|acc|khata)(?:\s|$)/i.test(s) || /\b(?:a\s+c)\b/i.test(s) || /a[\/.]c/i.test(raw.toLowerCase()) || /account\s*no/i.test(s) || /bank\s*a/i.test(s) || /(?:^|\s)a\.c\b/i.test(raw) || /accnt/i.test(s)) {
     if (!/pf|esi|uan/i.test(s)) return 'account_no';
   }
 
@@ -10696,10 +10701,17 @@ function auditAndCleanEmployee(emp, rawCols) {
     return s.length === 12;
   };
   var isAcNum = function(x) {
+    if (!x) return false;
     var s = cleanAccountNo(x);
-    return /^\d{9,22}$/.test(s) && !isMobile(s) && !isAadhaarNum(s) && s !== emp.emp_id && s !== emp.pf_no && s !== emp.esi_no;
+    if (/^\d{8,22}$/.test(s)) {
+      if (emp.phone_no && s === emp.phone_no) return false;
+      if (emp.aadhaar_no && s === emp.aadhaar_no) return false;
+      if (emp.pf_no && s === emp.pf_no) return false;
+      if (emp.esi_no && s === emp.esi_no) return false;
+      return true;
+    }
+    return false;
   };
-
   // A. Phone Number first (so it does not get mistaken for account number)
   if (!emp.phone_no || !isMobile(emp.phone_no)) {
     if (Array.isArray(rawCols)) {
@@ -10761,7 +10773,9 @@ function auditAndCleanEmployee(emp, rawCols) {
   // E. Smart IFSC vs Account No Swap
   if (isIfsc(emp.account_no) && !isIfsc(emp.ifsc)) {
     var oldAc = emp.account_no;
-    emp.account_no = isAcNum(emp.ifsc) ? emp.ifsc : "";
+    if (isAcNum(emp.ifsc)) {
+      emp.account_no = cleanAccountNo(emp.ifsc);
+    }
     emp.ifsc = oldAc;
   }
 
@@ -11569,10 +11583,23 @@ function emParseBulkPaste() {
         else if (yr >= 2010 && !emp.doj) emp.doj = d;
       });
 
+      // Smart Bank A/C & IFSC detection across row
+      var ifscCand = clean.find(function(c){ return /^[A-Z]{4}0[A-Z0-9]{6}$/i.test(c); });
+      if (ifscCand) emp.ifsc = ifscCand.toUpperCase();
+      var acCand = clean.find(function(c){
+        var cl = cleanAccountNo(c);
+        return /^\d{8,22}$/.test(cl) && cl !== emp.phone_no && cl !== emp.aadhaar_no && cl !== emp.emp_id;
+      });
+      if (acCand) emp.account_no = cleanAccountNo(acCand);
+      var bankCand = clean.find(function(c){
+        return /^(HDFC|SBI|ICICI|PNB|AXIS|BOB|CANARA|KOTAK|UNION|YES|INDUSIND|CENTRAL|UCO|ALLAHABAD|BANK|PAYMENT)/i.test(c) && !/^[A-Z]{4}0/.test(c);
+      });
+      if (bankCand && !emp.bank_name) emp.bank_name = bankCand.toUpperCase();
+
       clean.forEach(function(val){
         var rawNum = val.replace(/,/g, "");
-        if (/^\d{9,18}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no) {
-          if (!emp.account_no && rawNum.length >= 11) emp.account_no = rawNum;
+        if (/^\d{8,22}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no) {
+          if (!emp.account_no && rawNum.length >= 8) emp.account_no = rawNum;
           else if (!emp.esi_no) emp.esi_no = rawNum;
           else if (!emp.pf_no) emp.pf_no = rawNum;
         }
@@ -11659,8 +11686,18 @@ function emSaveBulk() {
       if (s === 'NEW') added++; else if (s === 'UPDATED') updated++;
     } else if (window.EM && Array.isArray(window.EM.data)) {
       var idx = window.EM.data.findIndex(function(e){ return String(e.emp_id) === String(emp.emp_id); });
-      if (idx >= 0) { window.EM.data[idx] = Object.assign({}, window.EM.data[idx], emp); updated++; }
-      else { window.EM.data.push(emp); added++; }
+      if (idx >= 0) {
+        var oldRec = window.EM.data[idx];
+        var merged = Object.assign({}, oldRec);
+        Object.keys(emp).forEach(function(k){
+          if(emp[k] !== '' && emp[k] !== null && emp[k] !== undefined) merged[k] = emp[k];
+        });
+        window.EM.data[idx] = merged;
+        updated++;
+      } else {
+        window.EM.data.push(emp);
+        added++;
+      }
     }
     if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster === 'function') {
       window.ATPLCloudSyncV1.pushMaster(emp);

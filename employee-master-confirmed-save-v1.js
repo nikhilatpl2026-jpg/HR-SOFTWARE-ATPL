@@ -165,7 +165,18 @@ async function confirmedBulkSave(){
       emp.emp_id = k;
     }
     var idx = g.EM && Array.isArray(g.EM.data) ? g.EM.data.findIndex(function(y){ return empKey(y)===k; }) : -1;
-    if(idx >= 0) g.EM.data[idx] = Object.assign({}, g.EM.data[idx], copy(emp));
+    if(idx >= 0) {
+      // PRESERVE EXISTING DATA: Never wipe existing account_no, ifsc, bank_name, etc. with blank/empty values!
+      var oldRec = g.EM.data[idx];
+      var merged = Object.assign({}, oldRec);
+      Object.keys(emp).forEach(function(fld) {
+        var v = emp[fld];
+        if (v !== undefined && v !== null && String(v).trim() !== '') {
+          merged[fld] = v;
+        }
+      });
+      g.EM.data[idx] = merged;
+    }
     else if(g.EM && Array.isArray(g.EM.data)) g.EM.data.push(copy(emp));
   });
   persistConfirmed();
@@ -181,7 +192,14 @@ async function confirmedBulkSave(){
   if(c && typeof c.saveMany === "function"){
     var items = rowsToSave.map(function(emp){
       var k = empKey(emp), old = (g.EM && Array.isArray(g.EM.data) ? g.EM.data.find(function(x){ return empKey(x)===k; }) : null);
-      return { record: Object.assign({}, old||{}, copy(emp)), baseRecord: old?copy(old):null };
+      var merged = Object.assign({}, old || {});
+      Object.keys(emp).forEach(function(fld) {
+        var v = emp[fld];
+        if (v !== undefined && v !== null && String(v).trim() !== '') {
+          merged[fld] = v;
+        }
+      });
+      return { record: merged, baseRecord: old ? copy(old) : null };
     });
     c.saveMany(items).then(function(res){
       if(res && res.ok){
