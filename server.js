@@ -1301,8 +1301,20 @@ app.post('/api/sync/employee-master', (req, res) => {
     const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
     if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
 
-    syncEmployeeMaster = records;
-    writeJsonFile('employee_master.json', syncEmployeeMaster);
+    const emMap = {};
+    (syncEmployeeMaster || []).forEach(e => { if (e && e.emp_id) emMap[String(e.emp_id).toUpperCase().trim()] = e; });
+    records.forEach(r => {
+      if (!r || !r.emp_id) return;
+      const k = String(r.emp_id).toUpperCase().trim();
+      const existing = emMap[k] || {};
+      const merged = Object.assign({}, existing);
+      Object.keys(r).forEach(p => {
+        if (r[p] !== undefined && r[p] !== null && String(r[p]).trim() !== "") merged[p] = r[p];
+      });
+      emMap[k] = merged;
+    });
+    syncEmployeeMaster = Object.values(emMap);
+    writeJsonFile("employee_master.json", syncEmployeeMaster);
 
     broadcastEvent('employee_master_updated', { records: syncEmployeeMaster });
     return res.json({ ok: true, saved: true, count: syncEmployeeMaster.length });

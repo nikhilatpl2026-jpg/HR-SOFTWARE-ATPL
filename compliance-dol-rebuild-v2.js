@@ -1744,3 +1744,50 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},syncCloud:syncCloudIndexes,version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__}};
 })(window);
+
+window.cd2AttachOriginalFile = async function(type, id, input) {
+  if (!input || !input.files || !input.files[0]) return;
+  var f = input.files[0];
+  var buf = await f.arrayBuffer();
+  var h = await sha256(buf);
+  var rec = (state[type].rows || []).find(function(x){ return String(x.id) === String(id); });
+  if (!rec) return;
+  rec.size = f.size;
+  rec.hash = h;
+  rec.fileHash = h;
+  rec.hasOriginalFile = true;
+  rec.cloudOnly = false;
+  var blob = new Blob([buf], { type: 'application/pdf' });
+  rec.blob = blob;
+  try { await opfsSave(rec, blob); } catch(_) {}
+  await dbPut(rec);
+  upsertStateRow(type, rec);
+  renderFiles(type);
+  
+  // Upload to central sync server
+  try {
+    var _base = (root.ATPLCentralFileSync && root.ATPLCentralFileSync.apiBase) || '';
+    var bytes = new Uint8Array(buf);
+    var binary = '';
+    for (var bi = 0; bi < bytes.length; bi += 8192) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(bi, bi + 8192));
+    }
+    var b64 = btoa(binary);
+    fetch(_base + '/api/sync/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: rec.id,
+        name: rec.name,
+        module: type,
+        size: f.size,
+        mime_type: 'application/pdf',
+        buf: b64,
+        hash: h,
+        period: rec.period
+      })
+    }).catch(function(){});
+  } catch(_) {}
+  
+  openViewer(type, id);
+};

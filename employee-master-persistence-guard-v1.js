@@ -14,7 +14,18 @@ function read(){
 function merge(base,local){
   var map={},order=[];
   (Array.isArray(base)?base:[]).forEach(function(r){var k=codeOf(r);if(!k)return;if(!map[k])order.push(k);map[k]=r});
-  (Array.isArray(local)?local:[]).forEach(function(r){var k=codeOf(r);if(!k)return;if(!map[k])order.push(k);map[k]=r});
+  (Array.isArray(local)?local:[]).forEach(function(r){
+    var k=codeOf(r);if(!k)return;if(!map[k])order.push(k);
+    var existing=map[k]||{};
+    var merged=Object.assign({},existing);
+    Object.keys(r).forEach(function(p){
+      var v=r[p];
+      if(v!==undefined && v!==null && String(v).trim()!==""){
+        merged[p]=v;
+      }
+    });
+    map[k]=merged;
+  });
   return order.map(function(k){return map[k]});
 }
 function persist(){

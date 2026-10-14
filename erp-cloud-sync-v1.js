@@ -76,7 +76,19 @@
     employeeRecords(local).forEach(function(r){var k=keyOf(r);if(!k)return;if(!map[k])order.push(k);map[k]=r});
     employeeRecords(cloud).forEach(function(r){
       var k=keyOf(r);if(!k)return;if(!map[k])order.push(k);
-      if(!dirty[k]){map[k]=cloudRecord(r);return}
+      if(!dirty[k]){
+        var cr=cloudRecord(r);
+        var existing=map[k]||{};
+        var merged=Object.assign({},existing);
+        Object.keys(cr).forEach(function(p){
+          var v=cr[p];
+          if(v!==undefined && v!==null && String(v).trim()!==""){
+            merged[p]=v;
+          }
+        });
+        map[k]=merged;
+        return;
+      }
       if(map[k]&&samePayload(map[k],r)){map[k]=cloudRecord(r);clearDirty(k)}
       else if(map[k]&&text(map[k]._cloud_updated_at)&&text(r._cloud_updated_at)!==text(map[k]._cloud_updated_at))conflicts[k]={remote:cloudRecord(r),error:'Cloud changed while local edit is pending.'};
     });
