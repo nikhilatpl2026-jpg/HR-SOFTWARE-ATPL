@@ -12,7 +12,7 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.10.14-v30-dataurl-pdf-fix';
+var BUILD='2026.09.28-production-v22-supabase-original-repair';
 if(!root)return;
 if(root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__===BUILD)return;
 root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
