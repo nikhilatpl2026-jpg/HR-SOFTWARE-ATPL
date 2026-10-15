@@ -910,6 +910,7 @@ async function openViewer(type,id){
   }
   var ext = String(rec.name || "").split(".").pop().toLowerCase();
   var pdfBlob = (ext === "pdf" && blob.type !== "application/pdf") ? new Blob([blob], { type: "application/pdf" }) : blob;
+  if(viewer.url){try{URL.revokeObjectURL(viewer.url)}catch(_){}viewer.url=''}
   var blobUrl = URL.createObjectURL(pdfBlob);
   viewer.url = blobUrl;
   if (btnNewTab) btnNewTab.onclick = function() { openPdfInSafeTab(pdfBlob, rec.name || "Challan.pdf"); };
@@ -942,13 +943,14 @@ async function openViewer(type,id){
     (async function() {
       var cont = document.getElementById('cd2-pdf-canvas-container');
       if (!cont) return;
+      var renderError = null;
       try {
-        var ab = await blob.arrayBuffer();
+        var ab = await pdfBlob.arrayBuffer();
         var pLib = window.pdfjsLib;
         if (!pLib) {
           await new Promise(function(resolve, reject) {
             var s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+            s.src = 'pdf.min.js';
             s.onload = function() { resolve(); };
             s.onerror = function() { reject(new Error('PDF.js CDN load failed')); };
             document.head.appendChild(s);
@@ -958,14 +960,16 @@ async function openViewer(type,id){
 
         if (pLib) {
           if (pLib.GlobalWorkerOptions) {
-            pLib.GlobalWorkerOptions.workerSrc = '';
+            pLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
           }
           var bytes = new Uint8Array(ab.slice(0));
+          var header = new TextDecoder('ascii').decode(bytes.slice(0,Math.min(1024,bytes.length)));
+          if(header.indexOf('%PDF-')===-1)throw new Error('Cloud file is not a valid PDF. Please re-upload the original.');
           var pdf = await pLib.getDocument({
             data: bytes,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
             cMapPacked: true,
-            disableWorker: true,
+            disableWorker: false,
             isEvalSupported: false
           }).promise;
 
@@ -1049,25 +1053,17 @@ async function openViewer(type,id){
           return;
         }
       } catch (cvErr) {
-        console.warn('PDF canvas render fallback to cross-browser embed:', cvErr);
+        renderError=cvErr;
+        console.warn('PDF.js failed to render challan:', cvErr);
       }
 
-      // Cross-Browser Embed Fallback (NEVER uses iframe that Chrome blocks)
-      if (cont) {
-        cont.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:12px;">' +
-          '<div style="width:100%;max-width:900px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;color:#f8fafc;font-size:12px;">' +
-            '<div><b>📄 ' + esc(rec.name) + '</b> <span style="color:#94a3b8;">(' + sizeKb + ' KB · Verified Document)</span></div>' +
-            '<div style="display:flex;gap:8px;">' +
-              '<a href="' + blobUrl + '" download="' + esc(rec.name) + '" style="padding:6px 14px;background:#16a34a;color:#fff;border-radius:6px;font-size:11px;font-weight:700;text-decoration:none;">⬇ Download PDF</a>' +
-              '<button type="button" id="cd2-fb-tab" style="padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">↗ Open Dedicated Viewer</button>' +
-            '</div>' +
-          '</div>' +
-          '<object data="' + blobUrl + '" type="application/pdf" style="width:100%;max-width:900px;flex:1;min-height:540px;border-radius:8px;border:1px solid #334155;background:#334155;">' +
-            '<embed src="' + blobUrl + '" type="application/pdf" style="width:100%;height:100%;min-height:540px;border:none;">' +
-          '</object>' +
-        '</div>';
-        var fbTab = document.getElementById('cd2-fb-tab');
-        if (fbTab) fbTab.onclick = function() { openPdfInSafeTab(pdfBlob, rec.name); };
+      // Do not embed blob URLs as a fallback: Chrome shows a broken-file icon.
+      if(cont){
+        cont.innerHTML='<div style="margin:60px auto;max-width:680px;padding:24px;background:#0f172a;border:1px solid #334155;border-radius:12px;color:#e2e8f0;text-align:center;">' +
+          '<strong>PDF preview unavailable</strong>' +
+          '<p style="color:#94a3b8;font-size:12px;line-height:1.6;">' + esc(renderError&&renderError.message||'PDF rendering failed') + '</p>' +
+          '<p style="color:#94a3b8;font-size:12px;">Use Download PDF or Open in Tab above. If neither opens it, re-upload the original PDF.</p>' +
+          '</div>';
       }
     })();
     return;
