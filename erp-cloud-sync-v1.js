@@ -45,6 +45,10 @@
   function clearDirty(id){var k=idKey(id);if(dirty[k]){delete dirty[k];savePending()}if(conflicts[k])delete conflicts[k]}
   function api(params,timeout){/* broker-routed-cloud-sync */if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(params,{timeout:timeout,source:'employee-master'});return new Promise(function(resolve,reject){var cb='__atpl_cloud_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Cloud sync timeout'))},timeout||15000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}root[cb]=function(data){finish();resolve(data||{})};params=params||{};params.callback=cb;params._ts=Date.now();var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Cloud sync connect failed'))};s.async=true;s.src=API+'?'+qs;(root.document.head||root.document.documentElement).appendChild(s)})}
   function markBackend(data){if(data&&data.ok===false&&/unknown action/i.test(text(data.error))){backendReady=false;return false}if(data&&data.ok===true){backendReady=true;return true}return backendReady===true}
+  var DELETED='ATPL_EmployeeMasterDeletedV1';
+  function deletedMap(){return J(root.localStorage.getItem(DELETED)||'{}',{})}
+  function wasDeleted(k){return !!deletedMap()[idKey(k)]}
+  function markDeleted(k){var m=deletedMap();m[idKey(k)]=new Date().toISOString();root.localStorage.setItem(DELETED,JSON.stringify(m));delete queueMap[idKey(k)];queueOrder=queueOrder.filter(function(x){return x!==idKey(k)})}
   var cloudCache=null,cloudCacheTime=0;async function fetchCloud(force){var now=Date.now();if(!force&&cloudCache&&Array.isArray(cloudCache)&&(now-cloudCacheTime<12000))return cloudCache;var token=tok();if(!token)throw new Error('Login token missing');var d=await api({action:'getEmployeeMaster',token:token},8000);if(!markBackend(d)||!Array.isArray(d.records))throw new Error(d&&d.error||'Employee Master backend unavailable');cloudCache=employeeRecords(d.records);cloudCacheTime=Date.now();return cloudCache}
   function remoteMap(records){var m={};employeeRecords(records).forEach(function(r){var k=keyOf(r);if(k)m[k]=r});return m}
   function conflictCheck(record,baseRecord,remote){
@@ -72,25 +76,16 @@
     }finally{syncing=false}
   }
   function mergeCloud(local,cloud){
-    var map={},order=[];
-    employeeRecords(local).forEach(function(r){var k=keyOf(r);if(!k)return;if(!map[k])order.push(k);map[k]=r});
+    // Server snapshot is authoritative. Old browser caches must never resurrect deleted employees.
+    var map={},order=[],localMap={};
+    employeeRecords(local).forEach(function(r){var k=keyOf(r);if(k)localMap[k]=r});
     employeeRecords(cloud).forEach(function(r){
-      var k=keyOf(r);if(!k)return;if(!map[k])order.push(k);
-      if(!dirty[k]){
-        var cr=cloudRecord(r);
-        var existing=map[k]||{};
-        var merged=Object.assign({},existing);
-        Object.keys(cr).forEach(function(p){
-          var v=cr[p];
-          if(v!==undefined && v!==null && String(v).trim()!==""){
-            merged[p]=v;
-          }
-        });
-        map[k]=merged;
-        return;
-      }
-      if(map[k]&&samePayload(map[k],r)){map[k]=cloudRecord(r);clearDirty(k)}
-      else if(map[k]&&text(map[k]._cloud_updated_at)&&text(r._cloud_updated_at)!==text(map[k]._cloud_updated_at))conflicts[k]={remote:cloudRecord(r),error:'Cloud changed while local edit is pending.'};
+      var k=keyOf(r);if(!k||wasDeleted(k))return;
+      if(!map[k])order.push(k);map[k]=cloudRecord(r);
+    });
+    // Keep a visible unsaved edit only while awaiting an explicit server write.
+    Object.keys(dirty).forEach(function(k){
+      if(!map[k]&&!wasDeleted(k)&&localMap[k]){order.push(k);map[k]=localMap[k]}
     });
     return order.map(function(k){return map[k]})
   }
@@ -107,6 +102,7 @@
   }
   function saveMaster(record,opts){
     opts=opts||{};var k=keyOf(record);if(!k)return Promise.resolve({ok:false,error:'Employee code required'});
+    if(wasDeleted(k))return Promise.resolve({ok:false,error:'Employee code was permanently deleted; contact administrator to restore it.'});
     return serialize(k,async function(){
       try{
         var remote=remoteMap(await fetchCloud())[k]||null;
@@ -119,7 +115,7 @@
         if(remote&&samePayload(record,remote)){
           var already=cloudRecord(remote);clearDirty(k);if(opts.commitLocal)commitConfirmed(already);return{ok:true,record:already,verified:true,noChange:true}
         }
-        await upsertRaw(record);var confirmed=cloudRecord(record);if(cloudCache&&Array.isArray(cloudCache)){var cIdx=cloudCache.findIndex(function(x){return keyOf(x)===k});if(cIdx>=0)cloudCache[cIdx]=confirmed;else cloudCache.push(confirmed);cloudCacheTime=Date.now()}clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);return{ok:true,record:confirmed,verified:true}
+        await upsertRaw(record);cloudCache=null;var verifiedRecord=remoteMap(await fetchCloud(true))[k];if(!verifiedRecord)throw new Error('Cloud save was not confirmed by a fresh read');var confirmed=cloudRecord(verifiedRecord);clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);return{ok:true,record:confirmed,verified:true}
       }catch(e){
         if(opts.background)markDirty(record);
         return{ok:false,error:e&&e.message?e.message:String(e)}
@@ -155,7 +151,7 @@
     async function worker(){while(true){var i=at++;if(i>=safe.length)return;var x=safe[i];try{await serialize(x.key,function(){return upsertRaw(x.record)});}catch(e){writeErrors[x.key]=e&&e.message?e.message:String(e)}}}
     var ws=[];for(var n=0;n<Math.min(2,safe.length);n++)ws.push(worker());await Promise.all(ws);
     var verifyRecords=[];
-    try{verifyRecords=await fetchCloud()}catch(e){safe.forEach(function(x){if(!writeErrors[x.key])writeErrors[x.key]='Save sent but backend read-back failed: '+e.message})}
+    try{verifyRecords=await fetchCloud(true)}catch(e){safe.forEach(function(x){if(!writeErrors[x.key])writeErrors[x.key]='Save sent but backend read-back failed: '+e.message})}
     var vm=remoteMap(verifyRecords);
     safe.forEach(function(x){
       var v=vm[x.key];
@@ -164,8 +160,7 @@
         clearDirty(x.key);
         results.push({ok:true,record:cloudRecord(Object.assign({}, v, x.record)),verified:true});
       } else {
-        clearDirty(x.key);
-        results.push({ok:true,record:cloudRecord(x.record),verified:true});
+        results.push({ok:false,error:'Fresh cloud read did not contain saved employee',record:x.record});
       }
     });
     var saved=results.filter(function(x){return x.ok}).length,failed=results.length-saved;
@@ -175,20 +170,20 @@
     opts=opts||{};var k=idKey(id);if(!k)return Promise.resolve({ok:false,error:'Employee code required'});
     return serialize(k,async function(){
       try{
-        var records=await fetchCloud(),remote=remoteMap(records)[k]||null;
+        var records=await fetchCloud(true),remote=remoteMap(records)[k]||null;
         if(remote&&opts.baseRecord){
           var conf=conflictCheck(opts.baseRecord,opts.baseRecord,remote);
           if(conf&&!samePayload(opts.baseRecord,remote)){conflicts[k]=conf;return{ok:false,conflict:true,error:conf.error,remote:conf.remote}}
         }else if(remote&&!opts.baseRecord)return{ok:false,conflict:true,error:'Refresh Employee Master before deleting this record.',remote:cloudRecord(remote)};
         var d=await api({action:'deleteEmployeeMaster',token:tok(),emp_id:codeOf(remote||opts.baseRecord||{emp_id:id})},18000);
         if(!markBackend(d)||!d.ok)throw new Error(d&&d.error||'Backend delete failed');
-        var verify=remoteMap(await fetchCloud())[k];if(verify)throw new Error('Backend delete was not confirmed');
-        clearDirty(k);return{ok:true,verified:true}
+        cloudCache=null;var verify=remoteMap(await fetchCloud(true))[k];if(verify)throw new Error('Backend delete was not confirmed by a fresh cloud read');
+        clearDirty(k);markDeleted(k);return{ok:true,verified:true}
       }catch(e){return{ok:false,error:e&&e.message?e.message:String(e)}}
     })
   }
   function pushRecord(r){
-    var k=keyOf(r);if(!k||conflicts[k]||backendReady===false)return Promise.resolve(false);
+    var k=keyOf(r);if(!k||wasDeleted(k)||conflicts[k]||backendReady===false)return Promise.resolve(false);
     markDirty(r);return saveMaster(r,{baseRecord:r,background:true,commitLocal:true}).then(function(x){return !!(x&&x.ok)})
   }
   function pump(){
@@ -198,7 +193,7 @@
     }
   }
   function enqueue(records){
-    employeeRecords(records).forEach(function(r){var k=keyOf(r);if(!k||conflicts[k])return;var isNew=!queueMap[k];queueMap[k]=r;if(isNew)queueOrder.push(k)});pump()
+    employeeRecords(records).forEach(function(r){var k=keyOf(r);if(!k||wasDeleted(k)||conflicts[k])return;var isNew=!queueMap[k];queueMap[k]=r;if(isNew)queueOrder.push(k)});pump()
   }
   function changed(before,after){
     var b={},out=[];employeeRecords(before).forEach(function(r){var k=keyOf(r);if(k)b[k]=stableRecord(r)});
@@ -208,16 +203,20 @@
     try{
       if(!tok()||backendReady===false)return;
       var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[])),map={};local.forEach(function(r){var k=keyOf(r);if(k)map[k]=r});
-      var retry=[];Object.keys(dirty).forEach(function(k){if(map[k]&&!conflicts[k])retry.push(map[k])});if(retry.length)enqueue(retry)
+      var retry=[];Object.keys(dirty).forEach(function(k){if(map[k]&&!wasDeleted(k)&&!conflicts[k])retry.push(map[k])});if(retry.length)enqueue(retry)
     }catch(_){}
   }
-  function pullMaster(force){
-    return Promise.resolve(true); // Neutralized: local Employee Master is authoritative and synced via central backend
-    var _disabled_ = function(){
-    var token=tok();if(!token||backendReady===false)return Promise.resolve(false);if(!force&&Date.now()-lastPull<8000)return Promise.resolve(false);lastPull=Date.now();
-    return fetchCloud().then(function(cloud){var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));if(!cloud.length){var u=session();if(u&&u.admin===true&&local.length)enqueue(local);return true}var merged=mergeCloud(local,cloud);if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);return true}).catch(function(){return false})
+  async function pullMaster(force){
+    if(!tok())return false;
+    try{
+      var cloud=await fetchCloud(true);
+      var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));
+      var merged=mergeCloud(local,cloud);
+      if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);
+      lastPull=Date.now();return true;
+    }catch(e){console.warn('Employee Master cloud refresh unavailable',e);return false}
   }
-  }; function syncSharedModules(){try{if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')root.ATPLSharedActivityV2.syncCloud()}catch(_){}}
+ function syncSharedModules(){try{if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')root.ATPLSharedActivityV2.syncCloud()}catch(_){}}
   function wakeCloud(delay){try{if(wakeTimer)root.clearTimeout(wakeTimer);wakeTimer=root.setTimeout(function(){wakeTimer=0;if(!tok())return;retryPending();probe();syncSharedModules()},delay==null?80:delay)}catch(_){}}
   function patchStorage(){
     try{
@@ -226,14 +225,23 @@
         var sk=String(k),isMaster=this===root.localStorage&&sk===MASTER&&!syncing,isToken=this===root.sessionStorage&&(sk===TOKEN||sk===ALT_TOKEN),before=isMaster?employeeRecords(J(this.getItem(k)||'[]',[])):null;
         if(isMaster){try{v=JSON.stringify(employeeRecords(J(String(v||'[]'),[])))}catch(_){}}
         var res=old.call(this,k,v);
-        if(isMaster){var after=employeeRecords(J(String(v||'[]'),[])),c=changed(before,after);if(c.length){c.forEach(markDirty);enqueue(c)}}
+        // Local storage edits are not permission to recreate cloud employees. Explicit saves use saveMaster.
         if(isToken&&text(v))wakeCloud(60);return res
       };proto.__atplCloudMasterV13=true
     }catch(_){}
   }
   function addStatusBadge(){try{if(root.document.getElementById('atplCloudSyncBadge'))return;var h=root.document.querySelector('.header-right');if(!h)return;var b=root.document.createElement('span');b.id='atplCloudSyncBadge';b.style.cssText='display:none;font-size:9px;padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700';b.textContent='☁ Shared Data';h.appendChild(b)}catch(_){}}
   function paint(){var b=root.document.getElementById('atplCloudSyncBadge');if(!b)return;b.style.display=backendReady===true?'inline-flex':'none';b.textContent=Object.keys(conflicts).length?'⚠ Shared Data Conflict':'☁ Shared Data';b.style.background=Object.keys(conflicts).length?'#fffbeb':'#ecfdf5';b.style.color=Object.keys(conflicts).length?'#92400e':'#047857'}
-  function probe(){if(!tok())return Promise.resolve(false);return fetchCloud().then(function(cloud){paint();var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));if(cloud.length){var merged=mergeCloud(local,cloud);if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged)}else{var u=session();if(u&&u.admin===true&&local.length)enqueue(local)}return true}).catch(function(){paint();return false})}
+  function probe(){
+    if(!tok())return Promise.resolve(false);
+    return fetchCloud(true).then(function(cloud){
+      paint();
+      var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));
+      var merged=mergeCloud(local,cloud);
+      if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);
+      return true;
+    }).catch(function(e){console.warn('Employee Master cloud unavailable',e);paint();return false})
+  }
   function boot(){patchStorage();addStatusBadge();tok();root.setTimeout(probe,2600);root.addEventListener('online',function(){wakeCloud(500)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&tok()&&Date.now()-lastPull>60000)wakeCloud(250)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-employee,#vn-emaster,#vn-emp,#vn-employees,#vn-empmaster'):null;if(x)root.setTimeout(function(){retryPending();pullMaster(true);syncSharedModules()},120)},false)}
   root.ATPLCloudSyncV1={
     pullMaster:function(){return pullMaster(true)},
