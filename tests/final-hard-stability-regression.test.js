@@ -72,7 +72,7 @@ test('startup sync is event-driven with bounded critical cloud waits',()=>{
   assert.equal(cloud.includes('setInterval('),false);
   assert.equal(dur.includes('setInterval('),false);
   assert.equal(h.includes('setInterval(aroraRemoveHistory'),false);
-  assert.ok(mobile.includes("getEmployeeMaster',token:t},7000"));
+  assert.ok(mobile.includes("getEmployeeMaster',token:t},10000"));
   assert.ok(mobile.includes("user_id:uid,password_hash:h},9000"));
   assert.ok(cloud.includes("visibilitychange"));
   assert.ok(dur.includes("requestIdleCallback"));

@@ -199,6 +199,7 @@
     },
 
     fetchEmployeeMasterOnStartup: function() {
+      if(window.ATPLCloudSyncV1){return window.ATPLCloudSyncV1.pullMaster();}
       var base = this.apiBase || "";
       fetch(base + "/api/sync/employee-master?_t=" + Date.now(), { cache: "no-store" })
         .then(r => r.json())
@@ -290,6 +291,7 @@
         es.addEventListener('salary_file_deleted', (e) => { this.handleRemoteFileDeleted(e.data); });
         es.addEventListener('salary_clear_all', (e) => { this.clearModule('salary', true); });
         es.addEventListener("employee_master_updated", (e) => {
+          if(window.ATPLCloudSyncV1){window.ATPLCloudSyncV1.pullMaster();return;}
           try {
             var msg = JSON.parse(e.data || "{}");
             var recs = msg.records || (msg.data && msg.data.records);

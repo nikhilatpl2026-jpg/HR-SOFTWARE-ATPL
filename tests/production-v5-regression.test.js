@@ -89,7 +89,7 @@ test('shared sync is backend-authoritative without recurring poll',()=>{
 test('live index cache-busts Sep-21 shared authority scripts',()=>{
   const h=read('index.html');
   [
-    'erp-mobile-shared-hardfix-v1.js?v=20260921-permission-sync2',
+    'erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1',
     'erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol',
     'erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3'
   ].forEach(x=>assert.ok(h.includes(x),x));
@@ -110,7 +110,7 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
 test('DOL Supabase authority preserves migrated history without browser-local authority',()=>{
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
   assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260928-production22-supabase-original-repair'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20261015-verified-delete-pdf-v1'));
   assert.ok(h.indexOf('compliance-dol-cloud-v4.js') < h.indexOf('compliance-dol-supabase-v2.js'));
   assert.ok(h.indexOf('compliance-dol-supabase-v2.js') < h.indexOf('compliance-dol-rebuild-v2.js'));
   assert.ok(d.includes("production-v22-supabase-original-repair"));
@@ -125,7 +125,7 @@ test('DOL delete is permanent across devices and search reads fresh Supabase aut
   const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
   assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
-  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20260928-production22-supabase-original-repair'));
+  assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20261015-verified-delete-pdf-v1'));
   [
     'production-v22-supabase-original-repair',
     "mode:'supabase'",

@@ -134,7 +134,7 @@ function getEmployeeMaster_(p){
     if (String(x.emp_id||'').indexOf('__ATPL_SYS__')===0) return;
     try{
       var r=JSON.parse(x.json);
-      if (r && r._atpl_system===true) return;
+      if (r && (r._atpl_system===true || r._atpl_deleted===true)) return;
       r._cloud_updated_by=x.updated_by;
       r._cloud_updated_at=x.updated_at;
       out.push(r);
@@ -172,8 +172,26 @@ function systemKindAllowed_(u,kind){
   return false;
 }
 
-function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}var system=id.indexOf('__ATPL_SYS__')===0||obj._atpl_system===true;if(system){if(id.indexOf('__ATPL_SYS__')!==0||obj._atpl_system!==true)return {ok:false,error:'Invalid system record'};if(!systemKindAllowed_(u,String(obj.object_kind||'')))return {ok:false,error:'Access denied for system record'};}else if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied for Employee Master'};obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id);if(old){try{var prev=JSON.parse(old.json);if(!!prev._atpl_system!==!!obj._atpl_system||String(prev.object_kind||'')!==String(obj.object_kind||''))return {ok:false,error:'Record category cannot be changed'};}catch(_){}}var now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
-function deleteEmployeeMaster_(p){var u=requireUser_(p.token),old=findMaster_(p.emp_id);if(!old)return {ok:true};try{var obj=JSON.parse(old.json);if(obj._atpl_system===true){if(!systemKindAllowed_(u,String(obj.object_kind||'')))return {ok:false,error:'Access denied'};}else if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied'};}catch(_){if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied'};}var lock=LockService.getScriptLock();lock.waitLock(10000);try{ensureDataSheets_().master.deleteRow(old.row);return {ok:true,deleted:String(p.emp_id||''),deleted_by:u.id};}finally{lock.releaseLock();}}
+function upsertEmployeeMaster_(p){var u=requireUser_(p.token),id=String(p.emp_id||'').trim(),raw=String(p.record_json||'');if(!id||!raw)return {ok:false,error:'emp_id and record_json required'};var obj;try{obj=JSON.parse(raw);}catch(_){return {ok:false,error:'Invalid employee JSON'};}var system=id.indexOf('__ATPL_SYS__')===0||obj._atpl_system===true;if(system){if(id.indexOf('__ATPL_SYS__')!==0||obj._atpl_system!==true)return {ok:false,error:'Invalid system record'};if(!systemKindAllowed_(u,String(obj.object_kind||'')))return {ok:false,error:'Access denied for system record'};}else if(!hasFeature_(u,'empmaster'))return {ok:false,error:'Access denied for Employee Master'};obj.emp_id=String(obj.emp_id||id).trim();if(obj.emp_id.toLowerCase()!==id.toLowerCase())return {ok:false,error:'Employee code mismatch'};var sh=ensureDataSheets_().master,lock=LockService.getScriptLock();lock.waitLock(10000);try{var old=findMaster_(id);if(old){try{var prev=JSON.parse(old.json);if(prev._atpl_deleted===true)return {ok:false,error:'Employee permanently deleted; stale re-upload blocked'};if(!!prev._atpl_system!==!!obj._atpl_system||String(prev.object_kind||'')!==String(obj.object_kind||''))return {ok:false,error:'Record category cannot be changed'};}catch(_){}}var now=new Date().toISOString(),row=[id,JSON.stringify(obj),u.id,now];if(old)sh.getRange(old.row,1,1,4).setValues([row]);else sh.appendRow(row);return {ok:true,emp_id:id,updated_by:u.id,updated_at:now};}finally{lock.releaseLock();}}
+function deleteEmployeeMaster_(p){
+  var u=requireUser_(p.token),id=String(p.emp_id||'').trim();
+  if(!id||!hasFeature_(u,'empmaster'))return {ok:false,error:'Employee Master delete not authorized'};
+  var lock=LockService.getScriptLock();lock.waitLock(10000);
+  try{
+    // Re-read while holding the lock: deletion and stale save cannot race.
+    var old=findMaster_(id);
+    if(!old)return {ok:true,already_deleted:true};
+    var obj={};
+    try{obj=JSON.parse(old.json||'{}')}catch(_){}
+    if(obj._atpl_system===true)return {ok:false,error:'System records cannot be deleted via Employee Master'};
+    if(obj._atpl_deleted===true)return {ok:true,already_deleted:true};
+    var deletedAt=new Date().toISOString();
+    // Server-side tombstone blocks older browser tabs from reviving this employee.
+    var tombstone={emp_id:id,_atpl_deleted:true,deleted_at:deletedAt,deleted_by:u.id};
+    ensureDataSheets_().master.getRange(old.row,1,1,4).setValues([[id,JSON.stringify(tombstone),u.id,deletedAt]]);
+    return {ok:true,deleted:id,deleted_by:u.id,deleted_at:deletedAt};
+  }finally{lock.releaseLock()}
+}
 
 
 function appendActivity_(p){var u=requireUser_(p.token),sh=ensureDataSheets_().activity,now=new Date().toISOString(),id=Utilities.getUuid();var meta=String(p.meta_json||'{}');try{JSON.parse(meta);}catch(_){meta='{}';}var lock=LockService.getScriptLock();lock.waitLock(10000);try{sh.appendRow([id,u.id,u.name,String(p.event_type||'activity'),String(p.page||''),String(p.action_text||p.action_name||''),meta,now]);}finally{lock.releaseLock();}return {ok:true,event_id:id,created_at:now};}

@@ -2,6 +2,8 @@ name: Final Hard Stability Regression
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 jobs:
   regression:

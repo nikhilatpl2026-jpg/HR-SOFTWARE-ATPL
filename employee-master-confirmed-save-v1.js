@@ -46,9 +46,12 @@ function refreshMasterUi(){
 function syncLegacyArray(){
   try{if(Array.isArray(g.EMP_MASTER_DATA)&&g.EM&&Array.isArray(g.EM.data)){g.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(g.EMP_MASTER_DATA,g.EM.data)}}catch(_){}
 }
-function persistConfirmed(){
+function persistConfirmed(opts){
   var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
   syncLegacyArray();
+  // Only the verified backend may distribute Employee Master snapshots.
+  // Never broadcast an unconfirmed local snapshot into Firebase or another server.
+  if((opts&&opts.skipMirrors)||cloud())return;
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
       var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
@@ -91,147 +94,127 @@ function fieldsToEmployee(){
 }
 async function confirmedSingleSave(){
   if(busy)return;
-  ensureUi();
-  var bulkPanel = g.document.getElementById("emTabPanel-bulk");
-  var isBulkTab = bulkPanel && (bulkPanel.style.display === "flex" || bulkPanel.style.display !== "none");
-  var bulkArea = g.document.getElementById("emBulkPasteArea");
-  var hasBulkText = bulkArea && bulkArea.value && bulkArea.value.trim().length > 0;
-  if(isBulkTab || hasBulkText || (Array.isArray(g.EM_BULK_ROWS) && g.EM_BULK_ROWS.length > 0)){
-    return confirmedBulkSave();
-  }
-  if(!g.EM||!Array.isArray(g.EM.data)){
-    paint('failed','Save Failed — Retry',confirmedSingleSave);
-    return;
-  }
+  var bulkPanel=g.document.getElementById('emTabPanel-bulk');
+  var bulkArea=g.document.getElementById('emBulkPasteArea');
+  var isBulkTab=bulkPanel&&(bulkPanel.style.display==='flex'||bulkPanel.style.display!=='none');
+  if(isBulkTab||(bulkArea&&bulkArea.value&&bulkArea.value.trim())||(Array.isArray(g.EM_BULK_ROWS)&&g.EM_BULK_ROWS.length))return confirmedBulkSave();
+  if(!g.EM||!Array.isArray(g.EM.data))return;
   if(typeof g.validateSingle==='function'&&!g.validateSingle())return;
   var entered=fieldsToEmployee();
   if(!entered){alert('Employee Code aur Name mandatory hain!');return}
   var edit=Number(g.EM.editIdx);
   var original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null;
   var candidate=Object.assign({},original||{},entered);
-
-  /* 1. INSTANT LOCAL COMMIT (0ms latency — instant save & close) */
-  if(edit>=0&&g.EM.data[edit]){
-    g.EM.data[edit]=candidate;
-  } else {
-    var exIdx = g.EM.data.findIndex(function(x){ return empKey(x)===empKey(candidate); });
-    if(exIdx>=0){
-      g.EM.data[exIdx]=Object.assign({}, g.EM.data[exIdx], candidate);
-    } else {
-      g.EM.data.push(candidate);
-    }
-  }
-  persistConfirmed();
-  refreshMasterUi();
-  paint('saved','Saved ✓',null);
-  info('Saved ✓ — Record saved successfully.',false);
-  if(typeof g.emCloseModal==='function') g.emCloseModal();
-
-  /* 2. NON-BLOCKING ASYNC CLOUD SYNC in background */
   var c=cloud();
-  if(c && typeof c.saveMaster==='function'){
-    c.saveMaster(candidate,{baseRecord:original,isNew:edit<0,background:true,commitLocal:true}).then(function(res){
-      if(res && res.duplicate){
-        paint('failed','Employee Already Exists',null);
-        info((res.error||'Employee code already exists in shared backend.'),true);
-      } else if(res && res.ok){
-        paint('saved','Saved ✓',null);
-      }
-    }).catch(function(e){
-      console.warn('[Cloud Sync] Background single save queued:', e);
-    });
+  if(!c||typeof c.saveMaster!=='function'){
+    paint('failed','Cloud unavailable — not saved',confirmedSingleSave);return;
   }
+  busy=true;setButtonBusy(true);paint('saving','Saving to shared cloud…',null);
+  try{
+    var res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false});
+    if(!res||!res.ok||!res.verified){
+      var err=res&&res.error||'Cloud write not verified';
+      paint('failed','Save failed — Retry',confirmedSingleSave);info(err,true);
+      return;
+    }
+    var verified=copy(res.record||candidate),k=empKey(verified);
+    var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
+    if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
+    persistConfirmed({skipMirrors:true});refreshMasterUi();
+    paint('saved','Saved to cloud ✓',null);info('Saved ✓ — Backend read-back verified.',false);
+    if(typeof g.emCloseModal==='function')g.emCloseModal();
+  }catch(e){
+    paint('failed','Save failed — Retry',confirmedSingleSave);info(e&&e.message||String(e),true);
+  }finally{busy=false;setButtonBusy(false)}
 }
 async function confirmedBulkSave(){
   if(busy)return;
-  ensureUi();
-  if(!Array.isArray(g.EM_BULK_ROWS) || !g.EM_BULK_ROWS.length){
-    var bulkArea = g.document.getElementById("emBulkPasteArea");
-    if(bulkArea && bulkArea.value && bulkArea.value.trim().length > 0){
-      if(typeof g.emParseBulkPaste === "function") g.emParseBulkPaste();
-    }
+  if(!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length){
+    var area=g.document.getElementById('emBulkPasteArea');
+    if(area&&area.value&&area.value.trim()&&typeof g.emParseBulkPaste==='function')g.emParseBulkPaste();
   }
-  if(!Array.isArray(g.EM_BULK_ROWS) || !g.EM_BULK_ROWS.length){
-    alert("Koi valid employee row nahi mili. Check karo Excel se data copy karke yahan paste kiya gaya hai ya nahi.");
-    return;
+  if(!Array.isArray(g.EM_BULK_ROWS)||!g.EM_BULK_ROWS.length){
+    alert('Valid Employee Master rows nahi mile. Please check pasted Excel data.');return;
   }
-  var rowsToSave = g.EM_BULK_ROWS.slice();
-
-  /* 1. INSTANT LOCAL COMMIT for all rows (0ms latency) */
-  rowsToSave.forEach(function(emp, rIdx){
-    var k = empKey(emp);
-    if (!k) {
-      k = (emp.sr_no ? String(emp.sr_no).replace(/\D/g, "") : "") || ("EMP" + (Date.now().toString().slice(-4)) + (rIdx + 1));
-      emp.emp_id = k;
-    }
-    var idx = g.EM && Array.isArray(g.EM.data) ? g.EM.data.findIndex(function(y){ return empKey(y)===k; }) : -1;
-    if(idx >= 0) {
-      // PRESERVE EXISTING DATA: Never wipe existing account_no, ifsc, bank_name, etc. with blank/empty values!
-      var oldRec = g.EM.data[idx];
-      var merged = Object.assign({}, oldRec);
-      Object.keys(emp).forEach(function(fld) {
-        var v = emp[fld];
-        if (v !== undefined && v !== null && String(v).trim() !== '') {
-          merged[fld] = v;
-        }
-      });
-      g.EM.data[idx] = merged;
-    }
-    else if(g.EM && Array.isArray(g.EM.data)) g.EM.data.push(copy(emp));
+  if(!g.EM||!Array.isArray(g.EM.data))return;
+  var c=cloud();
+  if(!c||typeof c.saveMany!=='function'){
+    paint('failed','Cloud unavailable — not saved',confirmedBulkSave);return;
+  }
+  var rows=g.EM_BULK_ROWS.slice();
+  var items=rows.map(function(emp){
+    var k=empKey(emp),old=g.EM.data.find(function(y){return empKey(y)===k})||null;
+    // PRESERVE EXISTING DATA: do not overwrite account, IFSC or bank fields with blank paste cells.
+    var merged=Object.assign({},old||{});
+    Object.keys(emp).forEach(function(f){
+      var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;
+    });
+    return{record:merged,baseRecord:old?copy(old):null};
   });
-  persistConfirmed();
-  refreshMasterUi();
-  paint("saved", "Saved ✓", null);
-  info("Saved ✓ — " + rowsToSave.length + " employee row(s) saved in Master.", false);
-  g.EM_BULK_ROWS = [];
-  if(typeof g.emCloseModal === "function") g.emCloseModal();
-  alert("✅ " + rowsToSave.length + " Employees successfully Employee Master mein save ho gaye!");
-
-  /* 2. NON-BLOCKING ASYNC CLOUD SYNC in background */
-  var c = cloud();
-  if(c && typeof c.saveMany === "function"){
-    var items = rowsToSave.map(function(emp){
-      var k = empKey(emp), old = (g.EM && Array.isArray(g.EM.data) ? g.EM.data.find(function(x){ return empKey(x)===k; }) : null);
-      var merged = Object.assign({}, old || {});
-      Object.keys(emp).forEach(function(fld) {
-        var v = emp[fld];
-        if (v !== undefined && v !== null && String(v).trim() !== '') {
-          merged[fld] = v;
-        }
-      });
-      return { record: merged, baseRecord: old ? copy(old) : null };
+  busy=true;setButtonBusy(true);paint('saving','Verifying bulk save in cloud…',null);
+  try{
+    var res=await c.saveMany(items),resultRows=res&&Array.isArray(res.results)?res.results:[];
+    var confirmed=resultRows.filter(function(x){return x.ok&&x.verified&&x.record});
+    confirmed.forEach(function(x){
+      var k=empKey(x.record),i=g.EM.data.findIndex(function(y){return empKey(y)===k});
+      if(i>=0)g.EM.data[i]=copy(x.record);else g.EM.data.push(copy(x.record));
     });
-    c.saveMany(items).then(function(res){
-      if(res && res.ok){
-        paint("saved", "Saved ✓", null);
-      }
-    }).catch(function(e){
-      console.warn("[Cloud Sync] Background bulk save queued:", e);
-    });
-  }
+    if(confirmed.length){
+      persistConfirmed({skipMirrors:true});refreshMasterUi();
+    }
+    var done={};confirmed.forEach(function(x){done[empKey(x.record)]=true});
+    g.EM_BULK_ROWS=rows.filter(function(x){return !done[empKey(x)]});
+    if(!g.EM_BULK_ROWS.length){
+      paint('saved','All '+confirmed.length+' rows saved ✓',null);
+      info('Verified cloud save ✓ — '+confirmed.length+' employees.',false);
+      if(typeof g.emCloseModal==='function')g.emCloseModal();
+    }else{
+      paint('failed','Bulk save incomplete — Retry',confirmedBulkSave);
+      info(confirmed.length+' saved; '+g.EM_BULK_ROWS.length+' pending. Retry after checking errors.',true);
+    }
+  }catch(e){paint('failed','Bulk save failed — Retry',confirmedBulkSave);info(e&&e.message||String(e),true)}
+  finally{busy=false;setButtonBusy(false)}
 }
 async function confirmedDelete(idx){
   if(busy||!g.EM||!Array.isArray(g.EM.data))return;
   var e=g.EM.data[idx];if(!e)return;
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?'))return;
-
-  /* 1. INSTANT LOCAL DELETE */
-  var deletedEmp = copy(e);
-  g.EM.data.splice(idx,1);
-  persistConfirmed();
-  if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
-  refreshMasterUi();
-  paint('saved','Saved ✓',null);
-
-  /* 2. NON-BLOCKING ASYNC CLOUD DELETE */
   var c=cloud();
-  if(c && typeof c.deleteMaster === 'function'){
-    c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}).then(function(res){
-      if(res && res.ok) paint('saved','Saved ✓',null);
-    }).catch(function(err){
-      console.warn('[Cloud Sync] Background delete queued:', err);
-    });
+  if(!c||typeof c.deleteMaster!=='function'){
+    paint('failed','Cloud unavailable — not deleted',null);
+    alert('Cloud server unavailable. Employee was NOT deleted. Please reconnect and try again.');
+    return;
   }
+  busy=true;
+  var deletedEmp=copy(e);
+  paint('saving','Deleting from cloud…',null);
+  try{
+    // Never hide a record or overwrite other storage until the authoritative
+    // backend confirms deletion with a fresh read.
+    var res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
+    if(!res||!res.ok||!res.verified){
+      var reason=res&&res.error||'Cloud deletion was not verified';
+      paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
+      alert('Employee NOT deleted. '+reason);
+      return;
+    }
+    var k=empKey(deletedEmp);
+    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k});
+    persistConfirmed({skipMirrors:true});
+    if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
+    refreshMasterUi();
+    if(g.BroadcastChannel){
+      try{
+        var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
+        bc.postMessage({type:'employee_master_deleted',emp_id:deletedEmp.emp_id});
+        bc.close();
+      }catch(_){}
+    }
+    paint('saved','Deleted from cloud ✓',null);
+  }catch(err){
+    paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
+    alert('Employee NOT deleted. '+(err&&err.message||err));
+  }finally{busy=false}
 }
 function install(){
   ensureUi();
@@ -242,7 +225,9 @@ function install(){
     if(g.ATPLFirebase && typeof g.ATPLFirebase.subscribeEmployeeMaster === 'function' && !g.__emFbSubscribed){
       g.__emFbSubscribed = true;
       g.ATPLFirebase.subscribeEmployeeMaster(function(update){
-        if(!update || !Array.isArray(update.records) || update.records.length === 0) return;
+        if(!update || !Array.isArray(update.records)) return;
+        // Firebase may contain an older full snapshot. Never let it resurrect cloud-deleted employees.
+        if(cloud()){if(typeof cloud().pullMaster==='function')cloud().pullMaster();return;}
         if(!g.EM) return;
         if(JSON.stringify(g.EM.data) !== JSON.stringify(update.records)){
           g.EM.data = update.records.slice();

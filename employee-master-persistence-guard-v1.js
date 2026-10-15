@@ -37,17 +37,19 @@ function hydrate(){
   try{
     if(!g.EM||!Array.isArray(g.EM.data))return false;
     var local=read();
-    if(!local.length){
-      localStorage.setItem(KEY,JSON.stringify(g.EM.data));
-      return true;
+    // Never union an old local snapshot with the active Employee Master.
+    // A deleted employee must not be re-created by a stale browser cache.
+    if(!g.EM.data.length&&local.length){
+      var deleted={};
+      try{deleted=JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1')||'{}')}catch(_){}
+      g.EM.data=local.filter(function(r){return !deleted[codeOf(r)]});
+      if(Array.isArray(g.EMP_MASTER_DATA)){
+        g.EMP_MASTER_DATA.length=0;
+        Array.prototype.push.apply(g.EMP_MASTER_DATA,g.EM.data);
+      }
+    }else if(g.EM.data.length){
+      persist();
     }
-    var merged=merge(g.EM.data,local);
-    g.EM.data=merged;
-    if(Array.isArray(g.EMP_MASTER_DATA)){
-      g.EMP_MASTER_DATA.length=0;
-      Array.prototype.push.apply(g.EMP_MASTER_DATA,merged);
-    }
-    localStorage.setItem(KEY,JSON.stringify(merged));
     if(typeof g.emUpdateStats==='function')g.emUpdateStats();
     return true;
   }catch(e){console.warn('Employee Master persistence hydrate failed',e);return false}
@@ -70,19 +72,18 @@ function boot(){
     try{
       var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
       bc.addEventListener('message',function(ev){
-        if(ev&&ev.data&&ev.data.type==='employee_master_saved'&&Array.isArray(ev.data.records)){
-          if(g.EM&&Array.isArray(g.EM.data)){
-            g.EM.data=ev.data.records.slice();
-          }
-          if(Array.isArray(g.EMP_MASTER_DATA)){
-            g.EMP_MASTER_DATA.length=0;
-            Array.prototype.push.apply(g.EMP_MASTER_DATA,ev.data.records);
-          }
-          localStorage.setItem(KEY,JSON.stringify(ev.data.records));
-          if(typeof g.emFilter==='function')g.emFilter();
-          if(typeof g.emUpdateStats==='function')g.emUpdateStats();
+        var msg=ev&&ev.data;
+        if(!msg)return;
+        if(msg.type==='employee_master_deleted'&&msg.emp_id){
+          var k=codeOf({emp_id:msg.emp_id});
+          if(g.EM&&Array.isArray(g.EM.data))g.EM.data=g.EM.data.filter(function(r){return codeOf(r)!==k});
+          persist();
         }
-      });
+        // Trust only the backend for cross-tab snapshots; never restore a stale broadcast.
+        if((msg.type==='employee_master_saved'||msg.type==='master'||msg.type==='employee_master_deleted')&&g.ATPLCloudSyncV1){
+          g.ATPLCloudSyncV1.pullMaster();
+        }
+            });
     }catch(_){}
   }
   setTimeout(function(){hydrate();wrapSave()},500);
