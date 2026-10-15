@@ -1,11 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.resolve(__dirname, '..');
+const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 test('Employee Master Account Details & Challan Cross-Browser Permanent Fix', async (t) => {
-  const indexHtml = fs.readFileSync('/tmp/repo/index.html', 'utf-8');
-  const empGuard = fs.readFileSync('/tmp/repo/employee-master-confirmed-save-v1.js', 'utf-8');
-  const dolRebuild = fs.readFileSync('/tmp/repo/compliance-dol-rebuild-v2.js', 'utf-8');
+  const indexHtml = read('index.html');
+  const empGuard = read('employee-master-confirmed-save-v1.js');
+  const dolRebuild = read('compliance-dol-rebuild-v2.js');
 
   await t.test('1. confirmedBulkSave does non-destructive field merge to preserve existing A/C details', () => {
     assert.ok(
