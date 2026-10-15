@@ -89,7 +89,7 @@ test('shared sync is backend-authoritative without recurring poll',()=>{
 test('live index cache-busts Sep-21 shared authority scripts',()=>{
   const h=read('index.html');
   [
-    'erp-mobile-shared-hardfix-v1.js?v=20260921-permission-sync2',
+    'erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1',
     'erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol',
     'erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3'
   ].forEach(x=>assert.ok(h.includes(x),x));
