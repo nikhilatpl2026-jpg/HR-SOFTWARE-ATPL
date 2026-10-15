@@ -144,6 +144,7 @@ async function confirmedBulkSave(){
   var rows=g.EM_BULK_ROWS.slice();
   var items=rows.map(function(emp){
     var k=empKey(emp),old=g.EM.data.find(function(y){return empKey(y)===k})||null;
+    // PRESERVE EXISTING DATA: do not overwrite account, IFSC or bank fields with blank paste cells.
     var merged=Object.assign({},old||{});
     Object.keys(emp).forEach(function(f){
       var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;
