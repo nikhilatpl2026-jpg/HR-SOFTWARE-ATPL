@@ -307,7 +307,9 @@ async function promoteHistoricalOriginal(type,rec,blob){
     if(work.ids.length)work.contributions=work.ids.map(function(id){return{memberId:id,employeeName:'',details:{historicalPromoted:true}}});
     var out=await v.upload(work,buf),sr=localRecordFromCloud(out&&out.record||{});
     rec.cloudRecordId=sr.cloudRecordId||rec.cloudRecordId;rec.hasOriginalFile=true;rec.sharedSource='dedicated';rec.sharedAuthoritative=true;rec.cloudSynced=true;rec.cloudOnly=false;
-    try{await dbPut(Object.assign({},rec,{blob:null,storage:rec.opfsPath?'opfs':'indexeddb'}));await writeVaultManifest()}catch(_){}
+    // Preserve real local bytes when OPFS is unavailable. Metadata-only replacement
+    // would otherwise destroy this browser's last valid historical original.
+    try{await dbPut(Object.assign({},rec,{blob:rec.opfsPath?null:await snapshotChallanBlob(blob,rec.mime||fileMime(rec.name)),storage:rec.opfsPath?'opfs':'indexeddb'}));await writeVaultManifest()}catch(_){}
     try{if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.clearCache==='function')root.ATPLCloudAPI.clearCache()}catch(_){}
     return true
   })().catch(function(e){console.warn('Historical original promotion skipped',rec&&rec.name,e);return false}).finally(function(){delete historicalPromotionPromises[key]});
@@ -658,19 +660,51 @@ async function migrateDbFilesToVault(){
   if(changed)await writeVaultManifest();
   return changed
 }
+// File objects returned by OPFS getFile() can become unreadable as soon as
+// a background migration/repair rewrites their backing entry. Snapshot bytes
+// immediately, before upload/repair can invalidate the underlying File handle.
+async function snapshotChallanBlob(input,mime){
+  if(!(input instanceof Blob))return null;
+  try{
+    var bytes=await input.arrayBuffer();
+    if(!bytes.byteLength)return null;
+    return new Blob([bytes],{type:mime||input.type||'application/octet-stream'});
+  }catch(e){
+    console.warn('[Challan] Local file reference expired; trying another original source',e);
+    return null;
+  }
+}
 async function getStoredBlob(rec){
-  if(rec&&rec.blob instanceof Blob)return rec.blob;
-  var f=await opfsRead(rec);if(f)return f;
-  if(rec&&rec.buffer)return new Blob([rec.buffer],{type:fileMime(rec.name)});
-  if(rec&&(rec.buf||rec.original_b64||rec.base64||rec.file_data)){
+  if(!rec)return null;
+  var mime=rec.mime||fileMime(rec.name);
+  var stable=await snapshotChallanBlob(rec.blob,mime);
+  if(stable)return stable;
+  // A newly acquired OPFS File must be read now, not passed onward to PDF.js.
+  for(var attempt=0;attempt<2;attempt++){
+    var opfsFile=await opfsRead(rec);
+    if(!opfsFile)break;
+    stable=await snapshotChallanBlob(opfsFile,mime);
+    if(stable)return stable;
+  }
+  if(rec.buffer){
+    if(rec.buffer instanceof Blob){
+      stable=await snapshotChallanBlob(rec.buffer,mime);
+      if(stable)return stable;
+    }else{
+      stable=await snapshotChallanBlob(new Blob([rec.buffer],{type:mime}),mime);
+      if(stable)return stable;
+    }
+  }
+  if(rec.buf||rec.original_b64||rec.base64||rec.file_data){
     try{
-      var rawB64=rec.buf||rec.original_b64||rec.base64||rec.file_data;
-      var clean=rawB64.includes(',')?rawB64.split(',')[1]:rawB64;
-      var bin=atob(clean);
-      var arr=new Uint8Array(bin.length);
-      for(var bi=0;bi<bin.length;bi++)arr[bi]=bin.charCodeAt(bi);
-      return new Blob([arr],{type:rec.mime||fileMime(rec.name)||'application/pdf'});
-    }catch(_){}
+      var raw=rec.buf||rec.original_b64||rec.base64||rec.file_data;
+      if(typeof raw==='string'){
+        var clean=raw.indexOf(',')>=0?raw.split(',')[1]:raw;
+        var bin=atob(clean),arr=new Uint8Array(bin.length);
+        for(var bi=0;bi<bin.length;bi++)arr[bi]=bin.charCodeAt(bi);
+        return arr.length?new Blob([arr],{type:mime}):null;
+      }
+    }catch(e){console.warn('[Challan] Stored Base64 original unreadable',e)}
   }
   return null
 }
@@ -908,8 +942,18 @@ async function openViewer(type,id){
     $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file is not present in cloud storage or this browser.</div>';
     return
   }
+  // Materialize the bytes before constructing object URLs or starting a worker.
+  // Some historical OPFS references expire after the automatic cloud repair.
   var ext = String(rec.name || "").split(".").pop().toLowerCase();
-  var pdfBlob = (ext === "pdf" && blob.type !== "application/pdf") ? new Blob([blob], { type: "application/pdf" }) : blob;
+  var safeOriginal=await snapshotChallanBlob(blob,ext==='pdf'?'application/pdf':(blob.type||fileMime(rec.name)));
+  if(!safeOriginal){
+    safeOriginal=await getStoredBlob(rec);
+  }
+  if(!safeOriginal){
+    $('cd2-vbody').innerHTML='<div class="cd2-empty cd2-bad">Original file could not be read from cloud or browser storage. Please try opening from the original upload browser; re-upload only if no valid original remains.</div>';
+    return;
+  }
+  var pdfBlob=safeOriginal;
   if(viewer.url){try{URL.revokeObjectURL(viewer.url)}catch(_){}viewer.url=''}
   var blobUrl = URL.createObjectURL(pdfBlob);
   viewer.url = blobUrl;
@@ -952,7 +996,7 @@ async function openViewer(type,id){
             var s = document.createElement('script');
             s.src = 'pdf.min.js';
             s.onload = function() { resolve(); };
-            s.onerror = function() { reject(new Error('PDF.js CDN load failed')); };
+            s.onerror = function() { reject(new Error('Local PDF.js library load failed')); };
             document.head.appendChild(s);
           });
           pLib = window.pdfjsLib;
