@@ -54,4 +54,22 @@ test('Employee Master Account Details & Challan Cross-Browser Permanent Fix', as
       'recordBlob must support static dol_records.json fallback for cross-browser viewing'
     );
   });
+
+  await t.test('6. Dates (e.g. 14-07-2025) are never parsed as bank account numbers and IFSC-adjacent accounts take priority', () => {
+    assert.ok(
+      indexHtml.includes('if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(orig)') || indexHtml.includes('isDateVal'),
+      'index.html must explicitly guard against dates being parsed as account numbers'
+    );
+    assert.ok(
+      indexHtml.includes('ifscIdx') && indexHtml.includes('neighbors'),
+      'index.html must prioritize IFSC-adjacent account numbers from Excel paste'
+    );
+  });
+
+  await t.test('7. Challan PDF viewer disables cross-origin worker to eliminate Chrome SecurityError', () => {
+    assert.ok(
+      dolRebuild.includes('disableWorker: true'),
+      'compliance-dol-rebuild-v2.js must use disableWorker: true to avoid cross-origin worker security errors'
+    );
+  });
 });

@@ -10311,7 +10311,9 @@ window.cleanIfsc = cleanIfsc;
 
 function cleanAccountNo(v) {
   if (v == null) return '';
-  var s = String(v).replace(/["'=]/g, '').trim();
+  var orig = String(v).replace(/["'=]/g, '').trim();
+  if (/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(orig) || /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(orig)) return '';
+  var s = orig;
   s = s.replace(/^(?:A\/?C(?:\s*NO\.?)?|A\.C(?:\s*NO\.?)?|ACC(?:\s*NO\.?)?|ACCOUNT(?:\s*NO\.?)?)[:\-]?\s*/i, '');
   s = s.replace(/[\s\-_]/g, '');
   if (/^(\d+)(?:\.(\d+))?[eE]\+(\d+)$/.test(s)) {
@@ -11586,22 +11588,50 @@ function emParseBulkPaste() {
       // Smart Bank A/C & IFSC detection across row
       var ifscCand = clean.find(function(c){ return /^[A-Z]{4}0[A-Z0-9]{6}$/i.test(c); });
       if (ifscCand) emp.ifsc = ifscCand.toUpperCase();
-      var acCand = clean.find(function(c){
-        var cl = cleanAccountNo(c);
-        return /^\d{8,22}$/.test(cl) && cl !== emp.phone_no && cl !== emp.aadhaar_no && cl !== emp.emp_id;
-      });
+
+      var isDateVal = function(c) {
+        if (!c) return false;
+        var s = String(c).trim();
+        return /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(s) || /^\d{4}[./-]\d{1,2}[./-]\d{1,2}$/.test(s) || s === emp.dob || s === emp.doj;
+      };
+
+      var ifscIdx = ifscCand ? clean.indexOf(ifscCand) : -1;
+      var acCand = null;
+      if (ifscIdx >= 0) {
+        var neighbors = [clean[ifscIdx - 1], clean[ifscIdx + 1], clean[ifscIdx - 2], clean[ifscIdx + 2]].filter(Boolean);
+        for (var ni = 0; ni < neighbors.length; ni++) {
+          var nc = neighbors[ni];
+          if (!isDateVal(nc)) {
+            var ncl = cleanAccountNo(nc);
+            if (/^\d{8,22}$/.test(ncl) && ncl !== emp.phone_no && ncl !== emp.aadhaar_no && ncl !== emp.emp_id) {
+              acCand = nc;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!acCand) {
+        acCand = clean.find(function(c){
+          if (isDateVal(c)) return false;
+          var cl = cleanAccountNo(c);
+          return /^\d{8,22}$/.test(cl) && cl !== emp.phone_no && cl !== emp.aadhaar_no && cl !== emp.emp_id;
+        });
+      }
       if (acCand) emp.account_no = cleanAccountNo(acCand);
+
       var bankCand = clean.find(function(c){
-        return /^(HDFC|SBI|ICICI|PNB|AXIS|BOB|CANARA|KOTAK|UNION|YES|INDUSIND|CENTRAL|UCO|ALLAHABAD|BANK|PAYMENT)/i.test(c) && !/^[A-Z]{4}0/.test(c);
+        return /^(HDFC|SBI|ICICI|PNB|AXIS|BOB|CANARA|KOTAK|UNION|YES|INDUSIND|CENTRAL|UCO|ALLAHABAD|BANK|PAYMENT|STATE\s*BANK)/i.test(c) && !/^[A-Z]{4}0/.test(c);
       });
       if (bankCand && !emp.bank_name) emp.bank_name = bankCand.toUpperCase();
 
       clean.forEach(function(val){
+        if (isDateVal(val)) return;
         var rawNum = val.replace(/,/g, "");
-        if (/^\d{8,22}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no) {
+        if (/^\d{8,22}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no && rawNum !== emp.account_no) {
           if (!emp.account_no && rawNum.length >= 8) emp.account_no = rawNum;
-          else if (!emp.esi_no) emp.esi_no = rawNum;
-          else if (!emp.pf_no) emp.pf_no = rawNum;
+          else if (!emp.esi_no && (rawNum.length === 10 || rawNum.length === 17)) emp.esi_no = rawNum;
+          else if (!emp.pf_no && rawNum.length === 12) emp.pf_no = rawNum;
         }
       });
 

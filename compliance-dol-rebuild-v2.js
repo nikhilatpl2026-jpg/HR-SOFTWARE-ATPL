@@ -849,37 +849,15 @@ function closeViewer(){
 function openPdfInSafeTab(blob, filename) {
   var bUrl = URL.createObjectURL(blob);
   try {
-    var reader = new FileReader();
-    reader.onload = function() {
-      var dataUri = reader.result;
-      var w = window.open('', '_blank');
-      if (!w) { window.open(bUrl, '_blank'); return; }
-      w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">' +
-        '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-        '<title>' + esc(filename) + '</title>' +
-        '<style>' +
-        'html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#f8fafc;display:flex;flex-direction:column;}' +
-        '.tb{height:52px;background:#0b1120;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between;padding:0 18px;flex-shrink:0;box-sizing:border-box;}' +
-        '.tb-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
-        '.tb-btns{display:flex;gap:10px;align-items:center;}' +
-        '.btn{padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}' +
-        '.btn-green{background:#16a34a;color:#fff;}' +
-        '.btn-blue{background:#2563eb;color:#fff;}' +
-        '.viewer-body{flex:1;width:100%;height:calc(100% - 52px);position:relative;background:#1e293b;overflow:hidden;}' +
-        'embed,object{width:100%;height:100%;border:none;display:block;background:#334155;}' +
-        '</style></head><body>' +
-        '<div class="tb">' +
-        '<div class="tb-title">📄 ' + esc(filename) + '</div>' +
-        '<div class="tb-btns">' +
-        '<a class="btn btn-green" href="' + bUrl + '" download="' + esc(filename) + '">⬇ Download PDF</a>' +
-        '<button type="button" class="btn btn-blue" onclick="window.print()">🖨 Print</button>' +
-        '</div></div>' +
-        '<div class="viewer-body">' +
-        '<embed src="' + dataUri + '" type="application/pdf" width="100%" height="100%">' +
-        '</div></body></html>');
-      w.document.close();
-    };
-    reader.readAsDataURL(blob);
+    var w = window.open(bUrl, '_blank');
+    if (!w) {
+      var a = document.createElement('a');
+      a.href = bUrl;
+      a.download = filename || 'Challan.pdf';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ try { document.body.removeChild(a); } catch(_) {} }, 100);
+    }
   } catch(_) {
     window.open(bUrl, '_blank');
   }
@@ -980,13 +958,15 @@ async function openViewer(type,id){
 
         if (pLib) {
           if (pLib.GlobalWorkerOptions) {
-            pLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            pLib.GlobalWorkerOptions.workerSrc = '';
           }
           var bytes = new Uint8Array(ab.slice(0));
           var pdf = await pLib.getDocument({
             data: bytes,
             cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-            cMapPacked: true
+            cMapPacked: true,
+            disableWorker: true,
+            isEvalSupported: false
           }).promise;
 
           cont.innerHTML = '';
