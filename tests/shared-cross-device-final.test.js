@@ -17,7 +17,7 @@ assert(!mobile.includes('ATPLCloudAPI.ping()'),'startup must not add an eager du
 
 const master=read('erp-cloud-sync-v1.js');
 assert(master.includes('backend-confirmed Employee Master persistence'),'Employee Master sync contract must be backend confirmed');
-assert(master.includes('fetchCloud()'),'save path must support cloud read-back');
+assert(master.includes('fetchCloud(true)'),'save path must verify a fresh cloud read-back');
 assert(master.includes('conflictCheck'),'cross-device conflicting edits must be detected');
 assert(master.includes('visibilitychange'),'foreground refresh must be event-driven');
 assert(!master.includes('setInterval('),'Employee Master must not poll forever');
