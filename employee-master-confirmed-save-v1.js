@@ -46,9 +46,12 @@ function refreshMasterUi(){
 function syncLegacyArray(){
   try{if(Array.isArray(g.EMP_MASTER_DATA)&&g.EM&&Array.isArray(g.EM.data)){g.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(g.EMP_MASTER_DATA,g.EM.data)}}catch(_){}
 }
-function persistConfirmed(){
+function persistConfirmed(opts){
   var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
   syncLegacyArray();
+  // Only the verified backend may distribute Employee Master snapshots.
+  // Never broadcast an unconfirmed local snapshot into Firebase or another server.
+  if((opts&&opts.skipMirrors)||cloud())return;
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
       var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
@@ -214,24 +217,42 @@ async function confirmedDelete(idx){
   if(busy||!g.EM||!Array.isArray(g.EM.data))return;
   var e=g.EM.data[idx];if(!e)return;
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?'))return;
-
-  /* 1. INSTANT LOCAL DELETE */
-  var deletedEmp = copy(e);
-  g.EM.data.splice(idx,1);
-  persistConfirmed();
-  if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
-  refreshMasterUi();
-  paint('saved','Saved ✓',null);
-
-  /* 2. NON-BLOCKING ASYNC CLOUD DELETE */
   var c=cloud();
-  if(c && typeof c.deleteMaster === 'function'){
-    c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}).then(function(res){
-      if(res && res.ok) paint('saved','Saved ✓',null);
-    }).catch(function(err){
-      console.warn('[Cloud Sync] Background delete queued:', err);
-    });
+  if(!c||typeof c.deleteMaster!=='function'){
+    paint('failed','Cloud unavailable — not deleted',null);
+    alert('Cloud server unavailable. Employee was NOT deleted. Please reconnect and try again.');
+    return;
   }
+  busy=true;
+  var deletedEmp=copy(e);
+  paint('saving','Deleting from cloud…',null);
+  try{
+    // Never hide a record or overwrite other storage until the authoritative
+    // backend confirms deletion with a fresh read.
+    var res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
+    if(!res||!res.ok||!res.verified){
+      var reason=res&&res.error||'Cloud deletion was not verified';
+      paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
+      alert('Employee NOT deleted. '+reason);
+      return;
+    }
+    var k=empKey(deletedEmp);
+    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k});
+    persistConfirmed({skipMirrors:true});
+    if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
+    refreshMasterUi();
+    if(g.BroadcastChannel){
+      try{
+        var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
+        bc.postMessage({type:'employee_master_deleted',emp_id:deletedEmp.emp_id});
+        bc.close();
+      }catch(_){}
+    }
+    paint('saved','Deleted from cloud ✓',null);
+  }catch(err){
+    paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
+    alert('Employee NOT deleted. '+(err&&err.message||err));
+  }finally{busy=false}
 }
 function install(){
   ensureUi();
@@ -242,7 +263,9 @@ function install(){
     if(g.ATPLFirebase && typeof g.ATPLFirebase.subscribeEmployeeMaster === 'function' && !g.__emFbSubscribed){
       g.__emFbSubscribed = true;
       g.ATPLFirebase.subscribeEmployeeMaster(function(update){
-        if(!update || !Array.isArray(update.records) || update.records.length === 0) return;
+        if(!update || !Array.isArray(update.records)) return;
+        // Firebase may contain an older full snapshot. Never let it resurrect cloud-deleted employees.
+        if(cloud()){if(typeof cloud().pullMaster==='function')cloud().pullMaster();return;}
         if(!g.EM) return;
         if(JSON.stringify(g.EM.data) !== JSON.stringify(update.records)){
           g.EM.data = update.records.slice();
