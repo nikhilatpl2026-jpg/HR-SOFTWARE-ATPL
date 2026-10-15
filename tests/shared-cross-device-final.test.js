@@ -12,7 +12,7 @@ assert(!login.slice(0,unlockAt).includes('await pullMaster'),'login must not blo
 assert(!login.slice(0,unlockAt).includes('await pullUsers'),'login must not block on admin user-list hydration');
 assert(login.indexOf('hydrateAfterLogin(lr.user)')>unlockAt,'shared hydration starts only after UI unlock');
 assert(mobile.includes("action:'getEmployeeMaster'"),'Employee Master must hydrate from shared backend');
-assert(mobile.includes('7000'),'critical Employee Master pull must be bounded');
+assert(mobile.includes("getEmployeeMaster',token:t},10000"),'critical Employee Master pull must be bounded');
 assert(!mobile.includes('ATPLCloudAPI.ping()'),'startup must not add an eager duplicate ping');
 
 const master=read('erp-cloud-sync-v1.js');
