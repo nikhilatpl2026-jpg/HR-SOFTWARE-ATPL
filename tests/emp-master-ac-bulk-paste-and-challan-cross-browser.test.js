@@ -66,10 +66,10 @@ test('Employee Master Account Details & Challan Cross-Browser Permanent Fix', as
     );
   });
 
-  await t.test('7. Challan PDF viewer disables cross-origin worker to eliminate Chrome SecurityError', () => {
+  await t.test('7. Challan PDF viewer uses a same-origin bundled worker to avoid Chrome SecurityError', () => {
     assert.ok(
-      dolRebuild.includes('disableWorker: true'),
-      'compliance-dol-rebuild-v2.js must use disableWorker: true to avoid cross-origin worker security errors'
+      dolRebuild.includes("workerSrc = 'pdf.worker.min.js'") && dolRebuild.includes('disableWorker: false'),
+      'compliance-dol-rebuild-v2.js must use the bundled same-origin worker'
     );
   });
 });
