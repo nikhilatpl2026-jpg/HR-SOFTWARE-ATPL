@@ -1097,7 +1097,8 @@
      if(changedHr) refreshHrUi();
 
      // 4. Sync Employee Master
-     if(Array.isArray(st.employee_master) && st.employee_master.length){
+     if(root.ATPLCloudSyncV1){root.ATPLCloudSyncV1.pullMaster();}
+     else if(Array.isArray(st.employee_master) && st.employee_master.length){
        var curEm = (root.EM && Array.isArray(root.EM.data)) ? root.EM.data : [];
        if(!curEm.length){
          if(root.EM) root.EM.data = st.employee_master.slice();
@@ -1213,6 +1214,7 @@
        }catch(_){}
      });
      es.addEventListener('employee_master_updated',function(e){
+       if(root.ATPLCloudSyncV1){root.ATPLCloudSyncV1.pullMaster();return;}
        try{
          var item=JSON.parse(e.data);
          var recs=item.data&&item.data.records;
