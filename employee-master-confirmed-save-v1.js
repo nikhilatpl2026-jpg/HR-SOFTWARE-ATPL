@@ -176,59 +176,54 @@ async function confirmedBulkSave(){
   finally{busy=false;setButtonBusy(false)}
 }
 async function confirmedDelete(idx){
-  if(busy||!g.EM||!Array.isArray(g.EM.data))return;
   var e=g.EM.data[idx];if(!e)return;
-  if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?'))return;
+  if(!confirm("Delete karo: "+e.name+" ("+e.emp_id+")?"))return;
   var c=cloud();
-  if(!c||typeof c.deleteMaster!=='function'){
-    paint('failed','Cloud unavailable — not deleted',null);
-    alert('Cloud server unavailable. Employee was NOT deleted. Please reconnect and try again.');
+  if(!c||typeof c.deleteMaster!=="function"){
+    paint("failed","Cloud unavailable — not deleted",null);
+    alert("Cloud server unavailable. Employee was NOT deleted. Please reconnect and try again.");
     return;
   }
   busy=true;
   var deletedEmp=copy(e);
-  paint('saving','Deleting from cloud…',null);
+  paint("saving","Deleting from cloud…",null);
   try{
-    // Never hide a record or overwrite other storage until the authoritative
-    // backend confirms deletion with a fresh read.
-    var k=empKey(deletedEmp);
-    // Optimistic permanent deletion & tombstone
-    try {
-      if (typeof markDeleted === 'function') markDeleted(k);
-      var m = {};
-      try { m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch(_) {}
-      m[String(deletedEmp.emp_id || '').toLowerCase().trim()] = new Date().toISOString();
-      m[k] = new Date().toISOString();
-      localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(m));
-    } catch(_) {}
-    g.EM.data = (g.EM.data || []).filter(function(r){ return empKey(r)!==k && String(r.emp_id||'').toLowerCase().trim() !== String(deletedEmp.emp_id||'').toLowerCase().trim(); });
-    persistConfirmed({skipMirrors:true});
-    refreshMasterUi();
-
-    var res = null;
-    try {
-      res = await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
-    } catch(e) {
-      console.warn('Background cloud delete call:', e);
+    // Await server verification before removing from UI
+    var res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
+    if(!res||!res.ok||!res.verified){
+      var reason=res&&res.error||"Cloud deletion was not verified";
+      paint("failed","Delete failed — Retry",function(){return confirmedDelete(idx)});
+      alert("Employee NOT deleted. "+reason);
+      return;
     }
-    // Also call server delete API if running
+    var k=empKey(deletedEmp);
+    // Mark tombstone in localStorage permanently
     try {
-      fetch('/api/sync/employee-master/' + encodeURIComponent(deletedEmp.emp_id), { method: 'DELETE' }).catch(function(){});
+      var m = {};
+      try { m = JSON.parse(g.localStorage.getItem("ATPL_EmployeeMasterDeletedV1") || "{}"); } catch(_) {}
+      m[String(deletedEmp.emp_id || "").toLowerCase().trim()] = new Date().toISOString();
+      m[k] = new Date().toISOString();
+      g.localStorage.setItem("ATPL_EmployeeMasterDeletedV1", JSON.stringify(m));
     } catch(_) {}
+
+    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k});
+    if(c && typeof c.persistLocal==="function"){
+      c.persistLocal(g.EM.data);
+    }
     persistConfirmed({skipMirrors:true});
-    if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
+    if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==="function")g.EM.selectedRows.clear();
     refreshMasterUi();
     if(g.BroadcastChannel){
       try{
-        var bc=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
-        bc.postMessage({type:'employee_master_deleted',emp_id:deletedEmp.emp_id});
+        var bc=new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
+        bc.postMessage({type:"employee_master_deleted",emp_id:deletedEmp.emp_id});
         bc.close();
       }catch(_){}
     }
-    paint('saved','Deleted from cloud ✓',null);
+    paint("saved","Deleted from cloud ✓",null);
   }catch(err){
-    paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
-    alert('Employee NOT deleted. '+(err&&err.message||err));
+    paint("failed","Delete failed — Retry",function(){return confirmedDelete(idx)});
+    alert("Employee NOT deleted. "+(err&&err.message||err));
   }finally{busy=false}
 }
 function install(){
