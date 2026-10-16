@@ -83,7 +83,22 @@
 <script src="xlsx.full.min.js"></script>
 <script>
   window.__atplFirebaseQuotaExhausted = false;
-  window.__ATPL_CENTRAL_BACKEND_URL = '';
+  window.LIVE_CLOUD_RUN_URL = "https://ais-pre-eq64yrsxlxfvswj7xctqw5-909075195436.asia-east1.run.app";
+  (function() {
+    try {
+      var origin = window.location.origin || '';
+      if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
+        window.__ATPL_CENTRAL_BACKEND_URL = '';
+      } else {
+        window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL;
+      }
+    } catch (_) {
+      window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL;
+    }
+  })();
+  window.ATPL_GET_API_BASE = function() {
+    return window.__ATPL_CENTRAL_BACKEND_URL || '';
+  };
 </script>
 <script src="atpl-firebase-bundle.js?v=20261001-quota-guarded"></script>
 <script src="pako.min.js"></script>
@@ -12029,7 +12044,8 @@ function hrDocToggleWindow(){
         
         // Immediate server sync
         try {
-          fetch('/api/sync/hr-doc', {
+          var apiBase = window.ATPL_GET_API_BASE ? window.ATPL_GET_API_BASE() : '';
+          fetch(apiBase + '/api/sync/hr-doc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(d)
@@ -12057,8 +12073,9 @@ function hrDocToggleWindow(){
 
     // Immediate server sync delete
     try {
-      fetch('/api/sync/hr-doc/' + encodeURIComponent(id), { method: 'DELETE' }).catch(function(){});
-      fetch('/api/sync/files/' + encodeURIComponent(id) + '?module=hr_doc', { method: 'DELETE' }).catch(function(){});
+      var apiBase = window.ATPL_GET_API_BASE ? window.ATPL_GET_API_BASE() : '';
+      fetch(apiBase + '/api/sync/hr-doc/' + encodeURIComponent(id), { method: 'DELETE' }).catch(function(){});
+      fetch(apiBase + '/api/sync/files/' + encodeURIComponent(id) + '?module=hr_doc', { method: 'DELETE' }).catch(function(){});
     } catch(_) {}
 
     if(window.ATPLFirebase&&typeof window.ATPLFirebase.deleteHrDoc==='function'){

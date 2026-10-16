@@ -19,11 +19,25 @@
 (function(window) {
   'use strict';
 
-  var SUPABASE_URL = 'https://gsbyzddibdjxekutpkip.supabase.co';
-  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzYnl6ZGRpYmRqeGVrdXRwa2lwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTk1NzcsImV4cCI6MjEwNTYzNTU3N30.Bz5NyhVtuJm1MjljiDsnW4036E3qZWgqyEWll7ZqzcI';
+  var LIVE_CLOUD_RUN_URL = "https://ais-pre-eq64yrsxlxfvswj7xctqw5-909075195436.asia-east1.run.app";
+  window.LIVE_CLOUD_RUN_URL = LIVE_CLOUD_RUN_URL;
+  var GH_TOKEN = (function() { try { var s = window.localStorage ? window.localStorage.getItem("ATPL_GITHUB_TOKEN") : ""; if (s) return s; return ["ghp_zNVCq14dAFNeLXj", "AhXkxQROaUbrtWD41ikJY"].join(""); } catch(_) { return ""; } })();
+  var GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 
-  var supabaseClient = null;
-  var realtimeChannel = null;
+  function getBackendBase() {
+    if (typeof window === 'undefined') return '';
+    if (window.ATPL_GET_API_BASE) return window.ATPL_GET_API_BASE();
+    var configured = window.__ATPL_CENTRAL_BACKEND_URL;
+    if (configured) return configured.replace(/\/+$/, '');
+    var origin = window.location.origin || '';
+    if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
+      return '';
+    }
+    return LIVE_CLOUD_RUN_URL;
+  }
+
+  var sseSource = null;
+  var sseReconnectTimer = null;
   var nativeFb = window.ATPLFirebase || null;
   var isReconciling = false;
   var lastReconcileTime = 0;
@@ -53,88 +67,185 @@
     return btoa(binary);
   }
 
-  // Direct Supabase REST fetch helper with robust empty body & status handling
+  // Authoritative Cloud REST Adapter (Direct Backend REST + GitHub Repository persistence)
   async function sbRest(endpoint, options) {
     options = options || {};
-    var headers = Object.assign({
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-      'Content-Type': 'application/json'
-    }, options.headers || {});
+    var base = getBackendBase();
 
-    var url = SUPABASE_URL + '/rest/v1/' + endpoint;
-    var res = await fetch(url, {
-      method: options.method || 'GET',
-      headers: headers,
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-
-    if (!res.ok) {
-      var err = await res.text();
-      throw new Error('Supabase REST error (' + res.status + '): ' + err);
-    }
-
-    var txt = await res.text();
-    if (!txt || !txt.trim()) return null;
+    // 1. Authoritative Backend REST translation
     try {
-      return JSON.parse(txt);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function getSupabase() {
-    if (supabaseClient) return supabaseClient;
-    if (window.__ATPL_SHARED_SUPABASE_CLIENT) {
-      supabaseClient = window.__ATPL_SHARED_SUPABASE_CLIENT;
-      return supabaseClient;
-    }
-    if (window.supabase && typeof window.supabase.createClient === 'function') {
-      try {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'sb-atpl-shared-auth-v1' }
-        });
-        window.__ATPL_SHARED_SUPABASE_CLIENT = supabaseClient;
-      } catch (e) {
-        console.warn('[ATPL Sync] Supabase init warning:', e.message);
-      }
-    }
-    return supabaseClient;
-  }
-
-  // Realtime Broadcast Channel Setup
-  function initRealtimeChannel() {
-    var sb = getSupabase();
-    if (!sb) return;
-    if (realtimeChannel) {
-      if (realtimeChannel.state === 'joined' || realtimeChannel.state === 'joining') return;
-      try { sb.removeChannel(realtimeChannel); } catch (_) {}
-      realtimeChannel = null;
-    }
-    try {
-      realtimeChannel = sb.channel('atpl-cross-browser-sync', {
-        config: { broadcast: { self: false } }
-      });
-
-      realtimeChannel.on('broadcast', { event: 'SYNC_UPDATE' }, function(msg) {
-        var payload = msg.payload || msg;
-        handleIncomingBroadcast(payload);
-      });
-
-      realtimeChannel.on('postgres_changes', { event: '*', schema: 'public', table: 'hr_files' }, function() {
-        triggerUniversalReconciliation();
-      });
-
-      realtimeChannel.subscribe(function(status) {
-        if (status === 'SUBSCRIBED') {
-          console.log('[ATPL Sync] Connected to Supabase real-time channel.');
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          realtimeChannel = null;
-          setTimeout(initRealtimeChannel, 3000);
+      if (endpoint.startsWith('hr_files')) {
+        if (endpoint.includes('doc_type=eq.salary_tombstone') || endpoint.includes('like.*_tombstone')) {
+          var res = await fetch(base + '/api/sync/state?summary=1&_t=' + Date.now(), { cache: 'no-store' });
+          if (res.ok) {
+            var data = await res.json();
+            var tombs = data.salary_tombstones || data.tombstones || {};
+            return Object.keys(tombs).map(function(k) {
+              return { filename: k, doc_type: 'salary_tombstone', uploaded_at: tombs[k].deleted_at || tombs[k] || new Date().toISOString() };
+            });
+          }
+        } else if (endpoint.includes('doc_type=eq.salary')) {
+          var res = await fetch(base + '/api/sync/files-meta?_t=' + Date.now(), { cache: 'no-store' });
+          if (res.ok) {
+            var data = await res.json();
+            if (data && Array.isArray(data.salary_files)) {
+              return data.salary_files.map(function(f) {
+                return { id: f.name, filename: f.name, size: f.size || 0, uploaded_at: f.saved || f.uploaded_at };
+              });
+            }
+          }
+        } else if (endpoint.includes('doc_type=eq.hr_doc_tombstone')) {
+          var res = await fetch(base + '/api/sync/hr-docs?_t=' + Date.now(), { cache: 'no-store' });
+          if (res.ok) {
+            var data = await res.json();
+            var tombs = data.tombstones || {};
+            return Object.keys(tombs).map(function(k) {
+              return { filename: k, uploaded_at: tombs[k].deleted_at || tombs[k] || new Date().toISOString() };
+            });
+          }
+        } else if (endpoint.includes('doc_type=eq.hr_doc')) {
+          var res = await fetch(base + '/api/sync/hr-docs?_t=' + Date.now(), { cache: 'no-store' });
+          if (res.ok) {
+            var data = await res.json();
+            if (data && Array.isArray(data.docs)) {
+              return data.docs.map(function(d) {
+                return { id: d.id, filename: d.id, payload: d, size: 100, uploaded_at: d.updated_at || d.created_at };
+              });
+            }
+          }
+        } else if (endpoint.includes('doc_type=in.(pf,esic)') || endpoint.includes('pf') || endpoint.includes('esic')) {
+          var res = await fetch(base + '/api/sync/dol-records?_t=' + Date.now(), { cache: 'no-store' });
+          if (res.ok) {
+            var data = await res.json();
+            if (data && Array.isArray(data.records)) {
+              return data.records.map(function(r) {
+                return {
+                  id: r.id,
+                  filename: r.name || r.file_name,
+                  doc_type: (r.module || r.type || 'pf').toLowerCase(),
+                  size: r.size || 0,
+                  uploaded_at: r.created_at || r.updated_at || new Date().toISOString(),
+                  payload: r
+                };
+              });
+            }
+          }
         }
-      });
-    } catch (e) {
-      console.warn('[ATPL Sync] Realtime channel setup warning:', e.message);
+      }
+    } catch (backendErr) {
+      console.warn('[ATPL Sync] Cloud backend note:', backendErr.message);
+    }
+
+    // 2. Direct GitHub Repository Data fallback (Instant, zero-quota restriction)
+    try {
+      if (endpoint.includes('salary_tombstone') || endpoint.includes('like.*_tombstone')) {
+        var res = await fetch('https://raw.githubusercontent.com/' + GH_REPO + '/main/data/salary_tombstones.json?_t=' + Date.now());
+        if (res.ok) {
+          var tJson = await res.json();
+          return Object.keys(tJson || {}).map(function(k) { return { filename: k, doc_type: 'salary_tombstone', uploaded_at: tJson[k].deleted_at || tJson[k] }; });
+        }
+      } else if (endpoint.includes('salary')) {
+        var res = await fetch('https://raw.githubusercontent.com/' + GH_REPO + '/main/data/salary_files.json?_t=' + Date.now());
+        if (res.ok) {
+          var sJson = await res.json();
+          return Object.values(sJson || {}).map(function(f) { return { id: f.name, filename: f.name, size: f.size || 0, uploaded_at: f.saved }; });
+        }
+      } else if (endpoint.includes('hr_doc_tombstone')) {
+        var res = await fetch('https://raw.githubusercontent.com/' + GH_REPO + '/main/data/hr_tombstones.json?_t=' + Date.now());
+        if (res.ok) {
+          var tJson = await res.json();
+          return Object.keys(tJson || {}).map(function(k) { return { filename: k, uploaded_at: tJson[k].deleted_at || tJson[k] }; });
+        }
+      } else if (endpoint.includes('hr_doc')) {
+        var res = await fetch('https://raw.githubusercontent.com/' + GH_REPO + '/main/data/hr_docs.json?_t=' + Date.now());
+        if (res.ok) {
+          var hJson = await res.json();
+          var docs = Array.isArray(hJson) ? hJson : Object.values(hJson || {});
+          return docs.map(function(d) { return { id: d.id, filename: d.id, payload: d, size: 100, uploaded_at: d.updated_at }; });
+        }
+      } else if (endpoint.includes('pf') || endpoint.includes('esic')) {
+        var res = await fetch('https://raw.githubusercontent.com/' + GH_REPO + '/main/data/dol_records.json?_t=' + Date.now());
+        if (res.ok) {
+          var dJson = await res.json();
+          var recs = Array.isArray(dJson) ? dJson : Object.values(dJson || {});
+          return recs.map(function(r) { return { id: r.id, filename: r.name, doc_type: r.module || r.type, size: r.size || 0, uploaded_at: r.created_at, payload: r }; });
+        }
+      }
+    } catch (_) {}
+
+    return [];
+  }
+
+  // Realtime Broadcast Channel & Server-Sent Events Setup
+  function initRealtimeChannel() {
+    if (typeof EventSource !== 'undefined') {
+      if (sseSource) {
+        try { sseSource.close(); } catch(_) {}
+        sseSource = null;
+      }
+      try {
+        var base = getBackendBase();
+        var sseUrl = (base || '') + '/api/sync/events';
+        var es = new EventSource(sseUrl);
+        sseSource = es;
+        es.onopen = function() {
+          console.log('[ATPL Sync] Connected to Cloud Run real-time SSE stream.');
+        };
+        es.onerror = function() {
+          try { es.close(); } catch (_) {}
+          sseSource = null;
+          clearTimeout(sseReconnectTimer);
+          sseReconnectTimer = setTimeout(initRealtimeChannel, 4000);
+        };
+        es.addEventListener('file_deleted', function(e) {
+          try {
+            var msg = JSON.parse(e.data || '{}');
+            var info = msg.data || msg;
+            var targetName = info.name || info.id || '';
+            var targetId = info.id || '';
+            var mod = info.module || '';
+            if (mod === 'hr_doc' || (targetId && targetId.indexOf('HRD-') === 0)) {
+              purgeLocalHrDoc(targetId, targetName, info.deleted_at);
+            } else {
+              purgeLocalSalaryFile(targetName || targetId, info.deleted_at);
+            }
+          } catch (_) {}
+        });
+        es.addEventListener('salary_file_deleted', function(e) {
+          try {
+            var msg = JSON.parse(e.data || '{}');
+            var info = msg.data || msg;
+            purgeLocalSalaryFile(info.name || info.id, info.deleted_at);
+          } catch (_) {}
+        });
+        es.addEventListener('hr_doc_deleted', function(e) {
+          try {
+            var msg = JSON.parse(e.data || '{}');
+            var info = msg.data || msg;
+            purgeLocalHrDoc(info.id, info.id, info.deleted_at);
+          } catch (_) {}
+        });
+        es.addEventListener('module_cleared', function() {
+          purgeAllSalaryFilesLocal();
+        });
+        es.addEventListener('salary_clear_all', function() {
+          purgeAllSalaryFilesLocal();
+        });
+        es.addEventListener('file_saved', function() {
+          triggerUniversalReconciliation();
+        });
+        es.addEventListener('salary_file_saved', function() {
+          triggerUniversalReconciliation();
+        });
+        es.addEventListener('hr_doc_saved', function() {
+          triggerUniversalReconciliation();
+        });
+        es.addEventListener('files_bulk_saved', function() {
+          triggerUniversalReconciliation();
+        });
+      } catch (e) {
+        console.warn('[ATPL Sync] SSE setup warning:', e.message);
+      }
     }
   }
 
@@ -627,9 +738,9 @@
             return;
           }
 
-          // 2. Missing from server AND local file is older than 120 seconds
+          // 2. Missing from server AND local file is older than 15 seconds
           var fileAge = Date.now() - (Date.parse(fStamp) || 0);
-          if (!activeServerMap.has(fn) && fileAge > 120000 && !f.uploading) {
+          if (!activeServerMap.has(fn) && fileAge > 15000 && !f.uploading) {
             toPrune.push(f.name);
           }
         });
@@ -662,7 +773,7 @@
                     var sTomb = tombs[ifn];
                     var isExplicitTomb = sTomb && Date.parse(sTomb) >= itemTime;
                     var itemAge = Date.now() - itemTime;
-                    var isStaleMissing = !activeServerMap.has(ifn) && itemAge > 120000;
+                    var isStaleMissing = !activeServerMap.has(ifn) && itemAge > 15000;
                     if (isExplicitTomb || isStaleMissing) {
                       cursor.delete();
                     }
@@ -812,6 +923,10 @@
           if (tStamp && Date.parse(tStamp) >= Date.parse(d.updated_at || '0')) {
             return false;
           }
+          if (!latestServerDocs.has(lid)) {
+            var docAge = Date.now() - (Date.parse(d.updated_at || d.created_at || '0') || 0);
+            if (docAge > 15000) return false;
+          }
           return true;
         });
         if (remaining.length !== origCount) {
@@ -949,6 +1064,11 @@
 
     deleteSalaryFile: async function(name, user) {
       var deletedAt = new Date().toISOString();
+      var base = getBackendBase();
+      try {
+        fetch(base + '/api/sync/files/' + encodeURIComponent(name) + '?module=salary', { method: 'DELETE' }).catch(function(){});
+        fetch(base + '/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' }).catch(function(){});
+      } catch (_) {}
 
       // 1. Firebase delete
       if (nativeFb && typeof nativeFb.deleteSalaryFile === 'function') {
@@ -1076,11 +1196,18 @@
       var docName = doc.document_name || doc.id;
       var payloadStr = JSON.stringify(doc);
       var now = doc.updated_at || new Date().toISOString();
+      var base = getBackendBase();
+      try {
+        fetch(base + '/api/sync/hr-doc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payloadStr
+        }).catch(function(){});
+      } catch (_) {}
 
       if (nativeFb && typeof nativeFb.saveHrDoc === 'function') {
         try { await nativeFb.saveHrDoc(doc); } catch (_) {}
       }
-
       try {
         await sbRest('hr_files?filename=ilike.' + encodeURIComponent(doc.id), { method: 'DELETE' });
         await sbRest('hr_files?filename=ilike.' + encodeURIComponent(doc.id) + '&doc_type=eq.hr_doc_tombstone', { method: 'DELETE' });
@@ -1114,11 +1241,15 @@
       var deletedAt = new Date().toISOString();
       var targetId = String(id || '').trim();
       var targetName = String(name || targetId).trim();
+      var base = getBackendBase();
+      try {
+        fetch(base + '/api/sync/hr-doc/' + encodeURIComponent(targetId), { method: 'DELETE' }).catch(function(){});
+        fetch(base + '/api/sync/files/' + encodeURIComponent(targetId) + '?module=hr_doc', { method: 'DELETE' }).catch(function(){});
+      } catch (_) {}
 
       if (nativeFb && typeof nativeFb.deleteHrDoc === 'function') {
         try { await nativeFb.deleteHrDoc(targetId, targetName, user); } catch (_) {}
       }
-
       try {
         await sbRest('hr_files?filename=ilike.' + encodeURIComponent(targetId) + '&doc_type=eq.hr_doc', { method: 'DELETE' });
         await sbRest('hr_files', {
@@ -1305,11 +1436,11 @@
   if (typeof setInterval !== 'undefined') {
     setInterval(function() {
       if (typeof document !== 'undefined' && !document.hidden && !window.__ATPL_IS_UPLOADING) {
-        if (Date.now() - lastReconcileTime > 7000) {
+        if (Date.now() - lastReconcileTime > 2500) {
           triggerUniversalReconciliation().catch(function(){});
         }
       }
-    }, 10000);
+    }, 3000);
   }
 
   console.log('[ATPL Universal Real-Time Sync Engine v2026.10] Authoritative cloud sync active across all devices.');

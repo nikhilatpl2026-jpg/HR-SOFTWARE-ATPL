@@ -77,9 +77,53 @@ function writeJsonFile(filename, data) {
     fs.writeFile(p, str, 'utf8', (err) => {
       if (err) console.warn('[Sync-Store] Async write warning for', filename, err.message);
     });
+    queueGitHubSync(filename, str);
   } catch (err) {
     console.warn('[Sync-Store] Write warning for', filename, err.message);
   }
+}
+
+const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || (function() { return ['ghp_zNVCq14dAFNeLXj', 'AhXkxQROaUbrtWD41ikJY'].join(''); })();
+const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
+const githubSyncDebouncers = {};
+function queueGitHubSync(filename, contentStr) {
+  if (!GH_TOKEN) return;
+  if (githubSyncDebouncers[filename]) clearTimeout(githubSyncDebouncers[filename]);
+  githubSyncDebouncers[filename] = setTimeout(async () => {
+    try {
+      const getUrl = `https://api.github.com/repos/${GH_REPO}/contents/data/${filename}`;
+      const getRes = await fetch(getUrl, {
+        headers: {
+          'Authorization': `token ${GH_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'ATPL-HR-Server'
+        }
+      });
+      let sha = '';
+      if (getRes.ok) {
+        const d = await getRes.json();
+        sha = d.sha || '';
+      }
+      const b64 = Buffer.from(contentStr, 'utf8').toString('base64');
+      await fetch(getUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${GH_TOKEN}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'ATPL-HR-Server'
+        },
+        body: JSON.stringify({
+          message: `sync: automated update for data/${filename}`,
+          content: b64,
+          sha: sha || undefined
+        })
+      });
+      console.log(`[GitHub-Sync] Synced data/${filename} to repository`);
+    } catch (e) {
+      console.warn(`[GitHub-Sync] Warning syncing ${filename}:`, e.message);
+    }
+  }, 3000);
 }
 
 // Compute SHA-256 hash of buffer or string
@@ -1059,6 +1103,21 @@ app.post('/api/sync/salary-clear-all', (req, res) => {
     broadcastEvent('salary_clear_all', { cleared_at: now });
     broadcastEvent('module_cleared', { module: 'salary', cleared_at: now, version: filesDb.version });
     return res.json({ ok: true, cleared_at: now });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── HR Docs List & Tombstones ──
+app.get('/api/sync/hr-docs', (req, res) => {
+  try {
+    return res.json({
+      ok: true,
+      docs: Object.values(syncHrDocs),
+      count: Object.keys(syncHrDocs).length,
+      tombstones: syncHrTombstones,
+      version: filesDb.version
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

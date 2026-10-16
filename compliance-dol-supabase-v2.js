@@ -10,14 +10,22 @@ var SUPABASE_URL='https://gsbyzddibdjxekutpkip.supabase.co';
 var PUBLISHABLE_KEY='sb_publishable_iBXc8wO99laFLO7-Pcv-Dw_BbpPJpII';
 var GH_TOKEN = (function() { try { var s = root.localStorage ? root.localStorage.getItem("ATPL_GITHUB_TOKEN") : ""; if (s) return s; return ["ghp_zNVCq14dAFNeLXj", "AhXkxQROaUbrtWD41ikJY"].join(""); } catch(_) { return ""; } })();
 var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
-var EDGE_URL = (function() {
-  if (typeof window !== 'undefined' && window.location) {
+var LIVE_CLOUD_RUN_URL = 'https://ais-pre-eq64yrsxlxfvswj7xctqw5-909075195436.asia-east1.run.app';
+function getBackendBase() {
+  if (typeof window !== 'undefined') {
+    if (window.ATPL_GET_API_BASE) return window.ATPL_GET_API_BASE();
+    var configured = window.__ATPL_CENTRAL_BACKEND_URL;
+    if (configured) return configured.replace(/\/+$/, '');
     var origin = window.location.origin || '';
     if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
-      return origin + '/functions/v1/dol-api';
+      return '';
     }
   }
-  return SUPABASE_URL + '/functions/v1/dol-api';
+  return LIVE_CLOUD_RUN_URL;
+}
+var EDGE_URL = (function() {
+  var b = getBackendBase();
+  return (b || '') + '/functions/v1/dol-api';
 })();
 
 async function syncToGitHubRepo(rec, b64) {
@@ -254,7 +262,7 @@ async function listRaw(type,force){
 
   // 1. Resilient Backend Server / Local API Loader
   try {
-    var sRes = await timeoutFetch("/api/sync/dol-records?type=" + encodeURIComponent(type), { method: "GET" }, 3000);
+    var sRes = await timeoutFetch(getBackendBase() + "/api/sync/dol-records?type=" + encodeURIComponent(type), { method: "GET" }, 5000);
     if (sRes && sRes.ok) {
       var sData = await sRes.json();
       if (sData && Array.isArray(sData.records) && sData.records.length > 0) {
@@ -538,7 +546,7 @@ async function upload(rec,buf,progress){
 
   // Sync to Backend Server /functions/v1/dol-api & /api/sync/dol-record
   try {
-    timeoutFetch("/api/sync/dol-record", {
+    timeoutFetch(getBackendBase() + "/api/sync/dol-record", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -632,7 +640,7 @@ async function remove(rec){
   delete cDel[String(id)];
   saveMetaCache(type,cDel);
   try { syncDeleteFromGitHubRepo(id).catch(function(){}); } catch(_) {}
-  try { timeoutFetch("/api/sync/dol-record/" + encodeURIComponent(id), { method: "DELETE" }, 3000).catch(function(){}); } catch(_) {}
+  try { timeoutFetch(getBackendBase() + "/api/sync/dol-record/" + encodeURIComponent(id), { method: "DELETE" }, 5000).catch(function(){}); } catch(_) {}
   broadcastComplianceEvent(type,"delete",{
     filename:name,
     id:String(id),

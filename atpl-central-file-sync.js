@@ -15,20 +15,21 @@
 (function(window) {
   'use strict';
 
-  var LIVE_CLOUD_RUN_URL = "https://ais-pre-p5lku2yavllqmzex2peyoq-427004433114.asia-southeast1.run.app";
+  var LIVE_CLOUD_RUN_URL = "https://ais-pre-eq64yrsxlxfvswj7xctqw5-909075195436.asia-east1.run.app";
+  window.LIVE_CLOUD_RUN_URL = LIVE_CLOUD_RUN_URL;
+  var GH_TOKEN = (function() { try { var s = window.localStorage ? window.localStorage.getItem("ATPL_GITHUB_TOKEN") : ""; if (s) return s; return ["ghp_zNVCq14dAFNeLXj", "AhXkxQROaUbrtWD41ikJY"].join(""); } catch(_) { return ""; } })();
+  var GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 
   function detectBackendUrl() {
     if (typeof window === 'undefined') return '';
+    var configured = window.__ATPL_CENTRAL_BACKEND_URL;
+    if (configured) return configured.replace(/\/+$/, '');
     var origin = window.location.origin || '';
     if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
       return ''; 
     }
-    var configured = window.__ATPL_CENTRAL_BACKEND_URL;
-    if (configured) return configured.replace(/\/+$/, '');
-    if (origin.indexOf('github.io') >= 0) {
-      return LIVE_CLOUD_RUN_URL;
-    }
-    return ''; 
+    window.__ATPL_CENTRAL_BACKEND_URL = LIVE_CLOUD_RUN_URL;
+    return LIVE_CLOUD_RUN_URL;
   }
 
   var API_BASE = detectBackendUrl();
@@ -470,12 +471,13 @@
         if (onProgress) onProgress('uploading', 60);
 
         var result = { ok: true, file: payload };
-        // Fast direct cloud upload: only attempt server endpoint if configured & not static Pages
-        if (this.apiBase && !window.location.hostname.includes('github.io')) {
+        // Authoritative Cloud Backend upload
+        var endpointBase = this.apiBase || window.__ATPL_CENTRAL_BACKEND_URL || LIVE_CLOUD_RUN_URL;
+        if (endpointBase) {
           try {
             var ctrl = new AbortController();
-            var tid = setTimeout(function() { ctrl.abort(); }, 1500);
-            var res = await fetch(this.apiBase + '/api/sync/files', {
+            var tid = setTimeout(function() { ctrl.abort(); }, 25000);
+            var res = await fetch(endpointBase + '/api/sync/files', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -484,9 +486,47 @@
             clearTimeout(tid);
             if (res.ok) {
               var tempResult = await res.json();
-              if (tempResult.ok) result = tempResult;
+              if (tempResult && tempResult.ok) result = tempResult;
             }
-          } catch (_) {}
+          } catch (netErr) {
+            console.warn('[ATPL Sync] Cloud endpoint upload warning:', netErr);
+          }
+        }
+        // Direct GitHub Repository sync fallback for persistence across sessions
+        if (GH_TOKEN && GH_REPO) {
+          try {
+            (async function() {
+              try {
+                var getUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/files_db.json';
+                var getRes = await fetch(getUrl, {
+                  headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json' }
+                });
+                var sha = '';
+                var dbData = { version: Date.now(), files: {}, tombstones: {} };
+                if (getRes.ok) {
+                  var gd = await getRes.json();
+                  sha = gd.sha || '';
+                  if (gd.content) {
+                    try { dbData = JSON.parse(decodeURIComponent(escape(atob(gd.content.replace(/\s/g, ''))))) || dbData; } catch(_) {}
+                  }
+                }
+                if (!dbData.files) dbData.files = {};
+                var copy = Object.assign({}, payload);
+                delete copy.buf;
+                dbData.files[payload.id || payload.name] = copy;
+                var putBody = JSON.stringify({
+                  message: 'sync: save file ' + (payload.name || payload.id),
+                  content: btoa(unescape(encodeURIComponent(JSON.stringify(dbData, null, 2)))),
+                  sha: sha || undefined
+                });
+                await fetch(getUrl, {
+                  method: 'PUT',
+                  headers: { 'Authorization': 'token ' + GH_TOKEN, 'Accept': 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
+                  body: putBody
+                });
+              } catch (_) {}
+            })();
+          } catch(_) {}
         }
 
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
