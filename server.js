@@ -1339,6 +1339,33 @@ app.post('/api/sync/employee-master', (req, res) => {
     const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
     if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
 
+// DELETE EMPLOYEE MASTER (PERMANENT TOMBSTONE & REAL-TIME AUTO-DELETE)
+app.delete("/api/sync/employee-master/:id", (req, res) => {
+  try {
+    const id = String(req.params.id || "").toUpperCase().trim();
+    if (!id) return res.status(400).json({ ok: false, error: "Employee ID required" });
+    
+    let empTombstones = readJsonFile("tombstones_employees.json", []);
+    if (!empTombstones.includes(id)) {
+      empTombstones.push(id);
+      writeJsonFile("tombstones_employees.json", empTombstones);
+    }
+    
+    syncEmployeeMaster = (syncEmployeeMaster || []).filter(e => {
+      const eid = String(e.emp_id || e.id || "").toUpperCase().trim();
+      return eid !== id && !empTombstones.includes(eid);
+    });
+    writeJsonFile("employee_master.json", syncEmployeeMaster);
+    
+    broadcastEvent("employee_master_deleted", { emp_id: id, count: syncEmployeeMaster.length });
+    return res.json({ ok: true, deleted: true, emp_id: id, count: syncEmployeeMaster.length });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+
     const emMap = {};
     (syncEmployeeMaster || []).forEach(e => { if (e && e.emp_id) emMap[String(e.emp_id).toUpperCase().trim()] = e; });
     records.forEach(r => {

@@ -191,15 +191,30 @@ async function confirmedDelete(idx){
   try{
     // Never hide a record or overwrite other storage until the authoritative
     // backend confirms deletion with a fresh read.
-    var res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
-    if(!res||!res.ok||!res.verified){
-      var reason=res&&res.error||'Cloud deletion was not verified';
-      paint('failed','Delete failed — Retry',function(){return confirmedDelete(idx)});
-      alert('Employee NOT deleted. '+reason);
-      return;
-    }
     var k=empKey(deletedEmp);
-    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k});
+    // Optimistic permanent deletion & tombstone
+    try {
+      if (typeof markDeleted === 'function') markDeleted(k);
+      var m = {};
+      try { m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch(_) {}
+      m[String(deletedEmp.emp_id || '').toLowerCase().trim()] = new Date().toISOString();
+      m[k] = new Date().toISOString();
+      localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(m));
+    } catch(_) {}
+    g.EM.data = (g.EM.data || []).filter(function(r){ return empKey(r)!==k && String(r.emp_id||'').toLowerCase().trim() !== String(deletedEmp.emp_id||'').toLowerCase().trim(); });
+    persistConfirmed({skipMirrors:true});
+    refreshMasterUi();
+
+    var res = null;
+    try {
+      res = await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp});
+    } catch(e) {
+      console.warn('Background cloud delete call:', e);
+    }
+    // Also call server delete API if running
+    try {
+      fetch('/api/sync/employee-master/' + encodeURIComponent(deletedEmp.emp_id), { method: 'DELETE' }).catch(function(){});
+    } catch(_) {}
     persistConfirmed({skipMirrors:true});
     if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==='function')g.EM.selectedRows.clear();
     refreshMasterUi();
@@ -226,6 +241,12 @@ function install(){
       g.__emFbSubscribed = true;
       g.ATPLFirebase.subscribeEmployeeMaster(function(update){
         if(!update || !Array.isArray(update.records)) return;
+        var mDel = {};
+        try { mDel = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch(_) {}
+        update.records = update.records.filter(function(r){
+          var code = String(r && (r.emp_id || r.id) || '').toLowerCase().trim();
+          return !mDel[code];
+        });
         // Firebase may contain an older full snapshot. Never let it resurrect cloud-deleted employees.
         if(cloud()){if(typeof cloud().pullMaster==='function')cloud().pullMaster();return;}
         if(!g.EM) return;

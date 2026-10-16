@@ -21,7 +21,7 @@
   function codeOf(r){return text(r&&(r.emp_id||r.empCode||r.employee_code||r.code))}
   function keyOf(r){return idKey(codeOf(r))}
   function isSystemRecord(r){var id=codeOf(r);return id.indexOf(SYS)===0||!!(r&&r._atpl_system)}
-  function employeeRecords(a){return (Array.isArray(a)?a:[]).filter(function(r){return !isSystemRecord(r)})}
+  function employeeRecords(a){return (Array.isArray(a)?a:[]).filter(function(r){return !isSystemRecord(r) && !wasDeleted(keyOf(r)) && !wasDeleted(idKey(r.emp_id||r.id))})}
   function cleanRecord(r){var o={};Object.keys(r||{}).forEach(function(k){if(k.indexOf('_cloud_')!==0&&k.indexOf('_local_')!==0)o[k]=r[k]});return o}
   function stableRecord(r){var c=cleanRecord(r),o={};Object.keys(c).sort().forEach(function(k){o[k]=c[k]});return JSON.stringify(o)}
   function samePayload(a,b){
@@ -35,7 +35,7 @@
   function markBackend(data){if(data&&data.ok===false&&/unknown action/i.test(text(data.error))){backendReady=false;return false}if(data&&data.ok===true){backendReady=true;return true}return backendReady===true}
   var DELETED='ATPL_EmployeeMasterDeletedV1';
   function deletedMap(){return J(root.localStorage.getItem(DELETED)||'{}',{})}
-  function wasDeleted(k){return !!deletedMap()[idKey(k)]}
+  function wasDeleted(k){if(!k)return false;var m=deletedMap();var id=idKey(k);return !!(m[id]||m[String(k).trim().toLowerCase()]);}
   function markDeleted(k){var m=deletedMap();m[idKey(k)]=new Date().toISOString();root.localStorage.setItem(DELETED,JSON.stringify(m));delete queueMap[idKey(k)];queueOrder=queueOrder.filter(function(x){return x!==idKey(k)})}
   var cloudCache=null,cloudCacheTime=0;async function fetchCloud(force){var now=Date.now();if(!force&&cloudCache&&Array.isArray(cloudCache)&&(now-cloudCacheTime<12000))return cloudCache;var token=tok();if(!token)throw new Error('Login token missing');var d=await api({action:'getEmployeeMaster',token:token},8000);if(!markBackend(d)||!Array.isArray(d.records))throw new Error(d&&d.error||'Employee Master backend unavailable');cloudCache=employeeRecords(d.records);cloudCacheTime=Date.now();return cloudCache}
   function remoteMap(records){var m={};employeeRecords(records).forEach(function(r){var k=keyOf(r);if(k)m[k]=r});return m}
@@ -151,6 +151,20 @@
   }
   function deleteMaster(id,opts){
     opts=opts||{};var k=idKey(id);if(!k)return Promise.resolve({ok:false,error:'Employee code required'});
+    markDeleted(k);
+    clearDirty(k);
+    try {
+      if (typeof root.BroadcastChannel !== 'undefined') {
+        var bc = new root.BroadcastChannel('ATPL_ERP_SHARED_V2');
+        bc.postMessage({ type: 'employee_master_deleted', emp_id: id, key: k });
+        bc.close();
+      }
+    } catch(_) {}
+    try {
+      var local = employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));
+      var updated = local.filter(function(r){ return !wasDeleted(keyOf(r)) && idKey(r.emp_id||r.id) !== k; });
+      root.localStorage.setItem(MASTER, JSON.stringify(updated));
+    } catch(_) {}
     return serialize(k,async function(){
       try{
         var records=await fetchCloud(true),remote=remoteMap(records)[k]||null;
