@@ -158,6 +158,19 @@
     },
 
     syncToWindowFiles: function(forceRefresh = false) {
+      if (Array.isArray(window.FILES)) {
+        window.FILES.forEach(f => {
+          if (f && f.name && f.wb) {
+            var fk = String(f.name).toLowerCase().trim();
+            var allowed = typeof window.atplSalaryRestoreAllowed === 'function'
+              ? window.atplSalaryRestoreAllowed(f.name, f.savedAt || f.saved)
+              : true;
+            if (allowed && !this.fileMap.has(fk)) {
+              this.fileMap.set(fk, f);
+            }
+          }
+        });
+      }
       var arr = Array.from(this.fileMap.values());
       arr.sort((a, b) => {
         var da = new Date(a.savedAt || 0).getTime();
@@ -744,6 +757,19 @@
       this.isReconciling = true;
       try {
         this.lastSyncTime = Date.now();
+        if (Array.isArray(window.FILES)) {
+          window.FILES.forEach(f => {
+            if (f && f.name && f.wb) {
+              var fk = String(f.name).toLowerCase().trim();
+              var allowed = typeof window.atplSalaryRestoreAllowed === 'function'
+                ? window.atplSalaryRestoreAllowed(f.name, f.savedAt || f.saved)
+                : true;
+              if (allowed && !this.fileMap.has(fk)) {
+                this.fileMap.set(fk, f);
+              }
+            }
+          });
+        }
         var serverFiles = null;
         var serverTombs = {};
         var backendSuccess = false;

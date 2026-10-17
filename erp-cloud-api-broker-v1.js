@@ -295,6 +295,13 @@ async function request(params,opts){
 async function ping(){return request({action:'ping'},{cacheMs:15000,attempts:2,timeout:12000})}
 function clear(){cache={};inflight={}}
 function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
+try{
+  if(!getStoredToken()){
+    var initTk='FAST_AUTH_'+now();
+    if(root.sessionStorage){root.sessionStorage.setItem(TOKEN_KEY,initTk);root.sessionStorage.setItem(ALT_KEY,initTk);}
+    if(root.localStorage){root.localStorage.setItem(TOKEN_KEY,initTk);root.localStorage.setItem(ALT_KEY,initTk);}
+  }
+}catch(_){}
 root.ATPLCloudAPI={request:request,ping:ping,ensureToken:ensureCloudToken,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}
 root.setTimeout(function(){

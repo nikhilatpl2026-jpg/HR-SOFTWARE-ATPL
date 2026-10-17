@@ -64,13 +64,23 @@
     }finally{syncing=false}
   }
   function mergeCloud(local,cloud){
-    // Exact authoritative cloud snapshot. Never resurrect deleted employees
-    // by unioning records from old browser storage, Firebase or stale tabs.
-    var map={},order=[];
+    // Exact authoritative cloud snapshot, while auto-migrating brand-new local records that have never been uploaded yet.
+    var map={},order=[],toUpload=[];
     employeeRecords(cloud).forEach(function(r){
       var k=keyOf(r);if(!k||wasDeleted(k))return;
       if(!map[k])order.push(k);map[k]=cloudRecord(r);
     });
+    employeeRecords(local).forEach(function(r){
+      var k=keyOf(r);if(!k||wasDeleted(k)||map[k])return;
+      if(!r._cloud_updated_at){
+        order.push(k);
+        map[k]=cloudRecord(r);
+        toUpload.push(r);
+      }
+    });
+    if(toUpload.length){
+      root.setTimeout(function(){try{enqueue(toUpload)}catch(_){}},100);
+    }
     return order.map(function(k){return map[k]})
   }
   function serialize(k,fn){
