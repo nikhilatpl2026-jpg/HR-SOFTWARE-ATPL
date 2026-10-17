@@ -170,45 +170,7 @@
       var done = localStorage.getItem('ATPL_AUTHORITY_SCHEMA_VERSION');
       if (done === AUTHORITY_SCHEMA_VERSION) return;
       localStorage.setItem('ATPL_AUTHORITY_SCHEMA_VERSION', AUTHORITY_SCHEMA_VERSION);
-      localStorage.removeItem('ATPL_DOL_METACACHE_V3_pf');
-      localStorage.removeItem('ATPL_DOL_METACACHE_V3_esic');
-      localStorage.removeItem('ATPL_SALARY_OUTBOX_V1');
-      if (typeof indexedDB !== 'undefined') {
-        try {
-          var r1 = indexedDB.open('AroraTextiles', 1);
-          r1.onsuccess = function(e) {
-            try {
-              var db = e.target.result;
-              if (db.objectStoreNames.contains('salaryFiles')) {
-                db.transaction('salaryFiles', 'readwrite').objectStore('salaryFiles').clear();
-              }
-            } catch (_) {}
-          };
-        } catch (_) {}
-        try {
-          var r2 = indexedDB.open('AroraTextilesHRDocs', 1);
-          r2.onsuccess = function(e) {
-            try {
-              var db = e.target.result;
-              if (db.objectStoreNames.contains('documents')) {
-                db.transaction('documents', 'readwrite').objectStore('documents').clear();
-              }
-            } catch (_) {}
-          };
-        } catch (_) {}
-        try {
-          var r3 = indexedDB.open('ATPL_COMPLIANCE_DOL_V2', 1);
-          r3.onsuccess = function(e) {
-            try {
-              var db = e.target.result;
-              if (db.objectStoreNames.contains('challans')) {
-                db.transaction('challans', 'readwrite').objectStore('challans').clear();
-              }
-            } catch (_) {}
-          };
-        } catch (_) {}
-      }
-      console.log('[ATPL Sync] One-time ghost cache cleanup complete (' + AUTHORITY_SCHEMA_VERSION + ').');
+      console.log('[ATPL Sync] Schema version active (' + AUTHORITY_SCHEMA_VERSION + ').');
     } catch (_) {}
   })();
 
