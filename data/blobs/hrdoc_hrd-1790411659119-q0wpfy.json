@@ -1,0 +1,33 @@
+{
+  "key": "hrd-1790411659119-q0wpfy",
+  "module": "hr_doc",
+  "updated_at": "2026-10-17T15:53:01.352Z",
+  "payload": {
+    "id": "HRD-1790411659119-q0wpfy",
+    "doc_type": "HR Policy",
+    "document_name": "DSA",
+    "holder": "",
+    "reference_no": "DS",
+    "certificate_no": "",
+    "issuing_authority": "",
+    "location": "",
+    "validity_period": "",
+    "issue_date": "",
+    "retraining_date": "",
+    "expiry_date": "2062-09-09",
+    "alert_days": 7,
+    "remarks": "",
+    "assigned_user_id": "",
+    "assigned_user_name": "All HR Document users",
+    "visibility": "all",
+    "created_by": "admin",
+    "created_by_name": "Owner / Admin",
+    "updated_by": "admin",
+    "updated_at": "2026-09-26T08:34:19.119Z",
+    "file_name": "",
+    "file_type": "",
+    "file_data": null,
+    "file_data_list": [],
+    "_cloudBackedUp": true
+  }
+}
