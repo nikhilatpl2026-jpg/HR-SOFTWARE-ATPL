@@ -83,17 +83,17 @@
 <script src="xlsx.full.min.js"></script>
 <script>
   window.__atplFirebaseQuotaExhausted = false;
-  window.LIVE_CLOUD_RUN_URL = "https://ais-pre-eq64yrsxlxfvswj7xctqw5-909075195436.asia-east1.run.app";
+  window.LIVE_CLOUD_RUN_URL = "";
   (function() {
     try {
-      var origin = window.location.origin || '';
-      if (origin.indexOf('localhost') >= 0 || origin.indexOf('127.0.0.1') >= 0 || origin.indexOf('.run.app') >= 0) {
-        window.__ATPL_CENTRAL_BACKEND_URL = '';
+      var host = (window.location && window.location.hostname) || '';
+      if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
+        window.__ATPL_CENTRAL_BACKEND_URL = window.location.origin || '';
       } else {
-        window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL;
+        window.__ATPL_CENTRAL_BACKEND_URL = '';
       }
     } catch (_) {
-      window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL;
+      window.__ATPL_CENTRAL_BACKEND_URL = '';
     }
   })();
   window.ATPL_GET_API_BASE = function() {
@@ -3560,6 +3560,7 @@ function atplB64ToBuf(b64) {
 
 function saveFileToDB(name, arrayBuf, cb) {
   try {
+    if (typeof window.atplMarkSessionUpload === 'function') window.atplMarkSessionUpload('salary', name);
     var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}');
     if(ts[String(name).toLowerCase()]) {
       delete ts[String(name).toLowerCase()];
@@ -3987,7 +3988,7 @@ async function atplDirectServerSync(force) {
 
     // C. Check if local has files that server is missing -> push to server!
     for (var myk in localMap) {
-      if (!serverMap[myk] && !serverTombs[myk]) {
+      if (!serverMap[myk] && !serverTombs[myk] && (typeof window.atplIsRecentSessionUpload === 'function' && window.atplIsRecentSessionUpload('salary', myk, 60000))) {
         var myf = localMap[myk];
         if (myf && myf.buf && atplSalaryRestoreAllowed(myf.name, myf.savedAt)) {
           var myB64 = atplBufToB64(myf.buf);

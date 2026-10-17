@@ -362,6 +362,7 @@
         var tombTime=typeof tombVal==='string'?dateMs(tombVal):(tombVal===true?Infinity:0);
         var fileTime=dateMs(row.saved);
         var isTomb=tombTime>fileTime;
+        if(!remoteByName[lk] && !(typeof root.atplIsRecentSessionUpload === 'function' && root.atplIsRecentSessionUpload('salary', lk, 60000))) isTomb=true;
         var wasCleared=allClearedAt && allClearedAt >= fileTime;
         var isRecentlyUploaded = (Date.now() - fileTime < 15000);
 
@@ -470,9 +471,16 @@
       var hrTombVal=hrTombs[lid];
       var hrTombTime=typeof hrTombVal==='string'?dateMs(hrTombVal):(hrTombVal===true?Infinity:0);
       var isHrTomb=hrTombTime>docTime;
+      if(!remoteById[lid] && !(typeof root.atplIsRecentSessionUpload === 'function' && root.atplIsRecentSessionUpload('hr_doc', lid, 60000))) isHrTomb=true;
       if(isHrTomb){
         console.log('[Firebase HR Auto-Delete] Purging removed HR doc:', doc.document_name||doc.id);
         await deleteHrDocFromDb(doc.id);
+        saveLocalHrTombstone(doc.id);
+        var docsArrDel = typeof root.hrDocGetDocs === 'function' ? root.hrDocGetDocs() : null;
+        if (Array.isArray(docsArrDel)) {
+          var delIdx = docsArrDel.findIndex(function(x){ return x && String(x.id).toLowerCase() === lid; });
+          if (delIdx >= 0) docsArrDel.splice(delIdx, 1);
+        }
         changed++;
       } else if(!remoteById[lid] && !doc._inFlight){
         console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
@@ -652,6 +660,7 @@
  }
 
  async function cloudSaveSalary(name,buf,saved){
+   if(typeof root.atplMarkSessionUpload==='function')root.atplMarkSessionUpload('salary',name);
    if(sharedSalaryAuthority)return queueSharedSalary('save',name,saved||new Date().toISOString());
    var savedTs=saved||new Date().toISOString();
    if(!salaryRestoreAllowed(name,savedTs))return false;
@@ -882,6 +891,7 @@
        return old.call(this,d,function(){
          try{if(cb)cb()}finally{
            if(d&&d.id){
+             if(typeof root.atplMarkSessionUpload==='function')root.atplMarkSessionUpload('hr_doc',d.id);
              clearLocalHrTombstone(d.id);
              try{fetch('/api/sync/hr-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).catch(function(){});}catch(_){}
              if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveHrDoc==='function'){
@@ -1057,7 +1067,7 @@
        if(!salaryRestoreAllowed(lf.name,lf.saved) || (st.salary_tombstones||{})[lk] || (st.tombstones||{})[lk])continue;
        var sFile = serverMap[lk];
        if(sFile) continue;
-       if(!sFile){
+       if(!sFile && (typeof root.atplIsRecentSessionUpload === 'function' && root.atplIsRecentSessionUpload('salary', lk, 60000))){
          try {
            var b64 = bufToB64(lf.buf);
            if(b64){
