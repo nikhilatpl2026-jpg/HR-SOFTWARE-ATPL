@@ -518,7 +518,12 @@
           } catch (_) {}
         }
 
-        // Save to Authoritative Multi-Cloud (Firebase Firestore + GitHub Cloud)
+        // Save to Authoritative Multi-Cloud (Google Apps Script + Firebase Firestore + GitHub Cloud)
+        if (module === 'salary' && rawBuf && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.saveSalary === 'function') {
+          try {
+            window.ATPLCloudSharedStorageV1.saveSalary(name, rawBuf, payload.created_at).catch(function(){});
+          } catch (_) {}
+        }
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
           try {
             await window.ATPLFirebase.saveSalaryFile(
@@ -526,6 +531,11 @@
               { original_b64: bufBase64, name: name, id: payload.id },
               { name: name, id: payload.id, saved_at: payload.created_at, uploaded_by: payload.uploaded_by }
             );
+          } catch (_) {}
+        }
+        if (module === 'hr_doc' && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.saveHrDoc === 'function') {
+          try {
+            window.ATPLCloudSharedStorageV1.saveHrDoc(payload).catch(function(){});
           } catch (_) {}
         }
 
@@ -643,6 +653,12 @@
           } catch (_) {}
         }
 
+        if (module === 'salary' && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.deleteSalary === 'function') {
+          try { window.ATPLCloudSharedStorageV1.deleteSalary(idOrName).catch(function(){}); } catch (_) {}
+        }
+        if (module === 'hr_doc' && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.deleteHrDoc === 'function') {
+          try { window.ATPLCloudSharedStorageV1.deleteHrDoc(idOrName, idOrName).catch(function(){}); } catch (_) {}
+        }
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
           try { await window.ATPLFirebase.deleteSalaryFile(idOrName, 'admin'); } catch (_) {}
         } else if (module === 'hr_doc' && window.ATPLFirebase && typeof window.ATPLFirebase.deleteHrDoc === 'function') {
@@ -690,6 +706,9 @@
               body: JSON.stringify({ module: module })
             }).catch(function(){});
           } catch (_) {}
+        }
+        if (module === 'salary' && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.clearSalary === 'function') {
+          try { window.ATPLCloudSharedStorageV1.clearSalary().catch(function(){}); } catch (_) {}
         }
         if (module === 'salary' && window.ATPLFirebase && typeof window.ATPLFirebase.clearAllSalaryFiles === 'function') {
           try { await window.ATPLFirebase.clearAllSalaryFiles('admin'); } catch (_) {}
@@ -747,11 +766,8 @@
           } catch (_) {}
         }
 
-        if (!backendSuccess && !this.apiBase) {
-          if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
-            try { await window.ATPLCloudSharedStorageV1.syncNow(!!force); } catch (_) {}
-          }
-          return;
+        if (!this.apiBase && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
+          try { window.ATPLCloudSharedStorageV1.syncNow(!!force).catch(function(){}); } catch (_) {}
         }
         if (!backendSuccess && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
@@ -824,10 +840,12 @@
           for (var [localKey, localItem] of Array.from(this.fileMap.entries())) {
             var lName = String((localItem && localItem.name) || localKey).toLowerCase().trim();
             var lId = String((localItem && localItem.id) || '').toLowerCase().trim();
-            var isSessionRecent = typeof window.atplIsRecentSessionUpload === 'function' && window.atplIsRecentSessionUpload('salary', lName, 60000);
-            var isTombstoned = !!(serverTombs[lName] || (lId && serverTombs[lId]));
+            var itemTime = Date.parse((localItem && (localItem.savedAt || localItem.saved)) || '0') || 0;
+            var tEntry = serverTombs[lName] || (lId && serverTombs[lId]);
+            var tTime = tEntry ? (Date.parse(tEntry.deleted_at || '0') || Infinity) : 0;
+            var isTombstoned = (tTime > 0 && tTime >= itemTime) || (allClearedAt > 0 && itemTime <= allClearedAt);
             var isMissingFromServer = !activeServerNames.has(lName) && (!lId || !activeServerIds.has(lId));
-            if (isTombstoned || (isMissingFromServer && !isSessionRecent)) {
+            if (isTombstoned) {
               this.fileMap.delete(localKey);
               this.fileMap.delete(lName);
               if (lId) this.fileMap.delete(lId);
@@ -841,6 +859,17 @@
                 };
               } catch (_) {}
               prunedAny = true;
+            } else if (isMissingFromServer && localItem && localItem.buf && !localItem._pushedToCloud) {
+              localItem._pushedToCloud = true;
+              if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.saveSalary === 'function') {
+                try { window.ATPLCloudSharedStorageV1.saveSalary(localItem.name, localItem.buf, localItem.savedAt || new Date().toISOString()).catch(function(){}); } catch (_) {}
+              }
+              if (window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+                try {
+                  var b64Push = arrayBufferToBase64(localItem.buf);
+                  window.ATPLFirebase.saveSalaryFile(localItem.name, { original_b64: b64Push, name: localItem.name }, { name: localItem.name, saved_at: localItem.savedAt || new Date().toISOString(), uploaded_by: 'admin' }).catch(function(){});
+                } catch (_) {}
+              }
             }
           }
 
@@ -850,9 +879,10 @@
               if (!x || !x.name) return false;
               var xn = String(x.name).toLowerCase().trim();
               var xi = String(x.id || '').toLowerCase().trim();
-              var isSessionRecent = typeof window.atplIsRecentSessionUpload === 'function' && window.atplIsRecentSessionUpload('salary', xn, 60000);
-              if (serverTombs[xn] || (xi && serverTombs[xi])) return false;
-              if (!activeServerNames.has(xn) && (!xi || !activeServerIds.has(xi)) && !isSessionRecent) return false;
+              var xTime = Date.parse(x.savedAt || x.saved || '0') || 0;
+              var xtEntry = serverTombs[xn] || (xi && serverTombs[xi]);
+              var xtTime = xtEntry ? (Date.parse(xtEntry.deleted_at || '0') || Infinity) : 0;
+              if ((xtTime > 0 && xtTime >= xTime) || (allClearedAt > 0 && xTime <= allClearedAt)) return false;
               return true;
             });
             if (window.FILES.length !== origLen) prunedAny = true;

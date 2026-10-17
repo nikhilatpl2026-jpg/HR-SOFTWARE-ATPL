@@ -24,7 +24,18 @@
 
  function text(v){return v==null?'':String(v).trim()}
  function J(v,d){try{return JSON.parse(v)}catch(_){return d}}
- function token(){try{return root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||''}catch(_){return''}}
+ function token(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'').trim()}catch(_){return''}}
+ async function ensureTokenReady(){
+   var t=token();
+   if(t&&!/^(FAST_AUTH_|OFFLINE_|ADMIN_|LOCAL_)/i.test(t))return t;
+   if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.ensureToken==='function'){
+     try{
+       var minted=await root.ATPLCloudAPI.ensureToken(false);
+       if(minted)return minted;
+     }catch(_){}
+   }
+   return token();
+ }
  function user(){try{var s=J(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);return s&&s.id?{id:String(s.id),name:String(s.name||s.id)}:null}catch(_){return null}}
  function api(params,timeout){if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(params,{timeout:timeout,source:'shared-files',cacheMs:params&&params.action==='getSystemRecords'?0:undefined});return new Promise(function(resolve,reject){var cb='__atpl_store_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=root.document.createElement('script'),done=false,t=setTimeout(function(){finish();reject(new Error('Shared storage timeout'))},timeout||18000);function finish(){if(done)return;done=true;clearTimeout(t);try{delete root[cb]}catch(_){root[cb]=undefined}if(s.parentNode)s.parentNode.removeChild(s)}root[cb]=function(data){finish();resolve(data||{})};params=Object.assign({},params||{},{callback:cb,_ts:Date.now()});var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]==null?'':String(params[k]))}).join('&');s.onerror=function(){finish();reject(new Error('Shared storage connect failed'))};s.async=true;s.src=API+'?'+qs;(root.document.head||root.document.documentElement).appendChild(s)})}
  function fnv(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return('00000000'+(h>>>0).toString(16)).slice(-8)}
@@ -45,13 +56,13 @@
  function b64ToBuf(s){if(!s||typeof s!=='string')return null;return b64ToBytes(s).buffer}
  async function encodeObject(obj){var raw=new TextEncoder().encode(JSON.stringify(obj)),bytes=raw,encoding='utf8-base64';if(typeof root.CompressionStream==='function'){try{var cs=new root.CompressionStream('gzip'),ab=await new Response(new Blob([raw]).stream().pipeThrough(cs)).arrayBuffer();bytes=new Uint8Array(ab);encoding='gzip-base64'}catch(_){}}return{encoding:encoding,data:bytesToB64(bytes),rawBytes:raw.length,packedBytes:bytes.length}}
  async function decodeObject(encoding,data){var bytes=b64ToBytes(data);if(encoding==='gzip-base64'){if(typeof root.DecompressionStream==='function'){var ds=new root.DecompressionStream('gzip'),ab=await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer();bytes=new Uint8Array(ab)}else if(root.pako&&typeof root.pako.ungzip==='function')bytes=root.pako.ungzip(bytes);else throw new Error('GZIP decoder unavailable on this browser')}return JSON.parse(new TextDecoder().decode(bytes))}
- async function upsert(id,record,attempt){var tk=token();if(!tk)throw new Error('Login token missing');var d=await api({action:'upsertEmployeeMaster',token:tk,emp_id:id,record_json:JSON.stringify(Object.assign({emp_id:id,_atpl_system:true},record))},20000);if(d&&d.ok)return true;if(!attempt){await new Promise(function(r){setTimeout(r,700)});return upsert(id,record,1)}throw new Error(d&&d.error||'Cloud record save failed')}
+ async function upsert(id,record,attempt){await ensureTokenReady();var tk=token();if(!tk)throw new Error('Login token missing');var d=await api({action:'upsertEmployeeMaster',token:tk,emp_id:id,record_json:JSON.stringify(Object.assign({emp_id:id,_atpl_system:true},record))},20000);if(d&&d.ok)return true;if(!attempt){await new Promise(function(r){setTimeout(r,700)});return upsert(id,record,1)}throw new Error(d&&d.error||'Cloud record save failed')}
  async function remove(id){var tk=token();if(!tk)return false;try{var d=await api({action:'deleteEmployeeMaster',token:tk,emp_id:id},16000);return !!(d&&d.ok)}catch(_){return false}}
  async function pool(tasks,limit){var at=0,failed=null;async function worker(){while(!failed){var i=at++;if(i>=tasks.length)return;try{await tasks[i]()}catch(e){failed=e;return}}}var ws=[];for(var n=0;n<Math.min(limit,tasks.length);n++)ws.push(worker());await Promise.all(ws);if(failed)throw failed}
  function setBadge(state,msg){try{if(typeof root.updateRealtimeCloudBadge==='function'){var count=Array.isArray(root.FILES)?root.FILES.length:0;root.updateRealtimeCloudBadge(count,state==='busy'?'syncing':state==='bad'?'error':'ok',msg);return}var id='atplCloudFilesBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:10px;padding:4px 9px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}var cnt=Array.isArray(root.FILES)?root.FILES.length:0;b.textContent=msg||('☁️ Realtime Cloud ('+cnt+' files)');if(state==='bad'){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else if(state==='busy'){b.style.background='#fff7ed';b.style.color='#c2410c';b.style.borderColor='#fed7aa'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
  function storageLabel(msg){try{var x=root.document.getElementById('storageLbl');if(x&&msg)x.textContent=msg}catch(_){}}
  function isSystem(r){return !!r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)}
- async function fetchRemote(force){if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}d=await api({action:'getEmployeeMaster',token:token()},22000);if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Shared records unavailable');remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}
+ async function fetchRemote(force){await ensureTokenReady();if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}d=await api({action:'getEmployeeMaster',token:token()},22000);if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Shared records unavailable');remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}
  function recordsFor(records,key){var meta=null,chunks={};(records||[]).forEach(function(r){if(r&&r.object_key===key&&r._atpl_kind==='meta')meta=r;else if(r&&r.object_key===key&&r._atpl_kind==='chunk')chunks[Number(r.index)]=String(r.data||'')});return{meta:meta,chunks:chunks}}
  async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Cloud copy is too large for current shared bridge ('+parts.length+' chunks).');var k=safeKey(kind,key),u=user()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});setBadge('busy','☁ Saving '+text(info&&info.name||kind)+'…');await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});remoteRecords=[];lastPull=0;setBadge('ok','🔥 Firebase Live');return true}
  async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records.filter(function(r){return r._atpl_kind!=='chunk'||String(r.generation||'')===String(meta.generation||'')}),meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
@@ -649,7 +660,6 @@
   }
 
  function startFirebaseListener(){
-   if(sharedSalaryAuthority)return false;
    if(root.__atplFirebaseQuotaExhausted) return false;
    if(!root.ATPLFirebase||typeof root.ATPLFirebase.subscribeSalaryFiles!=='function')return false;
    if(firebaseUnsubscribe)return true;
@@ -700,18 +710,26 @@
  }
 
  async function syncNow(force){
+   var fbOk=false;
+   if(!root.__atplFirebaseQuotaExhausted&&root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllSalaryFiles==='function'){
+     try{
+       if(typeof root.ATPLFirebase.fetchAllTombstones==='function'){
+         var fbTombs=await root.ATPLFirebase.fetchAllTombstones();
+         if(Array.isArray(fbTombs)&&fbTombs.length)await handleFirebaseTombstonesUpdate(fbTombs);
+       }
+       var fbFiles=await root.ATPLFirebase.fetchAllSalaryFiles();
+       await handleFirebaseFilesUpdate({all:fbFiles,removedNames:[]});
+       fbOk=true;
+     }catch(e){console.warn('Firebase manual fetch warning',e)}
+   }
    if(sharedSalaryAuthority){
      var salOk=await syncSharedSalary(force);
      if(typeof root.hrDocGetDocs==='function'){try{await syncSharedHr(force)}catch(_){}}
-     return salOk;
+     return salOk||fbOk;
    }
-   if(root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllSalaryFiles==='function'){
-     try{
-       var fbFiles=await root.ATPLFirebase.fetchAllSalaryFiles();
-       await handleFirebaseFilesUpdate({all:fbFiles,removedNames:[]});
-       return true;
-     }catch(e){console.warn('Firebase manual fetch warning',e)}
-   }
+   if(typeof root.hrDocGetDocs==='function'){try{await syncSharedHr(force)}catch(_){}}
+   await ensureTokenReady();
+   if(!token())return fbOk;
    if(!token())return false;
    if(pulling)return pulling;
    if(!force&&Date.now()-lastPull<8000)return true;
@@ -781,6 +799,7 @@
        storageLabel('Saved to Firebase Realtime · '+name);
        setBadge('ok','🔥 Firebase Live ('+root.FILES.length+')');
        if(typeof root.showToast==='function')root.showToast('🔥 File "'+name+'" cloud aur sabhi devices par live save ho gayi.');
+       saveObject('salary_file',name,p,{name:name,saved_at:savedTs}).catch(function(){});
        return true;
      }catch(fe){
        if(/quota|resource-exhausted/i.test(String(fe && (fe.message || fe.code)))) {
@@ -880,6 +899,7 @@
    }
    refreshHrUi();
    try{fetch('/api/sync/hr-doc/'+encodeURIComponent(id),{method:'DELETE'}).catch(function(){});}catch(_){}
+   await ensureTokenReady();
    if(!token())return false;
    try{
      var k=safeKey('hr_doc',id),u=user()||{},delAt=new Date(Date.now()+1000).toISOString();
@@ -901,6 +921,15 @@
 
  var hrSyncFlight=null,hrSyncAt=0;
  async function syncSharedHr(force){
+   if(!root.__atplFirebaseQuotaExhausted&&root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllHrDocs==='function'){
+     try{
+       var fbT=typeof root.ATPLFirebase.fetchAllHrTombstones==='function'?await root.ATPLFirebase.fetchAllHrTombstones():[];
+       if(Array.isArray(fbT)&&fbT.length)await handleFirebaseHrTombstonesUpdate(fbT);
+       var fbD=await root.ATPLFirebase.fetchAllHrDocs();
+       if(Array.isArray(fbD))await handleFirebaseHrUpdate({all:fbD,removedIds:[]});
+     }catch(_){}
+   }
+   await ensureTokenReady();
    if(!token())return false;
    if(typeof root.hrDocGetDocs!=='function'&&!force)return true;
    if(hrSyncFlight)return hrSyncFlight;
@@ -1032,7 +1061,7 @@
              if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveHrDoc==='function'){
                root.ATPLFirebase.saveHrDoc(d).catch(function(e){console.warn('Firebase HR save failed',e)});
              }
-             if(token())cloudSaveHr(d);
+             cloudSaveHr(d);
            }
          }
        });
@@ -1379,6 +1408,7 @@
    if(clear)root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',new Date(clear).toISOString());
  }
  async function salarySnapshot(){
+   await ensureTokenReady();
    if(!token())throw new Error('Sign in to sync files');
    var result=await api({action:'getSystemRecords',kind:'salary_file',token:token()},22000);
    if(!result||!result.ok||!Array.isArray(result.records))throw new Error(result&&result.error||'Shared salary read failed');
@@ -1470,6 +1500,7 @@ async function applySalarySnapshot(records){
  async function flushSalaryOutbox(){
    if(salaryWriteFlight)return salaryWriteFlight;
    salaryWriteFlight=(async function(){
+     await ensureTokenReady();
      if(!token())throw new Error('Sign in to sync files');
      var q=readSalaryOutbox(),ops=Object.keys(q).map(function(k){return q[k]});
      ops.sort(function(a,b){return (a.type==='save'?1:0)-(b.type==='save'?1:0)||dateMs(a.at)-dateMs(b.at)});
@@ -1480,9 +1511,27 @@ async function applySalarySnapshot(records){
  async function queueSharedSalary(type,name,at){
    var op={type:type,name:name,at:at,id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)};
    try{
+     if(type==='save')clearLocalSalaryTombstone(name);
      putSalaryOperation(op);
      if(type==='delete')saveLocalSalaryTombstone(name);
      if(type==='clear')root.localStorage.setItem('ATPL_ALL_SALARY_CLEARED_AT',at);
+     if(!root.__atplFirebaseQuotaExhausted && root.ATPLFirebase){
+       try{
+         if(type==='delete' && typeof root.ATPLFirebase.deleteSalaryFile==='function'){
+           root.ATPLFirebase.deleteSalaryFile(name, (user()||{}).id||'admin').catch(function(){});
+         }else if(type==='clear' && typeof root.ATPLFirebase.clearAllSalaryFiles==='function'){
+           root.ATPLFirebase.clearAllSalaryFiles((user()||{}).id||'admin').catch(function(){});
+         }else if(type==='save' && typeof root.ATPLFirebase.saveSalaryFile==='function'){
+           salaryRows().then(function(rows){
+             var r=(rows||[]).find(function(x){return x&&String(x.name).toLowerCase()===String(name).toLowerCase()});
+             if(r&&r.buf){
+               var b64=bufToB64(r.buf);
+               root.ATPLFirebase.saveSalaryFile(r.name,{original_b64:b64,name:r.name},{name:r.name,saved_at:r.saved||at,uploaded_by:(user()||{}).id||'admin'}).catch(function(){});
+             }
+           }).catch(function(){});
+         }
+       }catch(_){}
+     }
      storageLabel('Cloud sync pending · '+name);setBadge('busy','Cloud sync pending');
      // Pull tombstones first, including deletes performed on another device while this one was offline.
      return await syncSharedSalary(true);
@@ -1490,6 +1539,7 @@ async function applySalarySnapshot(records){
  }
  async function syncSharedSalary(force){
    if(salarySyncFlight)return salarySyncFlight;
+   await ensureTokenReady();
    if(!token()){setBadge('bad','Sign in to sync files');return false}
    if(!force&&Date.now()-salarySyncAt<6500)return !salaryPending();
    salarySyncFlight=(async function(){
@@ -1553,7 +1603,7 @@ async function applySalarySnapshot(records){
      setTimeout(function(){
        hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
        startFirebaseListener();
-       if(token())syncNow(false);
+       syncNow(false);
      },ms);
    });
 
@@ -1570,26 +1620,26 @@ async function applySalarySnapshot(records){
      if(!root.document.hidden){
        startFirebaseListener();
        syncWithServer(false);
-       if(token())setTimeout(function(){syncNow(false)},300);
+       setTimeout(function(){syncNow(false)},300);
      }
    });
    root.addEventListener('focus',function(){
      startFirebaseListener();
      syncWithServer(false);
-     if(token())setTimeout(function(){syncNow(false)},300);
+     setTimeout(function(){syncNow(false)},300);
    });
    root.document.addEventListener('click',function(e){
      var x=e.target&&e.target.closest?e.target.closest('#vn-cmd,#vn-files,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-empmaster,#vn-challan,#vn-audit,#vn-machineaudit'):null;
      if(x){
        startFirebaseListener();
        syncWithServer(false);
-       if(token())setTimeout(function(){syncNow(false)},150);
+       setTimeout(function(){syncNow(false)},150);
      }
    },false);
 
    // Continuous cross-device sync interval every 8s when tab is active
    setInterval(function(){
-     if(!root.document.hidden && token()){
+     if(!root.document.hidden){
        startFirebaseListener();
        syncNow(false);
      }

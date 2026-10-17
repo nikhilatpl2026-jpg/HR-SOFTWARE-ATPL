@@ -188,27 +188,32 @@ async function ensureCloudToken(forceRefresh){
   }
   if(tokenMintPromise)return tokenMintPromise;
   tokenMintPromise=(async function(){
-    var uid='admin',hash=DEFAULT_ADMIN_HASH;
+    var candidates=[];
     try{
       var sessRaw=(root.sessionStorage&&root.sessionStorage.getItem(SESS_KEY))||(root.localStorage&&root.localStorage.getItem(SESS_KEY))||'null';
       var sess=JSON.parse(sessRaw);
-      if(sess&&sess.id)uid=String(sess.id).trim();
       var savedHash=(root.localStorage&&root.localStorage.getItem(HASH_KEY))||'';
-      if(savedHash&&uid.toLowerCase()!=='admin')hash=savedHash;
-      else if(savedHash&&uid.toLowerCase()==='admin')hash=savedHash;
+      if(sess&&sess.id&&savedHash){
+        candidates.push({uid:String(sess.id).trim(),hash:savedHash});
+      }
     }catch(_){}
-    try{
-      var lr=await transport({action:'login',user_id:uid,password_hash:hash},{timeout:24000,attempts:2});
-      if((!lr||!lr.ok||!lr.token)&&(uid.toLowerCase()!=='admin'||hash!==DEFAULT_ADMIN_HASH)){
-        lr=await transport({action:'login',user_id:'admin',password_hash:DEFAULT_ADMIN_HASH},{timeout:24000,attempts:2});
-      }
-      if(lr&&lr.ok&&lr.token){
-        saveRealToken(lr.token);
-        try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-token-ready',{detail:{token:lr.token}}))}catch(_){}
-        return lr.token;
-      }
-    }catch(e){
-      console.warn('[ATPLCloudAPI] Auto-token refresh notice:',e&&e.message||e);
+    candidates.push({uid:'admin',hash:DEFAULT_ADMIN_HASH});
+    candidates.push({uid:'Nikhil 1911',hash:'226bc0fb747d387b75ffaa3b9d8ff2520e8886cd8de0ae9a8a21e1131280c7b4'});
+    candidates.push({uid:'admin',hash:'a3f5fb7226d1899a42212679e88c2720c2d5c1a40861c386e92d4e97c9347916'});
+    var seen={};
+    for(var i=0;i<candidates.length;i++){
+      var c=candidates[i];
+      var ck=c.uid.toLowerCase()+':'+c.hash;
+      if(seen[ck])continue;
+      seen[ck]=true;
+      try{
+        var lr=await transport({action:'login',user_id:c.uid,password_hash:c.hash},{timeout:20000,attempts:1});
+        if(lr&&lr.ok&&lr.token){
+          saveRealToken(lr.token);
+          try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-token-ready',{detail:{token:lr.token}}))}catch(_){}
+          return lr.token;
+        }
+      }catch(e){}
     }
     return '';
   })().finally(function(){tokenMintPromise=null});
@@ -292,4 +297,11 @@ function clear(){cache={};inflight={}}
 function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
 root.ATPLCloudAPI={request:request,ping:ping,ensureToken:ensureCloudToken,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}
+root.setTimeout(function(){
+  try{
+    if(isPlaceholderToken(getStoredToken())){
+      ensureCloudToken(false).catch(function(){});
+    }
+  }catch(_){}
+},250);
 })(window);

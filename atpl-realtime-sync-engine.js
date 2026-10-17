@@ -280,7 +280,7 @@
 
   var ATPLGitHubCloud = {
     getManifest: async function(force) {
-      if (!force && cachedManifest && (Date.now() - cachedManifestAt < 2000)) {
+      if (!force && cachedManifest && (Date.now() - cachedManifestAt < 12000)) {
         return cachedManifest;
       }
       var res = await ghReadJson('data/files_db.json');
@@ -1303,11 +1303,8 @@
 
   async function reconcileSalaryFiles() {
     try {
-      if (!getLocalServerBase()) {
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
-          await window.ATPLCloudSharedStorageV1.syncNow(false);
-        }
-        return;
+      if (!getLocalServerBase() && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
+        try { window.ATPLCloudSharedStorageV1.syncNow(false).catch(function(){}); } catch (_) {}
       }
       var activeRows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.salary');
       var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
@@ -1351,12 +1348,19 @@
           window.FILES.forEach(function(f) {
             if (!f || !f.name) return;
             var fn = String(f.name).toLowerCase().trim();
-            if (tombs[fn]) {
+            var fTime = Date.parse(f.savedAt || f.saved || '0') || 0;
+            var tStamp = tombs[fn] ? (Date.parse(tombs[fn]) || Infinity) : 0;
+            if ((tStamp > 0 && tStamp >= fTime) || (allClearedAt > 0 && fTime <= allClearedAt)) {
               toPrune.push(f.name);
               return;
             }
-            if (!activeServerMap.has(fn) && !window.atplIsRecentSessionUpload('salary', fn, 60000)) {
-              toPrune.push(f.name);
+            if (!activeServerMap.has(fn) && f.buf && !f._cloudBackedUp) {
+              f._cloudBackedUp = true;
+              var b64Up = arrayBufferToBase64(f.buf);
+              UniversalEngine.saveSalaryFile(f.name, { original_b64: b64Up, name: f.name }, { name: f.name, saved_at: f.savedAt || new Date().toISOString(), uploaded_by: 'admin' }).catch(function(){});
+              if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.saveSalary === 'function') {
+                try { window.ATPLCloudSharedStorageV1.saveSalary(f.name, f.buf, f.savedAt || new Date().toISOString()).catch(function(){}); } catch (_) {}
+              }
             }
           });
           toPrune.forEach(function(pName) {
@@ -1365,7 +1369,7 @@
           });
         }
 
-        // Also prune IndexedDB directly so ghost files in IndexedDB can never come back
+        // Also prune explicitly tombstoned files from IndexedDB directly
         try {
           var req = indexedDB.open('AroraTextiles', 1);
           req.onsuccess = function(e) {
@@ -1380,7 +1384,9 @@
                   var item = cursor.value;
                   if (item && item.name) {
                     var ifn = String(item.name).toLowerCase().trim();
-                    if (tombs[ifn] || (!activeServerMap.has(ifn) && !window.atplIsRecentSessionUpload('salary', ifn, 60000))) {
+                    var iTime = Date.parse(item.saved || '0') || 0;
+                    var itStamp = tombs[ifn] ? (Date.parse(tombs[ifn]) || Infinity) : 0;
+                    if ((itStamp > 0 && itStamp >= iTime) || (allClearedAt > 0 && iTime <= allClearedAt)) {
                       cursor.delete();
                     }
                   }
@@ -1482,11 +1488,8 @@
 
   async function reconcileHrDocs() {
     try {
-      if (!getLocalServerBase()) {
-        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === "function") {
-          await window.ATPLCloudSharedStorageV1.syncHrNow(false);
-        }
-        return;
+      if (!getLocalServerBase() && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === "function") {
+        try { window.ATPLCloudSharedStorageV1.syncHrNow(false).catch(function(){}); } catch (_) {}
       }
       var rows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.hr_doc&order=uploaded_at.desc');
       var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.hr_doc_tombstone');
@@ -1522,8 +1525,12 @@
             toDeleteIds.push(d.id);
             return;
           }
-          if (!latestServerDocs.has(lid) && !window.atplIsRecentSessionUpload('hr_doc', lid, 60000)) {
-            toDeleteIds.push(d.id);
+          if (!latestServerDocs.has(lid) && !d._cloudBackedUp) {
+            d._cloudBackedUp = true;
+            UniversalEngine.saveHrDoc(d).catch(function(){});
+            if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.saveHrDoc === 'function') {
+              try { window.ATPLCloudSharedStorageV1.saveHrDoc(d).catch(function(){}); } catch (_) {}
+            }
           }
         });
 
@@ -1547,7 +1554,7 @@
                   var doc = cursor.value;
                   if (doc && doc.id) {
                     var did = String(doc.id).toLowerCase().trim();
-                    if (hrTombs[did] || (!latestServerDocs.has(did) && !window.atplIsRecentSessionUpload('hr_doc', did, 60000))) {
+                    if (hrTombs[did]) {
                       cursor.delete();
                     }
                   }
@@ -2103,15 +2110,15 @@
     });
   }
 
-  // Continuous convergence pulse every 3.5 seconds
+  // Continuous convergence pulse every 10 seconds (uses cached WebSocket state, 0 quota burn)
   if (typeof setInterval !== 'undefined') {
     setInterval(function() {
       if (typeof document !== 'undefined' && !document.hidden && !window.__ATPL_IS_UPLOADING) {
-        if (Date.now() - lastReconcileTime > 2500) {
+        if (Date.now() - lastReconcileTime > 8000) {
           triggerUniversalReconciliation().catch(function(){});
         }
       }
-    }, 3500);
+    }, 10000);
   }
 
   console.log('[ATPL Universal Real-Time Sync Engine v2026.10.17] Authoritative cloud sync active across all devices.');

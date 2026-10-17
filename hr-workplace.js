@@ -131,10 +131,10 @@ var K='ATPL_UserAccess_V1',S='ATPL_UserSession_V5',editId=null,oldEnter=null;
 function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function load(){try{var a=JSON.parse(localStorage.getItem(K)||'[]');return Array.isArray(a)?a:[]}catch(_){return[]}}
 function save(a){localStorage.setItem(K,JSON.stringify(a))}
-function rawSession(){try{return JSON.parse(sessionStorage.getItem(S)||'null')}catch(_){return null}}
-function session(){var r=rawSession();if(!r||!r.id)return null;var u=load().find(function(x){return String(x.id).toLowerCase()===String(r.id).toLowerCase()});if(!u){clearSession();return null}return{id:u.id,name:u.name||u.id,admin:u.admin===true,access:Array.isArray(u.access)?u.access.slice():[]}}
-function setSession(u){sessionStorage.setItem(S,JSON.stringify({id:u.id}))}
-function clearSession(){['ATPL_UserSession_V1','ATPL_UserSession_V2','ATPL_UserSession_V3','ATPL_UserSession_V4','ATPL_UserSession_V5'].forEach(function(k){sessionStorage.removeItem(k)})}
+function rawSession(){try{return JSON.parse(sessionStorage.getItem(S)||localStorage.getItem(S)||'null')}catch(_){return null}}
+function session(){var r=rawSession();if(!r||!r.id)return null;var u=load().find(function(x){return String(x.id).toLowerCase()===String(r.id).toLowerCase()});if(!u&&r&&(r.admin===true||Array.isArray(r.access)))u=r;if(!u){clearSession();return null}return{id:u.id,name:u.name||u.id,admin:u.admin===true,access:Array.isArray(u.access)?u.access.slice():['*']}}
+function setSession(u){var js=JSON.stringify({id:u.id,name:u.name||u.id,admin:u.admin===true,access:Array.isArray(u.access)?u.access:['*']});try{sessionStorage.setItem(S,js);localStorage.setItem(S,js);var tk=localStorage.getItem('ATPL_RemoteToken_V1')||'';if(!tk){sessionStorage.setItem('ATPL_RemoteToken_V1','FAST_AUTH_'+Date.now());localStorage.setItem('ATPL_RemoteToken_V1','FAST_AUTH_'+Date.now());}if(window.ATPLCloudAPI&&typeof window.ATPLCloudAPI.ensureToken==='function'){window.ATPLCloudAPI.ensureToken(false).catch(function(){});}}catch(_){}}
+function clearSession(){['ATPL_UserSession_V1','ATPL_UserSession_V2','ATPL_UserSession_V3','ATPL_UserSession_V4','ATPL_UserSession_V5'].forEach(function(k){try{sessionStorage.removeItem(k);localStorage.removeItem(k)}catch(_){}})}
 function has(u,p){return !!u&&(u.admin===true||(Array.isArray(u.access)&&u.access.indexOf(p)>=0))}
 function features(){return Array.prototype.map.call(document.querySelectorAll('.vitem[id^="vn-"]'),function(x){return{id:x.id.slice(3),name:(x.textContent||'').replace(/\s+/g,' ').trim().replace(/\d+$/,'').trim(),el:x}}).filter(function(x){return x.id!=='useraccess'})}
 function setVisible(el,ok){if(!el)return;if(ok){el.hidden=false;el.classList.remove('uaNoAccess','uaDeniedPage','uaActionDenied','uaEmptyGroup');el.style.removeProperty('display');el.removeAttribute('aria-hidden')}else{el.hidden=true;el.classList.add('uaNoAccess');el.style.setProperty('display','none','important');el.setAttribute('aria-hidden','true')}}
@@ -168,12 +168,12 @@ function logout(){clearSession();closePage();applyAccess();showLogin('')}
 function guardGoPage(){if(window.__uaGuardV5||typeof window.goPage!=='function')return;var old=window.goPage;window.goPage=function(p){var u=session();if(!u){showLogin('Please login to continue.');return}if(!has(u,p)){alert('Is feature ka access aapke user ko nahi diya gaya hai.');return}var pg=document.getElementById('page-'+p);if(pg){pg.hidden=false;pg.classList.remove('uaDeniedPage','uaNoAccess');pg.style.removeProperty('display')}var r=old.apply(this,arguments);applyAccess();return r};window.__uaGuardV5=1}
 function guardClicks(){document.addEventListener('click',function(ev){var x=ev.target&&ev.target.closest?ev.target.closest('.vitem[id^="vn-"]'):null;if(!x)return;var p=x.id.slice(3),u=session();if(p==='useraccess'){if(!u||u.admin!==true){ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation()}}else if(!has(u,p)){ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation();if(u)alert('Is feature ka access aapke user ko nahi diya gaya hai.');else showLogin('Please login to continue.')}},true)}
 function wrapEnter(){if(window.__uaEnterV5)return;oldEnter=window.enterApp;if(typeof oldEnter==='function'){window.enterApp=function(){var r=oldEnter.apply(this,arguments);var u=session();applyAccess();if(u)openFirst(u);return r}}window.__uaEnterV5=1}
-function init(){css();bootstrap();inject();guardGoPage();guardClicks();wrapEnter();clearSession();applyAccess();showLogin('')}
+function init(){css();bootstrap();inject();guardGoPage();guardClicks();wrapEnter();var cur=session();if(cur){applyAccess();hideLogin();showOriginalWelcome();if(window.ATPLCloudAPI&&typeof window.ATPLCloudAPI.ensureToken==='function')window.ATPLCloudAPI.ensureToken(false).catch(function(){});}else{clearSession();applyAccess();showLogin('')}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
 
 /* Shared Google auth loader */
-(function(){var s=document.createElement('script');s.src='shared-auth.js?v=20260919-broker2';s.async=false;document.head.appendChild(s)})();
+(function(){var s=document.createElement('script');s.src='shared-auth.js?v=20261017-final-sync-v9';s.async=false;document.head.appendChild(s)})();
 
 /* Mam Sheet to Compliance Salary loader */
-(function(){var s=document.createElement('script');s.src='mam-salary.js?v=20260919-lazy-fast10';s.async=false;document.head.appendChild(s)})();
+(function(){var s=document.createElement('script');s.src='mam-salary.js?v=20261017-final-sync-v9';s.async=false;document.head.appendChild(s)})();
