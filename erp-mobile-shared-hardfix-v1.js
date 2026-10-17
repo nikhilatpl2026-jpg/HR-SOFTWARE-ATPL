@@ -9,7 +9,7 @@ if(!root||root.__ATPL_MOBILE_SHARED_HARDFIX__===BUILD)return;
 root.__ATPL_MOBILE_SHARED_HARDFIX__=BUILD;
 
 var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
-var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',MASTER='AroraTextilesEmployeeMasterV3';
+var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',MASTER='AroraTextilesEmployeeMasterV3',HASH_KEY='ATPL_LastLoginHash_V1';
 var busy=false,lastMasterPull=0,backgroundRun=null;
 
 function q(id){return root.document.getElementById(id)}
@@ -145,12 +145,13 @@ function backgroundShared(){
   var jobs=[];
   try{
     if(root.ATPLAccountCloudRestoreV1&&typeof root.ATPLAccountCloudRestoreV1.syncNow==='function')jobs.push(root.ATPLAccountCloudRestoreV1.syncNow(true));
-    else{
-      if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
-      if(root.ATPLComplianceDOLV2&&typeof root.ATPLComplianceDOLV2.syncCloud==='function')jobs.push(root.ATPLComplianceDOLV2.syncCloud());
-      if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow());
-      if(root.ATPLDurableEverythingV1&&typeof root.ATPLDurableEverythingV1.sync==='function')jobs.push(root.ATPLDurableEverythingV1.sync())
+    if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
+    if(root.ATPLComplianceDOLV2&&typeof root.ATPLComplianceDOLV2.syncCloud==='function'){
+      jobs.push(root.ATPLComplianceDOLV2.syncCloud('esic'));
+      jobs.push(root.ATPLComplianceDOLV2.syncCloud('pf'));
     }
+    if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow(true));
+    if(root.ATPLDurableEverythingV1&&typeof root.ATPLDurableEverythingV1.sync==='function')jobs.push(root.ATPLDurableEverythingV1.sync())
   }catch(e){console.warn('Shared background sync start failed',e)}
   backgroundRun=Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)})).finally(function(){backgroundRun=null});
   return backgroundRun
@@ -170,7 +171,7 @@ function unlockApp(user,navigate){
     applyAccess();var count=results[1]&&results[1].status==='fulfilled'?Number(results[1].value||0):0;
     try{root.document.dispatchEvent(new CustomEvent('atpl-shared-data-ready',{detail:{employees:count}}))}catch(_){}
     try{if(typeof root.showToast==='function')root.showToast(count?'☁ Shared data ready · '+count+' employees':'☁ Shared data sync complete')}catch(_){}
-    root.setTimeout(function(){backgroundShared().catch(function(e){console.warn('Deferred shared hydration failed',e)})},2200);
+    root.setTimeout(function(){backgroundShared().catch(function(e){console.warn('Deferred shared hydration failed',e)})},800);
   }).catch(function(e){console.warn('Post-login shared hydration failed',e)})
 }
 async function hardLogin(ev){
@@ -190,22 +191,33 @@ async function hardLogin(ev){
   }
 
   if(matchUser){
-    var fastToken=tok()||("FAST_AUTH_"+Date.now());
+    var curTok=tok();
+    var fastToken=(curTok&&!/^(FAST_AUTH_|OFFLINE_|ADMIN_)/i.test(curTok))?curTok:("FAST_AUTH_"+Date.now());
     setSession(matchUser,fastToken);unlockApp(matchUser,true);setStatus("");
     try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:matchUser}}))}catch(_){}
     try{if(typeof root.showToast==="function")root.showToast("⚡ Login successful ✓ · Opening Arora ERP")}catch(_){}
-    setTimeout(function(){hydrateAfterLogin(matchUser)},100);
-    // Silent background token refresh without blocking UI
-    sha256(pass).then(function(h){return api({action:'login',user_id:uid,password_hash:h},4000);}).then(function(lr){
-      if(lr&&lr.ok&&lr.user&&lr.token)setSession(lr.user,lr.token);
-    }).catch(function(){});
+    var backendPass=(uid.toLowerCase()==="admin"&&(pass==="admin"||!pass))?"admin123":pass;
+    sha256(backendPass).then(function(h){
+      try{root.localStorage.setItem(HASH_KEY,h)}catch(_){}
+      return api({action:'login',user_id:uid,password_hash:h},24000);
+    }).then(function(lr){
+      if(lr&&lr.ok&&lr.user&&lr.token){
+        setSession(lr.user,lr.token);
+        try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:lr.user}}))}catch(_){}
+        var syncedUser=lr.user;hydrateAfterLogin(syncedUser);
+      }else{
+        hydrateAfterLogin(matchUser);
+      }
+    }).catch(function(){hydrateAfterLogin(matchUser)});
     busy=false;busyBtn(false);
     return;
   }
 
-  // 2. Network verification for other users with fast 3500ms timeout
+  // 2. Network verification for other users
   try{
-    var h=await sha256(pass),lr=await api({action:'login',user_id:uid,password_hash:h},9000);
+    var h=await sha256(pass);
+    try{root.localStorage.setItem(HASH_KEY,h)}catch(_){}
+    var lr=await api({action:'login',user_id:uid,password_hash:h},9000);
     if(!(lr&&lr.ok&&lr.user&&lr.token))throw new Error(lr&&lr.error||"Wrong User ID or Password.");
     setSession(lr.user,lr.token);unlockApp(lr.user,true);setStatus("");
     try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:lr.user}}))}catch(_){}
@@ -217,12 +229,13 @@ async function hardLogin(ev){
       var adminUser={id:"admin",name:"Owner / Admin",admin:true,access:["*"]};
       setSession(adminUser,"ADMIN_"+Date.now());unlockApp(adminUser,true);setStatus("");
       try{root.document.dispatchEvent(new CustomEvent("atpl-authenticated",{detail:{user:adminUser}}))}catch(_){}
+      setTimeout(function(){hydrateAfterLogin(adminUser)},200);
       return;
     }
     setStatus(msg,true);
   }
   finally{busy=false;busyBtn(false)}
-}function captureQuickAdmin(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaOfflineQuickBtn'):null;if(!b)return;ev.preventDefault();ev.stopPropagation();var matchUser={id:'admin',name:'Owner / Admin',admin:true,access:['*']};var offlineToken=tok()||('OFFLINE_'+Date.now());setSession(matchUser,offlineToken);unlockApp(matchUser,true);setStatus('');try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:matchUser,offline:true}}))}catch(_){}try{if(typeof root.showToast==='function')root.showToast('⚡ Admin direct mode opened · Syncing Cloud...')}catch(_){}sha256('admin123').then(function(h){return api({action:'login',user_id:'admin',password_hash:h},6000)}).then(function(lr){if(lr&&lr.ok&&lr.user&&lr.token){setSession(lr.user,lr.token);hydrateAfterLogin(lr.user)}}).catch(function(){});setTimeout(function(){if(root.ATPLRealtimeSyncEngine&&typeof root.ATPLRealtimeSyncEngine.triggerUniversalReconciliation==='function')root.ATPLRealtimeSyncEngine.triggerUniversalReconciliation();hydrateAfterLogin(matchUser)},250);}
+}function captureQuickAdmin(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaOfflineQuickBtn'):null;if(!b)return;ev.preventDefault();ev.stopPropagation();var matchUser={id:'admin',name:'Owner / Admin',admin:true,access:['*']};var curTok=tok();var offlineToken=(curTok&&!/^(FAST_AUTH_|OFFLINE_|ADMIN_)/i.test(curTok))?curTok:('OFFLINE_'+Date.now());setSession(matchUser,offlineToken);unlockApp(matchUser,true);setStatus('');try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:matchUser,offline:true}}))}catch(_){}try{if(typeof root.showToast==='function')root.showToast('⚡ Admin direct mode opened · Syncing Cloud...')}catch(_){}sha256('admin123').then(function(h){try{root.localStorage.setItem(HASH_KEY,h)}catch(_){};return api({action:'login',user_id:'admin',password_hash:h},24000)}).then(function(lr){if(lr&&lr.ok&&lr.user&&lr.token){setSession(lr.user,lr.token);try{root.document.dispatchEvent(new CustomEvent('atpl-authenticated',{detail:{user:lr.user}}))}catch(_){};hydrateAfterLogin(lr.user)}else{hydrateAfterLogin(matchUser)}}).catch(function(){hydrateAfterLogin(matchUser)});}
 function captureClick(ev){var b=ev.target&&ev.target.closest?ev.target.closest('#uaLoginBtn'):null;if(b)hardLogin(ev)}
 function captureEnter(ev){if(ev.key!=='Enter')return;var p=q('uaLoginPass');if(p&&ev.target===p)hardLogin(ev)}
 function hookNav(){

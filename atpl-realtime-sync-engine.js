@@ -1341,6 +1341,12 @@
 
   async function reconcileSalaryFiles() {
     try {
+      if (!getLocalServerBase()) {
+        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
+          await window.ATPLCloudSharedStorageV1.syncNow(false);
+        }
+        return;
+      }
       var activeRows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.salary');
       var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.salary_tombstone');
       if (!Array.isArray(activeRows)) return;
@@ -1514,6 +1520,12 @@
 
   async function reconcileHrDocs() {
     try {
+      if (!getLocalServerBase()) {
+        if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === "function") {
+          await window.ATPLCloudSharedStorageV1.syncHrNow(false);
+        }
+        return;
+      }
       var rows = await sbRest('hr_files?select=id,filename,size,uploaded_at&doc_type=eq.hr_doc&order=uploaded_at.desc');
       var tombRows = await sbRest('hr_files?select=filename,uploaded_at&doc_type=eq.hr_doc_tombstone');
       if (!Array.isArray(rows)) return;
@@ -1830,6 +1842,9 @@
     },
 
     deleteHrDoc: async function(id, name, user) {
+      if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.deleteHrDoc === "function" && id) {
+        try { window.ATPLCloudSharedStorageV1.deleteHrDoc(id, name || id); } catch (_) {}
+      }
       var deletedAt = new Date().toISOString();
       var targetId = String(id || '').trim();
       var targetName = String(name || targetId).trim();
@@ -2091,20 +2106,11 @@
 
   window.ATPLRealtimeSyncEngine = UniversalEngine;
   window.ATPLRealtimeSync = UniversalEngine;
-  window.ATPLFirebase = UniversalEngine;
+  if (!window.ATPLFirebase) window.ATPLFirebase = UniversalEngine;
   window.UniversalEngine = UniversalEngine;
   window.ATPLSyncEngine = UniversalEngine;
 
-  // Intercept window.hrDocDelete to guarantee strict auto-deletion everywhere
-  var originalHrDocDelete = window.hrDocDelete;
-  window.hrDocDelete = function(id) {
-    if (typeof UniversalEngine.deleteHrDoc === 'function') {
-      UniversalEngine.deleteHrDoc(id, id, 'admin');
-    }
-    if (typeof originalHrDocDelete === 'function') {
-      return originalHrDocDelete.apply(this, arguments);
-    }
-  };
+  // hookHrDelete in erp-cloud-shared-storage-v1.js handles confirmed HR doc deletes
 
   if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {

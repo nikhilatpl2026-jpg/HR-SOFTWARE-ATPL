@@ -1,6 +1,6 @@
 /* ATPL DOL Supabase V2 — authoritative PF/ESIC challan backend.
-   Multi-Cloud Real-Time Authority: Firebase Firestore + GitHub Cloud Repository + Supabase/Edge.
-   Guarantees instant cross-browser upload sync and strict auto-delete across all devices. */
+   Multi-Cloud Real-Time Authority: Google Apps Script V4/V5 Vault + SystemRecords + Firebase + GitHub + Local Server.
+   Guarantees instant cross-browser and cross-device (Laptop <-> Mobile Phone) upload sync and strict auto-delete. */
 (function(root){'use strict';
 var BUILD='2026.10.17-supabase-authority-v2-permanent-delete';
 if(!root||root.__ATPL_DOL_SUPABASE_V2__===BUILD)return;
@@ -17,7 +17,7 @@ var GH_TOKEN = (function() {
   } catch(_) { return ""; }
 })();
 var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
-var supabaseRestricted = false;
+var supabaseRestricted = true;
 
 function getBackendBase() {
   try {
@@ -37,7 +37,16 @@ var EDGE_URL = (function() {
 })();
 
 function getFb() {
+  if (root.__atplFirebaseQuotaExhausted) return null;
   return root.ATPLNativeFirebase || root.ATPLFirebase || null;
+}
+
+function getLegacyVault() {
+  return root.ATPLDOLCloudV4Legacy || null;
+}
+
+function getDurableApi() {
+  return root.ATPLDurableEverythingV1 || null;
 }
 
 async function syncToGitHubRepo(rec, b64) {
@@ -58,65 +67,6 @@ async function syncToGitHubRepo(rec, b64) {
         updated_at: new Date().toISOString()
       }, Object.assign({}, rec, { original_b64: b64 || '' }));
     }
-    var getUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json?_t=' + Date.now();
-    var getRes = await timeoutFetch(getUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    }, 8000);
-    var sha = '';
-    var existingJson = {};
-    if (getRes && getRes.ok) {
-      var getData = await getRes.json();
-      sha = getData.sha || '';
-      if (getData.content) {
-        try {
-          var decodedStr = decodeURIComponent(escape(atob(getData.content.replace(/\s/g, ''))));
-          existingJson = JSON.parse(decodedStr) || {};
-        } catch (_) {}
-      }
-    }
-    var key = String(rec.id);
-    existingJson[key] = {
-      id: String(rec.id),
-      module: rec.type,
-      challan_type: rec.type,
-      category: 'challan',
-      name: rec.name,
-      file_name: rec.name,
-      size: Number(rec.size || 0),
-      sha256_hash: String(rec.hash || rec.fileHash || '').toLowerCase(),
-      file_hash: String(rec.hash || rec.fileHash || '').toLowerCase(),
-      period: rec.period || '',
-      uploaded_by: currentUserId() || 'admin',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      meta: {
-        type: rec.type,
-        ids: arr(rec.ids),
-        contributions: arr(rec.contributions),
-        period: rec.period || ''
-      },
-      buf: b64 || ''
-    };
-    var newContentStr = JSON.stringify(existingJson, null, 2);
-    var newB64 = btoa(unescape(encodeURIComponent(newContentStr)));
-    await timeoutFetch('https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json', {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: 'sync(dol): save ' + rec.name + ' [' + (rec.period || '') + ']',
-        content: newB64,
-        sha: sha || undefined
-      })
-    }, 12000);
   } catch (ghErr) {
     console.warn('[ATPL-DOL] GitHub repo sync non-fatal error:', ghErr);
   }
@@ -127,55 +77,6 @@ async function syncDeleteFromGitHubRepo(type, id, name, hash) {
     if (root.ATPLGitHubCloud && typeof root.ATPLGitHubCloud.deleteFile === 'function') {
       await root.ATPLGitHubCloud.deleteFile(type || 'pf', id || name, name || id, hash || '');
     }
-    var getUrl = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json?_t=' + Date.now();
-    var getRes = await timeoutFetch(getUrl, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    }, 8000);
-    if (!getRes || !getRes.ok) return;
-    var getData = await getRes.json();
-    var sha = getData.sha || '';
-    if (!getData.content) return;
-    var decodedStr = decodeURIComponent(escape(atob(getData.content.replace(/\s/g, ''))));
-    var existingJson = JSON.parse(decodedStr) || {};
-    var targetIdLow = String(id || '').toLowerCase().trim();
-    var targetNameLow = String(name || '').toLowerCase().trim();
-    var targetHashLow = String(hash || '').toLowerCase().trim();
-    var deletedAny = false;
-    Object.keys(existingJson).forEach(function(k) {
-      var item = existingJson[k];
-      if (!item) return;
-      var ik = String(k).toLowerCase().trim();
-      var iid = String(item.id || '').toLowerCase().trim();
-      var iname = String(item.name || item.file_name || '').toLowerCase().trim();
-      var ihash = String(item.file_hash || item.sha256_hash || '').toLowerCase().trim();
-      if ((targetIdLow && (ik === targetIdLow || iid === targetIdLow)) ||
-          (targetNameLow && iname === targetNameLow) ||
-          (targetHashLow && ihash === targetHashLow)) {
-        delete existingJson[k];
-        deletedAny = true;
-      }
-    });
-    if (!deletedAny) return;
-    var newContentStr = JSON.stringify(existingJson, null, 2);
-    var newB64 = btoa(unescape(encodeURIComponent(newContentStr)));
-    await timeoutFetch('https://api.github.com/repos/' + GH_REPO + '/contents/data/dol_records.json', {
-      method: 'PUT',
-      headers: {
-        'Authorization': 'token ' + GH_TOKEN,
-        'Accept': 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: 'sync(dol): delete ' + (name || id),
-        content: newB64,
-        sha: sha
-      })
-    }, 12000);
   } catch (_) {}
 }
 
@@ -230,6 +131,7 @@ var rtClient=null,rtChannel=null,rtStarting=null,warmPromise=null,fbDolSubscribe
 function tok(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'')}catch(_){return''}}
 function arr(v){return Array.isArray(v)?v:[]}
 function normalizeId(v){return String(v==null?'':v).replace(/\s+/g,'').toUpperCase()}
+function logicalName(name){return String(name||'').toLowerCase().replace(/\.[^.]+$/,'').replace(/\(\s*\d+\s*\)$/,'').replace(/[^a-z0-9]+/g,'')}
 function timeoutFetch(url,opt,ms){
   var ctrl=new AbortController(),timer=root.setTimeout(function(){ctrl.abort()},ms||20000);
   opt=Object.assign({},opt||{},{signal:ctrl.signal});
@@ -259,36 +161,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-async function sbDirectRest(endpoint, options) {
-  if (supabaseRestricted) return null;
-  options = options || {};
-  var headers = Object.assign({
-    'apikey': PUBLISHABLE_KEY,
-    'Authorization': 'Bearer ' + PUBLISHABLE_KEY,
-    'Content-Type': 'application/json'
-  }, options.headers || {});
-  var url = SUPABASE_URL + '/rest/v1/' + endpoint;
-  try {
-    var res = await timeoutFetch(url, {
-      method: options.method || 'GET',
-      headers: headers,
-      body: options.body ? JSON.stringify(options.body) : undefined
-    }, 6000);
-    if (!res.ok) {
-      var errText = '';
-      try { errText = await res.text(); } catch(_) {}
-      if (res.status === 402 || /exceed_egress_quota|quota|spend cap|restricted/i.test(errText)) {
-        supabaseRestricted = true;
-        return null;
-      }
-      return null;
-    }
-    return await res.json();
-  } catch (_) {
-    return null;
-  }
-}
-
 function edgeHeaders(json){
   var h={'apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY};
   if(json)h['Content-Type']='application/json';
@@ -304,17 +176,20 @@ async function edgeJson(body,ms){
   return data
 }
 function mapRow(r){
-  r=r||{};var ids=arr(r.member_ids||r.ids).map(String).filter(Boolean),digits=[],alnums=[];
+  r=r||{};
+  var rawIds = [].concat(arr(r.member_ids), arr(r.ids), arr(r.digitIds), arr(r.alnumIds)).map(String).filter(Boolean);
+  var ids = Array.from(new Set(rawIds)), digits=[], alnums=[];
   ids.forEach(function(x){if(/^\d+$/.test(String(x)))digits.push(String(x));else alnums.push(String(x))});
+  var hash = String(r.file_hash||r.fileHash||r.fingerprint||r.hash||'').toLowerCase();
   return {
-    id:String(r.id||''),cloudRecordId:String(r.id||''),type:String(r.challan_type||r.type||'').toLowerCase(),
+    id:String(r.id||''),cloudRecordId:String(r.cloudRecordId||r.id||''),type:String(r.challan_type||r.type||'').toLowerCase(),
     name:String(r.file_name||r.name||'Challan'),size:Number(r.file_size||r.size||0)||0,
-    fileHash:String(r.file_hash||r.fileHash||r.fingerprint||'').toLowerCase(),
-    fingerprint:String(r.file_hash||r.fileHash||r.fingerprint||'').toLowerCase(),
-    period:String(r.period||''),periodSource:'supabase',digitIds:digits,alnumIds:alnums,
+    fileHash:hash,
+    fingerprint:hash,
+    period:String(r.period||''),periodSource:String(r.periodSource||'supabase'),digitIds:digits,alnumIds:alnums,
     uploadedBy:String(r.uploaded_by||r.uploadedBy||''),uploadedAt:String(r.created_at||r.uploadedAt||''),
-    updatedAt:String(r.updated_at||r.updatedAt||r.created_at||''),mime:String(r.mime_type||r.mime||'application/octet-stream'),
-    hasOriginalFile:true,indexCount:ids.length,indexStatus:'ready',contributions:arr(r.contributions),
+    updatedAt:String(r.updated_at||r.updatedAt||r.created_at||r.uploadedAt||''),mime:String(r.mime_type||r.mime||'application/octet-stream'),
+    hasOriginalFile:r.hasOriginalFile!==false,indexCount:Number(r.indexCount||ids.length)||ids.length,indexStatus:String(r.indexStatus||'ready'),contributions:arr(r.contributions),
     _sharedSource:'dedicated',sharedSource:'dedicated',supabase:true,filePath:String(r.file_path||r.file_name||r.name||''),
     original_b64:String(r.original_b64||r.buf||'')
   }
@@ -324,7 +199,7 @@ async function listRaw(type,force){
   type=String(type||"").toLowerCase();if(type!=="pf"&&type!=="esic")throw new Error("Invalid challan type");
   if(!force&&rawCache[type]&&Date.now()-rawCacheAt[type]<RAW_CACHE_MS)return rawCache[type];
   var rows=[]; if(EDGE_URL&&tok()){try{var ed=await edgeJson({action:'list',type:type},4000);if(ed&&Array.isArray(ed.records))rows=ed.records;}catch(_){}}
-  var tombIds=new Set(),tombNames=new Set(),tombHashes=new Set();
+  var tombIds=new Set(),tombNames=new Set(),tombHashes=new Set(),tombNamePeriods=new Set();
   var cloudReached=false;
 
   // 0. Read local tombstones for this compliance type
@@ -336,14 +211,128 @@ async function listRaw(type,force){
     });
   } catch (_) {}
 
-  // 1. Authoritative Firebase Firestore Records & Tombstones
+  // 1. Read shared Google Apps Script delete tombstones (via ATPLDurableEverythingV1)
+  var dur = getDurableApi();
+  if (dur && typeof dur.getComplianceDolDeleteTombstones === 'function' && tok()) {
+    try {
+      var sharedTombs = await dur.getComplianceDolDeleteTombstones(type);
+      if (Array.isArray(sharedTombs)) {
+        sharedTombs.forEach(function(t) {
+          if (!t) return;
+          if (t.id) tombIds.add(String(t.id).toLowerCase().trim());
+          if (t.cloudRecordId) tombIds.add(String(t.cloudRecordId).toLowerCase().trim());
+          if (t.hash) tombHashes.add(String(t.hash).toLowerCase().trim());
+          if (t.name) {
+            tombNames.add(String(t.name).toLowerCase().trim());
+            var ln = logicalName(t.name);
+            if (ln) tombNamePeriods.add(ln + '|' + String(t.period || ''));
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  function isRecordTombstoned(r) {
+    if (!r) return true;
+    var rid = String(r.id || r.cloudRecordId || '').toLowerCase().trim();
+    var rname = String(r.name || r.file_name || '').toLowerCase().trim();
+    var rhash = String(r.file_hash || r.fileHash || r.fingerprint || r.hash || '').toLowerCase().trim();
+    var rln = logicalName(rname);
+    var rper = String(r.period || '');
+    if (rid && tombIds.has(rid)) return true;
+    if (rhash && tombHashes.has(rhash)) return true;
+    if (rname && tombNames.has(rname)) return true;
+    if (rln && tombNamePeriods.has(rln + '|' + rper)) return true;
+    return false;
+  }
+
+  var byDedupeKey = {};
+  function addRow(raw) {
+    if (!raw || isRecordTombstoned(raw)) return;
+    var rhash = String(raw.file_hash || raw.fileHash || raw.fingerprint || raw.hash || '').toLowerCase().trim();
+    var rname = String(raw.file_name || raw.name || 'Challan').trim();
+    var rln = logicalName(rname);
+    var rper = String(raw.period || '');
+    var rid = String(raw.id || raw.cloudRecordId || rname);
+    var key = rhash ? ('h:' + rhash) : (rln ? ('np:' + rln + '|' + rper) : ('id:' + rid.toLowerCase()));
+    var combinedIds = Array.from(new Set([].concat(arr(raw.member_ids), arr(raw.ids), arr(raw.digitIds), arr(raw.alnumIds)).map(String).filter(Boolean)));
+    var normalized = {
+      id: rid,
+      cloudRecordId: String(raw.cloudRecordId || raw.id || rid),
+      challan_type: type,
+      type: type,
+      file_name: rname,
+      name: rname,
+      file_size: Number(raw.file_size || raw.size || 0),
+      size: Number(raw.file_size || raw.size || 0),
+      file_hash: rhash,
+      fileHash: rhash,
+      period: rper,
+      member_ids: combinedIds,
+      digitIds: arr(raw.digitIds),
+      alnumIds: arr(raw.alnumIds),
+      contributions: arr(raw.contributions),
+      created_at: raw.created_at || raw.uploadedAt || raw.uploaded_at || new Date().toISOString(),
+      updated_at: raw.updated_at || raw.updatedAt || raw.uploadedAt || new Date().toISOString(),
+      uploaded_by: String(raw.uploaded_by || raw.uploadedBy || 'admin'),
+      file_path: rname,
+      mime: String(raw.mime || raw.mime_type || 'application/octet-stream'),
+      hasOriginalFile: raw.hasOriginalFile !== false,
+      indexCount: Number(raw.indexCount || combinedIds.length) || combinedIds.length,
+      indexStatus: String(raw.indexStatus || 'ready'),
+      original_b64: String(raw.original_b64 || raw.buf || '')
+    };
+    var existing = byDedupeKey[key];
+    if (!existing) {
+      byDedupeKey[key] = normalized;
+    } else {
+      // Merge richer fields (e.g., contributions, member_ids, original_b64, cloudRecordId)
+      if (!existing.member_ids.length && normalized.member_ids.length) existing.member_ids = normalized.member_ids;
+      if (!existing.contributions.length && normalized.contributions.length) existing.contributions = normalized.contributions;
+      if (!existing.original_b64 && normalized.original_b64) existing.original_b64 = normalized.original_b64;
+      if (String(normalized.id).indexOf('dol_') === 0) {
+        existing.id = normalized.id;
+        existing.cloudRecordId = normalized.id;
+      }
+    }
+  }
+
+  rows.forEach(addRow);
+
+  // 2. Primary Cross-Device Authority A: Google Apps Script Dedicated DOL V4/V5 Vault (DOLRecords + Google Drive)
+  var leg = getLegacyVault();
+  if (leg && typeof leg.list === 'function' && tok()) {
+    try {
+      var legRecs = await leg.list(type);
+      if (Array.isArray(legRecs)) {
+        cloudReached = true;
+        legRecs.forEach(addRow);
+      }
+    } catch (legErr) {
+      console.warn('[ATPL-DOL] Legacy Apps Script list notice:', legErr && legErr.message || legErr);
+    }
+  }
+
+  // 3. Primary Cross-Device Authority B: Google Apps Script SystemRecords (pf_dol_v2 / esic_dol_v2)
+  if (dur && typeof dur.getComplianceDolRecords === 'function' && tok()) {
+    try {
+      var durRecs = await dur.getComplianceDolRecords(type);
+      if (Array.isArray(durRecs)) {
+        cloudReached = true;
+        durRecs.forEach(addRow);
+      }
+    } catch (durErr) {
+      console.warn('[ATPL-DOL] Durable SystemRecords list notice:', durErr && durErr.message || durErr);
+    }
+  }
+
+  // 4. Secondary Authority: Firebase Firestore (when quota available)
   var fb = getFb();
   if (fb) {
     try {
       if (typeof fb.fetchAllDolTombstones === 'function') {
         var fbTombs = await fb.fetchAllDolTombstones(type);
         if (Array.isArray(fbTombs)) {
-          cloudReached = true;
           fbTombs.forEach(function(t) {
             if (!t) return;
             if (t.id) tombIds.add(String(t.id).toLowerCase().trim());
@@ -354,82 +343,15 @@ async function listRaw(type,force){
       }
       if (typeof fb.fetchAllDolRecords === 'function') {
         var fbRecs = await fb.fetchAllDolRecords(type);
-        if (Array.isArray(fbRecs)) {
+        if (Array.isArray(fbRecs) && fbRecs.length > 0) {
           cloudReached = true;
-          fbRecs.forEach(function(r) {
-            if (!r) return;
-            var rid = String(r.id || '').toLowerCase().trim();
-            var rname = String(r.name || r.file_name || '').toLowerCase().trim();
-            var rhash = String(r.file_hash || r.hash || '').toLowerCase().trim();
-            if ((rid && tombIds.has(rid)) || (rname && tombNames.has(rname)) || (rhash && tombHashes.has(rhash))) return;
-            rows.push({
-              id: String(r.id || r.name),
-              challan_type: type,
-              file_name: r.name || r.file_name || "Challan",
-              file_size: Number(r.size || r.file_size || 0),
-              file_hash: rhash,
-              period: String(r.period || ""),
-              member_ids: arr(r.member_ids || r.ids),
-              contributions: arr(r.contributions),
-              created_at: r.created_at || r.uploaded_at || new Date().toISOString(),
-              updated_at: r.updated_at || r.uploaded_at || new Date().toISOString(),
-              uploaded_by: String(r.uploaded_by || "admin"),
-              file_path: r.name || r.file_name || "",
-              hasOriginalFile: true
-            });
-          });
+          fbRecs.forEach(addRow);
         }
       }
     } catch (_) {}
   }
 
-  // 2. Authoritative GitHub Cloud Manifest & dol_records.json
-  try {
-    if (root.ATPLGitHubCloud && typeof root.ATPLGitHubCloud.getManifest === 'function') {
-      var ghM = await root.ATPLGitHubCloud.getManifest(false);
-      if (ghM) {
-        cloudReached = true;
-        if (ghM.tombstones) {
-          Object.values(ghM.tombstones).forEach(function(t) {
-            if (!t || (t.module && t.module !== type)) return;
-            if (t.id) tombIds.add(String(t.id).toLowerCase().trim());
-            if (t.name || t.filename) tombNames.add(String(t.name || t.filename).toLowerCase().trim());
-            if (t.file_hash) tombHashes.add(String(t.file_hash).toLowerCase().trim());
-          });
-        }
-        if (ghM.files) {
-          var seenSet = new Set(rows.map(function(x) { return String(x.file_hash || x.file_name || x.id).toLowerCase(); }));
-          Object.values(ghM.files).forEach(function(r) {
-            if (!r || (r.module !== type && r.doc_type !== type)) return;
-            var rid = String(r.id || '').toLowerCase().trim();
-            var rname = String(r.name || r.filename || '').toLowerCase().trim();
-            var rhash = String(r.file_hash || '').toLowerCase().trim();
-            if ((rid && tombIds.has(rid)) || (rname && tombNames.has(rname)) || (rhash && tombHashes.has(rhash))) return;
-            var dedupeKey = rhash || rname || rid;
-            if (seenSet.has(dedupeKey)) return;
-            seenSet.add(dedupeKey);
-            rows.push({
-              id: String(r.id || r.name),
-              challan_type: type,
-              file_name: r.name || r.filename || "Challan",
-              file_size: Number(r.size || 0),
-              file_hash: rhash,
-              period: String(r.period || ""),
-              member_ids: arr(r.member_ids || r.ids),
-              contributions: arr(r.contributions),
-              created_at: r.created_at || r.uploaded_at || new Date().toISOString(),
-              updated_at: r.updated_at || r.uploaded_at || new Date().toISOString(),
-              uploaded_by: String(r.uploaded_by || "admin"),
-              file_path: r.name || r.filename || "",
-              hasOriginalFile: true
-            });
-          });
-        }
-      }
-    }
-  } catch (_) {}
-
-  // 3. Local Express Backend Loader (only when running on localhost)
+  // 5. Local Express Backend Loader (only when running on localhost)
   var localBase = getBackendBase();
   if (localBase) {
     try {
@@ -438,42 +360,25 @@ async function listRaw(type,force){
         var sData = await sRes.json();
         if (sData && Array.isArray(sData.records)) {
           cloudReached = true;
-          var seenLocal = new Set(rows.map(function(x) { return String(x.file_hash || x.file_name || x.id).toLowerCase(); }));
           sData.records.forEach(function(r) {
             if (!r) return;
-            var rid = String(r.id || '').toLowerCase().trim();
-            var rname = String(r.name || r.file_name || '').toLowerCase().trim();
-            var rhash = String(r.file_hash || r.sha256_hash || '').toLowerCase().trim();
-            if ((rid && tombIds.has(rid)) || (rname && tombNames.has(rname)) || (rhash && tombHashes.has(rhash))) return;
-            var dk = rhash || rname || rid;
-            if (seenLocal.has(dk)) return;
-            seenLocal.add(dk);
-            rows.push({
-              id: String(r.id || ""),
-              challan_type: type,
-              file_name: r.name || r.file_name || "Challan",
-              file_size: Number(r.size || r.file_size || 0),
-              file_hash: rhash,
-              period: String(r.period || (r.meta && r.meta.period) || ""),
+            addRow(Object.assign({}, r, {
               member_ids: arr((r.meta && r.meta.ids) || r.member_ids),
               contributions: arr((r.meta && r.meta.contributions) || r.contributions),
-              created_at: r.created_at || new Date().toISOString(),
-              updated_at: r.updated_at || new Date().toISOString(),
-              uploaded_by: String(r.uploaded_by || "admin"),
-              file_path: r.name || r.file_name || "",
-              hasOriginalFile: true,
-              original_b64: r.original_b64 || r.buf || ""
-            });
+              period: String(r.period || (r.meta && r.meta.period) || "")
+            }));
           });
         }
       }
     } catch (_) {}
   }
 
-  // 4. Strictly overwrite local MetaCache so deleted records NEVER resurrect on Browser B
+  var finalRows = Object.values(byDedupeKey).filter(function(r) { return !isRecordTombstoned(r); });
+
+  // 6. Overwrite local MetaCache when cloud is reached so deleted records never resurrect
   if (cloudReached) {
     var cleanCache = {};
-    rows.forEach(function(r) {
+    finalRows.forEach(function(r) {
       cleanCache[String(r.id)] = {
         id: String(r.id),
         name: r.file_name,
@@ -488,7 +393,7 @@ async function listRaw(type,force){
     saveMetaCache(type, cleanCache);
   }
 
-  rawCache[type]=rows;rawCacheAt[type]=Date.now();return rows;
+  rawCache[type]=finalRows;rawCacheAt[type]=Date.now();return finalRows;
 }
 
 async function list(type){
@@ -517,10 +422,11 @@ async function upload(rec,buf,progress){
   if(progress)progress(5);
   var type=String(rec&&rec.type||'').toLowerCase();if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');
   var ids=arr(rec&&rec.ids).map(String).filter(Boolean),form=new FormData(),mime=String(rec&&rec.mime||'application/octet-stream');
+  var hashLow=String(rec&&rec.hash||rec&&rec.fileHash||'').toLowerCase();
   form.append('action','upload');form.append('type',type);form.append('period',String(rec&&rec.period||''));
   form.append('uploaded_by',currentUserId());form.append('member_ids',JSON.stringify(ids));
   form.append('contributions',JSON.stringify(arr(rec&&rec.contributions)));
-  form.append('file_hash',String(rec&&rec.hash||rec&&rec.fileHash||'').toLowerCase());
+  form.append('file_hash',hashLow);
   form.append('file_size',String(Number(rec&&rec.size||buf.byteLength)||buf.byteLength));
   form.append('mime_type',mime);
   form.append('file',new Blob([buf],{type:mime}),String(rec&&rec.name||'challan'));
@@ -534,28 +440,104 @@ async function upload(rec,buf,progress){
     var tKey = 'ATPL_COMPLIANCE_' + type.toUpperCase() + '_TOMBSTONES';
     var localT = JSON.parse(root.localStorage.getItem(tKey) || '{}');
     delete localT[String(rec.name || '').toLowerCase().trim()];
-    if (rec.hash || rec.fileHash) delete localT[String(rec.hash || rec.fileHash).toLowerCase().trim()];
+    if (hashLow) delete localT[hashLow];
     root.localStorage.setItem(tKey, JSON.stringify(localT));
   } catch (_) {}
 
-  if(progress)progress(30);
+  // Clear shared delete tombstone on Google Apps Script if present
+  var dur = getDurableApi();
+  if (dur && typeof dur.clearComplianceDolDeleteTombstone === 'function' && tok()) {
+    try {
+      await dur.clearComplianceDolDeleteTombstone({
+        type: type,
+        id: rec.id || ('dol_' + type + '_' + hashLow.slice(0, 24)),
+        hash: hashLow,
+        fileHash: hashLow,
+        name: rec.name,
+        period: rec.period || ''
+      });
+    } catch (_) {}
+  }
+
+  if(progress)progress(20);
   var b64=arrayBufferToBase64(buf);
-  var recordId = String(rec.id || ('dol_' + type + '_' + String(rec.hash || rec.fileHash || Date.now()).slice(0, 20)));
+  var recordId = String(rec.id || ('dol_' + type + '_' + String(hashLow || Date.now()).slice(0, 24)));
   var nowIso = new Date().toISOString();
+
+  var digits = [], alnums = [];
+  ids.forEach(function(x) {
+    if (/^\d+$/.test(String(x))) digits.push(String(x));
+    else if (x) alnums.push(String(x));
+  });
+
+  // 1. Primary Cross-Device Upload A: Google Apps Script Dedicated Vault (DOLRecords + Google Drive + DOLContributions)
+  var leg = getLegacyVault();
+  if (leg && typeof leg.upload === 'function' && tok()) {
+    try {
+      var legOut = await leg.upload({
+        id: recordId,
+        type: type,
+        name: rec.name,
+        size: buf.byteLength,
+        mime: mime,
+        hash: hashLow,
+        fileHash: hashLow,
+        period: rec.period || '',
+        periodSource: rec.periodSource || 'manual',
+        ids: ids,
+        contributions: arr(rec.contributions),
+        uploadIntent: 'user_upload'
+      }, buf, progress);
+      if (legOut && legOut.record && legOut.record.id) {
+        recordId = String(legOut.record.id);
+      }
+    } catch (legUpErr) {
+      console.warn('[ATPL-DOL] Legacy Apps Script upload notice:', legUpErr && legUpErr.message || legUpErr);
+    }
+  }
+
+  if(progress)progress(70);
+
+  // 2. Primary Cross-Device Upload B: Google Apps Script SystemRecords (pf_dol_v2 / esic_dol_v2)
+  if (dur && typeof dur.saveComplianceDolConfirmed === 'function' && tok()) {
+    try {
+      await dur.saveComplianceDolConfirmed({
+        id: recordId,
+        type: type,
+        name: rec.name,
+        size: buf.byteLength,
+        lastModified: rec.lastModified || Date.now(),
+        uploadedAt: nowIso,
+        updatedAt: nowIso,
+        period: rec.period || '',
+        periodSource: rec.periodSource || 'manual',
+        digitIds: digits,
+        alnumIds: alnums,
+        fileHash: hashLow,
+        fingerprint: hashLow,
+        parseVersion: 'v3-cloud-only-final13-delete-fix'
+      });
+    } catch (durUpErr) {
+      console.warn('[ATPL-DOL] Durable SystemRecords save notice:', durUpErr && durUpErr.message || durUpErr);
+    }
+  }
 
   var fullRecord = {
     id: recordId,
+    cloudRecordId: recordId,
     type: type,
     challan_type: type,
     name: rec.name,
     file_name: rec.name,
     size: buf.byteLength,
     file_size: buf.byteLength,
-    hash: String(rec.hash || rec.fileHash || '').toLowerCase(),
-    file_hash: String(rec.hash || rec.fileHash || '').toLowerCase(),
+    hash: hashLow,
+    file_hash: hashLow,
     period: rec.period || '',
     ids: ids,
     member_ids: ids,
+    digitIds: digits,
+    alnumIds: alnums,
     contributions: arr(rec.contributions),
     mime: mime,
     mime_type: mime,
@@ -565,24 +547,20 @@ async function upload(rec,buf,progress){
     hasOriginalFile: true
   };
 
-  if(progress)progress(60);
-
-  // 1. Primary Real-Time Sync: Firebase Firestore
+  // 3. Secondary Cloud Store: Firebase Firestore (if quota available)
   var fb = getFb();
   if (fb && typeof fb.saveDolRecord === 'function') {
     try {
       await fb.saveDolRecord(type, fullRecord, b64);
-    } catch (fbErr) {
-      console.warn('[ATPL-DOL] Firebase saveDolRecord notice:', fbErr);
-    }
+    } catch (_) {}
   }
 
-  // 2. Secondary Cloud Store: GitHub Repository
+  // 4. GitHub Repository (best-effort)
   try {
     syncToGitHubRepo(fullRecord, b64).catch(function(){});
   } catch (_) {}
 
-  // 3. Local Express Server (if running on localhost)
+  // 5. Local Express Server (if running on localhost)
   var localBase = getBackendBase();
   if (localBase) {
     try {
@@ -637,16 +615,28 @@ async function upload(rec,buf,progress){
 async function update(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||'');
   if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id)throw new Error('Challan id missing');
-  var fb = getFb();
-  if (fb && typeof fb.fetchAllDolRecords === 'function' && typeof fb.saveDolRecord === 'function') {
+  var leg = getLegacyVault();
+  if (leg && typeof leg.update === 'function' && tok()) {
+    try { await leg.update(rec); } catch (_) {}
+  }
+  var dur = getDurableApi();
+  if (dur && typeof dur.saveComplianceDolConfirmed === 'function' && tok()) {
     try {
-      var all = await fb.fetchAllDolRecords(type);
-      var match = (all || []).find(function(x) { return x && String(x.id) === id; });
-      if (match) {
-        var decoded = typeof fb.decodeDolPayload === 'function' ? await fb.decodeDolPayload(match) : match;
-        var updatedObj = Object.assign({}, match, decoded || {}, { period: String(rec.period || ''), updated_at: new Date().toISOString() });
-        await fb.saveDolRecord(type, updatedObj, updatedObj.original_b64 || '');
-      }
+      var ids = arr(rec.ids), digits = [], alnums = [];
+      ids.forEach(function(x){ if (/^\d+$/.test(String(x))) digits.push(String(x)); else if (x) alnums.push(String(x)); });
+      await dur.saveComplianceDolConfirmed({
+        id: id,
+        type: type,
+        name: rec.name || '',
+        size: rec.size || 0,
+        period: String(rec.period || ''),
+        periodSource: rec.periodSource || 'manual',
+        digitIds: digits,
+        alnumIds: alnums,
+        fileHash: String(rec.hash || rec.fileHash || '').toLowerCase(),
+        fingerprint: String(rec.hash || rec.fileHash || '').toLowerCase(),
+        updatedAt: new Date().toISOString()
+      });
     } catch (_) {}
   }
   rawCache[type]=null;rawCacheAt[type]=0;
@@ -657,7 +647,7 @@ async function remove(rec){
   var type=String(rec&&rec.type||'').toLowerCase(),id=String(rec&&rec.cloudRecordId||rec&&rec.id||''),name=String(rec&&rec.name||''),hash=String(rec&&rec.hash||rec&&rec.fileHash||rec&&rec.fingerprint||'').toLowerCase();
   if(type!=='pf'&&type!=='esic')throw new Error('Invalid challan type');if(!id&&!name)throw new Error('Challan id missing'); if(EDGE_URL&&tok()){try{await edgeJson({action:'delete',type:type,id:id},4000);}catch(_){}}
 
-  // Record local tombstone immediately
+  // 0. Record local tombstone immediately
   try {
     var tKey = 'ATPL_COMPLIANCE_' + type.toUpperCase() + '_TOMBSTONES';
     var localT = JSON.parse(root.localStorage.getItem(tKey) || '{}');
@@ -668,22 +658,70 @@ async function remove(rec){
     root.localStorage.setItem(tKey, JSON.stringify(localT));
   } catch (_) {}
 
-  // 1. Delete from Firebase Firestore & write permanent tombstone
+  // 1. Write shared delete tombstone to Google Apps Script & delete from SystemRecords
+  var dur = getDurableApi();
+  if (dur && tok()) {
+    try {
+      if (typeof dur.saveComplianceDolDeleteTombstone === 'function') {
+        await dur.saveComplianceDolDeleteTombstone({
+          type: type,
+          id: id,
+          cloudRecordId: id,
+          hash: hash,
+          fileHash: hash,
+          name: name,
+          period: rec.period || ''
+        });
+      }
+    } catch (tErr) {
+      console.warn('[ATPL-DOL] Shared delete tombstone notice:', tErr);
+    }
+    try {
+      if (typeof dur.deleteComplianceDolConfirmed === 'function') {
+        await dur.deleteComplianceDolConfirmed({
+          id: id,
+          type: type,
+          hash: hash,
+          fileHash: hash,
+          name: name,
+          period: rec.period || ''
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 2. Delete from Google Apps Script Dedicated Vault (DOLRecords + Google Drive + DOLContributions + DOLDeleted)
+  var leg = getLegacyVault();
+  if (leg && typeof leg.deleteRecord === 'function' && tok()) {
+    try {
+      await leg.deleteRecord({
+        id: id,
+        cloudRecordId: id,
+        type: type,
+        hash: hash,
+        fileHash: hash,
+        name: name,
+        period: rec.period || ''
+      });
+    } catch (legDelErr) {
+      console.warn('[ATPL-DOL] Legacy Apps Script delete notice:', legDelErr && legDelErr.message || legDelErr);
+    }
+  }
+
+  // 3. Delete from Firebase Firestore (if quota available)
   var fb = getFb();
   if (fb && typeof fb.deleteDolRecord === 'function') {
     try {
       await fb.deleteDolRecord(type, id, name, hash, currentUserId() || 'admin');
-    } catch (fbErr) {
-      console.warn('[ATPL-DOL] Firebase deleteDolRecord notice:', fbErr);
-    }
+    } catch (_) {}
   }
 
-  // 2. Delete from GitHub Repository
+  // 4. Delete from GitHub Repository
   try {
     syncDeleteFromGitHubRepo(type, id, name, hash).catch(function(){});
   } catch (_) {}
 
-  // 3. Delete from Local Express Server (if on localhost)
+  // 5. Delete from Local Express Server (if on localhost)
   var localBase = getBackendBase();
   if (localBase) {
     try {
@@ -730,8 +768,30 @@ async function fileBlob(rec,progress){
     }
   }
 
-  if(progress)progress(30);
-  // 1. Fetch from Firebase Firestore
+  if(progress)progress(25);
+  // 1. Primary Cross-Device Original File Vault: Google Apps Script / Google Drive (getDOLFileInfo + getDOLFileChunk)
+  var leg = getLegacyVault();
+  if (leg && typeof leg.fileBlob === 'function' && tok()) {
+    var candidateIds = [cid];
+    if (rhash) {
+      var canonicalDolId = 'dol_' + type + '_' + rhash.slice(0, 24);
+      if (candidateIds.indexOf(canonicalDolId) < 0) candidateIds.push(canonicalDolId);
+    }
+    for (var ci = 0; ci < candidateIds.length; ci++) {
+      var tryId = candidateIds[ci];
+      if (!tryId) continue;
+      try {
+        var legBlob = await leg.fileBlob({ id: tryId, cloudRecordId: tryId, type: type, name: recName, mime: mime }, progress);
+        if (legBlob && legBlob.size > 0) {
+          if (progress) progress(100);
+          return legBlob;
+        }
+      } catch (_) {}
+    }
+  }
+
+  if(progress)progress(55);
+  // 2. Fetch from Firebase Firestore (if quota available)
   var fb = getFb();
   if (fb && typeof fb.fetchAllDolRecords === 'function') {
     try {
@@ -757,8 +817,8 @@ async function fileBlob(rec,progress){
     } catch (_) {}
   }
 
-  if(progress)progress(65);
-  // 2. Fetch from GitHub Cloud Blob
+  if(progress)progress(80);
+  // 3. Fetch from GitHub Cloud Blob
   if (root.ATPLGitHubCloud) {
     try {
       var m = await root.ATPLGitHubCloud.getManifest(false);
@@ -793,14 +853,40 @@ async function fileBlob(rec,progress){
 
 async function searchIndex(type,ids){
   type=String(type||'').toLowerCase();ids=arr(ids).map(normalizeId).filter(Boolean).slice(0,60);
-  var rows=await listRaw(type,true),matches={},coverage={},unindexed=[];
+  var matches={},coverage={},unindexed=[],seenMatch={};
   ids.forEach(function(id){matches[id]=[]});
+
+  // 1. Search Google Apps Script DOLContributions index if available
+  var leg = getLegacyVault();
+  if (leg && typeof leg.searchIndex === 'function' && tok()) {
+    try {
+      var legPack = await leg.searchIndex(type, ids);
+      if (legPack && legPack.matches) {
+        (legPack.coverage || []).forEach(function(p) { if (p) coverage[p] = 1; });
+        ids.forEach(function(id) {
+          arr(legPack.matches[id]).forEach(function(m) {
+            if (!m) return;
+            var k = id + '|' + String(m.recordId || '') + '|' + String(m.period || '');
+            if (seenMatch[k]) return;
+            seenMatch[k] = 1;
+            matches[id].push(m);
+          });
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 2. Supplement with live library rows
+  var rows=await listRaw(type,true);
   rows.forEach(function(r){
     var period=String(r.period||'');if(period)coverage[period]=1;
     var mids=arr(r.member_ids).map(normalizeId).filter(Boolean),contrib=arr(r.contributions);
     if(!mids.length){unindexed.push({id:r.id,name:r.file_name,period:period});return}
     ids.forEach(function(id){
       if(mids.indexOf(id)<0)return;
+      var k = id + '|' + String(r.id || '') + '|' + period;
+      if (seenMatch[k]) return;
+      seenMatch[k] = 1;
       var detail=contrib.find(function(x){return normalizeId(x&&x.memberId||x&&x.member_id)===id})||{};
       matches[id].push({recordId:String(r.id||''),type:type,memberId:id,employeeName:String(detail.employeeName||detail.employee_name||''),details:detail.details&&typeof detail.details==='object'?detail.details:{libraryIndex:true},period:period,sourceChallan:String(r.file_name||''),uploadedAt:String(r.created_at||''),updatedAt:String(r.updated_at||'')})
     })
@@ -810,6 +896,12 @@ async function searchIndex(type,ids){
 }
 
 async function saveContributionIndex(recordId,type,entries,progress){
+  var leg = getLegacyVault();
+  if (leg && typeof leg.saveContributionIndex === 'function' && tok()) {
+    try {
+      return await leg.saveContributionIndex(recordId, type, entries, progress);
+    } catch (_) {}
+  }
   if(progress)progress(100);
   var rows=await listRaw(type,true),r=rows.find(function(x){return String(x.id)===String(recordId)});
   return{ok:true,count:arr(entries).length,record:r?mapRow(r):null}
@@ -861,7 +953,12 @@ async function startRealtime(){
 function stopRealtime(){try{if(rtClient&&rtChannel)rtClient.removeChannel(rtChannel)}catch(_){}rtChannel=null;rtClient=null}
 async function warmAuth(){
   if(warmPromise)return warmPromise;
-  warmPromise=Promise.resolve(true).finally(function(){warmPromise=null});
+  warmPromise=(async function(){
+    if(root.ATPLCloudAPI&&typeof root.ATPLCloudAPI.ensureToken==='function'){
+      try{await root.ATPLCloudAPI.ensureToken(false)}catch(_){}
+    }
+    return true;
+  })().finally(function(){warmPromise=null});
   return warmPromise;
 }
 
@@ -876,5 +973,10 @@ root.ATPLDOLSupabaseV2=api;
 function resume(){startRealtime();warmAuth().catch(function(){})}
 root.addEventListener('online',resume);
 try{root.document.addEventListener('atpl-authenticated',resume)}catch(_){}
+try{root.document.addEventListener('atpl-cloud-token-ready',function(){
+  rawCache.pf=null;rawCacheAt.pf=0;rawCache.esic=null;rawCacheAt.esic=0;
+  try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:'pf',at:Date.now()}}))}catch(_){}
+  try{root.dispatchEvent(new CustomEvent('atpl-dol-supabase-change',{detail:{type:'esic',at:Date.now()}}))}catch(_){}
+})}catch(_){}
 if(root.document.readyState==='loading')root.document.addEventListener('DOMContentLoaded',function(){startRealtime();warmAuth().catch(function(){})},{once:true});else{startRealtime();warmAuth().catch(function(){})}
 })(window);

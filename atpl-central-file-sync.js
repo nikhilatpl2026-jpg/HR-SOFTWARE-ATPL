@@ -747,7 +747,13 @@
           } catch (_) {}
         }
 
-        if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+        if (!backendSuccess && !this.apiBase) {
+          if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
+            try { await window.ATPLCloudSharedStorageV1.syncNow(!!force); } catch (_) {}
+          }
+          return;
+        }
+        if (!backendSuccess && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
             var fbTombs = typeof window.ATPLFirebase.fetchAllTombstones === 'function' ? await window.ATPLFirebase.fetchAllTombstones() : [];

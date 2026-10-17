@@ -12082,6 +12082,9 @@ function hrDocToggleWindow(){
     if(window.ATPLFirebase&&typeof window.ATPLFirebase.deleteHrDoc==='function'){
       window.ATPLFirebase.deleteHrDoc(id,docName,'admin').catch(function(e){console.warn('Firebase HR delete failed',e);});
     }
+    if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.deleteHrDoc==='function'){
+      window.ATPLCloudSharedStorageV1.deleteHrDoc(id,docName).catch(function(){});
+    }
     del(id,function(){
       DOCS=DOCS.filter(function(x){return x.id!==id;});
       render();
@@ -13545,6 +13548,24 @@ window.syncAllAtplModules = async function(isInteractive) {
     btn.innerHTML = '⏳ Syncing All Modules...';
   }
   try {
+    // 0. Primary Cross-Device Cloud Sync (Salary Files + HR Docs + PF/ESIC + Master)
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
+      try { await window.ATPLCloudSharedStorageV1.syncNow(true); } catch(_) {}
+    }
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
+      try { await window.ATPLCloudSharedStorageV1.syncHrNow(true); } catch(_) {}
+    }
+    if (window.ATPLComplianceDOLV2 && typeof window.ATPLComplianceDOLV2.syncCloud === 'function') {
+      try {
+        await Promise.allSettled([
+          window.ATPLComplianceDOLV2.syncCloud('pf'),
+          window.ATPLComplianceDOLV2.syncCloud('esic')
+        ]);
+      } catch(_) {}
+    }
+    if (window.ATPLMobileSharedHardFix && typeof window.ATPLMobileSharedHardFix.pullMaster === 'function') {
+      try { await window.ATPLMobileSharedHardFix.pullMaster(); } catch(_) {}
+    }
     // 1. Reconcile Salary Files via Central File Sync
     if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.reconcileAll === 'function') {
       await window.ATPLCentralFileSync.reconcileAll(true);
@@ -15359,7 +15380,10 @@ window.triggerManualHrSync = async function() {
   var btn = document.getElementById('btnSyncHrDocs');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
-    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
+      await window.ATPLCloudSharedStorageV1.syncHrNow(true);
+    }
+    if (!window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
       var fbDocs = await window.ATPLFirebase.fetchAllHrDocs();
       if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate === 'function') {
         await window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate({ all: fbDocs, removedIds: [] });
@@ -15385,6 +15409,24 @@ window.triggerManualCrossBrowserSync = async function() {
   var btn = document.getElementById('btnForceCrossBrowserSync');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
+    // 0. Primary Cross-Device Cloud Sync (Salary Files + HR Docs + PF/ESIC + Master)
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === 'function') {
+      try { await window.ATPLCloudSharedStorageV1.syncNow(true); } catch(_) {}
+    }
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
+      try { await window.ATPLCloudSharedStorageV1.syncHrNow(true); } catch(_) {}
+    }
+    if (window.ATPLComplianceDOLV2 && typeof window.ATPLComplianceDOLV2.syncCloud === 'function') {
+      try {
+        await Promise.allSettled([
+          window.ATPLComplianceDOLV2.syncCloud('pf'),
+          window.ATPLComplianceDOLV2.syncCloud('esic')
+        ]);
+      } catch(_) {}
+    }
+    if (window.ATPLMobileSharedHardFix && typeof window.ATPLMobileSharedHardFix.pullMaster === 'function') {
+      try { await window.ATPLMobileSharedHardFix.pullMaster(); } catch(_) {}
+    }
     // 1. Authoritative Sync Salary Files via Central Engine
     if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.reconcileAll === 'function') {
       await window.ATPLCentralFileSync.reconcileAll(true);
