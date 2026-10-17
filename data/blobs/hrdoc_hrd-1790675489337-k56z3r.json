@@ -1,0 +1,37 @@
+{
+  "key": "hrd-1790675489337-k56z3r",
+  "module": "hr_doc",
+  "updated_at": "2026-10-17T15:53:06.592Z",
+  "payload": {
+    "id": "HRD-1790675489337-k56z3r",
+    "doc_type": "HR Policy",
+    "document_name": "Training Record",
+    "holder": "",
+    "reference_no": "",
+    "certificate_no": "",
+    "issuing_authority": "",
+    "location": "",
+    "validity_period": "",
+    "issue_date": "",
+    "retraining_date": "",
+    "expiry_date": "",
+    "alert_days": 7,
+    "remarks": "",
+    "assigned_user_id": "",
+    "assigned_user_name": "All HR Document users",
+    "visibility": "all",
+    "created_by": "admin",
+    "created_by_name": "Owner / Admin",
+    "updated_by": "admin",
+    "updated_at": "2026-09-29T09:51:29.349Z",
+    "file_name": "DocScanner 26 Sept 2026 10-36(1).pdf",
+    "file_type": "application/pdf",
+    "file_data": null,
+    "file_data_list": null,
+    "_cloud_attachment_omitted": true,
+    "_cloud_attachment_names": [
+      "DocScanner 26 Sept 2026 10-36(1).pdf"
+    ],
+    "_cloudBackedUp": true
+  }
+}
