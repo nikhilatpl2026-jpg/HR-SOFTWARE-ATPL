@@ -1,5 +1,5 @@
 {
-  "version": 64,
+  "version": 65,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2202,6 +2202,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_simul_file_b_1790769567372_xlsx"
+    },
+    "salary:offline_reconcile_file.xlsx": {
+      "id": "Offline_Reconcile_File.xlsx",
+      "name": "Offline_Reconcile_File.xlsx",
+      "filename": "Offline_Reconcile_File.xlsx",
+      "size": 16,
+      "uploaded_at": "2026-09-30T11:59:31.084Z",
+      "saved_at": "2026-09-30T11:59:31.084Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_offline_reconcile_file_xlsx"
     }
   }
 }
