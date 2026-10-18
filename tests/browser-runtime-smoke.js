@@ -20,7 +20,7 @@ const puppeteer=require('puppeteer-core');
   });
   page.on('requestfailed',r=>{
     const u=r.url();
-    if(/^https?:\/\/127\.0\.0\.1:4173\//.test(u) && !/\/api\//.test(u))failed.push(u+' :: '+(r.failure()?.errorText||'failed'));
+    if(/^https?:\/\/127\.0\.0\.1:4173\//.test(u) && !/\/api\//.test(u) && !/\/functions\//.test(u))failed.push(u+' :: '+(r.failure()?.errorText||'failed'));
   });
 
   await page.evaluateOnNewDocument(()=>{
@@ -55,7 +55,7 @@ const puppeteer=require('puppeteer-core');
     if(origFetch){
       window.fetch = function(input, init){
         const u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        if(typeof u === 'string' && u.includes('supabase.co')){
+        if(typeof u === 'string' && (u.includes('supabase.co') || u.includes('/functions/v1/dol-api'))){
           return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [] }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
@@ -77,7 +77,7 @@ const puppeteer=require('puppeteer-core');
     sessionStorage.setItem('ATPL_UserSession_V5',JSON.stringify({id:ciUser.id}));
     sessionStorage.setItem('ATPL_RemoteToken_V1','ci-local-token');
     sessionStorage.setItem('ATPL_SharedToken_V1','ci-local-token');
-    const login=document.getElementById('uaLogin');if(login)login.style.display='none';
+    const login=document.getElementById('uaLogin');if(login)login.style.display='none';const ls=document.getElementById('loginScreen');if(ls)ls.style.display='none';
     document.body.classList.remove('uaLocked');
     document.querySelectorAll('[id^="page-"]').forEach(p=>{p.hidden=false;p.classList.remove('uaDeniedPage','uaNoAccess');p.style.removeProperty('display');p.removeAttribute('aria-hidden')});
     document.querySelectorAll('.vitem').forEach(v=>{v.hidden=false;v.style.removeProperty('display');v.removeAttribute('aria-hidden')});

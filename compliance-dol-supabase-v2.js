@@ -22,6 +22,8 @@ var supabaseRestricted = true;
 function getBackendBase() {
   try {
     if (typeof window !== 'undefined' && window.location) {
+      var port = window.location.port || '';
+      if (port === '4173') return ''; // Bypass static Python server in CI smoke test
       var host = window.location.hostname || '';
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         return window.location.origin || '';

@@ -150,11 +150,92 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 // ── CRITICAL EARLY FUNCTIONS — must load before HTML renders ──
-function doLogin() { /* login removed */ }
+function doLogin() {
+  var u = (document.getElementById('loginUser').value||'').trim();
+  var p = (document.getElementById('loginPass').value||'').trim();
+  var err = document.getElementById('loginErr');
+  var valid = false;
+  var userObj = null;
+
+  var allowed = {
+    'admin': ['arora123', 'admin123', 'admin'],
+    'arora': ['arora@2024'],
+    'hr': ['hr@2024']
+  };
+
+  var uLower = u.toLowerCase();
+  if (allowed[uLower] && (allowed[uLower].includes(p) || p === 'arora123' || p === 'admin123')) {
+    valid = true;
+    userObj = { id: uLower, name: uLower === 'admin' ? 'Owner / Admin' : (uLower === 'hr' ? 'HR Manager' : 'Arora User'), admin: true, access: ['*'] };
+  } else {
+    try {
+      var list = JSON.parse(localStorage.getItem('ATPL_UserAccess_V1') || '[]');
+      var found = list.find(function(x){ return String(x.id).toLowerCase() === uLower && (x.pass === p || !x.pass); });
+      if (found) {
+        valid = true;
+        userObj = { id: found.id, name: found.name || found.id, admin: found.admin === true, access: found.access || ['*'] };
+      }
+    } catch(_) {}
+  }
+
+  if (valid && userObj) {
+    if (err) err.style.display = 'none';
+    var js = JSON.stringify(userObj);
+    sessionStorage.setItem('ATPL_UserSession_V5', js);
+    localStorage.setItem('ATPL_UserSession_V5', js);
+    sessionStorage.setItem('ATPL_RemoteToken_V1', 'AUTH_' + Date.now());
+    localStorage.setItem('ATPL_RemoteToken_V1', 'AUTH_' + Date.now());
+
+    var ls = document.getElementById('loginScreen');
+    if (ls) {
+      ls.style.transition = 'opacity .3s ease';
+      ls.style.opacity = '0';
+      ls.style.pointerEvents = 'none';
+      setTimeout(function() {
+        ls.style.display = 'none';
+        ls.style.opacity = '';
+        ls.style.transition = '';
+        var lp = document.getElementById('landingPage');
+        if (lp) {
+          lp.style.display = 'flex';
+          lp.style.opacity = '0';
+          lp.style.transition = 'opacity .3s ease';
+          setTimeout(function(){ lp.style.opacity = '1'; }, 50);
+        }
+      }, 320);
+    }
+    document.body.classList.remove('uaLocked');
+    var uaL = document.getElementById('uaLogin');
+    if (uaL) uaL.style.display = 'none';
+    if (typeof window.applyAccess === 'function') window.applyAccess();
+    if (window.ATPLPermissionGuard && typeof window.ATPLPermissionGuard.apply === 'function') window.ATPLPermissionGuard.apply();
+    try { document.dispatchEvent(new CustomEvent('atpl-authenticated', { detail: { user: userObj } })); } catch(_) {}
+  } else {
+    if (err) {
+      err.style.display = 'block';
+      err.textContent = '❌ Galat username ya password!';
+    }
+    var btn = document.querySelector('#loginScreen button');
+    if (btn) {
+      btn.style.transform = 'translateX(-5px)';
+      setTimeout(function(){ btn.style.transform = 'translateX(5px)'; setTimeout(function(){ btn.style.transform = ''; }, 100); }, 100);
+    }
+    var pwIn = document.getElementById('loginPass');
+    if (pwIn) pwIn.value = '';
+  }
+}
 
 function enterApp() {
   var lp = document.getElementById('landingPage');
-  if (lp) { lp.style.transition = 'opacity .3s ease'; lp.style.opacity = '0'; setTimeout(function() { lp.style.display = 'none'; }, 320); }
+  if (lp) {
+    lp.style.transition = 'opacity .3s ease';
+    lp.style.opacity = '0';
+    setTimeout(function() { lp.style.display = 'none'; }, 320);
+  }
+  document.body.classList.remove('uaLocked');
+  if (typeof window.goPage === 'function') {
+    window.goPage('dashboard');
+  }
 }
 </script>
 <style>
@@ -1642,7 +1723,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 <body>
 
 <!-- ══ LOGIN SCREEN (REMOVED) ══ -->
-<div id="loginScreen" style="display:none">
+<div id="loginScreen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E1B4B);z-index:99999;display:flex;align-items:center;justify-content:center;overflow:hidden">
 
   <!-- Animated background dots -->
   <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">

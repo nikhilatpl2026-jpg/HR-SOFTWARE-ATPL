@@ -1152,6 +1152,11 @@ async function openViewer(type,id){
     })();
     return;
   }
+  if (['jpg','jpeg','png','webp','gif','bmp'].indexOf(ext) >= 0 || (blob && blob.type && blob.type.indexOf('image/') === 0)) {
+    var imgUrl = URL.createObjectURL(blob);
+    $('cd2-vbody').innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0f172a;padding:20px;overflow:auto;"><img src="' + imgUrl + '" alt="' + esc(rec.name) + '" style="max-width:100%;max-height:78vh;object-fit:contain;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);"><div style="margin-top:12px;color:#94a3b8;font-size:11px;">🖼 ' + esc(rec.name) + '</div></div>';
+    return;
+  }
   try{
     var buf=await blob.arrayBuffer(),parsed=rec.viewerSheets&&rec.viewerSheets.length?{sheets:rec.viewerSheets}:await parseExcel(buf,type,function(p){$('cd2-vbody').innerHTML='<div class="cd2-empty">Preparing Excel viewer… '+p+'%</div>'});
     viewer.sheets=parsed.sheets||[];viewer.sheet=0;viewer.page=1;if(!viewer.sheets.length)throw new Error('No sheets found');
