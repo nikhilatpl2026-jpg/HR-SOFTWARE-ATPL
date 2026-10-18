@@ -1,5 +1,5 @@
 {
-  "version": 73,
+  "version": 74,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2301,6 +2301,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_9_xlsx"
+    },
+    "salary:bulk_salary_sheet_10.xlsx": {
+      "id": "Bulk_Salary_Sheet_10.xlsx",
+      "name": "Bulk_Salary_Sheet_10.xlsx",
+      "filename": "Bulk_Salary_Sheet_10.xlsx",
+      "size": 20,
+      "uploaded_at": "2026-09-30T11:59:28.248Z",
+      "saved_at": "2026-09-30T11:59:28.248Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_bulk_salary_sheet_10_xlsx"
     }
   }
 }
