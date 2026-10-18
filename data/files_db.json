@@ -1,5 +1,5 @@
 {
-  "version": 47,
+  "version": 48,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2015,6 +2015,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_large_batch_file_10_xlsx"
+    },
+    "salary:large_batch_file_11.xlsx": {
+      "id": "Large_Batch_File_11.xlsx",
+      "name": "Large_Batch_File_11.xlsx",
+      "filename": "Large_Batch_File_11.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-09-30T11:59:42.999Z",
+      "saved_at": "2026-09-30T11:59:42.999Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_11_xlsx"
     }
   }
 }
