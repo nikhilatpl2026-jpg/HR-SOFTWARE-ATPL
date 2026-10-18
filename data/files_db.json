@@ -1929,16 +1929,15 @@
       "doc_type": "salary",
       "blob_key": "salary_f_26f_20of_20dugar_20ji_20_20_1__xlsx"
     },
-    "salary:attendence sheet sep-26 (1).xlsx": {
-      "id": "attendence sheet sep-26 (1).xlsx",
-      "name": "attendence sheet sep-26 (1).xlsx",
-      "filename": "attendence sheet sep-26 (1).xlsx",
-      "size": 312812,
-      "uploaded_at": "2026-10-02T09:29:10.654+00:00",
-      "saved_at": "2026-10-02T09:29:10.654+00:00",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_attendence_20sheet_20sep-26_20_1__xlsx"
+    "hr_doc:hrd-test-1791370126717": {
+      "id": "HRD-TEST-1791370126717",
+      "name": "Atpl Engine Test Certificate",
+      "filename": "HRD-TEST-1791370126717",
+      "uploaded_at": "2026-10-07T11:12:03.414Z",
+      "updated_at": "2026-10-07T11:12:03.414Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791370126717"
     }
   }
 }
