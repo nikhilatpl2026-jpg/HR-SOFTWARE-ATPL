@@ -1,5 +1,5 @@
 {
-  "version": 37,
+  "version": 38,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -1906,6 +1906,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_simul_file_b_1790771004735_xlsx"
+    },
+    "hr_doc:hrd-test-1791370126717": {
+      "id": "HRD-TEST-1791370126717",
+      "name": "Atpl Engine Test Certificate",
+      "filename": "HRD-TEST-1791370126717",
+      "uploaded_at": "2026-10-07T11:12:03.414Z",
+      "updated_at": "2026-10-07T11:12:03.414Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791370126717"
     }
   }
 }
