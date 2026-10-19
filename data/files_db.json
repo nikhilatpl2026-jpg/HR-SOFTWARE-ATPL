@@ -61,11 +61,6 @@
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
-    "bulk_salary_sheet_6.xlsx": {
-      "name": "Bulk_Salary_Sheet_6.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
     "bulk_salary_sheet_8.xlsx": {
       "name": "Bulk_Salary_Sheet_8.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
@@ -1651,15 +1646,16 @@
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_4_xlsx"
     },
-    "hr_doc:hrd-1791352327000-b9sfyg": {
-      "id": "HRD-1791352327000-b9sfyg",
-      "name": "Atpl Boiler Certificate (Shri Chain Singh)",
-      "filename": "HRD-1791352327000-b9sfyg",
-      "uploaded_at": "2026-10-07T05:52:07.007Z",
-      "updated_at": "2026-10-07T05:52:07.007Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    "salary:bulk_salary_sheet_6.xlsx": {
+      "id": "Bulk_Salary_Sheet_6.xlsx",
+      "name": "Bulk_Salary_Sheet_6.xlsx",
+      "filename": "Bulk_Salary_Sheet_6.xlsx",
+      "size": 20,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_bulk_salary_sheet_6_xlsx"
     }
   }
 }
