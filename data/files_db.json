@@ -1,5 +1,5 @@
 {
-  "version": 494,
+  "version": 495,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1282,6 +1282,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_large_batch_file_20_xlsx"
+    },
+    "salary:large_batch_file_23.xlsx": {
+      "id": "Large_Batch_File_23.xlsx",
+      "name": "Large_Batch_File_23.xlsx",
+      "filename": "Large_Batch_File_23.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_23_xlsx"
     }
   }
 }
