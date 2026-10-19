@@ -1,5 +1,5 @@
 {
-  "version": 323,
+  "version": 324,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -63,6 +63,11 @@
     },
     "large_batch_file_8.xlsx": {
       "name": "Large_Batch_File_8.xlsx",
+      "deleted_at": "2026-10-13T05:57:34.691Z",
+      "deleted_by": "system_clean"
+    },
+    "bulk_salary_sheet_9.xlsx": {
+      "name": "Bulk_Salary_Sheet_9.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
@@ -1658,16 +1663,25 @@
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_8_xlsx"
     },
-    "salary:bulk_salary_sheet_9.xlsx": {
-      "id": "Bulk_Salary_Sheet_9.xlsx",
-      "name": "Bulk_Salary_Sheet_9.xlsx",
-      "filename": "Bulk_Salary_Sheet_9.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_9_xlsx"
+    "hr_doc:hrd-1791374743659-5xdcbk": {
+      "id": "HRD-1791374743659-5xdcbk",
+      "name": "Atpl Stability Certificate",
+      "filename": "HRD-1791374743659-5xdcbk",
+      "uploaded_at": "2026-10-07T12:05:43.671Z",
+      "updated_at": "2026-10-07T12:05:43.671Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791374743659-5xdcbk"
+    },
+    "hr_doc:hrd-test-1791436015056": {
+      "id": "HRD-TEST-1791436015056",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791436015056",
+      "uploaded_at": "2026-10-19T08:06:20.943Z",
+      "updated_at": "2026-10-19T08:06:20.943Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791436015056"
     }
   }
 }
