@@ -1,5 +1,5 @@
 {
-  "version": 320,
+  "version": 321,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1656,6 +1656,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_6_xlsx"
+    },
+    "hr_doc:hrd-1791372374936-rqjsfz": {
+      "id": "HRD-1791372374936-rqjsfz",
+      "name": "Atpl GST Certificate",
+      "filename": "HRD-1791372374936-rqjsfz",
+      "uploaded_at": "2026-10-07T11:26:14.949Z",
+      "updated_at": "2026-10-07T11:26:14.949Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791372374936-rqjsfz"
     }
   }
 }
