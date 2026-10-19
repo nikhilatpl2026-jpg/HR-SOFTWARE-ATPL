@@ -1,5 +1,5 @@
 {
-  "version": 263,
+  "version": 264,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -171,18 +171,8 @@
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
-    "large_batch_file_16.xlsx": {
-      "name": "Large_Batch_File_16.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
     "bulk_salary_sheet_17.xlsx": {
       "name": "Bulk_Salary_Sheet_17.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
-    "large_batch_file_17.xlsx": {
-      "name": "Large_Batch_File_17.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
@@ -1521,15 +1511,27 @@
       "doc_type": "salary",
       "blob_key": "salary_large_batch_file_15_xlsx"
     },
-    "hr_doc:hrd-1791369699924-6g7jq5": {
-      "id": "HRD-1791369699924-6g7jq5",
-      "name": "SCOPE CERTIFICATE",
-      "filename": "HRD-1791369699924-6g7jq5",
-      "uploaded_at": "2026-10-07T11:18:46.272Z",
-      "updated_at": "2026-10-07T11:18:46.272Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-1791369699924-6g7jq5"
+    "salary:large_batch_file_16.xlsx": {
+      "id": "Large_Batch_File_16.xlsx",
+      "name": "Large_Batch_File_16.xlsx",
+      "filename": "Large_Batch_File_16.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_16_xlsx"
+    },
+    "salary:large_batch_file_17.xlsx": {
+      "id": "Large_Batch_File_17.xlsx",
+      "name": "Large_Batch_File_17.xlsx",
+      "filename": "Large_Batch_File_17.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_17_xlsx"
     }
   }
 }
