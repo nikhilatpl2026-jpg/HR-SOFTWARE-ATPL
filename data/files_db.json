@@ -1147,8 +1147,8 @@
       "id": "HRD-TEST-1791720776080",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-18T16:23:32.572Z",
-      "updated_at": "2026-10-18T16:23:32.572Z",
+      "uploaded_at": "2026-10-19T10:24:23.864Z",
+      "updated_at": "2026-10-19T10:24:23.864Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
@@ -1448,6 +1448,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_1_xlsx"
+    },
+    "hr_doc:hrd-test-1791436015056": {
+      "id": "HRD-TEST-1791436015056",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791436015056",
+      "uploaded_at": "2026-10-18T16:23:47.646Z",
+      "updated_at": "2026-10-18T16:23:47.646Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791436015056"
     }
   }
 }
