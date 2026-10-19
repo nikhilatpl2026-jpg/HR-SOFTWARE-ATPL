@@ -1,5 +1,5 @@
 {
-  "version": 88,
+  "version": 89,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2453,6 +2453,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791714805069"
+    },
+    "hr_doc:hrd-1792236360470-aczsl2": {
+      "id": "HRD-1792236360470-aczsl2",
+      "name": "Atpl Boiler Certificate (Shri Chain Singh) (1)",
+      "filename": "HRD-1792236360470-aczsl2",
+      "uploaded_at": "2026-10-17T11:26:00.728Z",
+      "updated_at": "2026-10-17T11:26:00.728Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1792236360470-aczsl2"
     }
   }
 }
