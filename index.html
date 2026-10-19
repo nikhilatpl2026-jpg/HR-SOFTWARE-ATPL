@@ -12004,73 +12004,172 @@ function hrDocToggleWindow(){
 <script>
 (function(){
   'use strict';
-  var DB_NAME='AroraTextilesHRDocs',DB_VER=1,STORE='documents',DB=null,DOCS=[];
-  function openDB(cb){if(DB){cb();return;}try{var r=indexedDB.open(DB_NAME,DB_VER);r.onupgradeneeded=function(e){if(!e.target.result.objectStoreNames.contains(STORE))e.target.result.createObjectStore(STORE,{keyPath:'id'});};r.onsuccess=function(e){DB=e.target.result;cb();};r.onerror=function(){console.warn('HR Documents storage unavailable');cb();};}catch(e){console.warn(e);cb();}}
+  var DB_NAME='AroraTextilesHRDocs',STORE='documents',DB=null,DOCS=[];
+  function openDB(cb){
+    if(DB && DB.objectStoreNames && DB.objectStoreNames.contains(STORE)){
+      cb();
+      return;
+    }
+    try {
+      var r = indexedDB.open(DB_NAME);
+      r.onupgradeneeded = function(e){
+        var db = e.target.result;
+        if(!db.objectStoreNames.contains(STORE)){
+          db.createObjectStore(STORE, {keyPath:'id'});
+        }
+      };
+      r.onsuccess = function(e){
+        var db = e.target.result;
+        if(!db.objectStoreNames.contains(STORE)){
+          var ver = (db.version || 1) + 1;
+          db.close();
+          var rUp = indexedDB.open(DB_NAME, ver);
+          rUp.onupgradeneeded = function(ev){
+            var upDb = ev.target.result;
+            if(!upDb.objectStoreNames.contains(STORE)){
+              upDb.createObjectStore(STORE, {keyPath:'id'});
+            }
+          };
+          rUp.onsuccess = function(ev){
+            DB = ev.target.result;
+            cb();
+          };
+          rUp.onerror = function(){
+            console.warn('[HRDocs-IDB] Upgrade unavailable');
+            DB = null;
+            cb();
+          };
+        } else {
+          DB = db;
+          cb();
+        }
+      };
+      r.onerror = function(){
+        console.warn('HR Documents storage unavailable');
+        DB = null;
+        cb();
+      };
+    } catch(e) {
+      console.warn(e);
+      DB = null;
+      cb();
+    }
+  }
+
+  function fetchServerDocs() {
+    var base = (typeof window.ATPL_GET_API_BASE === 'function' ? window.ATPL_GET_API_BASE() : (window.__ATPL_CENTRAL_BACKEND_URL || ''));
+    fetch(base + '/api/sync/state')
+      .then(function(res){ return res.json(); })
+      .then(function(state){
+        if(state && Array.isArray(state.hr_docs) && state.hr_docs.length > 0){
+          state.hr_docs.forEach(function(sd){
+            if(sd && sd.id && !DOCS.some(function(x){ return x && String(x.id).toLowerCase() === String(sd.id).toLowerCase(); })){
+              DOCS.push(sd);
+            }
+          });
+          render();
+        }
+      }).catch(function(){});
+  }
+
   function load(cb){
     openDB(function(){
-      if(!DB){DOCS=[];cb();return;}
-      var r=DB.transaction(STORE,'readonly').objectStore(STORE).getAll();
-      r.onsuccess=function(){
-        var raw=r.result||[];
-        var tombs={};
-        try{tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');}catch(_){}
-        DOCS=raw.filter(function(x){
-          if(!x||!x.id)return false;
-          var tb=tombs[String(x.id).toLowerCase()];
-          if(!tb)return true;
-          var tt=typeof tb==='string'?Date.parse(tb):0,dt=x.updated_at?Date.parse(x.updated_at):0;
-          if(dt&&isFinite(dt)&&isFinite(tt)&&dt>=tt){
-            delete tombs[String(x.id).toLowerCase()];
-            try{localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));}catch(_){}
-            return true;
-          }
-          return false;
-        });
-        cb();
-
-        // Server-authoritative sync (merge only, do not wipe local docs)
-        fetch('/api/sync/state')
-          .then(function(res){ return res.json(); })
-          .then(function(state){
-            if(state && Array.isArray(state.hr_docs) && state.hr_docs.length > 0){
-              state.hr_docs.forEach(function(sd){
-                if(sd && sd.id && !DOCS.some(function(x){ return x && String(x.id).toLowerCase() === String(sd.id).toLowerCase(); })){
-                  DOCS.push(sd);
-                }
-              });
-              render();
+      if(!DB || !DB.objectStoreNames || !DB.objectStoreNames.contains(STORE)){
+        DOCS = [];
+        if(typeof cb === 'function') cb();
+        fetchServerDocs();
+        return;
+      }
+      try {
+        var r = DB.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+        r.onsuccess = function(){
+          var raw = r.result || [];
+          var tombs = {};
+          try{tombs = JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2') || '{}');}catch(_){}
+          DOCS = raw.filter(function(x){
+            if(!x || !x.id) return false;
+            var tb = tombs[String(x.id).toLowerCase()];
+            if(!tb) return true;
+            var tt = typeof tb === 'string' ? Date.parse(tb) : 0, dt = x.updated_at ? Date.parse(x.updated_at) : 0;
+            if(dt && isFinite(dt) && isFinite(tt) && dt >= tt){
+              delete tombs[String(x.id).toLowerCase()];
+              try{localStorage.setItem('ATPL_HR_TOMBSTONES_V2', JSON.stringify(tombs));}catch(_){}
+              return true;
             }
-          }).catch(function(){});
-      };
-      r.onerror=function(){DOCS=[];cb();};
+            return false;
+          });
+          if(typeof cb === 'function') cb();
+          fetchServerDocs();
+        };
+        r.onerror = function(){
+          DOCS = [];
+          if(typeof cb === 'function') cb();
+          fetchServerDocs();
+        };
+      } catch(err) {
+        console.warn('[HRDocs-IDB] load error:', err);
+        DOCS = [];
+        if(typeof cb === 'function') cb();
+        fetchServerDocs();
+      }
     });
   }
+
   function put(d,cb){
-  d.updated_at = d.updated_at || new Date().toISOString();
-  try{
-    var ts1=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V1')||'{}');
-    var ts2=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');
-    if(d&&d.id){ var k1=String(d.id).toLowerCase().trim(); delete ts1[k1]; delete ts2[k1]; }
-    if(d&&d.document_name){ var k2=String(d.document_name).toLowerCase().trim(); delete ts1[k2]; delete ts2[k2]; }
-    localStorage.setItem('ATPL_HR_TOMBSTONES_V1',JSON.stringify(ts1));
-    localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(ts2));
-  }catch(_){}
-  openDB(function(){
-    if(!DB){alert('⚠️ Browser storage unavailable.');return;}
-    var t=DB.transaction(STORE,'readwrite');
-    t.objectStore(STORE).put(d);
-    t.oncomplete=function(){
+    d.updated_at = d.updated_at || new Date().toISOString();
+    try{
+      var ts1=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V1')||'{}');
+      var ts2=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');
+      if(d&&d.id){ var k1=String(d.id).toLowerCase().trim(); delete ts1[k1]; delete ts2[k1]; }
+      if(d&&d.document_name){ var k2=String(d.document_name).toLowerCase().trim(); delete ts1[k2]; delete ts2[k2]; }
+      localStorage.setItem('ATPL_HR_TOMBSTONES_V1',JSON.stringify(ts1));
+      localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(ts2));
+    }catch(_){}
+    var syncCloud = function(){
       if(window.UniversalEngine && typeof window.UniversalEngine.saveHrDoc === 'function'){
         window.UniversalEngine.saveHrDoc(d).catch(function(){});
       } else if(window.ATPLRealtimeSyncEngine && typeof window.ATPLRealtimeSyncEngine.saveHrDoc === 'function'){
         window.ATPLRealtimeSyncEngine.saveHrDoc(d).catch(function(){});
       }
-      cb();
+      if(typeof cb === 'function') cb();
     };
-    t.onerror=function(){alert('⚠️ Document save error.');};
-  });
-}
-  function del(id,cb){try{var tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');tombs[String(id).toLowerCase()]=new Date().toISOString();localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));}catch(_){}openDB(function(){if(!DB)return;var t=DB.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=function(){if(cb)cb();};});}
+    openDB(function(){
+      if(!DB || !DB.objectStoreNames || !DB.objectStoreNames.contains(STORE)){
+        syncCloud();
+        return;
+      }
+      try {
+        var t=DB.transaction(STORE,'readwrite');
+        t.objectStore(STORE).put(d);
+        t.oncomplete=syncCloud;
+        t.onerror=syncCloud;
+      } catch(e) {
+        syncCloud();
+      }
+    });
+  }
+
+  function del(id,cb){
+    try{
+      var tombs=JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2')||'{}');
+      tombs[String(id).toLowerCase()]=new Date().toISOString();
+      localStorage.setItem('ATPL_HR_TOMBSTONES_V2',JSON.stringify(tombs));
+    }catch(_){}
+    openDB(function(){
+      if(!DB || !DB.objectStoreNames || !DB.objectStoreNames.contains(STORE)){
+        if(cb)cb();
+        return;
+      }
+      try {
+        var t=DB.transaction(STORE,'readwrite');
+        t.objectStore(STORE).delete(id);
+        t.oncomplete=function(){if(cb)cb();};
+        t.onerror=function(){if(cb)cb();};
+      } catch(_) {
+        if(cb)cb();
+      }
+    });
+  }
   function esc(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function dateText(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?esc(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();}
   function days(v){if(!v)return null;var d=new Date(v+'T00:00:00');if(isNaN(d.getTime()))return null;var t=new Date();t.setHours(0,0,0,0);return Math.ceil((d-t)/86400000);}
