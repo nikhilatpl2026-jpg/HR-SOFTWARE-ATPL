@@ -20,7 +20,7 @@
     if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
       return window.location.origin || '';
     }
-    return (window.ATPL_GCP_BACKEND_URL || '');
+    return '';
   }
 
   var API_BASE = detectBackendUrl();
