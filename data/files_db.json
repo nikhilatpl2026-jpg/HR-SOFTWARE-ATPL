@@ -196,11 +196,6 @@
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
-    "large_batch_file_21.xlsx": {
-      "name": "Large_Batch_File_21.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
     "bulk_salary_sheet_22.xlsx": {
       "name": "Bulk_Salary_Sheet_22.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
@@ -1551,15 +1546,16 @@
       "doc_type": "salary",
       "blob_key": "salary_large_batch_file_20_xlsx"
     },
-    "hr_doc:hrd-1791374083207-e0ey7q": {
-      "id": "HRD-1791374083207-e0ey7q",
-      "name": "Atpl Registration certificate",
-      "filename": "HRD-1791374083207-e0ey7q",
-      "uploaded_at": "2026-10-07T11:54:43.316Z",
-      "updated_at": "2026-10-07T11:54:43.316Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-1791374083207-e0ey7q"
+    "salary:large_batch_file_21.xlsx": {
+      "id": "Large_Batch_File_21.xlsx",
+      "name": "Large_Batch_File_21.xlsx",
+      "filename": "Large_Batch_File_21.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_21_xlsx"
     }
   }
 }
