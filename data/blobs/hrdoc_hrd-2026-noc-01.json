@@ -1,0 +1,12 @@
+{
+  "key": "hrd-2026-noc-01",
+  "module": "hr_doc",
+  "updated_at": "2026-10-19T16:10:59.080Z",
+  "payload": {
+    "id": "HRD-2026-NOC-01",
+    "document_name": "Fire NOC Certificate",
+    "doc_type": "Fire NOC",
+    "reference_no": "LSG/BIK/2026/999",
+    "_cloudBackedUp": true
+  }
+}
