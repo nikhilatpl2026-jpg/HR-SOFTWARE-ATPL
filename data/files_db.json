@@ -1,5 +1,5 @@
 {
-  "version": 77,
+  "version": 78,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2343,6 +2343,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352458212-za6zq6"
+    },
+    "hr_doc:hrd-1790675489337-k56z3r": {
+      "id": "HRD-1790675489337-k56z3r",
+      "name": "Training Record",
+      "filename": "HRD-1790675489337-k56z3r",
+      "uploaded_at": "2026-09-29T09:51:29.349Z",
+      "updated_at": "2026-09-29T09:51:29.349Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1790675489337-k56z3r"
     }
   }
 }
