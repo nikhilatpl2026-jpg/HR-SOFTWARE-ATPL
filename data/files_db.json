@@ -1137,8 +1137,8 @@
       "id": "HRD-TEST-1791720776080",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-19T16:20:36.304Z",
-      "updated_at": "2026-10-19T16:20:36.304Z",
+      "uploaded_at": "2026-10-19T16:13:37.133Z",
+      "updated_at": "2026-10-19T16:13:37.133Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
@@ -1466,6 +1466,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791436015056"
+    },
+    "salary:01-arora textiles pvt. ltd. feb-25 (3).xls": {
+      "id": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "name": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "filename": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "size": 1413804,
+      "uploaded_at": "2026-10-17T07:51:45.936Z",
+      "saved_at": "2026-10-17T07:51:45.936Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_01-arora_20textiles_20pvt__20ltd__20feb-25_20_3__xls"
     }
   }
 }
