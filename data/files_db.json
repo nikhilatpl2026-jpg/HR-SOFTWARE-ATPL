@@ -1,5 +1,5 @@
 {
-  "version": 512,
+  "version": 513,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1439,6 +1439,23 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791370126717"
+    },
+    "esic:v2_esic_c3d252c17274c261808fad6f": {
+      "id": "v2_esic_c3d252c17274c261808fad6f",
+      "module": "esic",
+      "name": "Atpl Boiler Certificate (2).pdf",
+      "file_name": "Atpl Boiler Certificate (2).pdf",
+      "size": 384215,
+      "file_hash": "c3d252c17274c261808fad6f0ef208f5cd55b74b0482e7dc7fbfa5347463487e",
+      "period": "",
+      "member_ids": [],
+      "uploaded_by": "admin",
+      "created_at": "2026-10-19T13:02:18.385Z",
+      "updated_at": "2026-10-19T13:02:18.385Z",
+      "filename": "Atpl Boiler Certificate (2).pdf",
+      "doc_type": "esic",
+      "blob_key": "esic_v2_esic_c3d252c17274c261808fad6f",
+      "uploaded_at": "2026-10-19T13:02:18.385Z"
     }
   }
 }
