@@ -1478,16 +1478,16 @@
       "doc_type": "salary",
       "blob_key": "salary_01-arora_20textiles_20pvt__20ltd__20may-25_20_20dugar_20ji_20_1__xlsx"
     },
-    "salary:aug 2025 salary sheet atpl final (3).xls": {
-      "id": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "name": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "filename": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "size": 1368064,
-      "uploaded_at": "2026-10-17T07:54:06.243Z",
-      "saved_at": "2026-10-17T07:54:06.243Z",
+    "salary:f&f of dugar ji  (1).xlsx": {
+      "id": "F&F of Dugar ji  (1).xlsx",
+      "name": "F&F of Dugar ji  (1).xlsx",
+      "filename": "F&F of Dugar ji  (1).xlsx",
+      "size": 23340,
+      "uploaded_at": "2026-10-04T11:25:00.293Z",
+      "saved_at": "2026-10-04T11:25:00.293Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_aug_202025_20salary_20sheet_20atpl_20final_20_3__xls"
+      "blob_key": "salary_f_26f_20of_20dugar_20ji_20_20_1__xlsx"
     }
   }
 }
