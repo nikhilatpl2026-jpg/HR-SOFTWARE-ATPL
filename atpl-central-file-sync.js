@@ -14,14 +14,13 @@
 (function(window) {
   'use strict';
 
-  var CLOUD_RUN_GCP_BACKEND = 'https://ais-pre-phmm5tl2atyq54bzpave64-427004433114.asia-southeast1.run.app';
   function detectBackendUrl() {
-    if (typeof window === 'undefined' || !window.location) return CLOUD_RUN_GCP_BACKEND;
+    if (typeof window === 'undefined' || !window.location) return '';
     var host = window.location.hostname || '';
     if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
       return window.location.origin || '';
     }
-    return (window.ATPL_GCP_BACKEND_URL || CLOUD_RUN_GCP_BACKEND);
+    return (window.ATPL_GCP_BACKEND_URL || '');
   }
 
   var API_BASE = detectBackendUrl();

@@ -36,19 +36,18 @@
     }
   }
 
-  var CLOUD_RUN_GCP_BACKEND = 'https://ais-pre-phmm5tl2atyq54bzpave64-427004433114.asia-southeast1.run.app';
-  // Use Express backend on localhost / .run.app, or fallback to GCP Cloud Run when on GitHub Pages
+  // Use Express backend on localhost / .run.app, or empty string on GitHub Pages
   function getLocalServerBase() {
     try {
-      if (typeof window === 'undefined' || !window.location) return CLOUD_RUN_GCP_BACKEND;
+      if (typeof window === 'undefined' || !window.location) return '';
       var origin = window.location.origin || '';
       var host = window.location.hostname || '';
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         return origin;
       }
-      return (window.ATPL_GCP_BACKEND_URL || CLOUD_RUN_GCP_BACKEND);
+      return (window.ATPL_GCP_BACKEND_URL || '');
     } catch (_) {}
-    return CLOUD_RUN_GCP_BACKEND;
+    return '';
   }
 
   window.__ATPL_CENTRAL_BACKEND_URL = getLocalServerBase();

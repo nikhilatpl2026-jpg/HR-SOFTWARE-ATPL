@@ -15,6 +15,7 @@
     activeTab: 'summary', // 'summary', 'pf-ecr', 'esic-return', 'validator'
     lastAuditResult: null,
     generatedRows: [],
+    validationErrors: [],
     totals: {
       totalStaff: 0,
       pfEligible: 0,
@@ -261,116 +262,121 @@
 
   // ── 4. RENDER TAB INTERFACE ──
   window.initStatutoryChallanTab = function() {
-    var container = document.getElementById('challanMainApp');
-    if (!container) return;
+    try {
+      var container = document.getElementById('challanMainApp');
+      if (!container) return;
 
-    var files = window.FILES || [];
-    if (!files.length) {
-      container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8">' +
-        '<div style="font-size:40px;margin-bottom:12px">📂</div>' +
-        '<div style="font-size:16px;font-weight:700;color:#f8fafc">Koi Salary Sheet Uploaded Nahi Hai</div>' +
-        '<div style="font-size:13px;margin-top:6px;margin-bottom:18px">Monthly salary file upload karein taaki EPFO ECR (#~# format) aur ESIC challan instant generate ho sakein.</div>' +
-        '<label style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)">' +
-        '<span>📤</span> Upload Salary / Challan Sheet' +
-        '<input type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="window.handleChallanDirectUpload(this)">' +
-        '</label>' +
-        '</div>';
-      return;
+      var files = (window.FILES || []).filter(function(f) { return f && f.name; });
+      if (!files.length) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8">' +
+          '<div style="font-size:40px;margin-bottom:12px">📂</div>' +
+          '<div style="font-size:16px;font-weight:700;color:#f8fafc">Koi Salary Sheet Uploaded Nahi Hai</div>' +
+          '<div style="font-size:13px;margin-top:6px;margin-bottom:18px">Monthly salary file upload karein taaki EPFO ECR (#~# format) aur ESIC challan instant generate ho sakein.</div>' +
+          '<label style="display:inline-flex;align-items:center;gap:8px;padding:12px 24px;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)">' +
+          '<span>📤</span> Upload Salary / Challan Sheet' +
+          '<input type="file" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="window.handleChallanDirectUpload(this)">' +
+          '</label>' +
+          '</div>';
+        return;
+      }
+
+      var selectedFile = files[ChallanState.selectedFileIndex] || files[0];
+      if (selectedFile) processChallanData(selectedFile);
+
+      var t = ChallanState.totals || {};
+
+      var html = '';
+      // Top Controls Bar
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);padding:14px 18px;border-radius:12px">';
+      html += '<div style="display:flex;align-items:center;gap:10px">';
+      html += '<span style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase">Salary File:</span>';
+      html += '<select id="challanFileSelector" onchange="window.switchChallanFile(this.value)" style="padding:7px 12px;background:#1e293b;color:#f8fafc;border:1px solid #475569;border-radius:8px;font-weight:600;font-size:13px;outline:none">';
+      files.forEach(function(f, idx) {
+        var isSel = idx === ChallanState.selectedFileIndex ? 'selected' : '';
+        html += '<option value="' + idx + '" ' + isSel + '>' + String(f.name || '').substring(0, 45) + '</option>';
+      });
+      html += '</select>';
+      html += '</div>';
+
+      // Download Action Buttons
+      html += '<div style="display:flex;gap:10px;flex-wrap:wrap">';
+      html += '<button onclick="window.downloadEpfoEcrTextFile()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)"><span>🏛️</span> Download PF ECR (.txt)</button>';
+      html += '<button onclick="window.downloadEsicUploadExcel()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,0.3)"><span>🏥</span> Download ESIC Excel (.xlsx)</button>';
+      html += '<button onclick="window.downloadChallanSummaryPDF()" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#334155;border:1px solid rgba(255,255,255,0.15);border-radius:9px;color:#f8fafc;font-weight:700;font-size:12px;cursor:pointer"><span>📑</span> Print Challan Slips</button>';
+      html += '</div></div>';
+
+      // Summary Metric Cards (Account-wise Breakdown)
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px;margin-bottom:20px">';
+
+      // PF Card
+      html += '<div style="background:linear-gradient(135deg,#0f172a,#1e1b4b);border:1px solid #38bdf8;border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#38bdf8;font-size:14px">🏛️ EPFO STATUTORY CHALLAN</span><span style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">' + (t.pfEligible || 0) + ' Members</span></div>';
+      html += '<div style="font-size:26px;font-weight:800;color:#fff;margin-bottom:10px">₹' + Math.round(t.totalPFChallan || 0).toLocaleString('en-IN') + '</div>';
+      html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
+      html += '• A/c 1 (EE PF 12%): <strong>₹' + Math.round(t.eePF || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• A/c 1 (ER Share 3.67%): <strong>₹' + Math.round(t.erEPFDiff || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• A/c 10 (EPS Pension 8.33%): <strong>₹' + Math.round(t.erEPS || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• A/c 2 (Admin Charges 0.5%): <strong>₹' + Math.round(t.adminAc2 || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• A/c 21 (EDLI Insurance 0.5%): <strong>₹' + Math.round(t.edliAc21 || 0).toLocaleString('en-IN') + '</strong>';
+      html += '</div></div>';
+
+      // ESIC Card
+      html += '<div style="background:linear-gradient(135deg,#0f172a,#064e3b);border:1px solid #4ade80;border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#4ade80;font-size:14px">🏥 ESIC MONTHLY CHALLAN</span><span style="background:rgba(74,222,128,0.15);color:#4ade80;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">' + (t.esicEligible || 0) + ' Beneficiaries</span></div>';
+      html += '<div style="font-size:26px;font-weight:800;color:#fff;margin-bottom:10px">₹' + Math.round(t.totalESICChallan || 0).toLocaleString('en-IN') + '</div>';
+      html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
+      html += '• Employee Share (0.75%): <strong>₹' + Math.round(t.eeESIC || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• Employer Share (3.25%): <strong>₹' + Math.round(t.erESIC || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• Gross Covered Wages: <strong>₹' + Math.round(t.esicWages || 0).toLocaleString('en-IN') + '</strong><br>';
+      html += '• Statutory Wage Ceiling: <strong>₹21,000 Gross</strong><br>';
+      html += '• Remittance Target Date: <strong>15th of following month</strong>';
+      html += '</div></div>';
+
+      // Zero-Failure Validator Card
+      var errCount = (ChallanState.validationErrors && ChallanState.validationErrors.length) || 0;
+      var validBorder = errCount > 0 ? '#fbbf24' : '#10b981';
+      var validBg = errCount > 0 ? '#451a03' : '#064e3b';
+      html += '<div style="background:linear-gradient(135deg,#0f172a,' + validBg + ');border:1px solid ' + validBorder + ';border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#fbbf24;font-size:14px">🛡️ PRE-UPLOAD PORTAL AUDIT</span><span style="background:rgba(251,191,36,0.15);color:#fbbf24;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">Portal Safe</span></div>';
+      html += '<div style="font-size:24px;font-weight:800;color:#fff;margin-bottom:10px">' + (errCount === 0 ? '✅ 100% Upload Ready' : '⚠️ ' + errCount + ' Auto-Corrected') + '</div>';
+      html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
+      html += '• Delimiter Formatting: <strong>#~# Strict Checked</strong><br>';
+      html += '• Special Characters: <strong>Sanitized (A-Z Only)</strong><br>';
+      html += '• NCP Working Days: <strong>Zero Discrepancy</strong><br>';
+      html += '• ESIC Excel Header: <strong>Exact Portal Template</strong><br>';
+      html += '• Portal Failure Probability: <strong style="color:#4ade80">0.00% Guaranteed</strong>';
+      html += '</div></div>';
+
+      html += '</div>';
+
+      // Sub Navigation Tabs: Summary Table / PF ECR Live View / ESIC Return View
+      html += '<div style="display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:14px">';
+      html += '<button onclick="window.switchChallanTab(\\\'summary\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'summary' ? 'active' : '') + '">📊 Combined Challan Statement</button>';
+      html += '<button onclick="window.switchChallanTab(\\\'pf-ecr\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'pf-ecr' ? 'active' : '') + '">🏛️ EPFO ECR File Preview (' + (t.pfEligible || 0) + ' rows)</button>';
+      html += '<button onclick="window.switchChallanTab(\\\'esic-return\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'esic-return' ? 'active' : '') + '">🏥 ESIC Monthly Return (' + (t.esicEligible || 0) + ' rows)</button>';
+      html += '</div>';
+
+      // Tab Contents
+      html += '<div id="challanTabContent" style="background:#0f172a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;overflow-x:auto">';
+      if (ChallanState.activeTab === 'summary') {
+        html += renderSummaryTable();
+      } else if (ChallanState.activeTab === 'pf-ecr') {
+        html += renderPfEcrPreview();
+      } else if (ChallanState.activeTab === 'esic-return') {
+        html += renderEsicPreview();
+      }
+      html += '</div>';
+
+      container.innerHTML = html;
+    } catch(err) {
+      console.warn('[ChallanTab] Render guard caught error:', err);
     }
-
-    var selectedFile = files[ChallanState.selectedFileIndex] || files[0];
-    processChallanData(selectedFile);
-
-    var t = ChallanState.totals;
-
-    var html = '';
-    // Top Controls Bar
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:18px;background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.08);padding:14px 18px;border-radius:12px">';
-    html += '<div style="display:flex;align-items:center;gap:10px">';
-    html += '<span style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase">Salary File:</span>';
-    html += '<select id="challanFileSelector" onchange="window.switchChallanFile(this.value)" style="padding:7px 12px;background:#1e293b;color:#f8fafc;border:1px solid #475569;border-radius:8px;font-weight:600;font-size:13px;outline:none">';
-    files.forEach(function(f, idx) {
-      var isSel = idx === ChallanState.selectedFileIndex ? 'selected' : '';
-      html += '<option value="' + idx + '" ' + isSel + '>' + f.name.substring(0, 45) + '</option>';
-    });
-    html += '</select>';
-    html += '</div>';
-
-    // Download Action Buttons
-    html += '<div style="display:flex;gap:10px;flex-wrap:wrap">';
-    html += '<button onclick="window.downloadEpfoEcrTextFile()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#0284c7,#0369a1);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(2,132,199,0.3)"><span>🏛️</span> Download PF ECR (.txt)</button>';
-    html += '<button onclick="window.downloadEsicUploadExcel()" style="display:flex;align-items:center;gap:6px;padding:9px 18px;background:linear-gradient(135deg,#16a34a,#15803d);border:none;border-radius:9px;color:#fff;font-weight:700;font-size:12px;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,0.3)"><span>🏥</span> Download ESIC Excel (.xlsx)</button>';
-    html += '<button onclick="window.downloadChallanSummaryPDF()" style="display:flex;align-items:center;gap:6px;padding:9px 16px;background:#334155;border:1px solid rgba(255,255,255,0.15);border-radius:9px;color:#f8fafc;font-weight:700;font-size:12px;cursor:pointer"><span>📑</span> Print Challan Slips</button>';
-    html += '</div></div>';
-
-    // Summary Metric Cards (Account-wise Breakdown)
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px;margin-bottom:20px">';
-
-    // PF Card
-    html += '<div style="background:linear-gradient(135deg,#0f172a,#1e1b4b);border:1px solid #38bdf8;border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#38bdf8;font-size:14px">🏛️ EPFO STATUTORY CHALLAN</span><span style="background:rgba(56,189,248,0.15);color:#38bdf8;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">' + t.pfEligible + ' Members</span></div>';
-    html += '<div style="font-size:26px;font-weight:800;color:#fff;margin-bottom:10px">₹' + Math.round(t.totalPFChallan).toLocaleString('en-IN') + '</div>';
-    html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
-    html += '• A/c 1 (EE PF 12%): <strong>₹' + Math.round(t.eePF).toLocaleString('en-IN') + '</strong><br>';
-    html += '• A/c 1 (ER Share 3.67%): <strong>₹' + Math.round(t.erEPFDiff).toLocaleString('en-IN') + '</strong><br>';
-    html += '• A/c 10 (EPS Pension 8.33%): <strong>₹' + Math.round(t.erEPS).toLocaleString('en-IN') + '</strong><br>';
-    html += '• A/c 2 (Admin Charges 0.5%): <strong>₹' + Math.round(t.adminAc2).toLocaleString('en-IN') + '</strong><br>';
-    html += '• A/c 21 (EDLI Insurance 0.5%): <strong>₹' + Math.round(t.edliAc21).toLocaleString('en-IN') + '</strong>';
-    html += '</div></div>';
-
-    // ESIC Card
-    html += '<div style="background:linear-gradient(135deg,#0f172a,#064e3b);border:1px solid #4ade80;border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#4ade80;font-size:14px">🏥 ESIC MONTHLY CHALLAN</span><span style="background:rgba(74,222,128,0.15);color:#4ade80;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">' + t.esicEligible + ' Beneficiaries</span></div>';
-    html += '<div style="font-size:26px;font-weight:800;color:#fff;margin-bottom:10px">₹' + Math.round(t.totalESICChallan).toLocaleString('en-IN') + '</div>';
-    html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
-    html += '• Employee Share (0.75%): <strong>₹' + Math.round(t.eeESIC).toLocaleString('en-IN') + '</strong><br>';
-    html += '• Employer Share (3.25%): <strong>₹' + Math.round(t.erESIC).toLocaleString('en-IN') + '</strong><br>';
-    html += '• Gross Covered Wages: <strong>₹' + Math.round(t.esicWages).toLocaleString('en-IN') + '</strong><br>';
-    html += '• Statutory Wage Ceiling: <strong>₹21,000 Gross</strong><br>';
-    html += '• Remittance Target Date: <strong>15th of following month</strong>';
-    html += '</div></div>';
-
-    // Zero-Failure Validator Card
-    var errCount = ChallanState.validationErrors.length;
-    var validBorder = errCount > 0 ? '#fbbf24' : '#10b981';
-    var validBg = errCount > 0 ? '#451a03' : '#064e3b';
-    html += '<div style="background:linear-gradient(135deg,#0f172a,' + validBg + ');border:1px solid ' + validBorder + ';border-radius:14px;padding:16px;box-shadow:0 8px 20px rgba(0,0,0,0.35)">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:800;color:#fbbf24;font-size:14px">🛡️ PRE-UPLOAD PORTAL AUDIT</span><span style="background:rgba(251,191,36,0.15);color:#fbbf24;font-size:10px;font-weight:800;padding:2px 8px;border-radius:10px">Portal Safe</span></div>';
-    html += '<div style="font-size:24px;font-weight:800;color:#fff;margin-bottom:10px">' + (errCount === 0 ? '✅ 100% Upload Ready' : '⚠️ ' + errCount + ' Auto-Corrected') + '</div>';
-    html += '<div style="font-size:11px;color:#cbd5e1;line-height:1.7;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">';
-    html += '• Delimiter Formatting: <strong>#~# Strict Checked</strong><br>';
-    html += '• Special Characters: <strong>Sanitized (A-Z Only)</strong><br>';
-    html += '• NCP Working Days: <strong>Zero Discrepancy</strong><br>';
-    html += '• ESIC Excel Header: <strong>Exact Portal Template</strong><br>';
-    html += '• Portal Failure Probability: <strong style="color:#4ade80">0.00% Guaranteed</strong>';
-    html += '</div></div>';
-
-    html += '</div>';
-
-    // Sub Navigation Tabs: Summary Table / PF ECR Live View / ESIC Return View
-    html += '<div style="display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:14px">';
-    html += '<button onclick="window.switchChallanTab(\\\'summary\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'summary' ? 'active' : '') + '">📊 Combined Challan Statement</button>';
-    html += '<button onclick="window.switchChallanTab(\\\'pf-ecr\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'pf-ecr' ? 'active' : '') + '">🏛️ EPFO ECR File Preview (' + t.pfEligible + ' rows)</button>';
-    html += '<button onclick="window.switchChallanTab(\\\'esic-return\\\')" class="challan-tab-btn ' + (ChallanState.activeTab === 'esic-return' ? 'active' : '') + '">🏥 ESIC Monthly Return (' + t.esicEligible + ' rows)</button>';
-    html += '</div>';
-
-    // Tab Contents
-    html += '<div id="challanTabContent" style="background:#0f172a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;overflow-x:auto">';
-    if (ChallanState.activeTab === 'summary') {
-      html += renderSummaryTable();
-    } else if (ChallanState.activeTab === 'pf-ecr') {
-      html += renderPfEcrPreview();
-    } else if (ChallanState.activeTab === 'esic-return') {
-      html += renderEsicPreview();
-    }
-    html += '</div>';
-
-    container.innerHTML = html;
   };
 
   function renderSummaryTable() {
-    var rows = ChallanState.generatedRows.slice(0, 100);
-    var h = '<div style="margin-bottom:10px;font-size:12px;color:#94a3b8">Dikhaye ja rahe hain pehle ' + rows.length + ' workers (Total: ' + ChallanState.generatedRows.length + ')</div>';
+    var rows = Array.isArray(ChallanState.generatedRows) ? ChallanState.generatedRows.slice(0, 100) : [];
+    var totalRows = Array.isArray(ChallanState.generatedRows) ? ChallanState.generatedRows.length : 0;
+    var h = '<div style="margin-bottom:10px;font-size:12px;color:#94a3b8">Dikhaye ja rahe hain pehle ' + rows.length + ' workers (Total: ' + totalRows + ')</div>';
     h += '<table style="width:100%;border-collapse:collapse;font-size:11px;color:#e2e8f0;text-align:left">';
     h += '<thead style="background:#1e293b;color:#94a3b8;font-size:10px;text-transform:uppercase">';
     h += '<tr><th style="padding:8px">Code</th><th style="padding:8px">Name</th><th style="padding:8px">Gross</th><th style="padding:8px">EPF Wage</th><th style="padding:8px">EE PF (12%)</th><th style="padding:8px">ER EPS (8.33%)</th><th style="padding:8px">ER EPF (3.67%)</th><th style="padding:8px">ESIC Wage</th><th style="padding:8px">EE ESIC (0.75%)</th><th style="padding:8px">ER ESIC (3.25%)</th></tr>';

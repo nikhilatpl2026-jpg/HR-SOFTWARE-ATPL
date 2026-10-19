@@ -1147,8 +1147,37 @@
      } catch(_) {}
 
      if (!st || !st.ok) {
+       // Primary static fallback from unified files_db.json
+       try {
+         var fdbRes = await fetch('./data/files_db.json');
+         if (!fdbRes || !fdbRes.ok) fdbRes = await fetch('data/files_db.json');
+         if (fdbRes && fdbRes.ok) {
+           var fdb = await fdbRes.json();
+           if (fdb && fdb.files) {
+             var tMap = fdb.tombstones || {};
+             var salFiles = [];
+             for (var fid in fdb.files) {
+               var f = fdb.files[fid];
+               if (!f || f.module !== 'salary' || !f.name) continue;
+               var fnk = String(f.name).toLowerCase().trim();
+               if (tMap[fnk] || tMap[fid] || !salaryRestoreAllowed(f.name, f.saved || f.created_at)) continue;
+               salFiles.push(f);
+             }
+             st = { ok: true, salary_files: salFiles, salary_tombstones: tMap };
+           }
+         }
+       } catch(_) {}
+     }
+     if (!st || !st.ok) {
        // Static fallback for GitHub Pages (nikhilatpl2026-jpg.github.io/HR-SOFTWARE-ATPL/)
        try {
+         var tombsMap = {};
+         try {
+           var tRes = await fetch('./data/salary_tombstones.json');
+           if (!tRes || !tRes.ok) tRes = await fetch('data/salary_tombstones.json');
+           if (tRes && tRes.ok) tombsMap = await tRes.json();
+         } catch(_) {}
+
          var sRes = await fetch('./data/salary_files.json');
          if (!sRes || !sRes.ok) sRes = await fetch('data/salary_files.json');
          if (sRes && sRes.ok) {
@@ -1156,11 +1185,13 @@
            var sList = [];
            for (var sk in sData) {
              if (sData[sk] && sData[sk].name && sData[sk].buf) {
+               var nameKey = String(sData[sk].name).toLowerCase().trim();
+               if (tombsMap[nameKey] || !salaryRestoreAllowed(sData[sk].name, sData[sk].saved)) continue;
                sList.push(sData[sk]);
              }
            }
            if (sList.length > 0) {
-             st = { ok: true, salary_files: sList, salary_tombstones: {} };
+             st = { ok: true, salary_files: sList, salary_tombstones: tombsMap || {} };
            }
          }
        } catch(_) {}

@@ -895,12 +895,36 @@ app.post('/api/sync/files/clear-module', (req, res) => {
 
 // ── Fast Metadata Sync Endpoint (Lightweight, No Lag) ──
 app.get('/api/sync/files-meta', (req, res) => {
-  const meta = Object.values(syncSalaryFiles).map(f => ({
+  // Sync syncSalaryFiles with all active salary files in filesDb.files
+  for (const f of Object.values(filesDb.files)) {
+    if (!f || f.module !== 'salary' || !f.name) continue;
+    const k = f.name.toLowerCase().trim();
+    if (filesDb.tombstones[k] || filesDb.tombstones[f.id]) continue;
+    if (!syncSalaryFiles[k]) {
+      syncSalaryFiles[k] = {
+        name: f.name,
+        buf: f.buf || null,
+        sheets: f.sheets || null,
+        saved: f.saved || f.created_at || new Date().toISOString(),
+        uploaded_by: f.uploaded_by || 'admin'
+      };
+    }
+  }
+
+  const validFiles = Object.values(syncSalaryFiles).filter(f => {
+    if (!f || !f.name) return false;
+    const k = f.name.toLowerCase().trim();
+    if (filesDb.tombstones[k] || syncSalaryTombstones[k]) return false;
+    return true;
+  });
+
+  const meta = validFiles.map(f => ({
     name: f.name,
     saved: f.saved,
-    size: f.buf ? f.buf.length : 0,
-    uploaded_by: f.uploaded_by
+    size: f.buf ? f.buf.length : (f.size || 0),
+    uploaded_by: f.uploaded_by || 'admin'
   }));
+
   return res.json({
     ok: true,
     total_files: meta.length,
@@ -914,10 +938,10 @@ app.get('/api/sync/salary-file/:name', (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name || '');
     if (!name) return res.status(400).json({ ok: false, error: 'File name required' });
-    const key = name.toLowerCase();
+    const key = name.toLowerCase().trim();
     let item = syncSalaryFiles[key];
     if (!item || !item.buf) {
-      const match = Object.values(filesDb.files).find(f => f.name.toLowerCase() === key);
+      const match = Object.values(filesDb.files).find(f => f && f.name && f.name.toLowerCase().trim() === key);
       if (match) {
         let b64 = match.buf || null;
         if (!b64) {
@@ -948,16 +972,46 @@ app.get('/api/sync/salary-file/:name', (req, res) => {
 // ── Full System Sync State ──
 app.get('/api/sync/state', (req, res) => {
   const isSummary = req.query.summary === '1';
+
+  // Keep syncSalaryFiles in sync with filesDb.files
+  for (const f of Object.values(filesDb.files)) {
+    if (!f || f.module !== 'salary' || !f.name) continue;
+    const k = f.name.toLowerCase().trim();
+    if (filesDb.tombstones[k] || filesDb.tombstones[f.id]) continue;
+    if (!syncSalaryFiles[k]) {
+      syncSalaryFiles[k] = {
+        name: f.name,
+        buf: f.buf || null,
+        sheets: f.sheets || null,
+        saved: f.saved || f.created_at || new Date().toISOString(),
+        uploaded_by: f.uploaded_by || 'admin'
+      };
+    }
+  }
+
+  const validFiles = Object.values(syncSalaryFiles).filter(f => {
+    if (!f || !f.name) return false;
+    const k = f.name.toLowerCase().trim();
+    if (filesDb.tombstones[k] || syncSalaryTombstones[k]) return false;
+    return true;
+  });
+
   const salaryFiles = isSummary
-    ? Object.values(syncSalaryFiles).map(f => ({
+    ? validFiles.map(f => ({
         name: f.name,
         saved: f.saved,
-        size: f.buf ? f.buf.length : 0,
-        uploaded_by: f.uploaded_by
+        size: f.buf ? f.buf.length : (f.size || 0),
+        uploaded_by: f.uploaded_by || 'admin'
       }))
-    : Object.values(syncSalaryFiles);
+    : validFiles;
 
-  const allFiles = Object.values(filesDb.files);
+  const allFiles = Object.values(filesDb.files).filter(f => {
+    if (!f || !f.name) return false;
+    const k = f.name.toLowerCase().trim();
+    if (filesDb.tombstones[k] || filesDb.tombstones[f.id]) return false;
+    return true;
+  });
+
   const formattedFiles = isSummary
     ? allFiles.map(f => {
         const copy = Object.assign({}, f);
@@ -970,7 +1024,7 @@ app.get('/api/sync/state', (req, res) => {
     ok: true,
     version: filesDb.version,
     salary_files: salaryFiles,
-    salary_files_count: Object.keys(syncSalaryFiles).length,
+    salary_files_count: validFiles.length,
     salary_tombstones: syncSalaryTombstones,
     hr_docs: Object.values(syncHrDocs),
     hr_tombstones: syncHrTombstones,
