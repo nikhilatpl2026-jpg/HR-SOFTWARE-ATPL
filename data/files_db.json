@@ -1,5 +1,5 @@
 {
-  "version": 481,
+  "version": 482,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1139,6 +1139,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
+    },
+    "salary:atpl_sync_test_20260929.csv": {
+      "id": "ATPL_SYNC_TEST_20260929.csv",
+      "name": "ATPL_SYNC_TEST_20260929.csv",
+      "filename": "ATPL_SYNC_TEST_20260929.csv",
+      "size": 116,
+      "uploaded_at": "2026-09-29T05:01:48.520Z",
+      "saved_at": "2026-09-29T05:01:48.520Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_atpl_sync_test_20260929_csv"
     }
   }
 }
