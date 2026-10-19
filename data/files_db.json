@@ -1,5 +1,5 @@
 {
-  "version": 81,
+  "version": 82,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2383,6 +2383,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791370240372-pusrtj"
+    },
+    "hr_doc:hrd-1791372374936-rqjsfz": {
+      "id": "HRD-1791372374936-rqjsfz",
+      "name": "Atpl GST Certificate",
+      "filename": "HRD-1791372374936-rqjsfz",
+      "uploaded_at": "2026-10-07T11:26:14.949Z",
+      "updated_at": "2026-10-07T11:26:14.949Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791372374936-rqjsfz"
     }
   }
 }
