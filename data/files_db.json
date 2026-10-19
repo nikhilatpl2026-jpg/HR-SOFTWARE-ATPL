@@ -1,10 +1,6 @@
 {
-  "version": 563,
+  "version": 606,
   "tombstones": {
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
-    },
     "sal_cf31058701c1c3d8": {
       "id": "sal_cf31058701c1c3d8",
       "deleted_at": "2026-10-19T07:01:58.570Z"
@@ -106,25 +102,45 @@
       "deleted_at": "2026-09-30T12:23:32.284Z",
       "deleted_by": "admin"
     },
-    "salary:salary_may_2026_audit_1792415033595.xlsx": {
-      "id": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "filename": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
+    "hr_doc:hrd-1791372928645-j7w8lv": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "Atpl Lab Test report Certificate Of Accreditation",
+      "module": "hr_doc",
+      "doc_type": "hr_doc_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-19T16:05:02.161Z",
-      "uploaded_at": "2026-10-19T16:05:02.161Z"
+      "deleted_at": "2026-10-18T16:21:41.808Z",
+      "uploaded_at": "2026-10-18T16:21:41.808Z"
     },
-    "salary_may_2026_audit_1792415033595.xlsx": {
-      "id": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "filename": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
+    "hrd-1791372928645-j7w8lv": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "Atpl Lab Test report Certificate Of Accreditation",
+      "module": "hr_doc",
+      "doc_type": "hr_doc_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-19T16:05:02.161Z",
-      "uploaded_at": "2026-10-19T16:05:02.161Z"
+      "deleted_at": "2026-10-18T16:21:41.808Z",
+      "uploaded_at": "2026-10-18T16:21:41.808Z"
+    },
+    "hr_doc:atpl lab test report certificate of accreditation": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "Atpl Lab Test report Certificate Of Accreditation",
+      "module": "hr_doc",
+      "doc_type": "hr_doc_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-18T16:21:41.808Z",
+      "uploaded_at": "2026-10-18T16:21:41.808Z"
+    },
+    "atpl lab test report certificate of accreditation": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "Atpl Lab Test report Certificate Of Accreditation",
+      "module": "hr_doc",
+      "doc_type": "hr_doc_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-18T16:21:41.808Z",
+      "uploaded_at": "2026-10-18T16:21:41.808Z"
     }
   },
   "files": {
@@ -189,9 +205,9 @@
       "module": "salary",
       "category": "audit",
       "name": "Final Salary Sheet Jan 2024 ATPL.xlsx",
-      "size": 1221400,
+      "size": 1295336,
       "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "e764193083b7912e2cc07ae91a775a5392cabe0db639d714b8f5403a1e57c5da",
+      "sha256_hash": "55857bc7fe34d9895dea127bfa246373d1a181d2bd8af9072d3413e2fe17cae9",
       "sheets": null,
       "saved": "2026-10-17T07:47:47.631Z",
       "uploaded_by": "admin",
@@ -203,9 +219,9 @@
       "module": "salary",
       "category": "audit",
       "name": "Final Salary Sheet Feb 2024 ATPL.xlsx",
-      "size": 1319556,
+      "size": 1221400,
       "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "a194a7660e946d3de6d7d37f2a0099d906154905d491b8cca29930ff18535ef2",
+      "sha256_hash": "e764193083b7912e2cc07ae91a775a5392cabe0db639d714b8f5403a1e57c5da",
       "sheets": null,
       "saved": "2026-10-17T07:47:34.678Z",
       "uploaded_by": "admin",
@@ -217,9 +233,9 @@
       "module": "salary",
       "category": "audit",
       "name": "March_2024.xlsx.xlsx",
-      "size": 1300260,
+      "size": 1319556,
       "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "110c378c3f0307ccc1a1a014ead863d648a228236276c7a8feee5bd2491ff63d",
+      "sha256_hash": "a194a7660e946d3de6d7d37f2a0099d906154905d491b8cca29930ff18535ef2",
       "sheets": null,
       "saved": "2026-10-17T07:48:27.679Z",
       "uploaded_by": "admin",
@@ -1123,22 +1139,12 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "hr_doc:hrd-1791372928645-j7w8lv": {
-      "id": "HRD-1791372928645-j7w8lv",
-      "name": "Atpl Lab Test report Certificate Of Accreditation",
-      "filename": "HRD-1791372928645-j7w8lv",
-      "uploaded_at": "2026-10-07T11:35:28.662Z",
-      "updated_at": "2026-10-07T11:35:28.662Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
-    },
     "hr_doc:hrd-test-1791720776080": {
       "id": "HRD-TEST-1791720776080",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-19T16:13:37.133Z",
-      "updated_at": "2026-10-19T16:13:37.133Z",
+      "uploaded_at": "2026-10-19T10:24:23.864Z",
+      "updated_at": "2026-10-19T10:24:23.864Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
@@ -1325,49 +1331,6 @@
       "created_at": "2026-10-07T11:26:14.949Z",
       "updated_at": "2026-10-07T11:26:14.949Z"
     },
-    "HRD-1791372928645-j7w8lv": {
-      "id": "HRD-1791372928645-j7w8lv",
-      "module": "hr_doc",
-      "category": "CERTIFICATE",
-      "name": "Atpl Lab Test report Certificate Of Accreditation.pdf",
-      "size": 0,
-      "mime_type": "application/pdf",
-      "sha256_hash": "8ed7c91ea5bbf06086b500a28bd7517f4ca025c6efe656a53ebf661cd5da75b0",
-      "meta": {
-        "id": "HRD-1791372928645-j7w8lv",
-        "doc_type": "CERTIFICATE",
-        "document_name": "Atpl Lab Test report Certificate Of Accreditation",
-        "holder": "ATPL",
-        "reference_no": "",
-        "certificate_no": "TC-11181",
-        "issuing_authority": "ITS TESTING LABORATORY PRIVATE LIMITED",
-        "location": "",
-        "validity_period": "",
-        "issue_date": "2022-11-21",
-        "retraining_date": "",
-        "expiry_date": "2024-11-20",
-        "alert_days": 7,
-        "remarks": "Holder/Company: ITS TESTING LABORATORY PRIVATE LIMITED",
-        "assigned_user_id": "",
-        "assigned_user_name": "All HR Document users",
-        "visibility": "all",
-        "created_by": "admin",
-        "created_by_name": "Owner / Admin",
-        "updated_by": "admin",
-        "updated_at": "2026-10-07T11:35:28.662Z",
-        "file_name": "Atpl Lab Test report Certificate Of Accreditation.pdf",
-        "file_type": "application/pdf",
-        "file_data": null,
-        "file_data_list": null,
-        "_cloud_attachment_omitted": true,
-        "_cloud_attachment_names": [
-          "Atpl Lab Test report Certificate Of Accreditation.pdf"
-        ]
-      },
-      "uploaded_by": "admin",
-      "created_at": "2026-10-07T11:35:28.662Z",
-      "updated_at": "2026-10-07T11:35:28.662Z"
-    },
     "HRD-1791374743659-5xdcbk": {
       "id": "HRD-1791374743659-5xdcbk",
       "module": "hr_doc",
@@ -1429,6 +1392,20 @@
       "created_at": "2026-10-19T13:03:53.233Z",
       "updated_at": "2026-10-19T13:03:53.233Z"
     },
+    "sal_b5286ded4a39f146": {
+      "id": "sal_b5286ded4a39f146",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
+      "size": 48,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "4c4a9a7d1a10ce493e049a9ba10d910a30702c9cc22615e96c9772ded7a40feb",
+      "sheets": null,
+      "saved": "2026-10-19T13:03:53.613Z",
+      "uploaded_by": "Browser_A",
+      "created_at": "2026-10-19T13:03:53.613Z",
+      "updated_at": "2026-10-19T13:03:53.613Z"
+    },
     "sal_0a4aa1132daa1b50": {
       "id": "sal_0a4aa1132daa1b50",
       "module": "salary",
@@ -1439,7 +1416,7 @@
       "sha256_hash": "7c57817ef5c804f7aa7c83e4550f95bea1cfa2115d1c92716813e6737ea80159",
       "sheets": null,
       "saved": "2026-10-19T13:04:16.062Z",
-      "uploaded_by": "Browser_A",
+      "uploaded_by": "admin",
       "created_at": "2026-10-19T13:04:16.062Z",
       "updated_at": "2026-10-19T13:04:16.062Z"
     },
@@ -1453,41 +1430,59 @@
       "sha256_hash": "c76fb8bc6dead1f7f09e60a7954a4e68aeab19a3d69b0c890baae72573818b01",
       "sheets": null,
       "saved": "2026-10-19T13:04:40.933Z",
-      "uploaded_by": "Browser_A",
+      "uploaded_by": "admin",
       "created_at": "2026-10-19T13:04:40.933Z",
       "updated_at": "2026-10-19T13:04:40.933Z"
     },
-    "hr_doc:hrd-test-1791436015056": {
-      "id": "HRD-TEST-1791436015056",
+    "salary:bulk_salary_sheet_1.xlsx": {
+      "id": "Bulk_Salary_Sheet_1.xlsx",
+      "name": "Bulk_Salary_Sheet_1.xlsx",
+      "filename": "Bulk_Salary_Sheet_1.xlsx",
+      "size": 20,
+      "uploaded_at": "2026-09-30T11:59:28.248Z",
+      "saved_at": "2026-09-30T11:59:28.248Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_bulk_salary_sheet_1_xlsx"
+    },
+    "hr_doc:hrd-test-1791718077325": {
+      "id": "HRD-TEST-1791718077325",
       "name": "Fire Safety Audit",
-      "filename": "HRD-TEST-1791436015056",
-      "uploaded_at": "2026-10-19T16:13:36.804Z",
-      "updated_at": "2026-10-19T16:13:36.804Z",
+      "filename": "HRD-TEST-1791718077325",
+      "uploaded_at": "2026-10-18T16:23:32.570Z",
+      "updated_at": "2026-10-18T16:23:32.570Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-test-1791436015056"
+      "blob_key": "hrdoc_hrd-test-1791718077325"
     },
-    "salary:01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx": {
-      "id": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
-      "name": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
-      "filename": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
-      "size": 263896,
-      "uploaded_at": "2026-10-17T07:51:57.651Z",
-      "saved_at": "2026-10-17T07:51:57.651Z",
+    "HRD-2026-NOC-01": {
+      "id": "HRD-2026-NOC-01",
+      "module": "hr_doc",
+      "category": "Fire NOC",
+      "name": "Fire NOC Certificate",
+      "size": 0,
+      "mime_type": "application/pdf",
+      "sha256_hash": "9f56f8282146c49cb7bb63e9aa9132417f90fd8833f6c290dde69ed6d8d10382",
+      "meta": {
+        "id": "HRD-2026-NOC-01",
+        "document_name": "Fire NOC Certificate",
+        "doc_type": "Fire NOC",
+        "reference_no": "LSG/BIK/2026/999",
+        "_cloudBackedUp": true
+      },
+      "created_at": "2026-10-19T16:11:00.143Z",
+      "updated_at": "2026-10-19T16:11:00.143Z"
+    },
+    "salary:final salary sheet dec 2025 (2).xls": {
+      "id": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "name": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "filename": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "size": 1430872,
+      "uploaded_at": "2026-10-17T07:54:21.760Z",
+      "saved_at": "2026-10-17T07:54:21.760Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_01-arora_20textiles_20pvt__20ltd__20may-25_20_20dugar_20ji_20_1__xlsx"
-    },
-    "salary:f&f of dugar ji  (1).xlsx": {
-      "id": "F&F of Dugar ji  (1).xlsx",
-      "name": "F&F of Dugar ji  (1).xlsx",
-      "filename": "F&F of Dugar ji  (1).xlsx",
-      "size": 23340,
-      "uploaded_at": "2026-10-04T11:25:00.293Z",
-      "saved_at": "2026-10-04T11:25:00.293Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_f_26f_20of_20dugar_20ji_20_20_1__xlsx"
+      "blob_key": "salary_final_20salary_20sheet_20dec_202025_20_2__xls"
     }
   }
 }
