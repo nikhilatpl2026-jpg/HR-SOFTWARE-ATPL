@@ -2404,16 +2404,15 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1790411659119-q0wpfy"
     },
-    "salary:revised sent atpl-sep.xlsx": {
-      "id": "REVISED Sent Atpl-sep.xlsx",
-      "name": "REVISED Sent Atpl-sep.xlsx",
-      "filename": "REVISED Sent Atpl-sep.xlsx",
-      "size": 500684,
-      "uploaded_at": "2026-10-17T08:04:57.698Z",
-      "saved_at": "2026-10-17T08:04:57.698Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_revised_20sent_20atpl-sep_xlsx"
+    "hr_doc:hrd-1791372928645-j7w8lv": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "HRD-1791372928645-j7w8lv",
+      "uploaded_at": "2026-10-07T11:35:28.662Z",
+      "updated_at": "2026-10-07T11:35:28.662Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
     }
   }
 }
