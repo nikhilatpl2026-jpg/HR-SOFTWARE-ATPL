@@ -36,17 +36,19 @@
     }
   }
 
-  // Only use Express backend if running on localhost / 127.0.0.1 / active .run.app host
+  var CLOUD_RUN_GCP_BACKEND = 'https://ais-pre-phmm5tl2atyq54bzpave64-427004433114.asia-southeast1.run.app';
+  // Use Express backend on localhost / .run.app, or fallback to GCP Cloud Run when on GitHub Pages
   function getLocalServerBase() {
     try {
-      if (typeof window === 'undefined' || !window.location) return '';
+      if (typeof window === 'undefined' || !window.location) return CLOUD_RUN_GCP_BACKEND;
       var origin = window.location.origin || '';
       var host = window.location.hostname || '';
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         return origin;
       }
+      return (window.ATPL_GCP_BACKEND_URL || CLOUD_RUN_GCP_BACKEND);
     } catch (_) {}
-    return '';
+    return CLOUD_RUN_GCP_BACKEND;
   }
 
   window.__ATPL_CENTRAL_BACKEND_URL = getLocalServerBase();

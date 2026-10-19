@@ -2,6 +2,48 @@
 <html lang="en">
 <head>
 <script>
+  (function() {
+    var GCP_BACKEND = 'https://ais-pre-phmm5tl2atyq54bzpave64-427004433114.asia-southeast1.run.app';
+    function getBackendBase() {
+      try {
+        var h = window.location.hostname || '';
+        if (h === 'localhost' || h === '127.0.0.1' || /\.run\.app$/i.test(h)) return window.location.origin;
+        return GCP_BACKEND;
+      } catch (_) { return GCP_BACKEND; }
+    }
+    window.ATPL_GCP_BACKEND_URL = GCP_BACKEND;
+    window.ATPL_GET_API_BASE = getBackendBase;
+
+    // Intercept relative /api/ sync calls when hosted on GitHub Pages or external origin
+    var origFetch = window.fetch;
+    window.fetch = function(input, init) {
+      try {
+        var base = getBackendBase();
+        if (base && typeof input === 'string' && input.startsWith('/api/')) {
+          input = base + input;
+        } else if (base && input && typeof input.url === 'string' && input.url.startsWith('/api/')) {
+          input = new Request(base + input.url, input);
+        }
+      } catch (_) {}
+      return origFetch.apply(this, arguments);
+    };
+
+    // Intercept EventSource for SSE real-time cross-browser sync
+    if (typeof window.EventSource !== 'undefined') {
+      var OrigEventSource = window.EventSource;
+      window.EventSource = function(url, config) {
+        try {
+          var base = getBackendBase();
+          if (base && typeof url === 'string' && url.startsWith('/api/')) {
+            url = base + url;
+          }
+        } catch (_) {}
+        return new OrigEventSource(url, config);
+      };
+    }
+  })();
+</script>
+<script>
   // Global error safety shield for iframe and cross-origin environments
   window.onerror = function(msg, url, line, col, err) {
     return true; // Completely prevent cross-origin Script error propagation to AI Studio iframe host
@@ -3984,12 +4026,26 @@ async function atplDirectServerSync(force) {
               }
             }
           }
-          if (sFiles.length > 0) {
+          var sTombs = {};
+          try {
+            var tombRes = await fetch('./data/salary_tombstones.json');
+            if (!tombRes || !tombRes.ok) tombRes = await fetch('data/salary_tombstones.json');
+            if (tombRes && tombRes.ok) sTombs = await tombRes.json();
+          } catch (_) {}
+
+          sFiles = sFiles.filter(function(sf) {
+            if (!sf || !sf.name) return false;
+            var k = String(sf.name).toLowerCase().trim();
+            if (sTombs && (sTombs[k] || sTombs[sf.name])) return false;
+            return true;
+          });
+
+          if (sFiles.length > 0 || Object.keys(sTombs).length > 0) {
             meta = {
               ok: true,
               total_files: sFiles.length,
               salary_files: sFiles,
-              salary_tombstones: {}
+              salary_tombstones: sTombs || {}
             };
           }
         }

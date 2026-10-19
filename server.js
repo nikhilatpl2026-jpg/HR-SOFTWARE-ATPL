@@ -161,11 +161,52 @@ let syncHrTombstones = readJsonFile('hr_tombstones.json', {});
 let syncEmployeeMaster = readJsonFile('employee_master.json', []);
 let syncDolRecords = readJsonFile('dol_records.json', {}); // id -> DOL challan
 
+// Merge all existing legacy tombstones into central filesDb.tombstones
+if (syncSalaryTombstones && typeof syncSalaryTombstones === 'object') {
+  for (const [k, t] of Object.entries(syncSalaryTombstones)) {
+    if (!t) continue;
+    const nameLow = String(t.name || k).toLowerCase().trim();
+    filesDb.tombstones[nameLow] = t;
+    filesDb.tombstones[k.toLowerCase().trim()] = t;
+  }
+}
+if (syncHrTombstones && typeof syncHrTombstones === 'object') {
+  for (const [k, t] of Object.entries(syncHrTombstones)) {
+    if (!t) continue;
+    const idLow = String(t.id || k).toLowerCase().trim();
+    filesDb.tombstones[idLow] = t;
+    filesDb.tombstones[k.toLowerCase().trim()] = t;
+  }
+}
+
+// STRICT PURGE: Remove any tombstoned file from filesDb.files and syncSalaryFiles at startup
+for (const [fid, f] of Object.entries(filesDb.files)) {
+  if (!f) { delete filesDb.files[fid]; continue; }
+  const fn = String(f.name || '').toLowerCase().trim();
+  const fhash = String(f.sha256_hash || '').toLowerCase().trim();
+  const idLow = String(fid).toLowerCase().trim();
+  if (filesDb.tombstones[fn] || filesDb.tombstones[idLow] || (fhash && filesDb.tombstones[fhash])) {
+    delete filesDb.files[fid];
+  }
+}
+
+for (const k of Object.keys(syncSalaryFiles)) {
+  const f = syncSalaryFiles[k];
+  const name = String((f && f.name) || k).toLowerCase().trim();
+  if (filesDb.tombstones[name] || syncSalaryTombstones[name]) {
+    delete syncSalaryFiles[k];
+  }
+}
+
 // Migrate any existing legacy salary and hr files into unified filesDb
 Object.values(syncSalaryFiles).forEach(f => {
   if (!f || !f.name) return;
+  const nameLow = f.name.toLowerCase().trim();
   const id = 'sal_' + hashData(f.name).substring(0, 16);
-  if (!filesDb.files[id] && !filesDb.tombstones[id] && !filesDb.tombstones[f.name.toLowerCase()]) {
+  if (filesDb.tombstones[id] || filesDb.tombstones[nameLow] || syncSalaryTombstones[nameLow]) {
+    return; // Strict protection: Never resurrect deleted files
+  }
+  if (!filesDb.files[id]) {
     filesDb.files[id] = {
       id: id,
       module: 'salary',
@@ -187,7 +228,12 @@ Object.values(syncSalaryFiles).forEach(f => {
 Object.values(syncHrDocs).forEach(doc => {
   if (!doc || !doc.id) return;
   const id = doc.id;
-  if (!filesDb.files[id] && !filesDb.tombstones[id]) {
+  const idLow = String(id).toLowerCase().trim();
+  const docNameLow = String(doc.file_name || doc.document_name || '').toLowerCase().trim();
+  if (filesDb.tombstones[id] || filesDb.tombstones[idLow] || (docNameLow && filesDb.tombstones[docNameLow])) {
+    return; // Never resurrect deleted HR docs
+  }
+  if (!filesDb.files[id]) {
     filesDb.files[id] = {
       id: id,
       module: 'hr_doc',
@@ -291,7 +337,16 @@ app.get('/api/sync/events', (req, res) => {
 app.get('/api/sync/files', (req, res) => {
   try {
     const { module: mod, category, summary } = req.query || {};
-    let list = Object.values(filesDb.files);
+    let list = Object.values(filesDb.files).filter(f => {
+      if (!f) return false;
+      const fn = String(f.name || '').toLowerCase().trim();
+      const fid = String(f.id || '').toLowerCase().trim();
+      const fhash = String(f.sha256_hash || '').toLowerCase().trim();
+      if (filesDb.tombstones[fid] || filesDb.tombstones[fn] || (fhash && filesDb.tombstones[fhash])) {
+        return false;
+      }
+      return true;
+    });
 
     if (mod && mod !== 'all') {
       list = list.filter(f => f.module === mod);
@@ -320,6 +375,19 @@ app.get('/api/sync/files', (req, res) => {
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// ── Health Check for GCP Cloud Run & GitHub Pages ──
+app.get('/api/sync/health', (req, res) => {
+  return res.json({
+    ok: true,
+    status: 'healthy',
+    backend: 'GCP Cloud Run',
+    version: filesDb.version,
+    total_files: Object.keys(filesDb.files).length,
+    total_tombstones: Object.keys(filesDb.tombstones).length,
+    timestamp: new Date().toISOString()
+  });
 });
 
 // ── Upload / Save File (Central Authoritative Entry Point) ──
@@ -609,14 +677,16 @@ app.delete('/api/sync/files/:id', (req, res) => {
     };
 
     filesDb.tombstones[matchId || rawId] = tombstoneRecord;
-    filesDb.tombstones[fileName.toLowerCase()] = tombstoneRecord;
+    filesDb.tombstones[fileName.toLowerCase().trim()] = tombstoneRecord;
+    filesDb.tombstones[fileName] = tombstoneRecord;
     if (fileHash) filesDb.tombstones[fileHash] = tombstoneRecord;
 
-    // Delete record from files list
-    if (matchId) {
-      delete filesDb.files[matchId];
-    } else {
-      delete filesDb.files[rawId];
+    // Delete record from files list (all matching IDs or names)
+    const targetName = fileName.toLowerCase().trim();
+    for (const [fid, f] of Object.entries(filesDb.files)) {
+      if (fid === matchId || fid === rawId || (f && f.name && f.name.toLowerCase().trim() === targetName)) {
+        delete filesDb.files[fid];
+      }
     }
 
     // Delete disk blob if present
@@ -628,20 +698,32 @@ app.delete('/api/sync/files/:id', (req, res) => {
     incrementVersion();
     writeJsonFile('files_db.json', filesDb);
 
-    // Mirror deletion to legacy tables
-    const nameKey = fileName.toLowerCase();
-    delete syncSalaryFiles[nameKey];
-    syncSalaryTombstones[nameKey] = { name: fileName, deleted_at: now, deleted_by: req.query.user || 'admin' };
+    // Mirror deletion to legacy salary tables case-insensitively
+    for (const k of Object.keys(syncSalaryFiles)) {
+      if (k.toLowerCase().trim() === targetName || (syncSalaryFiles[k] && syncSalaryFiles[k].name && syncSalaryFiles[k].name.toLowerCase().trim() === targetName)) {
+        delete syncSalaryFiles[k];
+      }
+    }
+    syncSalaryTombstones[targetName] = { name: fileName, deleted_at: now, deleted_by: req.query.user || 'admin' };
+    syncSalaryTombstones[fileName] = { name: fileName, deleted_at: now, deleted_by: req.query.user || 'admin' };
     writeJsonFile('salary_files.json', syncSalaryFiles);
     writeJsonFile('salary_tombstones.json', syncSalaryTombstones);
 
-    const idKey = (matchId || rawId).toLowerCase();
-    delete syncHrDocs[idKey];
-    syncHrTombstones[idKey] = { id: matchId || rawId, deleted_at: now };
+    // Mirror deletion to legacy hr_docs case-insensitively
+    for (const k of Object.keys(syncHrDocs)) {
+      const doc = syncHrDocs[k];
+      const docName = String((doc && (doc.file_name || doc.document_name)) || '').toLowerCase().trim();
+      if (k.toLowerCase().trim() === (matchId || rawId).toLowerCase().trim() || docName === targetName) {
+        delete syncHrDocs[k];
+      }
+    }
+    syncHrTombstones[(matchId || rawId).toLowerCase().trim()] = { id: matchId || rawId, deleted_at: now };
+    if (targetName) syncHrTombstones[targetName] = { id: matchId || rawId, deleted_at: now };
     writeJsonFile('hr_docs.json', syncHrDocs);
     writeJsonFile('hr_tombstones.json', syncHrTombstones);
 
     delete syncDolRecords[matchId || rawId];
+    if (targetName) delete syncDolRecords[targetName];
     writeJsonFile('dol_records.json', syncDolRecords);
 
     // Broadcast real-time deletion event to all connected browsers
@@ -1051,15 +1133,21 @@ app.delete('/api/sync/salary-file/:name', (req, res) => {
     const name = decodeURIComponent(req.params.name || '');
     if (!name) return res.status(400).json({ ok: false, error: 'Name required' });
 
-    const key = name.toLowerCase();
-    delete syncSalaryFiles[key];
+    const key = name.toLowerCase().trim();
+    for (const k of Object.keys(syncSalaryFiles)) {
+      if (k.toLowerCase().trim() === key || (syncSalaryFiles[k] && syncSalaryFiles[k].name && syncSalaryFiles[k].name.toLowerCase().trim() === key)) {
+        delete syncSalaryFiles[k];
+      }
+    }
     const now = new Date().toISOString();
     syncSalaryTombstones[key] = { name: name, deleted_at: now, deleted_by: req.query.user || 'user' };
+    syncSalaryTombstones[name] = { name: name, deleted_at: now, deleted_by: req.query.user || 'user' };
 
     // Also remove from unified filesDb
     filesDb.tombstones[key] = { id: key, name: name, module: 'salary', deleted_at: now, deleted_by: req.query.user || 'user' };
+    filesDb.tombstones[name] = { id: key, name: name, module: 'salary', deleted_at: now, deleted_by: req.query.user || 'user' };
     for (const [fid, f] of Object.entries(filesDb.files)) {
-      if (f.name.toLowerCase() === key && f.module === 'salary') {
+      if (f && f.name && f.name.toLowerCase().trim() === key && f.module === 'salary') {
         filesDb.tombstones[fid] = { id: fid, name: name, module: 'salary', deleted_at: now, deleted_by: req.query.user || 'user' };
         delete filesDb.files[fid];
       }
