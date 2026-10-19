@@ -1,5 +1,5 @@
 {
-  "version": 90,
+  "version": 91,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2474,6 +2474,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_revised_20sent_20atpl-sep_xlsx"
+    },
+    "hr_doc:hrd-test-1791718050909": {
+      "id": "HRD-TEST-1791718050909",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791718050909",
+      "uploaded_at": "2026-10-19T06:28:21.298Z",
+      "updated_at": "2026-10-19T06:28:21.298Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791718050909"
     }
   }
 }
