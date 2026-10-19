@@ -1,5 +1,5 @@
 {
-  "version": 562,
+  "version": 559,
   "tombstones": {
     "hrd-2026-noc-01": {
       "id": "HRD-2026-NOC-01",
@@ -105,26 +105,6 @@
       "name": "Fire_NOC_Certificate.pdf",
       "deleted_at": "2026-09-30T12:23:32.284Z",
       "deleted_by": "admin"
-    },
-    "salary:salary_may_2026_audit_1792415033595.xlsx": {
-      "id": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "filename": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "file_hash": "",
-      "deleted_at": "2026-10-19T16:05:02.161Z",
-      "uploaded_at": "2026-10-19T16:05:02.161Z"
-    },
-    "salary_may_2026_audit_1792415033595.xlsx": {
-      "id": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "filename": "Salary_May_2026_Audit_1792415033595.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "file_hash": "",
-      "deleted_at": "2026-10-19T16:05:02.161Z",
-      "uploaded_at": "2026-10-19T16:05:02.161Z"
     }
   },
   "files": {
@@ -1137,8 +1117,8 @@
       "id": "HRD-TEST-1791720776080",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-19T16:13:37.133Z",
-      "updated_at": "2026-10-19T16:13:37.133Z",
+      "uploaded_at": "2026-10-19T10:24:23.864Z",
+      "updated_at": "2026-10-19T10:24:23.864Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
@@ -1429,6 +1409,20 @@
       "created_at": "2026-10-19T13:03:53.233Z",
       "updated_at": "2026-10-19T13:03:53.233Z"
     },
+    "sal_b5286ded4a39f146": {
+      "id": "sal_b5286ded4a39f146",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary_May_2026_Audit_1792415033595.xlsx",
+      "size": 48,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "4c4a9a7d1a10ce493e049a9ba10d910a30702c9cc22615e96c9772ded7a40feb",
+      "sheets": null,
+      "saved": "2026-10-19T13:03:53.613Z",
+      "uploaded_by": "Browser_A",
+      "created_at": "2026-10-19T13:03:53.613Z",
+      "updated_at": "2026-10-19T13:03:53.613Z"
+    },
     "sal_0a4aa1132daa1b50": {
       "id": "sal_0a4aa1132daa1b50",
       "module": "salary",
@@ -1457,25 +1451,15 @@
       "created_at": "2026-10-19T13:04:40.933Z",
       "updated_at": "2026-10-19T13:04:40.933Z"
     },
-    "hr_doc:hrd-test-1791436015056": {
-      "id": "HRD-TEST-1791436015056",
+    "hr_doc:hrd-test-1791714805069": {
+      "id": "HRD-TEST-1791714805069",
       "name": "Fire Safety Audit",
-      "filename": "HRD-TEST-1791436015056",
-      "uploaded_at": "2026-10-19T16:13:36.804Z",
-      "updated_at": "2026-10-19T16:13:36.804Z",
+      "filename": "HRD-TEST-1791714805069",
+      "uploaded_at": "2026-10-19T16:20:36.299Z",
+      "updated_at": "2026-10-19T16:20:36.299Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-test-1791436015056"
-    },
-    "hr_doc:hrd-test-1791714603870": {
-      "id": "HRD-TEST-1791714603870",
-      "name": "Fire Safety Audit",
-      "filename": "HRD-TEST-1791714603870",
-      "uploaded_at": "2026-10-19T16:20:36.297Z",
-      "updated_at": "2026-10-19T16:20:36.297Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-test-1791714603870"
+      "blob_key": "hrdoc_hrd-test-1791714805069"
     }
   }
 }
