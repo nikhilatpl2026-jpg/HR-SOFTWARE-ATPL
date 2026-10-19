@@ -1,5 +1,5 @@
 {
-  "version": 501,
+  "version": 502,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -44,6 +44,286 @@
     "sal_cf31058701c1c3d8": {
       "id": "sal_cf31058701c1c3d8",
       "deleted_at": "2026-10-19T07:01:58.570Z"
+    },
+    "salary:duplicate_test_file_1790769567372.xlsx": {
+      "name": "Duplicate_Test_File_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.682Z",
+      "deleted_by": "system_purge"
+    },
+    "duplicate_test_file_1790769567372.xlsx": {
+      "name": "Duplicate_Test_File_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:salary_may_2026_audit_1790771004735.xlsx": {
+      "name": "Salary_May_2026_Audit_1790771004735.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary_may_2026_audit_1790771004735.xlsx": {
+      "name": "Salary_May_2026_Audit_1790771004735.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:simul_file_b_1790769567372.xlsx": {
+      "name": "Simul_File_B_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "simul_file_b_1790769567372.xlsx": {
+      "name": "Simul_File_B_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:simul_file_b_1790771004735.xlsx": {
+      "name": "Simul_File_B_1790771004735.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "simul_file_b_1790771004735.xlsx": {
+      "name": "Simul_File_B_1790771004735.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_13.xlsx": {
+      "name": "Large_Batch_File_13.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_13.xlsx": {
+      "name": "Large_Batch_File_13.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_15.xlsx": {
+      "name": "Large_Batch_File_15.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_15.xlsx": {
+      "name": "Large_Batch_File_15.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_17.xlsx": {
+      "name": "Large_Batch_File_17.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_17.xlsx": {
+      "name": "Large_Batch_File_17.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_18.xlsx": {
+      "name": "Large_Batch_File_18.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_18.xlsx": {
+      "name": "Large_Batch_File_18.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:atpl_sync_test_20260929.csv": {
+      "name": "ATPL_SYNC_TEST_20260929.csv",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "atpl_sync_test_20260929.csv": {
+      "name": "ATPL_SYNC_TEST_20260929.csv",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_1.xlsx": {
+      "name": "Bulk_Salary_Sheet_1.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_1.xlsx": {
+      "name": "Bulk_Salary_Sheet_1.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_10.xlsx": {
+      "name": "Bulk_Salary_Sheet_10.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_10.xlsx": {
+      "name": "Bulk_Salary_Sheet_10.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_4.xlsx": {
+      "name": "Bulk_Salary_Sheet_4.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_4.xlsx": {
+      "name": "Bulk_Salary_Sheet_4.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_5.xlsx": {
+      "name": "Bulk_Salary_Sheet_5.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_5.xlsx": {
+      "name": "Bulk_Salary_Sheet_5.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_6.xlsx": {
+      "name": "Bulk_Salary_Sheet_6.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_6.xlsx": {
+      "name": "Bulk_Salary_Sheet_6.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_7.xlsx": {
+      "name": "Bulk_Salary_Sheet_7.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_7.xlsx": {
+      "name": "Bulk_Salary_Sheet_7.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:bulk_salary_sheet_8.xlsx": {
+      "name": "Bulk_Salary_Sheet_8.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "bulk_salary_sheet_8.xlsx": {
+      "name": "Bulk_Salary_Sheet_8.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_10.xlsx": {
+      "name": "Large_Batch_File_10.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_10.xlsx": {
+      "name": "Large_Batch_File_10.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_14.xlsx": {
+      "name": "Large_Batch_File_14.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_14.xlsx": {
+      "name": "Large_Batch_File_14.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_16.xlsx": {
+      "name": "Large_Batch_File_16.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_16.xlsx": {
+      "name": "Large_Batch_File_16.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_19.xlsx": {
+      "name": "Large_Batch_File_19.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_19.xlsx": {
+      "name": "Large_Batch_File_19.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_20.xlsx": {
+      "name": "Large_Batch_File_20.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_20.xlsx": {
+      "name": "Large_Batch_File_20.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_23.xlsx": {
+      "name": "Large_Batch_File_23.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_23.xlsx": {
+      "name": "Large_Batch_File_23.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_5.xlsx": {
+      "name": "Large_Batch_File_5.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_5.xlsx": {
+      "name": "Large_Batch_File_5.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_6.xlsx": {
+      "name": "Large_Batch_File_6.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_6.xlsx": {
+      "name": "Large_Batch_File_6.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_7.xlsx": {
+      "name": "Large_Batch_File_7.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_7.xlsx": {
+      "name": "Large_Batch_File_7.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:large_batch_file_8.xlsx": {
+      "name": "Large_Batch_File_8.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "large_batch_file_8.xlsx": {
+      "name": "Large_Batch_File_8.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:offline_reconcile_file.xlsx": {
+      "name": "Offline_Reconcile_File.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "offline_reconcile_file.xlsx": {
+      "name": "Offline_Reconcile_File.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary:salary_may_2026_audit_1790769567372.xlsx": {
+      "name": "Salary_May_2026_Audit_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
+    },
+    "salary_may_2026_audit_1790769567372.xlsx": {
+      "name": "Salary_May_2026_Audit_1790769567372.xlsx",
+      "deleted_at": "2026-10-19T08:55:17.683Z",
+      "deleted_by": "system_purge"
     }
   },
   "files": {
@@ -1012,94 +1292,6 @@
       "created_at": "2026-10-07T11:54:43.316Z",
       "updated_at": "2026-10-19T08:20:07.678Z"
     },
-    "salary:duplicate_test_file_1790769567372.xlsx": {
-      "id": "Duplicate_Test_File_1790769567372.xlsx",
-      "name": "Duplicate_Test_File_1790769567372.xlsx",
-      "filename": "Duplicate_Test_File_1790769567372.xlsx",
-      "size": 28,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_duplicate_test_file_1790769567372_xlsx"
-    },
-    "salary:salary_may_2026_audit_1790771004735.xlsx": {
-      "id": "Salary_May_2026_Audit_1790771004735.xlsx",
-      "name": "Salary_May_2026_Audit_1790771004735.xlsx",
-      "filename": "Salary_May_2026_Audit_1790771004735.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_salary_may_2026_audit_1790771004735_xlsx"
-    },
-    "salary:simul_file_b_1790769567372.xlsx": {
-      "id": "Simul_File_B_1790769567372.xlsx",
-      "name": "Simul_File_B_1790769567372.xlsx",
-      "filename": "Simul_File_B_1790769567372.xlsx",
-      "size": 16,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_simul_file_b_1790769567372_xlsx"
-    },
-    "salary:simul_file_b_1790771004735.xlsx": {
-      "id": "Simul_File_B_1790771004735.xlsx",
-      "name": "Simul_File_B_1790771004735.xlsx",
-      "filename": "Simul_File_B_1790771004735.xlsx",
-      "size": 48,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_simul_file_b_1790771004735_xlsx"
-    },
-    "salary:large_batch_file_13.xlsx": {
-      "id": "Large_Batch_File_13.xlsx",
-      "name": "Large_Batch_File_13.xlsx",
-      "filename": "Large_Batch_File_13.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_13_xlsx"
-    },
-    "salary:large_batch_file_15.xlsx": {
-      "id": "Large_Batch_File_15.xlsx",
-      "name": "Large_Batch_File_15.xlsx",
-      "filename": "Large_Batch_File_15.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_15_xlsx"
-    },
-    "salary:large_batch_file_17.xlsx": {
-      "id": "Large_Batch_File_17.xlsx",
-      "name": "Large_Batch_File_17.xlsx",
-      "filename": "Large_Batch_File_17.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_17_xlsx"
-    },
-    "salary:large_batch_file_18.xlsx": {
-      "id": "Large_Batch_File_18.xlsx",
-      "name": "Large_Batch_File_18.xlsx",
-      "filename": "Large_Batch_File_18.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_18_xlsx"
-    },
     "hr_doc:hrd-1791372374936-rqjsfz": {
       "id": "HRD-1791372374936-rqjsfz",
       "name": "Atpl GST Certificate",
@@ -1139,226 +1331,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
-    },
-    "salary:atpl_sync_test_20260929.csv": {
-      "id": "ATPL_SYNC_TEST_20260929.csv",
-      "name": "ATPL_SYNC_TEST_20260929.csv",
-      "filename": "ATPL_SYNC_TEST_20260929.csv",
-      "size": 116,
-      "uploaded_at": "2026-09-29T05:01:48.520Z",
-      "saved_at": "2026-09-29T05:01:48.520Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_atpl_sync_test_20260929_csv"
-    },
-    "salary:bulk_salary_sheet_1.xlsx": {
-      "id": "Bulk_Salary_Sheet_1.xlsx",
-      "name": "Bulk_Salary_Sheet_1.xlsx",
-      "filename": "Bulk_Salary_Sheet_1.xlsx",
-      "size": 48,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_1_xlsx"
-    },
-    "salary:bulk_salary_sheet_10.xlsx": {
-      "id": "Bulk_Salary_Sheet_10.xlsx",
-      "name": "Bulk_Salary_Sheet_10.xlsx",
-      "filename": "Bulk_Salary_Sheet_10.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_10_xlsx"
-    },
-    "salary:bulk_salary_sheet_4.xlsx": {
-      "id": "Bulk_Salary_Sheet_4.xlsx",
-      "name": "Bulk_Salary_Sheet_4.xlsx",
-      "filename": "Bulk_Salary_Sheet_4.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_4_xlsx"
-    },
-    "salary:bulk_salary_sheet_5.xlsx": {
-      "id": "Bulk_Salary_Sheet_5.xlsx",
-      "name": "Bulk_Salary_Sheet_5.xlsx",
-      "filename": "Bulk_Salary_Sheet_5.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_5_xlsx"
-    },
-    "salary:bulk_salary_sheet_6.xlsx": {
-      "id": "Bulk_Salary_Sheet_6.xlsx",
-      "name": "Bulk_Salary_Sheet_6.xlsx",
-      "filename": "Bulk_Salary_Sheet_6.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_6_xlsx"
-    },
-    "salary:bulk_salary_sheet_7.xlsx": {
-      "id": "Bulk_Salary_Sheet_7.xlsx",
-      "name": "Bulk_Salary_Sheet_7.xlsx",
-      "filename": "Bulk_Salary_Sheet_7.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_7_xlsx"
-    },
-    "salary:bulk_salary_sheet_8.xlsx": {
-      "id": "Bulk_Salary_Sheet_8.xlsx",
-      "name": "Bulk_Salary_Sheet_8.xlsx",
-      "filename": "Bulk_Salary_Sheet_8.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_8_xlsx"
-    },
-    "salary:large_batch_file_10.xlsx": {
-      "id": "Large_Batch_File_10.xlsx",
-      "name": "Large_Batch_File_10.xlsx",
-      "filename": "Large_Batch_File_10.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_10_xlsx"
-    },
-    "salary:large_batch_file_14.xlsx": {
-      "id": "Large_Batch_File_14.xlsx",
-      "name": "Large_Batch_File_14.xlsx",
-      "filename": "Large_Batch_File_14.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_14_xlsx"
-    },
-    "salary:large_batch_file_16.xlsx": {
-      "id": "Large_Batch_File_16.xlsx",
-      "name": "Large_Batch_File_16.xlsx",
-      "filename": "Large_Batch_File_16.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_16_xlsx"
-    },
-    "salary:large_batch_file_19.xlsx": {
-      "id": "Large_Batch_File_19.xlsx",
-      "name": "Large_Batch_File_19.xlsx",
-      "filename": "Large_Batch_File_19.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_19_xlsx"
-    },
-    "salary:large_batch_file_20.xlsx": {
-      "id": "Large_Batch_File_20.xlsx",
-      "name": "Large_Batch_File_20.xlsx",
-      "filename": "Large_Batch_File_20.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_20_xlsx"
-    },
-    "salary:large_batch_file_23.xlsx": {
-      "id": "Large_Batch_File_23.xlsx",
-      "name": "Large_Batch_File_23.xlsx",
-      "filename": "Large_Batch_File_23.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_23_xlsx"
-    },
-    "salary:large_batch_file_5.xlsx": {
-      "id": "Large_Batch_File_5.xlsx",
-      "name": "Large_Batch_File_5.xlsx",
-      "filename": "Large_Batch_File_5.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_5_xlsx"
-    },
-    "salary:large_batch_file_6.xlsx": {
-      "id": "Large_Batch_File_6.xlsx",
-      "name": "Large_Batch_File_6.xlsx",
-      "filename": "Large_Batch_File_6.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_6_xlsx"
-    },
-    "salary:large_batch_file_7.xlsx": {
-      "id": "Large_Batch_File_7.xlsx",
-      "name": "Large_Batch_File_7.xlsx",
-      "filename": "Large_Batch_File_7.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_7_xlsx"
-    },
-    "salary:large_batch_file_8.xlsx": {
-      "id": "Large_Batch_File_8.xlsx",
-      "name": "Large_Batch_File_8.xlsx",
-      "filename": "Large_Batch_File_8.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_8_xlsx"
-    },
-    "salary:offline_reconcile_file.xlsx": {
-      "id": "Offline_Reconcile_File.xlsx",
-      "name": "Offline_Reconcile_File.xlsx",
-      "filename": "Offline_Reconcile_File.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-19T06:34:35.841Z",
-      "saved_at": "2026-10-19T06:34:35.841Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_offline_reconcile_file_xlsx"
-    },
-    "salary:salary_may_2026_audit_1790769567372.xlsx": {
-      "id": "Salary_May_2026_Audit_1790769567372.xlsx",
-      "name": "Salary_May_2026_Audit_1790769567372.xlsx",
-      "filename": "Salary_May_2026_Audit_1790769567372.xlsx",
-      "size": 48,
-      "uploaded_at": "2026-09-30T11:59:27.385Z",
-      "saved_at": "2026-09-30T11:59:27.385Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_salary_may_2026_audit_1790769567372_xlsx"
     }
   }
 }
