@@ -59,14 +59,15 @@
   // Only use Express backend if running on localhost / 127.0.0.1 / active .run.app host
   function getLocalServerBase() {
     try {
-      if (typeof window === 'undefined' || !window.location) return '';
+      if (typeof window === 'undefined' || !window.location) return 'https://ais-pre-2vnnysb742azuzgorygr6z-909075195436.asia-east1.run.app';
       var origin = window.location.origin || '';
       var host = window.location.hostname || '';
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         return origin;
       }
+      return (window.LIVE_CLOUD_RUN_URL || window.__ATPL_CENTRAL_BACKEND_URL || 'https://ais-pre-2vnnysb742azuzgorygr6z-909075195436.asia-east1.run.app');
     } catch (_) {}
-    return '';
+    return 'https://ais-pre-2vnnysb742azuzgorygr6z-909075195436.asia-east1.run.app';
   }
 
   window.__ATPL_CENTRAL_BACKEND_URL = getLocalServerBase();

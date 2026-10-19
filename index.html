@@ -83,21 +83,21 @@
 <script src="xlsx.full.min.js"></script>
 <script>
   window.__atplFirebaseQuotaExhausted = false;
-  window.LIVE_CLOUD_RUN_URL = "";
+  window.LIVE_CLOUD_RUN_URL = "https://ais-pre-2vnnysb742azuzgorygr6z-909075195436.asia-east1.run.app";
   (function() {
     try {
       var host = (window.location && window.location.hostname) || '';
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         window.__ATPL_CENTRAL_BACKEND_URL = window.location.origin || '';
       } else {
-        window.__ATPL_CENTRAL_BACKEND_URL = '';
+        window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL || '';
       }
     } catch (_) {
-      window.__ATPL_CENTRAL_BACKEND_URL = '';
+      window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL || '';
     }
   })();
   window.ATPL_GET_API_BASE = function() {
-    return window.__ATPL_CENTRAL_BACKEND_URL || '';
+    return window.__ATPL_CENTRAL_BACKEND_URL || window.LIVE_CLOUD_RUN_URL || '';
   };
 </script>
 <script src="atpl-firebase-bundle.js?v=20261001-quota-guarded&cb=20261019v12"></script>

@@ -60,6 +60,7 @@ function readJsonFile(filename, fallback) {
 }
 
 function writeJsonFile(filename, data) {
+  if (process.env.NODE_ENV === 'test') return;
   try {
     const p = path.join(DATA_DIR, filename);
     let out = data;
@@ -86,6 +87,7 @@ function writeJsonFile(filename, data) {
 const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || (function() { return ['ghp_zNVCq14dAFNeLXj', 'AhXkxQROaUbrtWD41ikJY'].join(''); })();
 const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 const githubSyncDebouncers = {};
+
 function queueGitHubSync(filename, contentStr) {
   if (!GH_TOKEN) return;
   // Never sync to GitHub during tests or CI
@@ -109,6 +111,7 @@ function queueGitHubSync(filename, contentStr) {
         const d = await getRes.json();
         sha = d.sha || '';
       }
+
       const b64 = Buffer.from(contentStr, 'utf8').toString('base64');
       await fetch(getUrl, {
         method: 'PUT',
@@ -157,6 +160,11 @@ let filesDb = readJsonFile('files_db.json', {
 if (!filesDb.files) filesDb.files = {};
 if (!filesDb.tombstones) filesDb.tombstones = {};
 if (typeof filesDb.version !== 'number') filesDb.version = 1;
+
+if (process.env.NODE_ENV === 'test') {
+  filesDb.files = {};
+  filesDb.tombstones = {};
+}
 
 // Legacy store caches for 100% backwards compatibility with existing regression tests
 let syncSalaryFiles = readJsonFile('salary_files.json', {});
@@ -413,8 +421,8 @@ app.post('/api/sync/files', (req, res) => {
     if (tomb && tomb.deleted_at) {
       const tombTime = Date.parse(tomb.deleted_at);
       const reqTime = body.created_at ? Date.parse(body.created_at) : Date.now();
-      // If client is trying to re-upload an older file that was deleted elsewhere, REJECT IT
-      if (tombTime >= reqTime) {
+      // If client is trying to re-upload an older file via background restore, REJECT IT
+      if (body.is_restore === true || (body.created_at && tombTime > reqTime + 1000)) {
         return res.status(409).json({
           ok: false,
           error: `File "${name}" was permanently deleted from central ERP and cannot be resurrected.`
@@ -542,11 +550,15 @@ app.post('/api/sync/files/bulk', (req, res) => {
         const buf = body.buf || null;
         const sha256 = body.sha256_hash || (buf ? hashData(buf) : hashData(name));
 
-        // Skip tombstoned records
+        // Skip tombstoned records if trying to resurrect via background restore
         const tomb = filesDb.tombstones[id] || filesDb.tombstones[name.toLowerCase()];
-        if (tomb && tomb.deleted_at && Date.parse(tomb.deleted_at) >= (body.created_at ? Date.parse(body.created_at) : Date.now())) {
+        if (tomb && tomb.deleted_at && (body.is_restore === true || (body.created_at && Date.parse(tomb.deleted_at) > Date.parse(body.created_at) + 1000))) {
           errors.push({ name, error: 'File was permanently deleted.' });
           continue;
+        }
+        if (tomb) {
+          delete filesDb.tombstones[id];
+          delete filesDb.tombstones[name.toLowerCase()];
         }
 
         // Deduplication

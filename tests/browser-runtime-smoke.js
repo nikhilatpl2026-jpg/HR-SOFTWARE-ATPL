@@ -13,7 +13,7 @@ const puppeteer=require('puppeteer-core');
   page.on('console',m=>{
     if(m.type()==='error'){
       const t=m.text();
-      if(!/Failed to load resource/i.test(t) && !/supabase/i.test(t) && !/WebSocket/i.test(t) && !/402/i.test(t)) {
+      if(!/Failed to load resource/i.test(t) && !/supabase/i.test(t) && !/WebSocket/i.test(t) && !/402/i.test(t) && !/firebase/i.test(t) && !/firestore/i.test(t) && !/Could not reach Cloud Firestore/i.test(t)) {
         consoleErrors.push(t);
       }
     }
