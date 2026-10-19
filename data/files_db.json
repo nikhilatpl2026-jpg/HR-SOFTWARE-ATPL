@@ -66,6 +66,11 @@
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
+    "bulk_salary_sheet_6.xlsx": {
+      "name": "Bulk_Salary_Sheet_6.xlsx",
+      "deleted_at": "2026-10-13T05:57:34.691Z",
+      "deleted_by": "system_clean"
+    },
     "bulk_salary_sheet_7.xlsx": {
       "name": "Bulk_Salary_Sheet_7.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
@@ -198,11 +203,6 @@
     },
     "large_batch_file_25.xlsx": {
       "name": "Large_Batch_File_25.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
-    "offline_reconcile_file.xlsx": {
-      "name": "Offline_Reconcile_File.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
@@ -1611,16 +1611,16 @@
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_5_xlsx"
     },
-    "salary:bulk_salary_sheet_6.xlsx": {
-      "id": "Bulk_Salary_Sheet_6.xlsx",
-      "name": "Bulk_Salary_Sheet_6.xlsx",
-      "filename": "Bulk_Salary_Sheet_6.xlsx",
+    "salary:offline_reconcile_file.xlsx": {
+      "id": "Offline_Reconcile_File.xlsx",
+      "name": "Offline_Reconcile_File.xlsx",
+      "filename": "Offline_Reconcile_File.xlsx",
       "size": 20,
       "uploaded_at": "2026-10-19T06:34:35.841Z",
       "saved_at": "2026-10-19T06:34:35.841Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_6_xlsx"
+      "blob_key": "salary_offline_reconcile_file_xlsx"
     }
   }
 }
