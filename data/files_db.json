@@ -1,5 +1,5 @@
 {
-  "version": 86,
+  "version": 87,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2433,6 +2433,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791374083207-e0ey7q"
+    },
+    "hr_doc:hrd-1791374743659-5xdcbk": {
+      "id": "HRD-1791374743659-5xdcbk",
+      "name": "Atpl Stability Certificate",
+      "filename": "HRD-1791374743659-5xdcbk",
+      "uploaded_at": "2026-10-07T12:05:43.671Z",
+      "updated_at": "2026-10-07T12:05:43.671Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791374743659-5xdcbk"
     }
   }
 }
