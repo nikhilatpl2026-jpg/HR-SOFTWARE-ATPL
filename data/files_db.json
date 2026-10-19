@@ -1,5 +1,5 @@
 {
-  "version": 322,
+  "version": 323,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1662,6 +1662,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_bulk_salary_sheet_8_xlsx"
+    },
+    "hr_doc:hrd-1791374743659-5xdcbk": {
+      "id": "HRD-1791374743659-5xdcbk",
+      "name": "Atpl Stability Certificate",
+      "filename": "HRD-1791374743659-5xdcbk",
+      "uploaded_at": "2026-10-07T12:05:43.671Z",
+      "updated_at": "2026-10-07T12:05:43.671Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791374743659-5xdcbk"
     }
   }
 }
