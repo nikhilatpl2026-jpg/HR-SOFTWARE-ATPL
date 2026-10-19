@@ -1,5 +1,5 @@
 {
-  "version": 261,
+  "version": 262,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -161,18 +161,8 @@
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
-    "large_batch_file_14.xlsx": {
-      "name": "Large_Batch_File_14.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
     "bulk_salary_sheet_15.xlsx": {
       "name": "Bulk_Salary_Sheet_15.xlsx",
-      "deleted_at": "2026-10-13T05:57:34.691Z",
-      "deleted_by": "system_clean"
-    },
-    "large_batch_file_15.xlsx": {
-      "name": "Large_Batch_File_15.xlsx",
       "deleted_at": "2026-10-13T05:57:34.691Z",
       "deleted_by": "system_clean"
     },
@@ -1509,15 +1499,27 @@
       "doc_type": "salary",
       "blob_key": "salary_large_batch_file_13_xlsx"
     },
-    "hr_doc:hrd-1791369510242-8y2cev": {
-      "id": "HRD-1791369510242-8y2cev",
-      "name": "Atpl Calibration Certificate",
-      "filename": "HRD-1791369510242-8y2cev",
-      "uploaded_at": "2026-10-07T11:15:36.932Z",
-      "updated_at": "2026-10-07T11:15:36.932Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-1791369510242-8y2cev"
+    "salary:large_batch_file_14.xlsx": {
+      "id": "Large_Batch_File_14.xlsx",
+      "name": "Large_Batch_File_14.xlsx",
+      "filename": "Large_Batch_File_14.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_14_xlsx"
+    },
+    "salary:large_batch_file_15.xlsx": {
+      "id": "Large_Batch_File_15.xlsx",
+      "name": "Large_Batch_File_15.xlsx",
+      "filename": "Large_Batch_File_15.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-10-19T06:34:35.841Z",
+      "saved_at": "2026-10-19T06:34:35.841Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_15_xlsx"
     }
   }
 }
