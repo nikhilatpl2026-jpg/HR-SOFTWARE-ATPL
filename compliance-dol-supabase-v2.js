@@ -39,8 +39,9 @@ var EDGE_URL = (function() {
 })();
 
 function getFb() {
+  if (root.ATPLRealtimeSyncEngine) return root.ATPLRealtimeSyncEngine;
   if (root.__atplFirebaseQuotaExhausted) return null;
-  return root.ATPLNativeFirebase || root.ATPLFirebase || null;
+  return root.ATPLFirebase || root.ATPLNativeFirebase || null;
 }
 
 function getLegacyVault() {

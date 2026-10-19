@@ -134,7 +134,13 @@ async function pullMaster(force){
   lastMasterPull=Date.now();
   if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function'){
     var verified=await root.ATPLCloudSyncV1.pullMaster();
-    if(!verified)throw new Error('Employee Master cloud refresh failed; keeping local cache unchanged');
+    if(!verified){
+      if(root.ATPLRealtimeSyncEngine&&typeof root.ATPLRealtimeSyncEngine.fetchAllEmployeeMaster==='function'){
+        var fallbackRecs=await root.ATPLRealtimeSyncEngine.fetchAllEmployeeMaster();
+        if(Array.isArray(fallbackRecs)&&fallbackRecs.length)return injectMaster(fallbackRecs);
+      }
+      throw new Error('Employee Master cloud refresh failed; keeping local cache unchanged');
+    }
     return cleanMaster(J(root.localStorage.getItem(MASTER)||'[]',[])).length;
   }
   var r=await api({action:'getEmployeeMaster',token:t},10000);

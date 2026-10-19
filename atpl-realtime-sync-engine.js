@@ -19,7 +19,27 @@
 (function(window) {
   'use strict';
 
-  var AUTHORITY_SCHEMA_VERSION = '2026.10.17-STRICT-AUTHORITY-V100';
+  var AUTHORITY_SCHEMA_VERSION = '2026.10.19-STRICT-AUTHORITY-V120';
+
+  var FAKE_TEST_PATTERNS = [
+    'bulk_salary_sheet_',
+    'large_batch_file_',
+    'duplicate_test_file_179',
+    'simul_file_',
+    'offline_reconcile_file',
+    'salary_may_2026_audit_179',
+    'atpl_sync_test_',
+    'hrd-test-'
+  ];
+
+  function isFakeTestArtifact(nameOrId) {
+    var s = String(nameOrId || '').toLowerCase().trim();
+    if (!s) return false;
+    for (var i = 0; i < FAKE_TEST_PATTERNS.length; i++) {
+      if (s.indexOf(FAKE_TEST_PATTERNS[i]) >= 0) return true;
+    }
+    return false;
+  }
   var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
 
   // Obfuscated fallback token (prevents GitHub secret-scanner auto-revocation on push)
@@ -36,7 +56,7 @@
     }
   }
 
-  // Use Express backend on localhost / .run.app, or empty string on GitHub Pages
+  // Only use Express backend if running on localhost / 127.0.0.1 / active .run.app host
   function getLocalServerBase() {
     try {
       if (typeof window === 'undefined' || !window.location) return '';
@@ -45,7 +65,6 @@
       if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
         return origin;
       }
-      return (window.ATPL_GCP_BACKEND_URL || '');
     } catch (_) {}
     return '';
   }
@@ -171,7 +190,55 @@
       var done = localStorage.getItem('ATPL_AUTHORITY_SCHEMA_VERSION');
       if (done === AUTHORITY_SCHEMA_VERSION) return;
       localStorage.setItem('ATPL_AUTHORITY_SCHEMA_VERSION', AUTHORITY_SCHEMA_VERSION);
-      console.log('[ATPL Sync] Schema version active (' + AUTHORITY_SCHEMA_VERSION + ').');
+      localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+      ['ATPL_SALARY_TOMBSTONES_V2', 'ATPL_HR_TOMBSTONES_V1', 'ATPL_HR_TOMBSTONES_V2'].forEach(function(tk) {
+        try {
+          var obj = JSON.parse(localStorage.getItem(tk) || '{}');
+          Object.keys(obj).forEach(function(k) {
+            if (isFakeTestArtifact(k) || k === '__all__') delete obj[k];
+          });
+          localStorage.setItem(tk, JSON.stringify(obj));
+        } catch (_) {}
+      });
+      if (typeof indexedDB !== 'undefined') {
+        try {
+          var r1 = indexedDB.open('AroraTextiles', 1);
+          r1.onsuccess = function(e) {
+            var db = e.target.result;
+            if (db.objectStoreNames.contains('salaryFiles')) {
+              var store = db.transaction('salaryFiles', 'readwrite').objectStore('salaryFiles');
+              var cur = store.openCursor();
+              cur.onsuccess = function(ev) {
+                var c = ev.target.result;
+                if (c) {
+                  var v = c.value;
+                  if (v && (isFakeTestArtifact(v.name) || isFakeTestArtifact(v.id))) c.delete();
+                  c.continue();
+                }
+              };
+            }
+          };
+        } catch (_) {}
+        try {
+          var r2 = indexedDB.open('AroraTextilesHRDocs', 1);
+          r2.onsuccess = function(e) {
+            var db = e.target.result;
+            if (db.objectStoreNames.contains('documents')) {
+              var store = db.transaction('documents', 'readwrite').objectStore('documents');
+              var cur = store.openCursor();
+              cur.onsuccess = function(ev) {
+                var c = ev.target.result;
+                if (c) {
+                  var v = c.value;
+                  if (v && (isFakeTestArtifact(v.id) || isFakeTestArtifact(v.document_name))) c.delete();
+                  c.continue();
+                }
+              };
+            }
+          };
+        } catch (_) {}
+      }
+      console.log('[ATPL Sync] Schema version active (' + AUTHORITY_SCHEMA_VERSION + ') - purged ghost test artifacts.');
     } catch (_) {}
   })();
 
@@ -189,9 +256,48 @@
     return next;
   }
 
+  var staticStoreCache = {};
+  var staticStoreCacheAt = {};
+
+  async function fetchJsonWithTimeout(url, timeoutMs) {
+    var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = setTimeout(function() { try { if (ctrl) ctrl.abort(); } catch (_) {} }, timeoutMs || 10000);
+    try {
+      var res = await fetch(url, { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined });
+      if (res && res.ok) {
+        return await res.json();
+      }
+    } catch (_) {
+    } finally {
+      clearTimeout(timer);
+    }
+    return null;
+  }
+
+  async function getStaticStore(fileName, force) {
+    var now = Date.now();
+    if (!force && staticStoreCache[fileName] && (now - (staticStoreCacheAt[fileName] || 0) < 30000)) {
+      return staticStoreCache[fileName];
+    }
+    var urls = [
+      './data/' + fileName + '?_t=' + now,
+      'data/' + fileName + '?_t=' + now,
+      'https://raw.githubusercontent.com/' + GH_REPO + '/main/data/' + fileName + '?_t=' + now
+    ];
+    for (var i = 0; i < urls.length; i++) {
+      var data = await fetchJsonWithTimeout(urls[i], 10000);
+      if (data && typeof data === 'object') {
+        staticStoreCache[fileName] = data;
+        staticStoreCacheAt[fileName] = Date.now();
+        return data;
+      }
+    }
+    return staticStoreCache[fileName] || null;
+  }
+
   async function ghApiFetch(path, options) {
     options = options || {};
-    var token = getGitHubToken();
+    var token = options.skipAuth ? '' : getGitHubToken();
     var headers = Object.assign({
       'Accept': options.raw ? 'application/vnd.github.v3.raw' : 'application/vnd.github.v3+json'
     }, options.headers || {});
@@ -214,16 +320,37 @@
     }
   }
 
-  async function ghReadJson(path) {
+  async function ghReadJson(path, needSha) {
+    if (!needSha) {
+      var ts = Date.now();
+      var fastUrls = [
+        'https://raw.githubusercontent.com/' + GH_REPO + '/main/' + path + '?_t=' + ts,
+        './' + path + '?_t=' + ts,
+        path + '?_t=' + ts
+      ];
+      for (var i = 0; i < fastUrls.length; i++) {
+        var fastJson = await fetchJsonWithTimeout(fastUrls[i], 8000);
+        if (fastJson && typeof fastJson === 'object') {
+          return { sha: '', json: fastJson };
+        }
+      }
+    }
     try {
       var res = await ghApiFetch(path, { method: 'GET' });
+      if (res && (res.status === 401 || res.status === 403)) {
+        res = await ghApiFetch(path, { method: 'GET', skipAuth: true });
+      }
       if (!res || !res.ok) return null;
       var data = await res.json();
-      if (data && typeof data.content === 'string') {
+      if (data && typeof data.content === 'string' && data.content.trim()) {
         return {
           sha: data.sha || '',
           json: JSON.parse(b64ToUtf8(data.content))
         };
+      }
+      if (data && data.sha) {
+        var rawFallback = await fetchJsonWithTimeout('https://raw.githubusercontent.com/' + GH_REPO + '/main/' + path + '?_t=' + Date.now(), 8000);
+        return { sha: data.sha, json: rawFallback || {} };
       }
       if (data && typeof data === 'object' && !data.sha) {
         return { sha: '', json: data };
@@ -237,7 +364,7 @@
     if (!token) return false;
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        var existing = await ghReadJson(path);
+        var existing = await ghReadJson(path, true);
         var sha = existing ? existing.sha : '';
         var contentB64 = utf8ToB64(JSON.stringify(obj, null, 2));
         var body = {
@@ -263,7 +390,7 @@
     var token = getGitHubToken();
     if (!token) return false;
     try {
-      var existing = await ghReadJson(path);
+      var existing = await ghReadJson(path, true);
       if (!existing || !existing.sha) return true;
       await ghApiFetch(path, {
         method: 'DELETE',
@@ -307,13 +434,6 @@
         var modLow = String(mod || 'salary').toLowerCase();
         var cleanKey = String(key || '').toLowerCase().trim();
         if (!cleanKey) return false;
-
-        // Never commit dummy test files to GitHub repo
-        var checkStr = cleanKey + ' ' + String((metaObj && (metaObj.name || metaObj.filename)) || '');
-        if (/bulk_salary_sheet|large_batch_file|simul_file|duplicate_test_file|offline_reconcile_file|salary_may_2026_audit|atpl_sync_test|hrd-test/i.test(checkStr)) {
-          return true; // Pretend saved for test runner, do not commit to GitHub
-        }
-
         var blobKey = safeBlobKey(modLow, cleanKey);
 
         if (payloadObj !== undefined && payloadObj !== null) {
@@ -335,7 +455,13 @@
         delete m.tombstones[cleanKey];
         if (modLow === 'salary') delete m.tombstones['salary:__all__'];
 
-        m.files[compositeKey] = Object.assign({}, metaObj || {}, {
+        var slimMeta = Object.assign({}, metaObj || {});
+        delete slimMeta.file_data;
+        delete slimMeta.file_data_list;
+        delete slimMeta.original_b64;
+        delete slimMeta.buf;
+        delete slimMeta.contributions;
+        m.files[compositeKey] = Object.assign({}, slimMeta, {
           id: (metaObj && metaObj.id) || cleanKey,
           name: (metaObj && (metaObj.name || metaObj.filename)) || key,
           filename: (metaObj && (metaObj.filename || metaObj.name)) || key,
@@ -418,34 +544,6 @@
         }
         for (var bi = 0; bi < blobKeysToDelete.length; bi++) {
           await ghDeletePath('data/blobs/' + blobKeysToDelete[bi] + '.json', 'sync(' + modLow + '): remove blob');
-        }
-
-        // GH_DELETE_SALARY_ENHANCEMENT
-        if (modLow === 'salary') {
-          try {
-            var salRes = await ghReadJson('data/salary_files.json');
-            if (salRes && salRes.json) {
-              var salObj = salRes.json;
-              var salChanged = false;
-              for (var sk in salObj) {
-                var sLow = sk.toLowerCase().trim();
-                if (sLow === cleanKey || sLow === cleanName) {
-                  delete salObj[sk];
-                  salChanged = true;
-                }
-              }
-              if (salChanged) {
-                await ghWriteJson('data/salary_files.json', salObj, 'sync(salary): remove ' + (name || key));
-              }
-            }
-          } catch (_) {}
-          try {
-            var sTombRes = await ghReadJson('data/salary_tombstones.json');
-            var sTombs = (sTombRes && sTombRes.json) || {};
-            sTombs[cleanKey] = { name: (name || key), deleted_at: nowIso };
-            if (cleanName) sTombs[cleanName] = { name: (name || key), deleted_at: nowIso };
-            await ghWriteJson('data/salary_tombstones.json', sTombs, 'sync(salary): tombstone ' + (name || key));
-          } catch (_) {}
         }
         return ok;
       });
@@ -615,22 +713,65 @@
         } catch (_) {}
       }
 
+      var cleanId = rawId.replace(/^sf_/i, '').trim();
       // Try GitHub Cloud Blob
       try {
         var manifest = await ATPLGitHubCloud.getManifest(false);
+        var foundEntry = null;
         if (manifest && manifest.files) {
-          var foundEntry = null;
           Object.values(manifest.files).forEach(function(item) {
             if (!item) return;
-            if (String(item.id || '').toLowerCase() === rawId.toLowerCase() || String(item.name || item.filename || '').toLowerCase() === rawId.toLowerCase()) {
+            var iId = String(item.id || '').toLowerCase().trim();
+            var iName = String(item.name || item.filename || '').toLowerCase().trim();
+            var rLow = rawId.toLowerCase();
+            var cLow = cleanId.toLowerCase();
+            if (iId === rLow || iName === rLow || iId === cLow || iName === cLow) {
               foundEntry = item;
             }
           });
-          if (foundEntry && foundEntry.blob_key) {
-            var blobData = await ATPLGitHubCloud.getBlob(foundEntry.blob_key);
-            if (blobData && blobData.payload !== undefined) {
-              return [{ id: foundEntry.id, filename: foundEntry.filename || foundEntry.name, payload: blobData.payload, uploaded_at: foundEntry.uploaded_at }];
-            }
+        }
+        var candidateBlobKeys = [];
+        if (foundEntry && foundEntry.blob_key) candidateBlobKeys.push(foundEntry.blob_key);
+        if (foundEntry && (foundEntry.name || foundEntry.filename)) {
+          candidateBlobKeys.push(safeBlobKey(foundEntry.module || 'salary', foundEntry.name || foundEntry.filename));
+        }
+        candidateBlobKeys.push(safeBlobKey('salary', cleanId));
+        candidateBlobKeys.push('hrdoc_' + cleanId.toLowerCase());
+        for (var bki = 0; bki < candidateBlobKeys.length; bki++) {
+          var bKey = candidateBlobKeys[bki];
+          if (!bKey) continue;
+          var blobData = await ATPLGitHubCloud.getBlob(bKey);
+          if (blobData && blobData.payload !== undefined) {
+            return [{
+              id: (foundEntry && foundEntry.id) || rawId,
+              filename: (foundEntry && (foundEntry.filename || foundEntry.name)) || cleanId,
+              payload: blobData.payload,
+              uploaded_at: (foundEntry && foundEntry.uploaded_at) || blobData.updated_at || new Date().toISOString()
+            }];
+          }
+        }
+      } catch (_) {}
+
+      // Fallback to static stores (salary_files.json / hr_docs.json)
+      try {
+        var salStore = await getStaticStore('salary_files.json', false);
+        if (salStore && typeof salStore === 'object') {
+          var sEntry = salStore[cleanId.toLowerCase()] || salStore[rawId.toLowerCase()];
+          if (!sEntry) {
+            Object.keys(salStore).forEach(function(sk) {
+              var it = salStore[sk];
+              if (it && String(it.name || '').toLowerCase().trim() === cleanId.toLowerCase()) sEntry = it;
+            });
+          }
+          if (sEntry && sEntry.buf) {
+            return [{ id: rawId, filename: sEntry.name || cleanId, payload: sEntry.buf, uploaded_at: sEntry.saved || new Date().toISOString() }];
+          }
+        }
+        var hrStore = await getStaticStore('hr_docs.json', false);
+        if (hrStore && typeof hrStore === 'object') {
+          var hEntry = hrStore[cleanId.toLowerCase()] || hrStore[rawId.toLowerCase()];
+          if (hEntry) {
+            return [{ id: hEntry.id || rawId, filename: hEntry.id || rawId, payload: hEntry, uploaded_at: hEntry.updated_at || new Date().toISOString() }];
           }
         }
       } catch (_) {}
@@ -717,6 +858,24 @@
           }
         } catch (_) {}
       }
+      if (Object.keys(salMap).length === 0) {
+        try {
+          var staticSal = await getStaticStore('salary_files.json', false);
+          if (staticSal && typeof staticSal === 'object') {
+            cloudSuccess = true;
+            Object.keys(staticSal).forEach(function(sk) {
+              var sf = staticSal[sk];
+              if (sf && sf.name && !isFakeTestArtifact(sf.name)) {
+                var k = String(sf.name).toLowerCase().trim();
+                var t = ghM2 && ghM2.tombstones && (ghM2.tombstones['salary:' + k] || ghM2.tombstones[k]);
+                if (!t && !salMap[k]) {
+                  salMap[k] = { id: sf.name, filename: sf.name, size: sf.buf ? sf.buf.length : 0, uploaded_at: sf.saved || new Date().toISOString() };
+                }
+              }
+            });
+          }
+        } catch (_) {}
+      }
       return cloudSuccess ? Object.values(salMap) : null;
     }
 
@@ -770,14 +929,37 @@
         } catch (_) {}
       }
       var ghM4 = await ATPLGitHubCloud.getManifest(false);
+      var staticHr = endpoint.indexOf('payload') >= 0 ? (await getStaticStore('hr_docs.json', false)) : null;
       if (ghM4 && ghM4.files) {
         cloudSuccess = true;
-        Object.values(ghM4.files).forEach(function(f) {
-          if (f && (f.module === 'hr_doc' || f.doc_type === 'hr_doc') && f.id) {
-            var k = String(f.id).toLowerCase();
-            var t = ghM4.tombstones && (ghM4.tombstones['hr_doc:' + k] || ghM4.tombstones[k]);
+        var ghHrEntries = Object.values(ghM4.files).filter(function(f) {
+          return f && (f.module === 'hr_doc' || f.doc_type === 'hr_doc') && f.id && !isFakeTestArtifact(f.id);
+        });
+        for (var ghi = 0; ghi < ghHrEntries.length; ghi++) {
+          var f = ghHrEntries[ghi];
+          var k = String(f.id).toLowerCase();
+          var t = ghM4.tombstones && (ghM4.tombstones['hr_doc:' + k] || ghM4.tombstones[k]);
+          if (!t && !hrMap[k]) {
+            var fullPayload = (staticHr && staticHr[k]) || f.meta || f;
+            if (endpoint.indexOf('payload') >= 0 && (!fullPayload.file_data && f.blob_key)) {
+              try {
+                var hBlob = await ATPLGitHubCloud.getBlob(f.blob_key);
+                if (hBlob && hBlob.payload) fullPayload = hBlob.payload;
+              } catch (_) {}
+            }
+            hrMap[k] = { id: f.id, filename: f.id, payload: fullPayload, size: f.size || 100, uploaded_at: f.uploaded_at || new Date().toISOString() };
+          }
+        }
+      }
+      if (staticHr && typeof staticHr === 'object') {
+        cloudSuccess = true;
+        Object.keys(staticHr).forEach(function(hk) {
+          var hDoc = staticHr[hk];
+          if (hDoc && hDoc.id && !isFakeTestArtifact(hDoc.id)) {
+            var k = String(hDoc.id).toLowerCase();
+            var t = ghM4 && ghM4.tombstones && (ghM4.tombstones['hr_doc:' + k] || ghM4.tombstones[k]);
             if (!t && !hrMap[k]) {
-              hrMap[k] = { id: f.id, filename: f.id, payload: f.meta || f, size: f.size || 100, uploaded_at: f.uploaded_at || new Date().toISOString() };
+              hrMap[k] = { id: hDoc.id, filename: hDoc.id, payload: hDoc, size: (hDoc.file_data && hDoc.file_data.length) || 100, uploaded_at: hDoc.updated_at || new Date().toISOString() };
             }
           }
         });
@@ -1771,6 +1953,7 @@
             id: d.id || d.filename,
             name: d.filename,
             size: d.size || 0,
+            is_gzip: true,
             saved_at: d.uploaded_at,
             uploaded_at: d.uploaded_at,
             uploaded_by: 'admin'
@@ -1970,72 +2153,154 @@
     },
 
     fetchAllDolRecords: async function(type) {
+      var modType = String(type || 'esic').toLowerCase().trim();
+      var byId = {};
       var fb = getNativeFb();
-      if (fb && typeof fb.fetchAllDolRecords === 'function') {
-        return await fb.fetchAllDolRecords(type);
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.fetchAllDolRecords === 'function') {
+        try {
+          var fbRecs = await fb.fetchAllDolRecords(modType);
+          (fbRecs || []).forEach(function(r) {
+            if (r && r.id) byId[String(r.id).toLowerCase()] = r;
+          });
+        } catch (_) {}
       }
-      return [];
+      try {
+        var staticDol = await getStaticStore('dol_records.json', false);
+        if (staticDol && typeof staticDol === 'object') {
+          Object.keys(staticDol).forEach(function(dk) {
+            var r = staticDol[dk];
+            if (!r) return;
+            var rType = String(r.type || r.challan_type || r.module || '').toLowerCase();
+            if (rType === modType) {
+              var k = String(r.id || dk).toLowerCase();
+              if (!byId[k]) byId[k] = r;
+            }
+          });
+        }
+      } catch (_) {}
+      try {
+        var ghM = await ATPLGitHubCloud.getManifest(false);
+        if (ghM && ghM.files) {
+          Object.values(ghM.files).forEach(function(f) {
+            if (f && (f.module === modType || f.doc_type === modType) && f.id) {
+              var k = String(f.id).toLowerCase();
+              var t = ghM.tombstones && (ghM.tombstones[modType + ':' + k] || ghM.tombstones[k]);
+              if (!t && !byId[k]) byId[k] = f;
+            }
+          });
+        }
+      } catch (_) {}
+      return Object.values(byId);
     },
 
     fetchAllDolTombstones: async function(type) {
+      var modType = String(type || 'esic').toLowerCase().trim();
+      var out = [];
       var fb = getNativeFb();
-      if (fb && typeof fb.fetchAllDolTombstones === 'function') {
-        return await fb.fetchAllDolTombstones(type);
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.fetchAllDolTombstones === 'function') {
+        try {
+          var fbT = await fb.fetchAllDolTombstones(modType);
+          if (Array.isArray(fbT)) out = out.concat(fbT);
+        } catch (_) {}
       }
-      return [];
+      try {
+        var ghM = await ATPLGitHubCloud.getManifest(false);
+        if (ghM && ghM.tombstones) {
+          Object.values(ghM.tombstones).forEach(function(t) {
+            if (t && t.module === modType) out.push(t);
+          });
+        }
+      } catch (_) {}
+      return out;
     },
 
     decodeDolPayload: async function(rec) {
+      if (!rec) return null;
+      if (rec.original_b64 || rec.buf) return rec;
       var fb = getNativeFb();
-      if (fb && typeof fb.decodeDolPayload === 'function') {
-        return await fb.decodeDolPayload(rec);
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.decodeDolPayload === 'function') {
+        try {
+          var dec = await fb.decodeDolPayload(rec);
+          if (dec && (dec.original_b64 || dec.buf)) return dec;
+        } catch (_) {}
+      }
+      try {
+        var staticDol = await getStaticStore('dol_records.json', false);
+        if (staticDol && rec.id && staticDol[rec.id]) {
+          return staticDol[rec.id];
+        }
+      } catch (_) {}
+      if (rec.blob_key) {
+        try {
+          var b = await ATPLGitHubCloud.getBlob(rec.blob_key);
+          if (b && b.payload) return b.payload;
+        } catch (_) {}
       }
       return rec;
     },
 
     decodeDocPayload: async function(doc) {
       if (!doc) return null;
-      var fb = getNativeFb();
-      if (fb && typeof fb.decodeDocPayload === 'function') {
-        try {
-          var decoded = await fb.decodeDocPayload(doc);
-          if (decoded) return decoded;
-        } catch (_) {}
-      }
       if (doc.original_b64) return { original_b64: doc.original_b64, name: doc.name };
       if (doc.payload) return { original_b64: doc.payload, name: doc.name };
-      var rows = await sbRest('hr_files?id=eq.' + encodeURIComponent(doc.id || doc.name) + '&select=filename,payload');
+      var fb = getNativeFb();
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.decodeDocPayload === 'function') {
+        try {
+          var decoded = await fb.decodeDocPayload(doc);
+          if (decoded && (decoded.original_b64 || decoded.sheets)) return decoded;
+        } catch (_) {}
+      }
+      var lookupKey = doc.name || doc.id || '';
+      var rows = await sbRest('hr_files?id=eq.' + encodeURIComponent(lookupKey) + '&select=filename,payload');
       if (Array.isArray(rows) && rows[0] && rows[0].payload) {
-        return { original_b64: rows[0].payload, name: doc.name };
+        return { original_b64: rows[0].payload, name: doc.name || rows[0].filename };
       }
       return null;
     },
 
     decodeHrPayload: async function(doc) {
       if (!doc) return null;
+      if (doc.file_data) return doc;
       var fb = getNativeFb();
-      if (fb && typeof fb.decodeHrPayload === 'function') {
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.decodeHrPayload === 'function') {
         try {
           var decoded = await fb.decodeHrPayload(doc);
-          if (decoded) return decoded;
+          if (decoded && decoded.file_data) return decoded;
         } catch (_) {}
       }
+      try {
+        var staticHr = await getStaticStore('hr_docs.json', false);
+        var k = String(doc.id || '').toLowerCase();
+        if (staticHr && k && staticHr[k]) return staticHr[k];
+      } catch (_) {}
+      try {
+        var bKey = doc.blob_key || ('hrdoc_' + String(doc.id || '').toLowerCase());
+        var b = await ATPLGitHubCloud.getBlob(bKey);
+        if (b && b.payload) return b.payload;
+      } catch (_) {}
       return doc;
     },
 
     saveEmployeeMaster: async function(records) {
       var fb = getNativeFb();
       if (fb && typeof fb.saveEmployeeMaster === 'function') {
-        return await fb.saveEmployeeMaster(records);
+        try { return await fb.saveEmployeeMaster(records); } catch (_) {}
       }
       return false;
     },
 
     fetchAllEmployeeMaster: async function() {
       var fb = getNativeFb();
-      if (fb && typeof fb.fetchAllEmployeeMaster === 'function') {
-        return await fb.fetchAllEmployeeMaster();
+      if (fb && !window.__atplFirebaseQuotaExhausted && typeof fb.fetchAllEmployeeMaster === 'function') {
+        try {
+          var fbEm = await fb.fetchAllEmployeeMaster();
+          if (Array.isArray(fbEm) && fbEm.length > 0) return fbEm;
+        } catch (_) {}
       }
+      try {
+        var staticEm = await getStaticStore('employee_master.json', false);
+        if (Array.isArray(staticEm) && staticEm.length > 0) return staticEm;
+      } catch (_) {}
       return null;
     },
 
@@ -2106,27 +2371,14 @@
     purgeLocalSalaryFile: purgeLocalSalaryFile,
     purgeAllSalaryFilesLocal: purgeAllSalaryFilesLocal,
     purgeLocalHrDoc: purgeLocalHrDoc,
-    purgeLocalCompliance: purgeLocalCompliance,
-    // ENGINE_DELETE_ALIAS
-    deleteFile: function(mod, idOrName) {
-      var m = String(mod || 'salary').toLowerCase();
-      if (m === 'salary') return this.deleteSalaryFile(idOrName);
-      if (m === 'hr_doc') return this.deleteHrDoc(idOrName, idOrName);
-      return this.deleteComplianceDoc(m, idOrName, idOrName);
-    },
-    clearModule: function(mod) {
-      var m = String(mod || 'salary').toLowerCase();
-      if (m === 'salary') return this.clearAllSalaryFiles();
-      return true;
-    }
+    purgeLocalCompliance: purgeLocalCompliance
   };
 
   window.ATPLRealtimeSyncEngine = UniversalEngine;
   window.ATPLRealtimeSync = UniversalEngine;
-  if (!window.ATPLFirebase) window.ATPLFirebase = UniversalEngine;
+  window.ATPLFirebase = UniversalEngine;
   window.UniversalEngine = UniversalEngine;
   window.ATPLSyncEngine = UniversalEngine;
-  window.ATPLCentralFileSync = UniversalEngine;
 
   // hookHrDelete in erp-cloud-shared-storage-v1.js handles confirmed HR doc deletes
 

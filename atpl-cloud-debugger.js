@@ -137,6 +137,33 @@ window.ATPLCloudDebugger = (function() {
             }
         };
         actionsBox.appendChild(btnCheckDb);
+
+        var tokenWrap = document.createElement('div');
+        tokenWrap.style.cssText = 'margin-top:12px;padding-top:12px;border-top:1px solid #475569;';
+        var curTok = (window.localStorage && window.localStorage.getItem('ATPL_GITHUB_TOKEN')) || '';
+        tokenWrap.innerHTML = '<div style="font-size:12px;margin-bottom:6px;color:#cbd5e1;">🔑 <b>GitHub Cloud Token (Optional for Direct Repo Writes):</b></div>';
+        var tokInput = document.createElement('input');
+        tokInput.type = 'password';
+        tokInput.placeholder = 'Paste ghp_... token here';
+        tokInput.value = curTok;
+        tokInput.style.cssText = 'width:70%;padding:7px;border-radius:4px;border:1px solid #64748b;background:#0f172a;color:#fff;font-size:12px;margin-right:6px;';
+        var tokSaveBtn = document.createElement('button');
+        tokSaveBtn.innerText = 'Save Token';
+        tokSaveBtn.style.cssText = 'padding:7px 12px;background:#0284c7;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:bold;font-size:12px;';
+        tokSaveBtn.onclick = function() {
+            var val = tokInput.value.trim();
+            if (val) {
+                localStorage.setItem('ATPL_GITHUB_TOKEN', val);
+                alert('✅ GitHub Token saved! Direct GitHub Cloud writes are now active.');
+            } else {
+                localStorage.removeItem('ATPL_GITHUB_TOKEN');
+                alert('GitHub Token cleared.');
+            }
+        };
+        tokenWrap.appendChild(tokInput);
+        tokenWrap.appendChild(tokSaveBtn);
+        actionsBox.appendChild(tokenWrap);
+
         leftCol.appendChild(actionsBox);
 
         var logBox = document.createElement('div');

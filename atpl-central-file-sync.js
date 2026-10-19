@@ -795,14 +795,14 @@
         if (!this.apiBase && window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncNow === "function") {
           try { window.ATPLCloudSharedStorageV1.syncNow(!!force).catch(function(){}); } catch (_) {}
         }
-        if (!backendSuccess && !window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
+        if (!backendSuccess && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllSalaryFiles === 'function') {
           try {
             var fbFiles = await window.ATPLFirebase.fetchAllSalaryFiles();
             var fbTombs = typeof window.ATPLFirebase.fetchAllTombstones === 'function' ? await window.ATPLFirebase.fetchAllTombstones() : [];
             if (Array.isArray(fbFiles)) {
               serverFiles = fbFiles.map(function(f) {
                 return Object.assign({}, f, {
-                  id: f.id || ('sf_' + String(f.name || '').toLowerCase()),
+                  id: f.id || f.name,
                   module: 'salary',
                   name: f.name,
                   buf: f.original_b64 || f.buf || '',

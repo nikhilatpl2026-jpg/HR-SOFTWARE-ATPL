@@ -15464,7 +15464,7 @@ window.triggerManualHrSync = async function() {
     if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
       await window.ATPLCloudSharedStorageV1.syncHrNow(true);
     }
-    if (!window.__atplFirebaseQuotaExhausted && window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
       var fbDocs = await window.ATPLFirebase.fetchAllHrDocs();
       if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate === 'function') {
         await window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate({ all: fbDocs, removedIds: [] });

@@ -221,7 +221,20 @@
       var merged=mergeCloud(local,cloud);
       if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);
       lastPull=Date.now();return true;
-    }catch(e){console.warn('Employee Master cloud refresh unavailable',e);return false}
+    }catch(e){
+      try{
+        if(root.ATPLRealtimeSyncEngine&&typeof root.ATPLRealtimeSyncEngine.fetchAllEmployeeMaster==='function'){
+          var fbRecs=await root.ATPLRealtimeSyncEngine.fetchAllEmployeeMaster();
+          if(Array.isArray(fbRecs)&&fbRecs.length){
+            var local2=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));
+            var merged2=mergeCloud(local2,fbRecs);
+            if(JSON.stringify(merged2)!==JSON.stringify(local2))renderMaster(merged2);
+            lastPull=Date.now();return true;
+          }
+        }
+      }catch(_){}
+      console.warn('Employee Master cloud refresh unavailable',e);return false
+    }
   }
  function syncSharedModules(){try{if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')root.ATPLSharedActivityV2.syncCloud()}catch(_){}}
   function wakeCloud(delay){try{if(wakeTimer)root.clearTimeout(wakeTimer);wakeTimer=root.setTimeout(function(){wakeTimer=0;if(!tok())return;retryPending();probe();syncSharedModules()},delay==null?80:delay)}catch(_){}}
