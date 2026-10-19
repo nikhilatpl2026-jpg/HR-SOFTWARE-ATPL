@@ -88,6 +88,11 @@ const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 const githubSyncDebouncers = {};
 function queueGitHubSync(filename, contentStr) {
   if (!GH_TOKEN) return;
+  // Never sync to GitHub during tests or CI
+  if (process.env.NODE_ENV === 'test' || process.env.CI) return;
+  // Ignore test artifacts
+  if (/bulk_salary_sheet|large_batch_file|simul_file|duplicate_test_file/i.test(contentStr)) return;
+
   if (githubSyncDebouncers[filename]) clearTimeout(githubSyncDebouncers[filename]);
   githubSyncDebouncers[filename] = setTimeout(async () => {
     try {
@@ -114,7 +119,7 @@ function queueGitHubSync(filename, contentStr) {
           'User-Agent': 'ATPL-HR-Server'
         },
         body: JSON.stringify({
-          message: `sync: automated update for data/${filename}`,
+          message: `sync: update data/${filename}`,
           content: b64,
           sha: sha || undefined
         })
@@ -123,7 +128,7 @@ function queueGitHubSync(filename, contentStr) {
     } catch (e) {
       console.warn(`[GitHub-Sync] Warning syncing ${filename}:`, e.message);
     }
-  }, 3000);
+  }, 10000); // 10s debounce batches changes into a single clean commit
 }
 
 // Compute SHA-256 hash of buffer or string

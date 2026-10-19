@@ -99,7 +99,7 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
 
   if (!serverReady) {
     serverProc = spawn('node', [path.join(__dirname, '..', 'server.js')], {
-      env: Object.assign({}, process.env, { PORT: String(PORT) }),
+      env: Object.assign({}, process.env, { PORT: String(PORT), NODE_ENV: 'test' }),
       stdio: ['ignore', 'pipe', 'pipe']
     });
     serverProc.stdout.on('data', d => process.stdout.write('[SERVER OUT] ' + d));
@@ -466,6 +466,16 @@ test('Comprehensive 15-Point Cross-Browser & Multi-Module File Sync Acceptance T
     for (let i = 1; i <= 25; i++) {
       assert.ok(checkList.data.files.some(f => f.id === `large_bulk_file_${i}`), `Large file ${i} must exist in backend`);
     }
+
+    // Cleanup all test files so they never pollute production database
+    try {
+      for (let i = 1; i <= 25; i++) {
+        await request(PORT, 'DELETE', `/api/sync/files/large_bulk_file_${i}?module=salary`);
+      }
+      for (let i = 1; i <= 10; i++) {
+        await request(PORT, 'DELETE', `/api/sync/files/test_bulk10_file_${i}?module=salary`);
+      }
+    } catch (_) {}
   });
 
   // Close SSE connections
