@@ -1,5 +1,5 @@
 {
-  "version": 84,
+  "version": 85,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2413,6 +2413,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
+    },
+    "hr_doc:hrd-1791373460664-az69r7": {
+      "id": "HRD-1791373460664-az69r7",
+      "name": "Atpl No objection Certificate (Noc) For Ground Water Abstraction",
+      "filename": "HRD-1791373460664-az69r7",
+      "uploaded_at": "2026-10-07T11:44:20.685Z",
+      "updated_at": "2026-10-07T11:44:20.685Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791373460664-az69r7"
     }
   }
 }
