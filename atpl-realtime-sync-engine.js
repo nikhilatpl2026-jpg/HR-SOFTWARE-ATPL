@@ -419,6 +419,34 @@
         for (var bi = 0; bi < blobKeysToDelete.length; bi++) {
           await ghDeletePath('data/blobs/' + blobKeysToDelete[bi] + '.json', 'sync(' + modLow + '): remove blob');
         }
+
+        // GH_DELETE_SALARY_ENHANCEMENT
+        if (modLow === 'salary') {
+          try {
+            var salRes = await ghReadJson('data/salary_files.json');
+            if (salRes && salRes.json) {
+              var salObj = salRes.json;
+              var salChanged = false;
+              for (var sk in salObj) {
+                var sLow = sk.toLowerCase().trim();
+                if (sLow === cleanKey || sLow === cleanName) {
+                  delete salObj[sk];
+                  salChanged = true;
+                }
+              }
+              if (salChanged) {
+                await ghWriteJson('data/salary_files.json', salObj, 'sync(salary): remove ' + (name || key));
+              }
+            }
+          } catch (_) {}
+          try {
+            var sTombRes = await ghReadJson('data/salary_tombstones.json');
+            var sTombs = (sTombRes && sTombRes.json) || {};
+            sTombs[cleanKey] = { name: (name || key), deleted_at: nowIso };
+            if (cleanName) sTombs[cleanName] = { name: (name || key), deleted_at: nowIso };
+            await ghWriteJson('data/salary_tombstones.json', sTombs, 'sync(salary): tombstone ' + (name || key));
+          } catch (_) {}
+        }
         return ok;
       });
     },
@@ -2078,7 +2106,19 @@
     purgeLocalSalaryFile: purgeLocalSalaryFile,
     purgeAllSalaryFilesLocal: purgeAllSalaryFilesLocal,
     purgeLocalHrDoc: purgeLocalHrDoc,
-    purgeLocalCompliance: purgeLocalCompliance
+    purgeLocalCompliance: purgeLocalCompliance,
+    // ENGINE_DELETE_ALIAS
+    deleteFile: function(mod, idOrName) {
+      var m = String(mod || 'salary').toLowerCase();
+      if (m === 'salary') return this.deleteSalaryFile(idOrName);
+      if (m === 'hr_doc') return this.deleteHrDoc(idOrName, idOrName);
+      return this.deleteComplianceDoc(m, idOrName, idOrName);
+    },
+    clearModule: function(mod) {
+      var m = String(mod || 'salary').toLowerCase();
+      if (m === 'salary') return this.clearAllSalaryFiles();
+      return true;
+    }
   };
 
   window.ATPLRealtimeSyncEngine = UniversalEngine;
@@ -2086,6 +2126,7 @@
   if (!window.ATPLFirebase) window.ATPLFirebase = UniversalEngine;
   window.UniversalEngine = UniversalEngine;
   window.ATPLSyncEngine = UniversalEngine;
+  window.ATPLCentralFileSync = UniversalEngine;
 
   // hookHrDelete in erp-cloud-shared-storage-v1.js handles confirmed HR doc deletes
 
