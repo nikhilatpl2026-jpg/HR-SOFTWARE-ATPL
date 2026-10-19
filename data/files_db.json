@@ -1,5 +1,5 @@
 {
-  "version": 479,
+  "version": 480,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1129,6 +1129,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "hr_doc:hrd-1791372928645-j7w8lv": {
+      "id": "HRD-1791372928645-j7w8lv",
+      "name": "Atpl Lab Test report Certificate Of Accreditation",
+      "filename": "HRD-1791372928645-j7w8lv",
+      "uploaded_at": "2026-10-07T11:35:28.662Z",
+      "updated_at": "2026-10-07T11:35:28.662Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791372928645-j7w8lv"
     }
   }
 }
