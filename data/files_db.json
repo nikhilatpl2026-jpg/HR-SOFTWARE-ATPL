@@ -1,5 +1,5 @@
 {
-  "version": 87,
+  "version": 88,
   "tombstones": {
     "test_bulk10_file_3": {
       "id": "test_bulk10_file_3",
@@ -2443,6 +2443,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791374743659-5xdcbk"
+    },
+    "hr_doc:hrd-test-1791714805069": {
+      "id": "HRD-TEST-1791714805069",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714805069",
+      "uploaded_at": "2026-10-19T05:11:23.572Z",
+      "updated_at": "2026-10-19T05:11:23.572Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714805069"
     }
   }
 }
