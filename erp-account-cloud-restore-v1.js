@@ -24,12 +24,15 @@ function jsonp(p,timeout){/* broker-routed-account */if(root.ATPLCloudAPI)return
   sc.async=true;sc.src=API+'?'+Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':String(p[k]))}).join('&');
   (root.document.head||root.document.documentElement).appendChild(sc)
 })}
+function isOwner(id){return /^(admin|nikhil\s*1911|arora|hr)$/i.test(text(id))}
 function currentUser(){
   var s=session();if(!s)return null;
   var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase(),u=(Array.isArray(a)?a:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});
-  return u||{id:s.id,name:s.id,admin:false,access:[]}
+  var adm=isOwner(id)||s.admin===true||String(s.admin)==='true'||!!(u&&(u.admin===true||String(u.admin)==='true'));
+  var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));
+  return {id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc};
 }
-function has(u,id){return !!u&&(u.admin===true||(Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(id)>=0)))}
+function has(u,id){if(!u)return false;if(id==='dashboard')id='cmd';return u.admin===true||String(u.admin)==='true'||isOwner(u.id)||(Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(id)>=0))}
 function applyAccess(){
   var u=currentUser();if(!u)return;
   Array.prototype.forEach.call(root.document.querySelectorAll('.vitem[id^="vn-"]'),function(el){
@@ -74,7 +77,8 @@ function syncNow(force){
     else if(allowMaster&&root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function')jobs.push(root.ATPLCloudSyncV1.pullMaster());
     if(root.ATPLSharedActivityV2&&typeof root.ATPLSharedActivityV2.syncCloud==='function')jobs.push(root.ATPLSharedActivityV2.syncCloud());
     if(root.ATPLCloudSharedStorageV1&&typeof root.ATPLCloudSharedStorageV1.syncNow==='function')jobs.push(root.ATPLCloudSharedStorageV1.syncNow(false));
-    var results=await Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)}));
+    var timeoutGuard=new Promise(function(ok){setTimeout(ok,6500)});
+    var results=await Promise.race([Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)})),timeoutGuard.then(function(){return []})]);
     results.forEach(function(x){if(x.status==='rejected')console.warn('Account critical sync job failed',x.reason)});
     applyAccess();badge('☁ Shared Data Ready');
     try{root.document.dispatchEvent(new CustomEvent('atpl-account-cloud-restored',{detail:{at:new Date().toISOString()}}))}catch(_){}

@@ -603,9 +603,9 @@ function applySettings(){
   UI.rows.forEach(row=>{const fit=findBestBreakup(row.manualAmount,row,UI.settings);row.paidDays=fit.paidDays;row.overtimeHours=fit.overtimeHours;recalculateRow(row,UI.settings)});render();
 }
 function checkAccessAndOpen(){
-  let session=null,users=[];try{session=JSON.parse(sessionStorage.getItem('ATPL_UserSession_V5')||'null');users=JSON.parse(localStorage.getItem('ATPL_UserAccess_V1')||'[]')}catch(e){}
+  let session=null,users=[];try{session=JSON.parse(sessionStorage.getItem('ATPL_UserSession_V5')||localStorage.getItem('ATPL_UserSession_V5')||'null');users=JSON.parse(localStorage.getItem('ATPL_UserAccess_V1')||'[]')}catch(e){}
   const user=Array.isArray(users)&&session?users.find(x=>String(x.id).toLowerCase()===String(session.id).toLowerCase()):null;
-  if(user&&!user.admin&&!(user.access||[]).includes('mamsalary'))return alert('Is feature ka access nahi diya gaya.');
+  if(user&&!user.admin&&!(user.access||[]).includes('mamsalary')&&!(user.access||[]).includes('*'))return alert('Is feature ka access nahi diya gaya.');
   if(typeof root.goPage==='function')root.goPage('mamsalary');
 }
 function addPage(){

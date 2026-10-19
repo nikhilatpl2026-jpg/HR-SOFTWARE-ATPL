@@ -4,25 +4,36 @@
 */
 (function(root){
 'use strict';
-var BUILD='2026.09.21-permission-authority1';
+var BUILD='2026.10.19-permission-authority2';
 if(!root||root.__ATPL_PERMISSION_GUARD__===BUILD)return;
 root.__ATPL_PERMISSION_GUARD__=BUILD;
 
 var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',timer=0,observer=null;
-var MASTER_READ={cmd:1,files:1,audit:1,machineaudit:1,bankverify:1,dol:1,dolverify:1,ff:1,empmaster:1,hrdocs:1,mamsalary:1};
+var MASTER_READ={cmd:1,files:1,audit:1,machineaudit:1,bankverify:1,dol:1,dolverify:1,ff:1,empmaster:1,hrdocs:1,mamsalary:1,challan:1,empdashboard:1,test:1,compliancecalendar:1};
 
 function json(v,d){try{return JSON.parse(v)}catch(_){return d}}
 function text(v){return v==null?'':String(v).trim()}
+function isOwner(id){return /^(admin|nikhil\s*1911|arora|hr)$/i.test(text(id))}
 function current(){
   try{
-    var s=json(root.sessionStorage.getItem(SESS)||'null',null);if(!s||!s.id)return null;
+    var s=json(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);
+    if(!s||!s.id)return null;
     var list=json(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase();
     var u=(Array.isArray(list)?list:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});
-    return u||{id:s.id,name:s.name||s.id,admin:s.admin===true,access:Array.isArray(s.access)?s.access:[]}
+    var adm=isOwner(id)||s.admin===true||String(s.admin).toLowerCase()==='true'||!!(u&&(u.admin===true||String(u.admin).toLowerCase()==='true'));
+    var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));
+    var resolved={id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc};
+    if(!root.sessionStorage.getItem(SESS)){
+      try{root.sessionStorage.setItem(SESS,JSON.stringify(resolved))}catch(_){}
+    }
+    return resolved;
   }catch(_){return null}
 }
 function has(u,feature){
-  return !!u&&(u.admin===true||(Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(feature)>=0)))
+  if(!u)return true;
+  if(feature==='dashboard')feature='cmd';
+  if(u.admin===true||String(u.admin).toLowerCase()==='true'||isOwner(u.id))return true;
+  return Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(feature)>=0);
 }
 function setVisible(el,ok){
   if(!el)return;
@@ -57,7 +68,8 @@ function installGoGuard(){
 }
 function clickGuard(ev){
   var el=ev.target&&ev.target.closest?ev.target.closest('.vitem[id^="vn-"]'):null;if(!el)return;
-  var u=current(),feature=el.id.slice(3),ok=feature==='useraccess'?!!(u&&u.admin===true):has(u,feature);
+  var u=current();if(!u)return;
+  var feature=el.id.slice(3),ok=feature==='useraccess'?!!(u&&u.admin===true):has(u,feature);
   if(ok)return;ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation();denied(feature)
 }
 function watchDynamicModules(){
@@ -69,7 +81,7 @@ function watchDynamicModules(){
   if(nav)observer.observe(nav,{childList:true,subtree:true});
   if(content)observer.observe(content,{childList:true,subtree:false})
 }
-function canUseMaster(u){u=u||current();if(!u)return false;if(u.admin===true)return true;return Object.keys(MASTER_READ).some(function(k){return MASTER_READ[k]&&has(u,k)})}
+function canUseMaster(u){u=u||current();if(!u)return false;if(u.admin===true||isOwner(u.id))return true;return Object.keys(MASTER_READ).some(function(k){return MASTER_READ[k]&&has(u,k)})}
 function boot(){installGoGuard();watchDynamicModules();apply();root.setTimeout(function(){installGoGuard();apply()},900)}
 
 root.ATPLPermissionGuard={apply:apply,currentUser:current,hasFeature:function(f){return has(current(),f)},canUseMaster:canUseMaster,version:function(){return BUILD}};

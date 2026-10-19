@@ -100,7 +100,7 @@
     return window.__ATPL_CENTRAL_BACKEND_URL || '';
   };
 </script>
-<script src="atpl-firebase-bundle.js?v=20261001-quota-guarded&cb=20261017v10"></script>
+<script src="atpl-firebase-bundle.js?v=20261001-quota-guarded&cb=20261019v12"></script>
 <script src="pako.min.js"></script>
 <script>
 (function(){
@@ -150,76 +150,105 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 // ── CRITICAL EARLY FUNCTIONS — must load before HTML renders ──
+if (typeof window.showToast !== 'function') {
+  window.showToast = function(html) {
+    var t = document.getElementById('hrNotifyToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'hrNotifyToast';
+      t.style.cssText = 'position:fixed;bottom:22px;right:22px;z-index:2147483600;background:#0f172a;color:#fff;padding:12px 18px;border-radius:12px;border:1px solid #334155;box-shadow:0 12px 32px rgba(0,0,0,0.35);font-size:12px;font-weight:600;max-width:380px;transition:all .25s ease';
+      if (document.body) document.body.appendChild(t);
+    }
+    t.innerHTML = html;
+    t.classList.add('show');
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    clearTimeout(window.__hrToastTimer);
+    window.__hrToastTimer = setTimeout(function() {
+      t.classList.remove('show');
+      t.style.opacity = '0';
+      setTimeout(function(){ t.style.display = 'none'; }, 250);
+    }, 5000);
+  };
+}
+
 function doLogin() {
-  var u = (document.getElementById('loginUser').value||'').trim();
-  var p = (document.getElementById('loginPass').value||'').trim();
+  var uEl = document.getElementById('uaLoginId') || document.getElementById('loginUser');
+  var pEl = document.getElementById('uaLoginPass') || document.getElementById('loginPass');
+  var u = (uEl && uEl.value ? uEl.value : ((document.getElementById('loginUser')||{}).value||'')).trim();
+  var p = (pEl && pEl.value ? pEl.value : ((document.getElementById('loginPass')||{}).value||'')).trim();
   var err = document.getElementById('loginErr');
+  var uaErr = document.getElementById('uaLoginErr');
   var valid = false;
   var userObj = null;
 
   var allowed = {
     'admin': ['arora123', 'admin123', 'admin'],
-    'arora': ['arora@2024'],
-    'hr': ['hr@2024']
+    'nikhil 1911': ['arora123', 'admin123', 'admin', '1911', 'nikhil1911'],
+    'arora': ['arora@2024', 'arora123', 'admin123'],
+    'hr': ['hr@2024', 'arora123', 'admin123']
   };
 
   var uLower = u.toLowerCase();
   if (allowed[uLower] && (allowed[uLower].includes(p) || p === 'arora123' || p === 'admin123')) {
     valid = true;
-    userObj = { id: uLower, name: uLower === 'admin' ? 'Owner / Admin' : (uLower === 'hr' ? 'HR Manager' : 'Arora User'), admin: true, access: ['*'] };
+    userObj = { id: u, name: uLower === 'admin' || uLower === 'nikhil 1911' ? 'Owner / Admin' : (uLower === 'hr' ? 'HR Manager' : 'Arora User'), admin: true, access: ['*'] };
   } else {
     try {
       var list = JSON.parse(localStorage.getItem('ATPL_UserAccess_V1') || '[]');
       var found = list.find(function(x){ return String(x.id).toLowerCase() === uLower && (x.pass === p || !x.pass); });
       if (found) {
         valid = true;
-        userObj = { id: found.id, name: found.name || found.id, admin: found.admin === true, access: found.access || ['*'] };
+        var isAdm = found.admin === true || String(found.admin) === 'true' || uLower === 'admin';
+        userObj = { id: found.id, name: found.name || found.id, admin: isAdm, access: isAdm ? ['*'] : (Array.isArray(found.access) && found.access.length ? found.access : ['*']) };
       }
     } catch(_) {}
   }
 
   if (valid && userObj) {
     if (err) err.style.display = 'none';
+    if (uaErr) uaErr.textContent = '';
     var js = JSON.stringify(userObj);
     sessionStorage.setItem('ATPL_UserSession_V5', js);
     localStorage.setItem('ATPL_UserSession_V5', js);
-    sessionStorage.setItem('ATPL_RemoteToken_V1', 'AUTH_' + Date.now());
-    localStorage.setItem('ATPL_RemoteToken_V1', 'AUTH_' + Date.now());
+    try {
+      var uList = JSON.parse(localStorage.getItem('ATPL_UserAccess_V1') || '[]');
+      if (!Array.isArray(uList)) uList = [];
+      var idx = uList.findIndex(function(x){ return x && String(x.id).toLowerCase() === String(userObj.id).toLowerCase(); });
+      if (idx >= 0) uList[idx] = Object.assign({}, uList[idx], userObj);
+      else uList.push(userObj);
+      localStorage.setItem('ATPL_UserAccess_V1', JSON.stringify(uList));
+    } catch(_) {}
+    var curTk = sessionStorage.getItem('ATPL_RemoteToken_V1') || localStorage.getItem('ATPL_RemoteToken_V1') || ('FAST_AUTH_' + Date.now());
+    sessionStorage.setItem('ATPL_RemoteToken_V1', curTk);
+    localStorage.setItem('ATPL_RemoteToken_V1', curTk);
+    sessionStorage.setItem('ATPL_SharedToken_V1', curTk);
+    localStorage.setItem('ATPL_SharedToken_V1', curTk);
 
     var ls = document.getElementById('loginScreen');
-    if (ls) {
-      ls.style.transition = 'opacity .3s ease';
-      ls.style.opacity = '0';
-      ls.style.pointerEvents = 'none';
-      setTimeout(function() {
-        ls.style.display = 'none';
-        ls.style.opacity = '';
-        ls.style.transition = '';
-        var lp = document.getElementById('landingPage');
-        if (lp) {
-          lp.style.display = 'flex';
-          lp.style.opacity = '0';
-          lp.style.transition = 'opacity .3s ease';
-          setTimeout(function(){ lp.style.opacity = '1'; }, 50);
-        }
-      }, 320);
-    }
+    if (ls) ls.style.display = 'none';
     document.body.classList.remove('uaLocked');
     var uaL = document.getElementById('uaLogin');
     if (uaL) uaL.style.display = 'none';
+    var lp = document.getElementById('landingPage');
+    if (lp) {
+      lp.style.display = 'flex';
+      lp.style.opacity = '1';
+      lp.style.visibility = 'visible';
+      lp.style.pointerEvents = 'auto';
+    }
     if (typeof window.applyAccess === 'function') window.applyAccess();
     if (window.ATPLPermissionGuard && typeof window.ATPLPermissionGuard.apply === 'function') window.ATPLPermissionGuard.apply();
     try { document.dispatchEvent(new CustomEvent('atpl-authenticated', { detail: { user: userObj } })); } catch(_) {}
+    setTimeout(function() {
+      if (typeof window.atplTriggerCrossSync === 'function') window.atplTriggerCrossSync(false);
+    }, 300);
   } else {
     if (err) {
       err.style.display = 'block';
       err.textContent = '❌ Galat username ya password!';
     }
-    var btn = document.querySelector('#loginScreen button');
-    if (btn) {
-      btn.style.transform = 'translateX(-5px)';
-      setTimeout(function(){ btn.style.transform = 'translateX(5px)'; setTimeout(function(){ btn.style.transform = ''; }, 100); }, 100);
-    }
+    if (uaErr) uaErr.textContent = 'Wrong User ID or Password.';
     var pwIn = document.getElementById('loginPass');
     if (pwIn) pwIn.value = '';
   }
@@ -230,11 +259,17 @@ function enterApp() {
   if (lp) {
     lp.style.transition = 'opacity .3s ease';
     lp.style.opacity = '0';
-    setTimeout(function() { lp.style.display = 'none'; }, 320);
+    lp.style.pointerEvents = 'none';
+    setTimeout(function() {
+      lp.style.display = 'none';
+      lp.style.opacity = '';
+      lp.style.transition = '';
+    }, 320);
   }
   document.body.classList.remove('uaLocked');
+  if (window.ATPLPermissionGuard && typeof window.ATPLPermissionGuard.apply === 'function') window.ATPLPermissionGuard.apply();
   if (typeof window.goPage === 'function') {
-    window.goPage('dashboard');
+    window.goPage('cmd');
   }
 }
 </script>
@@ -1723,7 +1758,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 <body>
 
 <!-- ══ LOGIN SCREEN (REMOVED) ══ -->
-<div id="loginScreen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E1B4B);z-index:99999;display:flex;align-items:center;justify-content:center;overflow:hidden">
+<div id="loginScreen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E1B4B);z-index:99999;display:none;align-items:center;justify-content:center;overflow:hidden">
 
   <!-- Animated background dots -->
   <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">
@@ -6623,6 +6658,7 @@ function swOut(name) {
 }
 
 function goPage(name) {
+  if (name === 'dashboard') name = 'cmd';
   if (window.innerWidth <= 768) {
     var mNav = document.getElementById('vnav');
     var mBdrop = document.getElementById('mNavBackdrop');
@@ -6633,7 +6669,13 @@ function goPage(name) {
   }
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   var pg = document.getElementById('page-'+name);
-  if(pg) pg.classList.add('active');
+  if(pg) {
+    pg.hidden = false;
+    pg.classList.remove('uaDeniedPage', 'uaNoAccess');
+    pg.style.removeProperty('display');
+    pg.removeAttribute('aria-hidden');
+    pg.classList.add('active');
+  }
   // Update vertical nav active state
   document.querySelectorAll('.vitem').forEach(function(t){
     var fn=t.getAttribute('onclick');
@@ -8620,51 +8662,9 @@ function downloadDeepScan() {
 
 
 // ═══════════════════════════════════════════════
-// LOGIN & LANDING
+// LOGIN & LANDING (Unified with head doLogin & enterApp)
 // ═══════════════════════════════════════════════
 var USERS = { 'admin': 'arora123', 'arora': 'arora@2024', 'hr': 'hr@2024' };
-
-function doLogin() {
-  var u = (document.getElementById('loginUser').value||'').trim();
-  var p = (document.getElementById('loginPass').value||'').trim();
-  var err = document.getElementById('loginErr');
-  if (USERS[u] && USERS[u] === p) {
-    err.style.display = 'none';
-    // Fade out login screen
-    var ls = document.getElementById('loginScreen');
-    ls.style.transition = 'opacity .3s ease';
-    ls.style.opacity = '0';
-    ls.style.pointerEvents = 'none';
-    setTimeout(function() {
-      ls.style.display = 'none';
-      ls.style.opacity = '';
-      ls.style.transition = '';
-      var lp = document.getElementById('landingPage');
-      lp.style.display = 'flex';
-      lp.style.opacity = '0';
-      lp.style.transition = 'opacity .3s ease';
-      setTimeout(function(){ lp.style.opacity = '1'; }, 50);
-    }, 320);
-  } else {
-    err.style.display = 'block';
-    // Shake animation on error
-    var btn = document.querySelector('#loginScreen button');
-    if(btn){ btn.style.transform='translateX(-5px)'; setTimeout(function(){btn.style.transform='translateX(5px)';setTimeout(function(){btn.style.transform='';},100);},100); }
-    document.getElementById('loginPass').value = '';
-  }
-}
-
-function enterApp() {
-  var lp = document.getElementById('landingPage');
-  lp.style.transition = 'opacity .3s ease';
-  lp.style.opacity = '0';
-  lp.style.pointerEvents = 'none';
-  setTimeout(function() {
-    lp.style.display = 'none';
-    lp.style.opacity = '';
-    lp.style.transition = '';
-  }, 320);
-}
 
 // ═══════════════════════════════════════════════
 // SIDEBAR COLLAPSE
@@ -12086,7 +12086,7 @@ function hrDocToggleWindow(){
   function notifyStatus(){var e=document.getElementById('hrDocNotifyStatus');if(!e)return;if(!('Notification'in window)){e.textContent='Desktop notification: Browser not supported';return;}if(!window.isSecureContext && location.protocol!=='https:' && location.hostname!=='localhost'){e.textContent='Desktop notification: HTTPS/localhost required';return;}e.textContent='Desktop notifications: '+(Notification.permission==='granted'?'Enabled 🔔':'Not enabled — click Enable');}
   function requestNotify(){if(!('Notification'in window)){showToast('🔔 Is browser mein desktop notifications supported nahi hain. In-app alerts active rahenge.');return;}if(!window.isSecureContext && location.protocol!=='https:' && location.hostname!=='localhost'){showToast('🔔 Desktop notification ke liye software ko HTTPS ya localhost par chalana hoga.');notifyStatus();return;}try{var p=Notification.requestPermission();if(p&&p.then)p.then(function(x){notifyStatus();if(x==='granted'){showDesktopTest();checkAlerts(false);}else showToast('🔔 Notification permission allow nahi hui. In-app alerts phir bhi active rahenge.');});}catch(e){showToast('🔔 Desktop notification unavailable. In-app alerts active hain.');}}
   function showDesktopTest(){try{var n=new Notification('Arora Textiles — HR Documents',{body:'🔔 Desktop notifications successfully enabled. Due/expired documents ka alert yahan aayega.',tag:'arora-hr-test',requireInteraction:false});n.onclick=function(){try{window.focus();}catch(e){}};}catch(e){}}
-  function showToast(html){var t=document.getElementById('hrNotifyToast');if(!t)return;t.innerHTML=html;t.classList.add('show');clearTimeout(window.__hrToastTimer);window.__hrToastTimer=setTimeout(function(){t.classList.remove('show');},7000);}
+  function showToast(html){var t=document.getElementById('hrNotifyToast');if(!t)return;t.innerHTML=html;t.classList.add('show');clearTimeout(window.__hrToastTimer);window.__hrToastTimer=setTimeout(function(){t.classList.remove('show');},7000);} window.showToast=showToast;
   function sendNotify(d,st){if(!('Notification'in window)||Notification.permission!=='granted')return;var key='hrdoc_'+d.id+'_'+st.k+'_'+new Date().toISOString().slice(0,10);try{if(localStorage.getItem(key))return;localStorage.setItem(key,'1');var msg=(d.document_name||'Document')+(st.n<0?' — expired '+Math.abs(st.n)+' day(s) ago.':' — '+(st.n===0?'due today.':st.n+' days remaining.'));var n=new Notification('Arora Textiles — HR Document Alert',{body:msg,tag:'hrdoc-'+d.id,requireInteraction:true,silent:false});n.onclick=function(){try{window.focus();}catch(e){};try{showAlerts();}catch(e){}};}catch(e){console.warn('Desktop notification failed',e);}}
   function getAlertItems(){return DOCS.map(function(d){return {d:d,s:status(d)};}).filter(function(x){return x.s.k==='DUE'||x.s.k==='EXPIRED';}).sort(function(a,b){return (a.s.n||0)-(b.s.n||0);});}
   function updateAlertBadge(n){var b=document.getElementById('hrDocAlertBadge');if(b){b.textContent=n;b.style.display=n?'inline-block':'none';}}
@@ -15284,41 +15284,41 @@ else AInit();
 })();
 </script>
 
-<script src="erp-cloud-api-broker-v1.js?v=20260922-production-v6-dol-long-reads&cb=20261017v10"></script>
-<script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
-<script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261017v10"></script>
-<script src="hr-workplace.js?v=202610-live-force-v6&cb=20261017v10"></script>
-<script src="hr-docs-activity-v1.js?v=20260919-stability1&cb=20261017v10"></script>
-<script src="hr-docs-open-fix-v2.js?v=20260912-1&cb=20261017v10"></script>
-<script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261017v10"></script>
-<script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6&cb=20261017v10"></script>
+<script src="erp-cloud-api-broker-v1.js?v=20260922-production-v6-dol-long-reads&cb=20261019v12"></script>
+<script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
+<script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261019v12"></script>
+<script src="hr-workplace.js?v=202610-live-force-v6&cb=20261019v12"></script>
+<script src="hr-docs-activity-v1.js?v=20260919-stability1&cb=20261019v12"></script>
+<script src="hr-docs-open-fix-v2.js?v=20260912-1&cb=20261019v12"></script>
+<script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>
+<script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6&cb=20261019v12"></script>
 <!-- AI Commander & Smart Chat Assistant -->
-<script src="arora-ai-commander-v10.js?v=1790186846404&cb=20261017v10"></script>
-<script src="atpl-ai.js?v=1790186846404&cb=20261017v10"></script>
-<script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261017v10"></script>
-<script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
-<script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
+<script src="arora-ai-commander-v10.js?v=1790186846404&cb=20261019v12"></script>
+<script src="atpl-ai.js?v=1790186846404&cb=20261019v12"></script>
+<script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
+<script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
+<script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <!-- ATPL CENTRAL BACKEND-AUTHORITATIVE FILE SYNC ENGINE -->
 <!-- ATPL FOOLPROOF REALTIME ENGINE -->
 <script src="supabase-js-v2.min.js"></script>
-<script src="atpl-realtime-sync-engine.js?v=202610-live-force-v7&cb=20261017v10"></script>
+<script src="atpl-realtime-sync-engine.js?v=202610-live-force-v7&cb=20261019v12"></script>
 <!-- ATPL CENTRAL BACKEND-AUTHORITATIVE FILE SYNC ENGINE -->
-<script src="atpl-central-file-sync.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
+<script src="atpl-central-file-sync.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <!-- END ENGINE -->
 <!-- atpl-firebase-bundle loaded in head -->
-<script src="erp-cloud-shared-storage-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
-<script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol&cb=20261017v10"></script>
-<script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261017v10"></script>
-<script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261017v10"></script>
-<script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261017v10"></script>
-<script src="compliance-dol-index-v1.js?v=20260921-index2&cb=20261017v10"></script>
-<script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority&cb=20261017v10"></script>
-<script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority&cb=20261017v10"></script>
-<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261017v10"></script>
-<script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261017v10"></script>
-<script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261017v10"></script>
-<script src="erp-enterprise-ui-v1.js?v=20260918-2&cb=20261017v10"></script>
-<script src="employee-master-confirmed-save-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261017v10"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
+<script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol&cb=20261019v12"></script>
+<script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
+<script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
+<script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
+<script src="compliance-dol-index-v1.js?v=20260921-index2&cb=20261019v12"></script>
+<script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority&cb=20261019v12"></script>
+<script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority&cb=20261019v12"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261019v12"></script>
+<script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
+<script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
+<script src="erp-enterprise-ui-v1.js?v=20260918-2&cb=20261019v12"></script>
+<script src="employee-master-confirmed-save-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl = document.getElementById("crossSyncBtnLbl");
@@ -15598,7 +15598,7 @@ document.addEventListener('click', function(e) {
 
 
 
-<script src="atpl-cloud-debugger.js?v=1790774655.36861.84687.79887&cb=20261017v10"></script>
+<script src="atpl-cloud-debugger.js?v=1790774655.36861.84687.79887&cb=20261019v12"></script>
 
 <!-- ══ ADD / RESTORE / REMOVE COLUMN MODAL ══ -->
     <div id="emColModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:999999;align-items:center;justify-content:center" onclick="if(event.target===this)emCloseAddColModal()">
