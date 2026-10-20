@@ -1,10 +1,9 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const express = require('express');
-const {
-  normalize, hashPayload, tombKeys, secureEqual, createPostgresSyncRouter
-} = require('../backend/gcp-postgres/postgres-sync-router');
+const {normalize, hashPayload, tombKeys, secureEqual} = require('../backend/gcp-postgres/pg-sync-utils');
+let canRunHttp = true;
+try { require.resolve('express'); require.resolve('pg'); } catch (_) { canRunHttp = false; }
 
 test('SHA-256 uses binary bytes and is repeatable', () => {
   assert.equal(hashPayload(Buffer.from('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
@@ -20,7 +19,9 @@ test('server bearer token comparison requires an exact match', () => {
   assert.equal(secureEqual('a'.repeat(32),'a'.repeat(31)+'b'),false);
   assert.equal(secureEqual('abc',''),false);
 });
-test('preview health check works, private routes reject unauthenticated users, unknown writes fail closed', async () => {
+test('preview health check works, private routes reject unauthenticated users, unknown writes fail closed', {skip: !canRunHttp && 'optional HTTP dependencies are not installed'}, async () => {
+  const express = require('express');
+  const {createPostgresSyncRouter} = require('../backend/gcp-postgres/postgres-sync-router');
   process.env.ATPL_SYNC_BEARER='this-is-a-test-only-secret-with-32-chars';
   const mockPool = {
     query: async (sql) => {
