@@ -125,6 +125,26 @@
       "file_hash": "",
       "deleted_at": "2026-10-19T16:05:02.161Z",
       "uploaded_at": "2026-10-19T16:05:02.161Z"
+    },
+    "salary:f&f of dugar ji  (1).xlsx": {
+      "id": "F&F of Dugar ji  (1).xlsx",
+      "name": "F&F of Dugar ji  (1).xlsx",
+      "filename": "F&F of Dugar ji  (1).xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-20T05:10:09.901Z",
+      "uploaded_at": "2026-10-20T05:10:09.901Z"
+    },
+    "f&f of dugar ji  (1).xlsx": {
+      "id": "F&F of Dugar ji  (1).xlsx",
+      "name": "F&F of Dugar ji  (1).xlsx",
+      "filename": "F&F of Dugar ji  (1).xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-20T05:10:09.901Z",
+      "uploaded_at": "2026-10-20T05:10:09.901Z"
     }
   },
   "files": {
@@ -627,20 +647,6 @@
       "created_at": "2026-09-17T06:18:19.962Z",
       "updated_at": "2026-09-17T06:18:19.962Z"
     },
-    "sal_c850e74d2dda5921": {
-      "id": "sal_c850e74d2dda5921",
-      "module": "salary",
-      "category": "audit",
-      "name": "F&F of Dugar ji  (1).xlsx",
-      "size": 23340,
-      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "87f90159c249bf275d83c5053c769bfc87886ab5c1a49433926d143d9bce62c9",
-      "sheets": null,
-      "saved": "2026-10-04T11:25:00.293Z",
-      "uploaded_by": "admin",
-      "created_at": "2026-10-04T11:25:00.293Z",
-      "updated_at": "2026-10-04T11:25:00.293Z"
-    },
     "sal_4147cf18986446f1": {
       "id": "sal_4147cf18986446f1",
       "module": "salary",
@@ -1137,8 +1143,8 @@
       "id": "HRD-TEST-1791720776080",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-20T05:08:47.777Z",
-      "updated_at": "2026-10-20T05:08:47.777Z",
+      "uploaded_at": "2026-10-20T04:59:24.173Z",
+      "updated_at": "2026-10-20T04:59:24.173Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
