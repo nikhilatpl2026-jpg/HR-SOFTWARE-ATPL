@@ -31,6 +31,12 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Google Drive + Sheets STAGING relay: fail-closed and disabled until explicitly configured.
+if (process.env.ATPL_DRIVE_STAGE_RELAY_ENABLED === '1') {
+  const {createDriveStageRelayRouter} = require('./backend/drive-sheets/drive-stage-relay');
+  app.use('/api/drive-stage', createDriveStageRelayRouter(express, global.fetch, process.env));
+}
+
 // Initialize GoogleGenAI client (automatically loads process.env.GEMINI_API_KEY)
 const ai = new GoogleGenAI();
 
@@ -84,7 +90,7 @@ function writeJsonFile(filename, data) {
   }
 }
 
-const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || (function() { return ['ghp_zNVCq14dAFNeLXj', 'AhXkxQROaUbrtWD41ikJY'].join(''); })();
+const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || '';
 const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 const githubSyncDebouncers = {};
 
