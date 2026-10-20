@@ -1,10 +1,6 @@
 {
-  "version": 567,
+  "version": 568,
   "tombstones": {
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
-    },
     "sal_cf31058701c1c3d8": {
       "id": "sal_cf31058701c1c3d8",
       "deleted_at": "2026-10-19T07:01:58.570Z"
@@ -1504,6 +1500,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791718050909"
+    },
+    "hr_doc:hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "name": "Fire NOC Certificate",
+      "filename": "HRD-2026-NOC-01",
+      "uploaded_at": "2026-10-20T05:13:20.686Z",
+      "updated_at": "2026-10-20T05:13:20.686Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
