@@ -154,6 +154,20 @@
       "deleted_at": "2026-10-20T05:11:57.587Z",
       "uploaded_at": "2026-10-20T05:11:57.587Z"
     },
+    "salary:salary sheet sept 2024 atpl bhoora ji.xlsx": {
+      "filename": "salary sheet sept 2024 atpl bhoora ji.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
+    "salary sheet sept 2024 atpl bhoora ji.xlsx": {
+      "filename": "salary sheet sept 2024 atpl bhoora ji.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
     "salary:final salary sheet april 2024.xlsx": {
       "filename": "final salary sheet april 2024.xlsx",
       "module": "salary",
@@ -261,20 +275,6 @@
     },
     "salary sheet aug 2024 atpl.xlsx": {
       "filename": "salary sheet aug 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:11:57.587Z",
-      "uploaded_at": "2026-10-20T05:11:57.587Z"
-    },
-    "salary:salary sheet june 2024 atpl.xlsx": {
-      "filename": "salary sheet june 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:11:57.587Z",
-      "uploaded_at": "2026-10-20T05:11:57.587Z"
-    },
-    "salary sheet june 2024 atpl.xlsx": {
-      "filename": "salary sheet june 2024 atpl.xlsx",
       "module": "salary",
       "doc_type": "salary_tombstone",
       "deleted_at": "2026-10-20T05:11:57.587Z",
@@ -1492,16 +1492,16 @@
       "doc_type": "salary",
       "blob_key": "salary_final_20salary_20sheet_20atpl_20oct_202024_xlsx"
     },
-    "salary:salary sheet sept 2024 atpl bhoora ji.xlsx": {
-      "id": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "name": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "filename": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "size": 417988,
-      "uploaded_at": "2026-10-20T06:24:41.936Z",
-      "saved_at": "2026-10-20T06:24:41.936Z",
+    "salary:salary sheet june 2024 atpl.xlsx": {
+      "id": "Salary sheet June 2024 ATPL.xlsx",
+      "name": "Salary sheet June 2024 ATPL.xlsx",
+      "filename": "Salary sheet June 2024 ATPL.xlsx",
+      "size": 1435848,
+      "uploaded_at": "2026-10-20T06:24:30.526Z",
+      "saved_at": "2026-10-20T06:24:30.526Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_salary_20sheet_20sept_202024_20atpl_20bhoora_20ji_xlsx"
+      "blob_key": "salary_salary_20sheet_20june_202024_20atpl_xlsx"
     }
   }
 }
