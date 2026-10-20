@@ -1,0 +1,25 @@
+name: GCP PostgreSQL foundation tests
+on:
+  pull_request:
+    paths:
+      - "backend/gcp-postgres/**"
+      - "server.js"
+      - "package.json"
+      - "tests/gcp-postgres-foundation.test.js"
+  push:
+    branches:
+      - "feature/gcp-postgres-sync-foundation"
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - run: node --check server.js
+      - run: node --check backend/gcp-postgres/postgres-sync-router.js
+      - run: node --test tests/gcp-postgres-foundation.test.js
