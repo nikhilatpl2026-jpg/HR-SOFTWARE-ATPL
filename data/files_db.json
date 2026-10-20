@@ -125,569 +125,457 @@
       "file_hash": "",
       "deleted_at": "2026-10-19T16:05:02.161Z",
       "uploaded_at": "2026-10-19T16:05:02.161Z"
-    },
-    "salary:dec salary 2023.xlsx": {
-      "filename": "dec salary 2023.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "dec salary 2023.xlsx": {
-      "filename": "dec salary 2023.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet april 2026.xls": {
-      "filename": "final salary sheet april 2026.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet april 2026.xls": {
-      "filename": "final salary sheet april 2026.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet sept 2024 atpl bhoora ji.xlsx": {
-      "filename": "salary sheet sept 2024 atpl bhoora ji.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet sept 2024 atpl bhoora ji.xlsx": {
-      "filename": "salary sheet sept 2024 atpl bhoora ji.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet april 2024.xlsx": {
-      "filename": "final salary sheet april 2024.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet april 2024.xlsx": {
-      "filename": "final salary sheet april 2024.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet jan 2024 atpl.xlsx": {
-      "filename": "final salary sheet jan 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet jan 2024 atpl.xlsx": {
-      "filename": "final salary sheet jan 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet feb 2024 atpl.xlsx": {
-      "filename": "final salary sheet feb 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet feb 2024 atpl.xlsx": {
-      "filename": "final salary sheet feb 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:march_2024.xlsx.xlsx": {
-      "filename": "march_2024.xlsx.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "march_2024.xlsx.xlsx": {
-      "filename": "march_2024.xlsx.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:may_2024.xlsx.xlsx": {
-      "filename": "may_2024.xlsx.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "may_2024.xlsx.xlsx": {
-      "filename": "may_2024.xlsx.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet atpl oct 2024.xlsx": {
-      "filename": "final salary sheet atpl oct 2024.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet atpl oct 2024.xlsx": {
-      "filename": "final salary sheet atpl oct 2024.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet july 2024 atpl.xlsx": {
-      "filename": "final salary sheet july 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet july 2024 atpl.xlsx": {
-      "filename": "final salary sheet july 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet nov 2024 atpl.xlsx": {
-      "filename": "final salary sheet nov 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet nov 2024 atpl.xlsx": {
-      "filename": "final salary sheet nov 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet aug 2024 atpl.xlsx": {
-      "filename": "salary sheet aug 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet aug 2024 atpl.xlsx": {
-      "filename": "salary sheet aug 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet june 2024 atpl.xlsx": {
-      "filename": "salary sheet june 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet june 2024 atpl.xlsx": {
-      "filename": "salary sheet june 2024 atpl.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:01-arora textiles pvt. ltd. feb-25 (3).xls": {
-      "filename": "01-arora textiles pvt. ltd. feb-25 (3).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "01-arora textiles pvt. ltd. feb-25 (3).xls": {
-      "filename": "01-arora textiles pvt. ltd. feb-25 (3).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx": {
-      "filename": "01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx": {
-      "filename": "01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:atpl- salary sheet march 2025 (1).xls": {
-      "filename": "atpl- salary sheet march 2025 (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "atpl- salary sheet march 2025 (1).xls": {
-      "filename": "atpl- salary sheet march 2025 (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:aug 2025 salary sheet atpl final (3).xls": {
-      "filename": "aug 2025 salary sheet atpl final (3).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "aug 2025 salary sheet atpl final (3).xls": {
-      "filename": "aug 2025 salary sheet atpl final (3).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet dec 2025 (2).xls": {
-      "filename": "final salary sheet dec 2025 (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet dec 2025 (2).xls": {
-      "filename": "final salary sheet dec 2025 (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet nov 2025 (5).xls": {
-      "filename": "final salary sheet nov 2025 (5).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet nov 2025 (5).xls": {
-      "filename": "final salary sheet nov 2025 (5).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet sept 2025 (1).xls": {
-      "filename": "final salary sheet sept 2025 (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet sept 2025 (1).xls": {
-      "filename": "final salary sheet sept 2025 (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:july 2025 salary sheet atpl final (1).xls": {
-      "filename": "july 2025 salary sheet atpl final (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "july 2025 salary sheet atpl final (1).xls": {
-      "filename": "july 2025 salary sheet atpl final (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:oct 2025 salary sheet atpl final (2).xls": {
-      "filename": "oct 2025 salary sheet atpl final (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "oct 2025 salary sheet atpl final (2).xls": {
-      "filename": "oct 2025 salary sheet atpl final (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:pankaj oli jan-2025.xls": {
-      "filename": "pankaj oli jan-2025.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "pankaj oli jan-2025.xls": {
-      "filename": "pankaj oli jan-2025.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet june-25 master (2).xlsx": {
-      "filename": "salary sheet june-25 master (2).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet june-25 master (2).xlsx": {
-      "filename": "salary sheet june-25 master (2).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet april-25 (1).xlsx": {
-      "filename": "salary sheet april-25 (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet april-25 (1).xlsx": {
-      "filename": "salary sheet april-25 (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet feb 2026 (2).xls": {
-      "filename": "final salary sheet feb 2026 (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet feb 2026 (2).xls": {
-      "filename": "final salary sheet feb 2026 (2).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:final salary sheet jan 2026 (1) (1).xls": {
-      "filename": "final salary sheet jan 2026 (1) (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "final salary sheet jan 2026 (1) (1).xls": {
-      "filename": "final salary sheet jan 2026 (1) (1).xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:june salary lokesh ji.xlsx": {
-      "filename": "june salary lokesh ji.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "june salary lokesh ji.xlsx": {
-      "filename": "june salary lokesh ji.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:march 2026 salary sheet atpl final.xls": {
-      "filename": "march 2026 salary sheet atpl final.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "march 2026 salary sheet atpl final.xls": {
-      "filename": "march 2026 salary sheet atpl final.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:may 2026 salary sheet atpl final.xls": {
-      "filename": "may 2026 salary sheet atpl final.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "may 2026 salary sheet atpl final.xls": {
-      "filename": "may 2026 salary sheet atpl final.xls",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:sent 02 sheet aug-26 (2).xlsx": {
-      "filename": "sent 02 sheet aug-26 (2).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "sent 02 sheet aug-26 (2).xlsx": {
-      "filename": "sent 02 sheet aug-26 (2).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:sent compilance sheet july-26 (12).xlsx": {
-      "filename": "sent compilance sheet july-26 (12).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "sent compilance sheet july-26 (12).xlsx": {
-      "filename": "sent compilance sheet july-26 (12).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary sheet aug-26 new (1).xlsx": {
-      "filename": "salary sheet aug-26 new (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary sheet aug-26 new (1).xlsx": {
-      "filename": "salary sheet aug-26 new (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:f&f of dugar ji  (1).xlsx": {
-      "filename": "f&f of dugar ji  (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "f&f of dugar ji  (1).xlsx": {
-      "filename": "f&f of dugar ji  (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:attendence sheet sep-26 (1).xlsx": {
-      "filename": "attendence sheet sep-26 (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "attendence sheet sep-26 (1).xlsx": {
-      "filename": "attendence sheet sep-26 (1).xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:revised sent atpl-sep.xlsx": {
-      "filename": "revised sent atpl-sep.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "revised sent atpl-sep.xlsx": {
-      "filename": "revised sent atpl-sep.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary_may_2026_audit_1792415056042.xlsx": {
-      "filename": "salary_may_2026_audit_1792415056042.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary_may_2026_audit_1792415056042.xlsx": {
-      "filename": "salary_may_2026_audit_1792415056042.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:salary_may_2026_audit_1792415080918.xlsx": {
-      "filename": "salary_may_2026_audit_1792415080918.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary_may_2026_audit_1792415080918.xlsx": {
-      "filename": "salary_may_2026_audit_1792415080918.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:large_batch_file_4.xlsx": {
-      "filename": "large_batch_file_4.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "large_batch_file_4.xlsx": {
-      "filename": "large_batch_file_4.xlsx",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "salary:__all__": {
-      "filename": "__ALL__",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
-    },
-    "__all__": {
-      "filename": "__ALL__",
-      "module": "salary",
-      "doc_type": "salary_tombstone",
-      "deleted_at": "2026-10-20T05:10:23.455Z",
-      "uploaded_at": "2026-10-20T05:10:23.455Z"
     }
   },
   "files": {
+    "sal_a91bd6c215ccd451": {
+      "id": "sal_a91bd6c215ccd451",
+      "module": "salary",
+      "category": "audit",
+      "name": "dec salary 2023.xlsx",
+      "size": 1379888,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "7392fd29b2e6de2d77d231fcf0a55195f06cc8bdf6dc7aac89393c8c060ca7f6",
+      "sheets": null,
+      "saved": "2026-10-17T07:45:36.681Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:45:36.681Z",
+      "updated_at": "2026-10-17T07:45:36.681Z"
+    },
+    "sal_7645d77b27fe5f20": {
+      "id": "sal_7645d77b27fe5f20",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet April 2026.xls",
+      "size": 473540,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "1477616d167ad252c331026cff994122ca0657144a605d9c3ca33473be580553",
+      "sheets": null,
+      "saved": "2026-09-28T08:37:22.622Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-09-28T08:37:22.622Z",
+      "updated_at": "2026-09-28T08:37:22.622Z"
+    },
+    "sal_0c14f568abbf1246": {
+      "id": "sal_0c14f568abbf1246",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
+      "size": 417988,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "1b670c679518d6515d061c28c97a6d513f7e29f2ab368a94b5568f78deff536d",
+      "sheets": null,
+      "saved": "2026-10-17T07:49:28.607Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:49:28.607Z",
+      "updated_at": "2026-10-17T07:49:28.607Z"
+    },
+    "sal_2bfecfd4c6c5be4d": {
+      "id": "sal_2bfecfd4c6c5be4d",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet April 2024.xlsx",
+      "size": 1295336,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "55857bc7fe34d9895dea127bfa246373d1a181d2bd8af9072d3413e2fe17cae9",
+      "sheets": null,
+      "saved": "2026-10-17T07:46:16.161Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:46:16.161Z",
+      "updated_at": "2026-10-17T07:46:16.161Z"
+    },
+    "sal_801e283f5ad97d53": {
+      "id": "sal_801e283f5ad97d53",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Jan 2024 ATPL.xlsx",
+      "size": 1221400,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "e764193083b7912e2cc07ae91a775a5392cabe0db639d714b8f5403a1e57c5da",
+      "sheets": null,
+      "saved": "2026-10-17T07:47:47.631Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:47:47.631Z",
+      "updated_at": "2026-10-17T07:47:47.631Z"
+    },
+    "sal_598e1e77dc80ab8c": {
+      "id": "sal_598e1e77dc80ab8c",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Feb 2024 ATPL.xlsx",
+      "size": 1319556,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "a194a7660e946d3de6d7d37f2a0099d906154905d491b8cca29930ff18535ef2",
+      "sheets": null,
+      "saved": "2026-10-17T07:47:34.678Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:47:34.678Z",
+      "updated_at": "2026-10-17T07:47:34.678Z"
+    },
+    "sal_547a4d164a724cc5": {
+      "id": "sal_547a4d164a724cc5",
+      "module": "salary",
+      "category": "audit",
+      "name": "March_2024.xlsx.xlsx",
+      "size": 1300260,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "110c378c3f0307ccc1a1a014ead863d648a228236276c7a8feee5bd2491ff63d",
+      "sheets": null,
+      "saved": "2026-10-17T07:48:27.679Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:48:27.679Z",
+      "updated_at": "2026-10-17T07:48:27.679Z"
+    },
+    "sal_3c94cf75ac3b67d6": {
+      "id": "sal_3c94cf75ac3b67d6",
+      "module": "salary",
+      "category": "audit",
+      "name": "May_2024.xlsx.xlsx",
+      "size": 1280556,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "92a6477e32e8c7433b29d6fd019bb339f204a3bcd46e1ab54d81f689993e4857",
+      "sheets": null,
+      "saved": "2026-10-17T07:48:41.694Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:48:41.694Z",
+      "updated_at": "2026-10-17T07:48:41.694Z"
+    },
+    "sal_b2353c91c4e2b7cc": {
+      "id": "sal_b2353c91c4e2b7cc",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "size": 1330788,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "056aea209ab54da797c9dc0614206f282426bb3f40b6d5b6d27674515598b592",
+      "sheets": null,
+      "saved": "2026-10-17T07:46:33.635Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:46:33.635Z",
+      "updated_at": "2026-10-17T07:46:33.635Z"
+    },
+    "sal_fd483de6319fde66": {
+      "id": "sal_fd483de6319fde66",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary sheet July 2024 ATPL.xlsx",
+      "size": 1392776,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "58b38fb7841dd0c0ca8595ad0ad620fe5437eeb84445725ffe280dbb74bc0254",
+      "sheets": null,
+      "saved": "2026-10-17T07:47:59.562Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:47:59.562Z",
+      "updated_at": "2026-10-17T07:47:59.562Z"
+    },
+    "sal_2af97aae146aa47c": {
+      "id": "sal_2af97aae146aa47c",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary sheet Nov 2024 ATPL.xlsx",
+      "size": 1501240,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "aa8bc4f6c06cdaa3b3bcbc98fbfbb92305b62309016cd273ab7c22bdf975b7b1",
+      "sheets": null,
+      "saved": "2026-10-17T07:48:12.647Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:48:12.647Z",
+      "updated_at": "2026-10-17T07:48:12.647Z"
+    },
+    "sal_c0e3e86a7d4f35f4": {
+      "id": "sal_c0e3e86a7d4f35f4",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary Sheet Aug 2024 ATPL.xlsx",
+      "size": 1447300,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "54c784af43c73cd51f16f420fe38753f955eed064af585338152dc10e632c0ea",
+      "sheets": null,
+      "saved": "2026-10-17T07:48:56.629Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:48:56.629Z",
+      "updated_at": "2026-10-17T07:48:56.629Z"
+    },
+    "sal_25435f17a1dafbee": {
+      "id": "sal_25435f17a1dafbee",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary sheet June 2024 ATPL.xlsx",
+      "size": 1435848,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "f6fb83d444aa3c58c2344fb9f8835d8db90bc4263452d856d63eee50ba21772c",
+      "sheets": null,
+      "saved": "2026-10-17T07:49:13.670Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:49:13.670Z",
+      "updated_at": "2026-10-17T07:49:13.670Z"
+    },
+    "sal_f931e52df8baacc9": {
+      "id": "sal_f931e52df8baacc9",
+      "module": "salary",
+      "category": "audit",
+      "name": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "size": 1413804,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "1d83eaee75d5335e3f744ce999fe30a884f9991801c66ec331b7aa15d6e0ff7e",
+      "sheets": null,
+      "saved": "2026-10-17T07:51:45.936Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:51:45.936Z",
+      "updated_at": "2026-10-17T07:51:45.936Z"
+    },
+    "sal_54a51f317ae06874": {
+      "id": "sal_54a51f317ae06874",
+      "module": "salary",
+      "category": "audit",
+      "name": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
+      "size": 263896,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "27ea65a4383e7df832e7ab2d89087d9ded386fc6721885124952b428479e4fed",
+      "sheets": null,
+      "saved": "2026-10-17T07:51:57.651Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:51:57.651Z",
+      "updated_at": "2026-10-17T07:51:57.651Z"
+    },
+    "sal_e2211bbb639a0266": {
+      "id": "sal_e2211bbb639a0266",
+      "module": "salary",
+      "category": "audit",
+      "name": "ATPL- SALARY SHEET MARCH 2025 (1).xls",
+      "size": 359768,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "5d39860e9930a76bf80f44be4d3509b8923a270ac9915fe6284adbcc52592090",
+      "sheets": null,
+      "saved": "2026-10-17T07:53:05.408Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:53:05.408Z",
+      "updated_at": "2026-10-17T07:53:05.408Z"
+    },
+    "sal_0828d673e1689aab": {
+      "id": "sal_0828d673e1689aab",
+      "module": "salary",
+      "category": "audit",
+      "name": "Aug 2025 Salary Sheet Atpl Final (3).xls",
+      "size": 1368064,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "e43b8be3261a32af8b84611a4e9fe9be3685f461f5db86d394be21a4c656a1da",
+      "sheets": null,
+      "saved": "2026-10-17T07:54:06.243Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:54:06.243Z",
+      "updated_at": "2026-10-17T07:54:06.243Z"
+    },
+    "sal_0cb4d4397439f4d9": {
+      "id": "sal_0cb4d4397439f4d9",
+      "module": "salary",
+      "category": "audit",
+      "name": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "size": 1430872,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "f2d3df5038a6fe4bbb8da48158a20025616dd714b9728649687f92b8a7c8ba6a",
+      "sheets": null,
+      "saved": "2026-10-17T07:54:21.760Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:54:21.760Z",
+      "updated_at": "2026-10-17T07:54:21.760Z"
+    },
+    "sal_8074d8eb2273b52c": {
+      "id": "sal_8074d8eb2273b52c",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Nov 2025 (5).xls",
+      "size": 1498456,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "63b717f7f3da2642122f6d34c0afd3ec4b9ab7f19eb6d2023b2afec5d9eeeca3",
+      "sheets": null,
+      "saved": "2026-10-17T07:54:33.709Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:54:33.709Z",
+      "updated_at": "2026-10-17T07:54:33.709Z"
+    },
+    "sal_895040727089d493": {
+      "id": "sal_895040727089d493",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Sept 2025 (1).xls",
+      "size": 1266348,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "fce887d4141c7ecc6b398f06d3b333aa0d87d798c7b11f69f1c051df74e1b84b",
+      "sheets": null,
+      "saved": "2026-10-17T07:54:43.667Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:54:43.667Z",
+      "updated_at": "2026-10-17T07:54:43.667Z"
+    },
+    "sal_1d5eb713f6d337c2": {
+      "id": "sal_1d5eb713f6d337c2",
+      "module": "salary",
+      "category": "audit",
+      "name": "July 2025 Salary Sheet Atpl Final (1).xls",
+      "size": 1288192,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "07443e52814ae16552792c29da284340c0f1fc496cf4cf48e5133d1aa8e13a5c",
+      "sheets": null,
+      "saved": "2026-10-17T07:55:22.696Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:55:22.696Z",
+      "updated_at": "2026-10-17T07:55:22.696Z"
+    },
+    "sal_f4d946ea9c1b941a": {
+      "id": "sal_f4d946ea9c1b941a",
+      "module": "salary",
+      "category": "audit",
+      "name": "Oct 2025 Salary Sheet Atpl Final (2).xls",
+      "size": 751616,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "77ae6b5a7117dceea2ea26827af5f19a42b189cfd46754c904c9e62fecb8cf9b",
+      "sheets": null,
+      "saved": "2026-10-17T07:55:32.660Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:55:32.660Z",
+      "updated_at": "2026-10-17T07:55:32.660Z"
+    },
+    "sal_505b7f9fb754c7c5": {
+      "id": "sal_505b7f9fb754c7c5",
+      "module": "salary",
+      "category": "audit",
+      "name": "PANKAJ OLI JAN-2025.xls",
+      "size": 627372,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "483957ab7e8da9dee4ea2d9f9bd5a197f9a5d1ce55e2627953dfb20eac740071",
+      "sheets": null,
+      "saved": "2026-10-17T07:56:00.617Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:56:00.617Z",
+      "updated_at": "2026-10-17T07:56:00.617Z"
+    },
+    "sal_f33f7bf02b0ce8f5": {
+      "id": "sal_f33f7bf02b0ce8f5",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary Sheet June-25 Master (2).xlsx",
+      "size": 1443780,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "656513706ead70c34723093a9bee7fa7df2ad5cc466e87513486f6de50d9f089",
+      "sheets": null,
+      "saved": "2026-10-17T07:56:41.641Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:56:41.641Z",
+      "updated_at": "2026-10-17T07:56:41.641Z"
+    },
+    "sal_de089b0a2867708e": {
+      "id": "sal_de089b0a2867708e",
+      "module": "salary",
+      "category": "audit",
+      "name": "salary sheet April-25 (1).xlsx",
+      "size": 60316,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "3fa0d8732223093412fb2ec18f682c365bc3b8d577f941466f3ab41cd9f2bcd6",
+      "sheets": null,
+      "saved": "2026-10-17T07:56:24.598Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T07:56:24.598Z",
+      "updated_at": "2026-10-17T07:56:24.598Z"
+    },
+    "sal_aff7184fb9b690b0": {
+      "id": "sal_aff7184fb9b690b0",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Feb 2026 (2).xls",
+      "size": 671744,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "85bf6342c7a53898e770100ae1999ba5d78b2f84f43f62e2bdf42a6d41c154d1",
+      "sheets": null,
+      "saved": "2026-10-17T08:02:51.631Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:02:51.631Z",
+      "updated_at": "2026-10-17T08:02:51.631Z"
+    },
+    "sal_ecf2a6c6d89b3c28": {
+      "id": "sal_ecf2a6c6d89b3c28",
+      "module": "salary",
+      "category": "audit",
+      "name": "Final Salary Sheet Jan 2026 (1) (1).xls",
+      "size": 1765376,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "19786a555ce8ee49cc0d282aab0a59e7bb87c1c93efb9efe0b4d2404f7201060",
+      "sheets": null,
+      "saved": "2026-10-17T08:03:06.672Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:03:06.672Z",
+      "updated_at": "2026-10-17T08:03:06.672Z"
+    },
+    "sal_265ede9750a16ac9": {
+      "id": "sal_265ede9750a16ac9",
+      "module": "salary",
+      "category": "audit",
+      "name": "JUNE SALARY LOKESH JI.xlsx",
+      "size": 207704,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "3c44b7e580ddfd29e9a80a12f3c592564f9d89eed33d55d9b81870c648eeaa64",
+      "sheets": null,
+      "saved": "2026-10-17T08:03:16.597Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:03:16.597Z",
+      "updated_at": "2026-10-17T08:03:16.597Z"
+    },
+    "sal_9a44f5585d4cc1c5": {
+      "id": "sal_9a44f5585d4cc1c5",
+      "module": "salary",
+      "category": "audit",
+      "name": "March 2026 Salary Sheet Atpl Final.xls",
+      "size": 1313452,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "59eeecf6cb762470e52f14a886e036902da3e84cc3b2cff33c237bd89801776f",
+      "sheets": null,
+      "saved": "2026-10-17T08:03:29.665Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:03:29.665Z",
+      "updated_at": "2026-10-17T08:03:29.665Z"
+    },
+    "sal_7174775e95bec5b8": {
+      "id": "sal_7174775e95bec5b8",
+      "module": "salary",
+      "category": "audit",
+      "name": "May 2026 Salary Sheet Atpl Final.xls",
+      "size": 733868,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "6add1d05bdca6387fe30832a71700bd7ddce410735968161f450eec791dd239a",
+      "sheets": null,
+      "saved": "2026-10-17T08:03:38.637Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:03:38.637Z",
+      "updated_at": "2026-10-17T08:03:38.637Z"
+    },
+    "sal_0c4748b270dbd9c9": {
+      "id": "sal_0c4748b270dbd9c9",
+      "module": "salary",
+      "category": "audit",
+      "name": "Sent 02 Sheet Aug-26 (2).xlsx",
+      "size": 415992,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "73eebc6aa6bf9b14e915627b5e992d114443afdb38ff3f2ad378efe5b1ee7d2b",
+      "sheets": null,
+      "saved": "2026-10-17T08:05:07.629Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:05:07.629Z",
+      "updated_at": "2026-10-17T08:05:07.629Z"
+    },
+    "sal_96f95c4ad92a37e1": {
+      "id": "sal_96f95c4ad92a37e1",
+      "module": "salary",
+      "category": "audit",
+      "name": "Sent Compilance Sheet July-26 (12).xlsx",
+      "size": 622560,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "c04a64aee13856790d8fa11068619127600f325cc41812312d01a22dbfde3750",
+      "sheets": null,
+      "saved": "2026-10-17T08:07:51.631Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:07:51.631Z",
+      "updated_at": "2026-10-17T08:07:51.631Z"
+    },
     "HRD-1790584242743-3ovjkk": {
       "id": "HRD-1790584242743-3ovjkk",
       "module": "hr_doc",
@@ -724,6 +612,62 @@
       "uploaded_by": "admin",
       "created_at": "2026-09-28T08:30:42.750Z",
       "updated_at": "2026-09-28T08:30:42.750Z"
+    },
+    "sal_a2cec4c366b87e20": {
+      "id": "sal_a2cec4c366b87e20",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary sheet aug-26 new (1).xlsx",
+      "size": 56596,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "ca927bdc541d0168f6bdd233b107354274410e05eaa1e8a9917c0ba1a173a3fe",
+      "sheets": null,
+      "saved": "2026-09-17T06:18:19.962Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-09-17T06:18:19.962Z",
+      "updated_at": "2026-09-17T06:18:19.962Z"
+    },
+    "sal_c850e74d2dda5921": {
+      "id": "sal_c850e74d2dda5921",
+      "module": "salary",
+      "category": "audit",
+      "name": "F&F of Dugar ji  (1).xlsx",
+      "size": 23340,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "87f90159c249bf275d83c5053c769bfc87886ab5c1a49433926d143d9bce62c9",
+      "sheets": null,
+      "saved": "2026-10-04T11:25:00.293Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-04T11:25:00.293Z",
+      "updated_at": "2026-10-04T11:25:00.293Z"
+    },
+    "sal_4147cf18986446f1": {
+      "id": "sal_4147cf18986446f1",
+      "module": "salary",
+      "category": "audit",
+      "name": "attendence sheet sep-26 (1).xlsx",
+      "size": 519904,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "8455e3ad5941d07ac02b1b93c8a502336e1324419150db15e2751abfddc44b2b",
+      "sheets": null,
+      "saved": "2026-10-02T09:29:10.654+00:00",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-02T09:29:10.654+00:00",
+      "updated_at": "2026-10-02T09:29:10.654+00:00"
+    },
+    "sal_dfb9fbd996e2e78f": {
+      "id": "sal_dfb9fbd996e2e78f",
+      "module": "salary",
+      "category": "audit",
+      "name": "REVISED Sent Atpl-sep.xlsx",
+      "size": 500684,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "9036649c73c8cfe46af94dae4d95543069e2f8f2dfca281e5b426ebe030e0414",
+      "sheets": null,
+      "saved": "2026-10-17T08:04:57.698Z",
+      "uploaded_by": "admin",
+      "created_at": "2026-10-17T08:04:57.698Z",
+      "updated_at": "2026-10-17T08:04:57.698Z"
     },
     "HRD-1792236360470-aczsl2": {
       "id": "HRD-1792236360470-aczsl2",
@@ -1485,6 +1429,34 @@
       "created_at": "2026-10-19T13:03:53.233Z",
       "updated_at": "2026-10-19T13:03:53.233Z"
     },
+    "sal_0a4aa1132daa1b50": {
+      "id": "sal_0a4aa1132daa1b50",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary_May_2026_Audit_1792415056042.xlsx",
+      "size": 48,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "7c57817ef5c804f7aa7c83e4550f95bea1cfa2115d1c92716813e6737ea80159",
+      "sheets": null,
+      "saved": "2026-10-19T13:04:16.062Z",
+      "uploaded_by": "Browser_A",
+      "created_at": "2026-10-19T13:04:16.062Z",
+      "updated_at": "2026-10-19T13:04:16.062Z"
+    },
+    "sal_4e2f0a4b73b77808": {
+      "id": "sal_4e2f0a4b73b77808",
+      "module": "salary",
+      "category": "audit",
+      "name": "Salary_May_2026_Audit_1792415080918.xlsx",
+      "size": 48,
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "sha256_hash": "c76fb8bc6dead1f7f09e60a7954a4e68aeab19a3d69b0c890baae72573818b01",
+      "sheets": null,
+      "saved": "2026-10-19T13:04:40.933Z",
+      "uploaded_by": "Browser_A",
+      "created_at": "2026-10-19T13:04:40.933Z",
+      "updated_at": "2026-10-19T13:04:40.933Z"
+    },
     "hr_doc:hrd-test-1791436015056": {
       "id": "HRD-TEST-1791436015056",
       "name": "Fire Safety Audit",
@@ -1495,6 +1467,39 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791436015056"
     },
+    "salary:01-arora textiles pvt. ltd. may-25  dugar ji (1).xlsx": {
+      "id": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
+      "name": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
+      "filename": "01-ARORA TEXTILES PVT. LTD. MAY-25  DUGAR JI (1).xlsx",
+      "size": 263896,
+      "uploaded_at": "2026-10-17T07:51:57.651Z",
+      "saved_at": "2026-10-17T07:51:57.651Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_01-arora_20textiles_20pvt__20ltd__20may-25_20_20dugar_20ji_20_1__xlsx"
+    },
+    "salary:final salary sheet jan 2026 (1) (1).xls": {
+      "id": "Final Salary Sheet Jan 2026 (1) (1).xls",
+      "name": "Final Salary Sheet Jan 2026 (1) (1).xls",
+      "filename": "Final Salary Sheet Jan 2026 (1) (1).xls",
+      "size": 1765376,
+      "uploaded_at": "2026-10-17T08:03:06.672Z",
+      "saved_at": "2026-10-17T08:03:06.672Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_final_20salary_20sheet_20jan_202026_20_1__20_1__xls"
+    },
+    "salary:large_batch_file_4.xlsx": {
+      "id": "Large_Batch_File_4.xlsx",
+      "name": "Large_Batch_File_4.xlsx",
+      "filename": "Large_Batch_File_4.xlsx",
+      "size": 60,
+      "uploaded_at": "2026-10-19T06:34:47.527Z",
+      "saved_at": "2026-10-19T06:34:47.527Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_large_batch_file_4_xlsx"
+    },
     "hr_doc:hrd-test-1791718050909": {
       "id": "HRD-TEST-1791718050909",
       "name": "Fire Safety Audit",
@@ -1504,6 +1509,16 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791718050909"
+    },
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-20T05:09:48.243Z",
+      "updated_at": "2026-10-20T05:09:48.243Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
