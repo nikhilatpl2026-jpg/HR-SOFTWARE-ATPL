@@ -1,10 +1,6 @@
 {
   "version": 572,
   "tombstones": {
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
-    },
     "sal_cf31058701c1c3d8": {
       "id": "sal_cf31058701c1c3d8",
       "deleted_at": "2026-10-19T07:01:58.570Z"
@@ -135,6 +131,20 @@
     },
     "dec salary 2023.xlsx": {
       "filename": "dec salary 2023.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
+    "salary:final salary sheet april 2026.xls": {
+      "filename": "final salary sheet april 2026.xls",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
+    "final salary sheet april 2026.xls": {
+      "filename": "final salary sheet april 2026.xls",
       "module": "salary",
       "doc_type": "salary_tombstone",
       "deleted_at": "2026-10-20T05:11:57.587Z",
@@ -1492,16 +1502,15 @@
       "doc_type": "salary",
       "blob_key": "salary_final_20salary_20sheet_20atpl_20oct_202024_xlsx"
     },
-    "salary:final salary sheet april 2026.xls": {
-      "id": "Final Salary Sheet April 2026.xls",
-      "name": "Final Salary Sheet April 2026.xls",
-      "filename": "Final Salary Sheet April 2026.xls",
-      "size": 368,
-      "uploaded_at": "2026-10-20T06:33:53.165Z",
-      "saved_at": "2026-10-20T06:33:53.165Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_final_20salary_20sheet_20april_202026_xls"
+    "hr_doc:hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "name": "Fire NOC Certificate",
+      "filename": "HRD-2026-NOC-01",
+      "uploaded_at": "2026-10-20T06:34:57.432Z",
+      "updated_at": "2026-10-20T06:34:57.432Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
