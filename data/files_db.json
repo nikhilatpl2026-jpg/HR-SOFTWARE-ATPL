@@ -1504,21 +1504,11 @@
       "id": "HRD-TEST-1791718050909",
       "name": "Fire Safety Audit",
       "filename": "HRD-TEST-1791718050909",
-      "uploaded_at": "2026-10-20T05:06:48.234Z",
-      "updated_at": "2026-10-20T05:06:48.234Z",
+      "uploaded_at": "2026-10-20T05:08:47.776Z",
+      "updated_at": "2026-10-20T05:08:47.776Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791718050909"
-    },
-    "hr_doc:hrd-test-1791714805069": {
-      "id": "HRD-TEST-1791714805069",
-      "name": "Fire Safety Audit",
-      "filename": "HRD-TEST-1791714805069",
-      "uploaded_at": "2026-10-20T05:08:47.775Z",
-      "updated_at": "2026-10-20T05:08:47.775Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-test-1791714805069"
     }
   }
 }
