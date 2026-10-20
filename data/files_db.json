@@ -1508,6 +1508,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
+    },
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-20T05:57:07.246Z",
+      "updated_at": "2026-10-20T05:57:07.246Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
