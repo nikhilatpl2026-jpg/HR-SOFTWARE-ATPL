@@ -1,5 +1,5 @@
 {
-  "version": 563,
+  "version": 564,
   "tombstones": {
     "hrd-2026-noc-01": {
       "id": "HRD-2026-NOC-01",
@@ -1488,6 +1488,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_final_20salary_20sheet_20jan_202026_20_1__20_1__xls"
+    },
+    "salary:bulk_salary_sheet_2.xlsx": {
+      "id": "Bulk_Salary_Sheet_2.xlsx",
+      "name": "Bulk_Salary_Sheet_2.xlsx",
+      "filename": "Bulk_Salary_Sheet_2.xlsx",
+      "size": 20,
+      "uploaded_at": "2026-10-19T06:34:47.527Z",
+      "saved_at": "2026-10-19T06:34:47.527Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_bulk_salary_sheet_2_xlsx"
     }
   }
 }
