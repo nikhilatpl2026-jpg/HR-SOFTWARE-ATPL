@@ -2,14 +2,9 @@
 // Isolated Cloud SQL implementation. NEVER auto-enables in production.
 const express = require('express');
 const crypto = require('crypto');
+const {normalize,hashPayload,secureEqual,tombKeys} = require('./pg-sync-utils');
 const { Pool } = require('pg');
 
-function normalize(value) {
-  return String(value || '').trim().toLowerCase();
-}
-function hashPayload(buf) {
-  return crypto.createHash('sha256').update(buf).digest('hex');
-}
 function getPool() {
   if (!process.env.PGDATABASE && !process.env.DATABASE_URL) {
     throw new Error('PGDATABASE or DATABASE_URL required for PostgreSQL mode');
@@ -27,11 +22,6 @@ function getPool() {
     idleTimeoutMillis: 30000
   });
 }
-function secureEqual(a, b) {
-  const aa = Buffer.from(String(a || ''));
-  const bb = Buffer.from(String(b || ''));
-  return aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
-}
 function documentFromRow(row, includeContent) {
   const doc = Object.assign({}, row.metadata || {}, {
     id: row.id, module: row.module, name: row.name,
@@ -42,11 +32,6 @@ function documentFromRow(row, includeContent) {
   if (includeContent && row.payload) doc.buf = row.payload.toString('base64');
   else delete doc.buf;
   return doc;
-}
-function tombKeys(mod, id, name, hash) {
-  return [id, name, hash].filter(Boolean).map(function(x) {
-    return normalize(mod) + ':' + normalize(x);
-  });
 }
 function fail(res, err) {
   if (err && err.code === '23505') return res.status(409).json({ ok:false, error:'Duplicate file identifier or hash' });
