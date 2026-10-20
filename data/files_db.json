@@ -1,6 +1,10 @@
 {
   "version": 569,
   "tombstones": {
+    "hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "deleted_at": "2026-09-30T12:23:32.284Z"
+    },
     "sal_cf31058701c1c3d8": {
       "id": "sal_cf31058701c1c3d8",
       "deleted_at": "2026-10-19T07:01:58.570Z"
@@ -1504,16 +1508,6 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
-    },
-    "hr_doc:hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "name": "Fire NOC Certificate",
-      "filename": "HRD-2026-NOC-01",
-      "uploaded_at": "2026-10-20T05:36:28.226Z",
-      "updated_at": "2026-10-20T05:36:28.226Z",
-      "module": "hr_doc",
-      "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
