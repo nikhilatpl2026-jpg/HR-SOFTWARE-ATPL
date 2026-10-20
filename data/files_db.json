@@ -140,6 +140,20 @@
       "deleted_at": "2026-10-20T05:11:57.587Z",
       "uploaded_at": "2026-10-20T05:11:57.587Z"
     },
+    "salary:final salary sheet april 2026.xls": {
+      "filename": "final salary sheet april 2026.xls",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
+    "final salary sheet april 2026.xls": {
+      "filename": "final salary sheet april 2026.xls",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "deleted_at": "2026-10-20T05:11:57.587Z",
+      "uploaded_at": "2026-10-20T05:11:57.587Z"
+    },
     "salary:final salary sheet april 2024.xlsx": {
       "filename": "final salary sheet april 2024.xlsx",
       "module": "salary",
@@ -1486,16 +1500,16 @@
       "doc_type": "salary",
       "blob_key": "salary_final_20salary_20sheet_20july_202024_20atpl_xlsx"
     },
-    "salary:final salary sheet april 2026.xls": {
-      "id": "Final Salary Sheet April 2026.xls",
-      "name": "Final Salary Sheet April 2026.xls",
-      "filename": "Final Salary Sheet April 2026.xls",
-      "size": 368,
-      "uploaded_at": "2026-10-20T06:33:53.165Z",
-      "saved_at": "2026-10-20T06:33:53.165Z",
+    "salary:simul_file_b_1790771004735.xlsx": {
+      "id": "Simul_File_B_1790771004735.xlsx",
+      "name": "Simul_File_B_1790771004735.xlsx",
+      "filename": "Simul_File_B_1790771004735.xlsx",
+      "size": 417988,
+      "uploaded_at": "2026-10-20T06:24:41.936Z",
+      "saved_at": "2026-10-20T06:24:41.936Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_final_20salary_20sheet_20april_202026_xls"
+      "blob_key": "salary_simul_file_b_1790771004735_xlsx"
     }
   }
 }
