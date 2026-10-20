@@ -31,6 +31,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Feature-gated PostgreSQL routing. Disabled unless staging explicitly enables it.
+if (process.env.ATPL_PG_MODE === '1') {
+  const { getPool, createPostgresSyncRouter } = require('./backend/gcp-postgres/postgres-sync-router');
+  const pgPool = getPool();
+  app.use('/api/sync', createPostgresSyncRouter(pgPool));
+  // Do not allow the old process-local DOL write path while PostgreSQL mode is active.
+  app.all('/functions/v1/dol-api', (_req, res) =>
+    res.status(501).json({ ok: false, error: 'PG_DOL_API_NOT_MIGRATED' }));
+}
+
 // Initialize GoogleGenAI client (automatically loads process.env.GEMINI_API_KEY)
 const ai = new GoogleGenAI();
 
@@ -84,7 +94,7 @@ function writeJsonFile(filename, data) {
   }
 }
 
-const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || (function() { return ['ghp_zNVCq14dAFNeLXj', 'AhXkxQROaUbrtWD41ikJY'].join(''); })();
+const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || '';
 const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 const githubSyncDebouncers = {};
 
