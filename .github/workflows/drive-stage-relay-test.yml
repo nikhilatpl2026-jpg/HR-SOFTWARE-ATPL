@@ -1,0 +1,24 @@
+name: Drive Sheets staging relay tests
+on:
+  pull_request:
+    paths:
+      - "backend/drive-sheets/**"
+      - "appscript/ATPL_Transport_Guard_STAGING.gs"
+      - "tests/drive-stage-relay.test.js"
+      - "server.js"
+  push:
+    branches:
+      - "feature/drive-sheets-staging-relay"
+jobs:
+  relay-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --check server.js
+      - run: node --check backend/drive-sheets/drive-stage-relay.js
+      - run: node --test tests/drive-stage-relay.test.js
