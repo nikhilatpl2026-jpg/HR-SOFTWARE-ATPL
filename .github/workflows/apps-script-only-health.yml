@@ -7,6 +7,8 @@ on:
       - "tests/apps-script-only-health.test.js"
       - "tests/apps-script-native-health.test.js"
       - "appscript/ATPL_Native_Health_STAGING.gs"
+      - "appscript/ATPL_Native_Sync_Demo_STAGING.gs"
+      - "tests/apps-script-native-sync-demo.test.js"
   push:
     branches:
       - "feature/apps-script-only-drive-backend"
@@ -19,4 +21,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: "22"}
-      - run: node --test tests/apps-script-only-health.test.js tests/apps-script-native-health.test.js
+      - run: node --test tests/apps-script-only-health.test.js tests/apps-script-native-health.test.js tests/apps-script-native-sync-demo.test.js
