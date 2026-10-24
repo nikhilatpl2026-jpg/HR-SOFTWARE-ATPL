@@ -274,7 +274,7 @@ function incrementVersion() {
 // Completely bypasses iframe CSP and prevents cross-origin "Script error."
 app.all('/api/cloud-proxy', async (req, res) => {
   const params = req.method === 'POST' ? req.body : req.query;
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
   try {
     const qs = new URLSearchParams(params).toString();
     const url = APPS_SCRIPT_URL + (qs ? '?' + qs : '');
@@ -1701,8 +1701,14 @@ app.use(express.static(__dirname, {
   }
 }));
 
-// Route fallback to index.html
+// Route fallback to index.html (SPA navigation only)
 app.get('*', (req, res) => {
+  if (req.path.endsWith('.js')) {
+    return res.status(404).type('application/javascript').send('/* asset not found */');
+  }
+  if (req.path.endsWith('.css') || req.path.endsWith('.png') || req.path.endsWith('.jpg') || req.path.endsWith('.json')) {
+    return res.status(404).send('Not found');
+  }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
