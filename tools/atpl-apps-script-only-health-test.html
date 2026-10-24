@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ATPL Apps Script-only staging connection test</title>
+<style>
+body{font:16px system-ui,Arial,sans-serif;max-width:720px;margin:35px auto;padding:20px;color:#172337}
+h1{font-size:24px}.note{padding:13px 16px;border-radius:10px;background:#eef2f7;margin:14px 0}
+input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #98a3b2;border-radius:7px}
+button{background:#1662c5;border:0;color:white;border-radius:8px;padding:12px 20px;margin-top:12px;cursor:pointer}
+#result{white-space:pre-wrap;border:1px solid #ccd4dd;border-radius:10px;min-height:66px;padding:14px;margin-top:16px}
+.good{color:#0e7548}.bad{color:#a92727}
+</style>
+</head>
+<body>
+<h1>ATPL — Apps Script-only connection test</h1>
+<div class="note">Only tests connectivity. No employee records, passwords or documents are sent. Cloud Run is not used.</div>
+<label for="url"><strong>Google Apps Script Web App URL (/dev or /exec)</strong></label>
+<input id="url" placeholder="https://script.google.com/macros/s/…/dev" autocomplete="off">
+<button id="go" type="button">Test Google Apps Script connection</button>
+<pre id="result" role="status">Paste the Web App URL and click Test.</pre>
+<p><small>If the browser refuses to load the iframe, the test may time out. Do not enable the data API or change the Web App to Anyone just to bypass that error.</small></p>
+<script>
+'use strict';
+const originOk = o => o==='https://script.google.com'||o==='https://script.googleusercontent.com'||
+  /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.googleusercontent\.com$/.test(o);
+let active=null;
+function setResult(text,ok){const box=document.querySelector('#result');box.textContent=text;box.className=ok===true?'good':ok===false?'bad':'';}
+window.addEventListener('message',event=>{
+  if(!active||!originOk(event.origin))return;
+  const data=event.data;
+  if(!data||data.channel!=='ATPL_FORM_HEALTH_V1'||data.requestId!==active.requestId)return;
+  clearTimeout(active.timeout);
+  if(active.iframe)active.iframe.remove();
+  active=null;
+  if(data.result&&data.result.ok&&data.result.environment==='STAGING'&&data.result.dataWritesEnabled===false)
+    setResult('SUCCESS — Apps Script-only staging transport works!\n'+JSON.stringify(data.result,null,2),true);
+  else setResult('Transport answered but refused health request:\n'+JSON.stringify(data.result,null,2),false);
+});
+document.querySelector('#go').addEventListener('click',()=>{
+  if(active)return;
+  const url=document.querySelector('#url').value.trim();
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{30,}\/(?:dev|exec)$/.test(url)){
+    setResult('Paste a complete script.google.com/macros/s/.../dev or /exec URL.',false);return;
+  }
+  const requestId='HEALTH_'+Array.from(crypto.getRandomValues(new Uint8Array(18)),b=>b.toString(16).padStart(2,'0')).join('');
+  const iframe=document.createElement('iframe');
+  iframe.name='atpl_test_'+requestId;
+  iframe.title='ATPL staging transport probe';
+  iframe.style.cssText='width:0;height:0;border:0;position:absolute;opacity:0';
+  document.body.appendChild(iframe);
+  const form=document.createElement('form');
+  form.method='POST';form.action=url;form.target=iframe.name;form.style.display='none';
+  const data={atpl_form_probe:'1',request_id:requestId,action:'health'};
+  Object.keys(data).forEach(k=>{const input=document.createElement('input');input.type='hidden';input.name=k;input.value=data[k];form.appendChild(input)});
+  document.body.appendChild(form);
+  const timeout=setTimeout(()=>{
+    if(active&&active.requestId===requestId){active.iframe.remove();active=null;
+    setResult('No response after 20 seconds. Google may block third-party iframe/auth. Keep the endpoint private and report this result.',false);}
+  },20000);
+  active={requestId,iframe,timeout};
+  setResult('Testing staging Apps Script from browser …');
+  form.submit();form.remove();
+});
+</script>
+</body>
+</html>
