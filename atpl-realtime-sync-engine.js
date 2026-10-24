@@ -1,7 +1,6 @@
 /**
- * ATPL Universal Real-Time Sync Engine — ALL-MODULES EDITION
- * Zero-Hang + 100% Real-Time Google Drive Sync for:
- * Salary, HR Docs, PF, ESIC, Statutory Challans & ANY Future Module!
+ * ATPL Universal Real-Time Sync Engine — BULLETPROOF HR DOCS + ALL MODULES EDITION
+ * Fixes HR Documents sync across all browsers via IndexedDB interception & Dual-Array callbacks.
  */
 (function(window) {
   'use strict';
@@ -24,14 +23,13 @@
   window.__ATPL_CENTRAL_BACKEND_URL = '';
   window.ATPL_GET_API_BASE = function() { return ''; };
   window.ATPLCloudSharedStorageV1 = {
-    syncNow: async function() {},
-    syncHrNow: async function() {},
+    syncNow: async function() { return triggerUniversalReconciliation(true); },
+    syncHrNow: async function() { return triggerUniversalReconciliation(true); },
     saveSalary: async function() {},
-    saveHrDoc: async function() {},
-    deleteHrDoc: async function() {}
+    saveHrDoc: async function(doc) { return GoogleDriveEngine.saveHrDoc(doc); },
+    deleteHrDoc: async function(id, name) { return GoogleDriveEngine.deleteHrDoc(id, name); }
   };
 
-  // Universal Vault in RAM for PF, ESIC, Challans & any future modules
   window.ATPL_UNIVERSAL_VAULT = window.ATPL_UNIVERSAL_VAULT || {
     pf: [],
     esic: [],
@@ -144,75 +142,219 @@
     } catch (_) {}
   }
 
-  // ── STRICT HR DOCUMENTS STORAGE SYNCHRONIZER ──
-  function writeHrDocsToAllLocalStores(cleanDocsList) {
-    var arr = Array.isArray(cleanDocsList) ? cleanDocsList : [];
+  // ── DEEP HR DOCS READER & WRITER (Reads/Writes directly from IndexedDB + RAM + localStorage) ──
+  function readAllLocalHrDocsFromEverywhere() {
+    return new Promise(function(resolve) {
+      var mergedMap = new Map();
 
-    if (typeof window.hrDocGetDocs === 'function') {
+      function addDoc(d) {
+        if (!d || typeof d !== 'object') return;
+        var id = String(d.id || d.doc_id || '').trim();
+        var name = String(d.document_name || d.title || d.name || '').trim();
+        if (!id && !name) return;
+        if (!id) id = 'hr_' + name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        d.id = id;
+        if (!d.document_name && name) d.document_name = name;
+        var k = id.toLowerCase();
+        var existing = mergedMap.get(k);
+        if (!existing || (!existing.file_data && d.file_data)) {
+          mergedMap.set(k, Object.assign({}, existing || {}, d));
+        }
+      }
+
+      // 1. Check RAM getters & globals
       try {
-        var mem = window.hrDocGetDocs();
-        if (Array.isArray(mem) && mem !== arr) {
-          mem.length = 0;
-          Array.prototype.push.apply(mem, arr);
+        if (typeof window.hrDocGetDocs === 'function') {
+          var g = window.hrDocGetDocs();
+          if (Array.isArray(g)) g.forEach(addDoc);
         }
       } catch (_) {}
-    }
-    if (Array.isArray(window.HR_DOCS)) window.HR_DOCS = arr;
-    if (Array.isArray(window.hrDocs)) window.hrDocs = arr;
+      ['HR_DOCS', 'hrDocs', '_hrDocs', '__hrDocs'].forEach(function(prop) {
+        if (Array.isArray(window[prop])) window[prop].forEach(addDoc);
+      });
 
-    var slimList = arr.map(function(d) {
-      var copy = Object.assign({}, d);
-      delete copy.file_data;
-      delete copy.file_data_list;
-      return copy;
-    });
-    var slimJson = JSON.stringify(slimList);
-    ['ATPL_HR_DOCS', 'ATPL_HR_DOCS_V1', 'ATPL_HR_DOCS_CACHE', 'hr_documents', 'arora_hr_docs'].forEach(function(k) {
+      // 2. Check localStorage keys
+      ['ATPL_HR_DOCS', 'ATPL_HR_DOCS_V1', 'ATPL_HR_DOCS_CACHE', 'hr_documents', 'arora_hr_docs', 'hrDocs'].forEach(function(k) {
+        try {
+          var raw = localStorage.getItem(k);
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) parsed.forEach(addDoc);
+          }
+        } catch (_) {}
+      });
+
+      // 3. Read directly from IndexedDB ('AroraTextilesHRDocs')
+      if (typeof indexedDB === 'undefined') {
+        return resolve(Array.from(mergedMap.values()));
+      }
+
       try {
-        if (localStorage.getItem(k) !== null) localStorage.setItem(k, slimJson);
-      } catch (_) {}
-    });
-
-    try {
-      if (typeof indexedDB !== 'undefined') {
         var req = indexedDB.open('AroraTextilesHRDocs', 1);
+        req.onerror = function() { resolve(Array.from(mergedMap.values())); };
         req.onsuccess = function(e) {
           var db = e.target.result;
-          if (!db.objectStoreNames.contains('documents')) return;
-          var tx = db.transaction('documents', 'readwrite');
-          var store = tx.objectStore('documents');
-          var validIds = new Set(arr.map(function(d) { return String(d.id || '').toLowerCase().trim(); }));
-
-          var cur = store.openCursor();
-          cur.onsuccess = function(ev) {
-            var c = ev.target.result;
-            if (c) {
-              var cid = String((c.value && c.value.id) || '').toLowerCase().trim();
-              if (!cid || !validIds.has(cid)) {
-                try { c.delete(); } catch (_) {}
-              }
-              c.continue();
-            }
-          };
-
-          arr.forEach(function(doc) {
-            if (doc && doc.id) {
-              try { store.put(doc); } catch (_) {}
+          var storeNames = Array.from(db.objectStoreNames || []);
+          if (storeNames.length === 0) {
+            return resolve(Array.from(mergedMap.values()));
+          }
+          var pending = storeNames.length;
+          storeNames.forEach(function(sName) {
+            try {
+              var tx = db.transaction(sName, 'readonly');
+              var st = tx.objectStore(sName);
+              var getAllReq = st.getAll();
+              getAllReq.onsuccess = function(ev) {
+                var res = ev.target.result;
+                if (Array.isArray(res)) res.forEach(addDoc);
+                pending--;
+                if (pending <= 0) resolve(Array.from(mergedMap.values()));
+              };
+              getAllReq.onerror = function() {
+                pending--;
+                if (pending <= 0) resolve(Array.from(mergedMap.values()));
+              };
+            } catch (_) {
+              pending--;
+              if (pending <= 0) resolve(Array.from(mergedMap.values()));
             }
           });
         };
+      } catch (_) {
+        resolve(Array.from(mergedMap.values()));
       }
-    } catch (_) {}
+    });
   }
 
-  // ── UNIVERSAL MODULE STORAGE SYNCHRONIZER (PF, ESIC, Challans & Future Modules) ──
+  function writeHrDocsToAllLocalStores(cleanDocsList) {
+    return new Promise(function(resolve) {
+      var arr = Array.isArray(cleanDocsList) ? cleanDocsList : [];
+
+      // 1. Update in-memory arrays & setters
+      if (typeof window.hrDocSetDocs === 'function') {
+        try { window.hrDocSetDocs(arr); } catch (_) {}
+      }
+      if (typeof window.hrDocGetDocs === 'function') {
+        try {
+          var mem = window.hrDocGetDocs();
+          if (Array.isArray(mem) && mem !== arr) {
+            mem.length = 0;
+            Array.prototype.push.apply(mem, arr);
+          }
+        } catch (_) {}
+      }
+      ['HR_DOCS', 'hrDocs', '_hrDocs', '__hrDocs'].forEach(function(prop) {
+        if (Array.isArray(window[prop])) {
+          window[prop].length = 0;
+          Array.prototype.push.apply(window[prop], arr);
+        } else {
+          window[prop] = arr.slice();
+        }
+      });
+
+      // 2. Update localStorage keys
+      var slimList = arr.map(function(d) {
+        var copy = Object.assign({}, d);
+        delete copy.file_data;
+        delete copy.file_data_list;
+        return copy;
+      });
+      var slimJson = JSON.stringify(slimList);
+      ['ATPL_HR_DOCS', 'ATPL_HR_DOCS_V1', 'ATPL_HR_DOCS_CACHE', 'hr_documents', 'arora_hr_docs', 'hrDocs'].forEach(function(k) {
+        try { localStorage.setItem(k, slimJson); } catch (_) {}
+      });
+
+      // 3. Write into IndexedDB ('AroraTextilesHRDocs')
+      if (typeof indexedDB === 'undefined') return resolve();
+
+      try {
+        var req = indexedDB.open('AroraTextilesHRDocs', 1);
+        req.onerror = function() { resolve(); };
+        req.onsuccess = function(e) {
+          var db = e.target.result;
+          var storeNames = Array.from(db.objectStoreNames || []);
+          if (storeNames.length === 0) return resolve();
+
+          var validIds = new Set(arr.map(function(d) { return String(d.id || '').toLowerCase().trim(); }));
+          var pending = storeNames.length;
+
+          storeNames.forEach(function(sName) {
+            try {
+              var tx = db.transaction(sName, 'readwrite');
+              var store = tx.objectStore(sName);
+              var cur = store.openCursor();
+              cur.onsuccess = function(ev) {
+                var c = ev.target.result;
+                if (c) {
+                  var cid = String((c.value && c.value.id) || c.key || '').toLowerCase().trim();
+                  if (!cid || !validIds.has(cid)) {
+                    try { c.delete(); } catch (_) {}
+                  }
+                  c.continue();
+                } else {
+                  arr.forEach(function(doc) {
+                    if (doc && doc.id) {
+                      try {
+                        if (store.keyPath) store.put(doc);
+                        else store.put(doc, doc.id);
+                      } catch (_) {}
+                    }
+                  });
+                }
+              };
+              tx.oncomplete = function() {
+                pending--;
+                if (pending <= 0) resolve();
+              };
+              tx.onerror = function() {
+                pending--;
+                if (pending <= 0) resolve();
+              };
+            } catch (_) {
+              pending--;
+              if (pending <= 0) resolve();
+            }
+          });
+        };
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  // Helper to build hybrid array+object payload so ANY subscriber callback works!
+  function createHybridHrCallbackPayload(docsArray, removedIds) {
+    var hybrid = Array.isArray(docsArray) ? docsArray.slice() : [];
+    hybrid.updated = true;
+    hybrid.docs = hybrid;
+    hybrid.records = hybrid;
+    hybrid.removedIds = Array.isArray(removedIds) ? removedIds : [];
+    return hybrid;
+  }
+
+  function refreshHrUIEverywhere(docsArray) {
+    var payload = createHybridHrCallbackPayload(docsArray, []);
+    hrDocSubs.forEach(function(cb) {
+      try { cb(payload); } catch (_) {}
+    });
+    // Trigger any internal reload/render hooks in index.html
+    ['hrDocLoadFromDB', 'hrDocReload', 'loadHrDocs', 'hrDocRender', 'renderHrDocs'].forEach(function(fn) {
+      if (typeof window[fn] === 'function') {
+        try { window[fn](docsArray); } catch (_) {}
+      }
+    });
+    try {
+      window.dispatchEvent(new CustomEvent('atpl-hr-docs-synced', { detail: { docs: docsArray, count: docsArray.length } }));
+    } catch (_) {}
+    clearHrSyncingIndicator();
+  }
+
   function writeUniversalModuleToLocal(modName, cleanList) {
     var m = String(modName || '').toLowerCase().trim();
     if (!m) return;
     var arr = Array.isArray(cleanList) ? cleanList : [];
     window.ATPL_UNIVERSAL_VAULT[m] = arr;
 
-    // Save slim metadata to localStorage so modules can read instantly on boot
     try {
       var slim = arr.map(function(item) {
         var c = Object.assign({}, item);
@@ -224,7 +366,6 @@
       localStorage.setItem('ATPL_MOD_CACHE_' + m.toUpperCase(), JSON.stringify(slim));
     } catch (_) {}
 
-    // Fire cross-module browser events so PF, ESIC, Challan & Custom UIs auto-refresh
     try {
       window.dispatchEvent(new CustomEvent('atpl-dol-supabase-change', {
         detail: { type: m, action: 'sync', records: arr, at: Date.now() }
@@ -302,7 +443,7 @@
     scheduleDebouncedUIRefresh();
   }
 
-  function purgeLocalHrDoc(id, name, deletedAtIso) {
+  async function purgeLocalHrDoc(id, name, deletedAtIso) {
     var targetId = String(id || '').toLowerCase().trim();
     var targetName = String(name || '').toLowerCase().trim();
     if (!targetId && !targetName) return;
@@ -318,21 +459,15 @@
       } catch (_) {}
     });
 
-    if (typeof window.hrDocGetDocs === 'function') {
-      var docs = window.hrDocGetDocs();
-      if (Array.isArray(docs)) {
-        var kept = docs.filter(function(d) {
-          if (!d) return false;
-          var did = String(d.id || '').toLowerCase().trim();
-          var dnm = String(d.document_name || '').toLowerCase().trim();
-          return did !== targetId && (targetName ? dnm !== targetName : true);
-        });
-        writeHrDocsToAllLocalStores(kept);
-      }
-    }
-    if (typeof window.hrDocRender === 'function') {
-      try { window.hrDocRender(); } catch (_) {}
-    }
+    var current = await readAllLocalHrDocsFromEverywhere();
+    var kept = current.filter(function(d) {
+      if (!d) return false;
+      var did = String(d.id || '').toLowerCase().trim();
+      var dnm = String(d.document_name || d.name || '').toLowerCase().trim();
+      return did !== targetId && (targetName ? dnm !== targetName : true);
+    });
+    await writeHrDocsToAllLocalStores(kept);
+    refreshHrUIEverywhere(kept);
   }
 
   function purgeLocalCompliance(mod, id, name) {
@@ -383,10 +518,11 @@
   var isSyncingNow = false;
   var salarySubs = [];
   var hrDocSubs = [];
-  var dolSubs = {}; // module -> [callbacks]
+  var dolSubs = {};
   var pushedLocalHrIds = new Set();
+  var lastHrCount = -1;
 
-  // ── UNIVERSAL RECONCILIATION (Salary + HR Docs + PF + ESIC + Challans + Any Future Module) ──
+  // ── UNIVERSAL RECONCILIATION (Salary + Bulletproof HR Docs + PF + ESIC + Challans) ──
   async function triggerUniversalReconciliation(forceDownloadCheck) {
     if (isSyncingNow || window.__ATPL_IS_UPLOADING) return;
     var gasUrl = getGasUrl();
@@ -415,14 +551,14 @@
       var remoteHr = allFiles.filter(function(f) { return f.module === 'hr_doc'; });
       var uniqueRemoteHrMap = new Map();
       remoteHr.forEach(function(hf) {
-        var hid = String(hf.id || '').toLowerCase().trim();
+        var hid = String(hf.id || hf.name || '').toLowerCase().trim();
         if (hid) uniqueRemoteHrMap.set(hid, hf);
       });
       var cleanRemoteHrList = Array.from(uniqueRemoteHrMap.values());
 
       var hrTombstoneIds = new Set();
       var hrTombstoneNames = new Set();
-      var moduleTombstones = {}; // mod -> Set of deleted keys
+      var moduleTombstones = {};
       allTombs.forEach(function(t) {
         var mod = String(t.module || '').toLowerCase().trim();
         if (!moduleTombstones[mod]) moduleTombstones[mod] = new Set();
@@ -434,40 +570,44 @@
         }
       });
 
-      var localSalaryCount = Array.isArray(window.FILES) ? window.FILES.length : 0;
-      var currentLocalHrDocs = (typeof window.hrDocGetDocs === 'function' && Array.isArray(window.hrDocGetDocs())) ? window.hrDocGetDocs() : [];
+      // Read all local HR docs directly from IndexedDB + RAM + localStorage
+      var currentLocalHrDocs = await readAllLocalHrDocsFromEverywhere();
       var localHrCount = currentLocalHrDocs.length;
+      var localSalaryCount = Array.isArray(window.FILES) ? window.FILES.length : 0;
 
       if (!forceDownloadCheck &&
           manifest.version === lastSeenVersion &&
           localSalaryCount === cleanRemoteSalList.length &&
-          localHrCount === cleanRemoteHrList.length) {
+          localHrCount === cleanRemoteHrList.length &&
+          lastHrCount === cleanRemoteHrList.length) {
         clearHrSyncingIndicator();
         return;
       }
 
       var anyChange = false;
 
-      // 1. Apply Tombstones across ALL modules
-      allTombs.forEach(function(t) {
+      // 1. Apply Tombstones
+      for (var tIdx = 0; tIdx < allTombs.length; tIdx++) {
+        var t = allTombs[tIdx];
         var mod = String(t.module || '').toLowerCase().trim();
         if (mod === 'salary') {
           if (t.name === '__ALL__' || t.id === '__ALL__') purgeAllSalaryFilesLocal();
           else purgeLocalSalaryFile(t.name || t.id);
         } else if (mod === 'hr_doc') {
-          purgeLocalHrDoc(t.id, t.name, t.deleted_at);
+          await purgeLocalHrDoc(t.id, t.name, t.deleted_at);
         } else {
           purgeLocalCompliance(mod, t.id, t.name);
         }
-      });
+      }
 
       // 2. HR DOCUMENTS TWO-WAY MERGE & STRICT MIRROR
+      // Step 2A: Push any local HR Docs found in IndexedDB/RAM that are not yet on Google Drive
       if (currentLocalHrDocs.length > 0) {
         for (var u = 0; u < currentLocalHrDocs.length; u++) {
           var lDoc = currentLocalHrDocs[u];
           if (!lDoc || !lDoc.id) continue;
           var lidLow = String(lDoc.id).toLowerCase().trim();
-          var lnmLow = String(lDoc.document_name || '').toLowerCase().trim();
+          var lnmLow = String(lDoc.document_name || lDoc.name || '').toLowerCase().trim();
           var isDeleted = hrTombstoneIds.has(lidLow) || (lnmLow && hrTombstoneNames.has(lnmLow));
 
           if (!uniqueRemoteHrMap.has(lidLow) && !isDeleted && !pushedLocalHrIds.has(lidLow)) {
@@ -480,14 +620,14 @@
                 action: 'save_file',
                 module: 'hr_doc',
                 id: lDoc.id,
-                name: lDoc.document_name || lDoc.id,
+                name: lDoc.document_name || lDoc.name || lDoc.id,
                 updated_at: lDoc.updated_at || new Date().toISOString(),
                 meta: slimMeta,
                 payload: lDoc
               });
               uniqueRemoteHrMap.set(lidLow, {
                 id: lDoc.id,
-                name: lDoc.document_name || lDoc.id,
+                name: lDoc.document_name || lDoc.name || lDoc.id,
                 updated_at: lDoc.updated_at || new Date().toISOString(),
                 meta: slimMeta
               });
@@ -499,6 +639,7 @@
         cleanRemoteHrList = Array.from(uniqueRemoteHrMap.values());
       }
 
+      // Step 2B: Reconcile authoritative HR Docs list from Google Sheet Manifest
       var finalHrDocs = [];
       var existingLocalHrMap = new Map();
       currentLocalHrDocs.forEach(function(d) {
@@ -507,25 +648,30 @@
 
       for (var hIdx = 0; hIdx < cleanRemoteHrList.length; hIdx++) {
         var rDoc = cleanRemoteHrList[hIdx];
-        var ridLow = String(rDoc.id || '').toLowerCase().trim();
-        if (!ridLow || hrTombstoneIds.has(ridLow)) continue;
+        var ridLow = String(rDoc.id || rDoc.name || '').toLowerCase().trim();
+        var rnmLow = String(rDoc.name || '').toLowerCase().trim();
+        if (!ridLow || hrTombstoneIds.has(ridLow) || (rnmLow && hrTombstoneNames.has(rnmLow))) continue;
 
         var metaObj = (rDoc.meta && typeof rDoc.meta === 'object') ? rDoc.meta : {};
         var localExisting = existingLocalHrMap.get(ridLow) || {};
 
-        if (!metaObj.document_name && !localExisting.document_name && rDoc.drive_id) {
+        // If manifest meta is empty or missing fields, fetch full JSON from Google Drive
+        if ((!metaObj.document_name && !metaObj.category && !localExisting.document_name) && rDoc.drive_id) {
           try {
             var fullHr = await gasGet({ action: 'get_file', drive_id: rDoc.drive_id, key: rDoc.key });
-            if (fullHr && fullHr.ok && fullHr.payload && typeof fullHr.payload === 'object') {
-              metaObj = fullHr.payload;
+            if (fullHr && fullHr.ok && fullHr.payload) {
+              var parsedHr = typeof fullHr.payload === 'string' ? JSON.parse(fullHr.payload) : fullHr.payload;
+              if (parsedHr && typeof parsedHr === 'object') metaObj = parsedHr;
             }
             await yieldToUI(20);
           } catch (_) {}
         }
 
+        var docTitle = metaObj.document_name || localExisting.document_name || metaObj.name || rDoc.name || rDoc.id;
         var mergedDoc = Object.assign({}, localExisting, metaObj, {
-          id: rDoc.id,
-          document_name: metaObj.document_name || localExisting.document_name || rDoc.name || rDoc.id,
+          id: rDoc.id || metaObj.id || docTitle,
+          document_name: docTitle,
+          name: docTitle,
           drive_id: rDoc.drive_id || localExisting.drive_id || '',
           key: rDoc.key || localExisting.key || ('hr_doc:' + ridLow),
           updated_at: rDoc.updated_at || metaObj.updated_at || localExisting.updated_at || new Date().toISOString()
@@ -533,17 +679,13 @@
         finalHrDocs.push(mergedDoc);
       }
 
-      if (finalHrDocs.length !== localHrCount || anyChange || forceDownloadCheck) {
-        writeHrDocsToAllLocalStores(finalHrDocs);
-        anyChange = true;
-      }
+      // Write exact HR Docs list to IndexedDB, localStorage & RAM, then notify UI with hybrid Array!
+      await writeHrDocsToAllLocalStores(finalHrDocs);
+      lastHrCount = finalHrDocs.length;
+      refreshHrUIEverywhere(finalHrDocs);
 
-      hrDocSubs.forEach(function(cb) { try { cb({ updated: true, docs: finalHrDocs, removedIds: [] }); } catch (_) {} });
-      if (typeof window.hrDocRender === 'function') { try { window.hrDocRender(); } catch (_) {} }
-      clearHrSyncingIndicator();
-
-      // 3. UNIVERSAL SYNC FOR PF, ESIC, CHALLAN & ANY OTHER/FUTURE MODULE!
-      var otherModulesMap = {}; // moduleName -> array of manifest items
+      // 3. UNIVERSAL SYNC FOR PF, ESIC, CHALLAN & ANY OTHER MODULE
+      var otherModulesMap = {};
       allFiles.forEach(function(f) {
         var m = String(f.module || '').toLowerCase().trim();
         if (!m || m === 'salary' || m === 'hr_doc') return;
@@ -551,7 +693,6 @@
         otherModulesMap[m].push(f);
       });
 
-      // Ensure pf, esic, challan keys always get reconciled even if empty
       ['pf', 'esic', 'challan'].forEach(function(coreMod) {
         if (!otherModulesMap[coreMod]) otherModulesMap[coreMod] = [];
       });
@@ -577,7 +718,6 @@
           var cachedItem = existingVaultMap.get(itemKey);
           var rMeta = (rItem.meta && typeof rItem.meta === 'object') ? rItem.meta : {};
 
-          // Download full payload if not yet cached in RAM and needed for PF/ESIC/Challan
           var fullPayload = cachedItem || null;
           if (!fullPayload && rItem.drive_id) {
             try {
@@ -605,8 +745,9 @@
           anyChange = true;
         }
         if (Array.isArray(dolSubs[modKey])) {
+          var dolPayload = createHybridHrCallbackPayload(syncedModList, []);
           dolSubs[modKey].forEach(function(cb) {
-            try { cb({ updated: true, records: syncedModList, removed: [] }); } catch (_) {}
+            try { cb(dolPayload); } catch (_) {}
           });
         }
       }
@@ -722,9 +863,9 @@
   }
 
   var GoogleDriveEngine = {
-    version: '2026.11.08-UNIVERSAL-ALL-MODULES',
+    version: '2026.11.09-HR-DOCS-BULLETPROOF',
     init: function() {
-      setTimeout(function() { triggerUniversalReconciliation(true); }, 1200);
+      setTimeout(function() { triggerUniversalReconciliation(true); }, 1000);
       return this;
     },
     saveSalaryFile: async function(name, payloadObj, meta) {
@@ -770,44 +911,42 @@
       return (res && res.ok && res.payload) ? (typeof res.payload === 'string' ? { original_b64: res.payload, name: doc.name } : res.payload) : null;
     },
     saveHrDoc: async function(doc) {
-      if (!doc || !doc.id) return false;
-      window.atplMarkSessionUpload('hr_doc', doc.id);
-      pushedLocalHrIds.add(String(doc.id).toLowerCase().trim());
+      if (!doc) return false;
+      var docId = String(doc.id || doc.document_name || ('hr_' + Date.now())).trim();
+      doc.id = docId;
+      var docName = String(doc.document_name || doc.name || docId).trim();
+      doc.document_name = docName;
+
+      window.atplMarkSessionUpload('hr_doc', docId);
+      pushedLocalHrIds.add(docId.toLowerCase());
+
       var slimMeta = Object.assign({}, doc);
       delete slimMeta.file_data;
       delete slimMeta.file_data_list;
+
       await gasPost({
-        action: 'save_file', module: 'hr_doc', id: doc.id, name: doc.document_name || doc.id,
-        updated_at: doc.updated_at || new Date().toISOString(), meta: slimMeta, payload: doc
+        action: 'save_file',
+        module: 'hr_doc',
+        id: docId,
+        name: docName,
+        updated_at: doc.updated_at || new Date().toISOString(),
+        meta: slimMeta,
+        payload: doc
       });
       await triggerUniversalReconciliation(true);
       return true;
     },
     deleteHrDoc: async function(id, name) {
-      purgeLocalHrDoc(id, name);
-      await gasPost({ action: 'delete_file', module: 'hr_doc', id: id, name: name || id });
+      await purgeLocalHrDoc(id, name);
+      await gasPost({ action: 'delete_file', module: 'hr_doc', id: id || name, name: name || id });
       await triggerUniversalReconciliation(true);
       return true;
     },
     fetchAllHrDocs: async function() {
-      var m = await gasGet({ action: 'manifest', nocache: '1' });
-      if (!m || !Array.isArray(m.files)) return [];
-      var tombs = new Set((m.tombstones || []).filter(function(t) { return t.module === 'hr_doc'; }).map(function(t) { return String(t.id || '').toLowerCase().trim(); }));
-      var list = m.files.filter(function(f) {
-        return f.module === 'hr_doc' && !tombs.has(String(f.id || '').toLowerCase().trim());
-      }).map(function(f) {
-        var meta = (f.meta && typeof f.meta === 'object') ? f.meta : {};
-        return Object.assign({}, meta, {
-          id: f.id,
-          document_name: meta.document_name || f.name || f.id,
-          drive_id: f.drive_id,
-          key: f.key,
-          updated_at: f.updated_at
-        });
-      });
-      writeHrDocsToAllLocalStores(list);
+      await triggerUniversalReconciliation(true);
+      var docs = await readAllLocalHrDocsFromEverywhere();
       clearHrSyncingIndicator();
-      return list;
+      return createHybridHrCallbackPayload(docs, []);
     },
     fetchAllHrTombstones: async function() {
       var m = await gasGet({ action: 'manifest' });
@@ -816,12 +955,14 @@
     },
     decodeHrPayload: async function(doc) {
       if (!doc) return null;
-      if (doc.file_data) return doc;
+      if (doc.file_data || doc.file_data_list) return doc;
       var res = await gasGet({ action: 'get_file', drive_id: doc.drive_id || '', key: doc.key || ('hr_doc:' + String(doc.id).toLowerCase()) });
-      return (res && res.ok && res.payload) ? res.payload : doc;
+      if (res && res.ok && res.payload) {
+        var parsed = typeof res.payload === 'string' ? JSON.parse(res.payload) : res.payload;
+        return Object.assign({}, doc, parsed || {});
+      }
+      return doc;
     },
-
-    // ── UNIVERSAL SAVE / DELETE / FETCH FOR PF, ESIC, CHALLANS & ANY FUTURE MODULE ──
     saveComplianceDoc: async function(module, name, payload) {
       var mod = String(module || 'pf').toLowerCase().trim();
       var obj = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
@@ -926,8 +1067,9 @@
     subscribeHrDocs: function(cb) {
       if (typeof cb === 'function') {
         hrDocSubs.push(cb);
-        setTimeout(function() {
-          try { cb({ updated: true, removedIds: [] }); } catch (_) {}
+        setTimeout(async function() {
+          var docs = await readAllLocalHrDocsFromEverywhere();
+          try { cb(createHybridHrCallbackPayload(docs, [])); } catch (_) {}
           clearHrSyncingIndicator();
         }, 600);
       }
@@ -944,7 +1086,7 @@
         dolSubs[mod].push(cb);
         setTimeout(function() {
           var recs = window.ATPL_UNIVERSAL_VAULT[mod] || [];
-          try { cb({ updated: true, records: recs, removed: [] }); } catch (_) {}
+          try { cb(createHybridHrCallbackPayload(recs, [])); } catch (_) {}
         }, 600);
       }
       return function() {};
@@ -979,11 +1121,11 @@
     triggerUniversalReconciliation(true);
   };
 
-  setTimeout(function() { triggerUniversalReconciliation(true); }, 1200);
+  setTimeout(function() { triggerUniversalReconciliation(true); }, 1000);
 
   setInterval(function() {
     if (!document.hidden && !window.__ATPL_IS_UPLOADING) {
       triggerUniversalReconciliation(false);
     }
-  }, 6000);
+  }, 5000);
 })(window);
