@@ -81,6 +81,12 @@
     updateBadge('uploading', 'Syncing files across browsers...');
 
     try {
+      // Clear legacy tombstone blockers so Browser B never drops active files
+      try {
+        localStorage.removeItem('ATPL_ALL_SALARY_CLEARED_AT');
+        localStorage.removeItem('ATPL_SALARY_TOMBSTONES_V2');
+      } catch (_) {}
+
       // 1. Fetch current Google Cloud registry
       var cloudState = await callGoogleApi('getSyncState', { sinceVersion: 0 });
       var googleFiles = (cloudState && Array.isArray(cloudState.files)) ? cloudState.files : [];

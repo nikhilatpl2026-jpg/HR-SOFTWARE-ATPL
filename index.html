@@ -3828,14 +3828,8 @@ var MONTH_DAYS = {'1':31,'2':28,'2L':29,'3':31,'4':30,'5':31,'6':30,'7':31,'8':3
 // ═══════════════════════════════════════════════════════════════
 // Deletion barriers survive refresh and apply to every restore source.
 function atplSalaryRestoreAllowed(name, saved) {
-  try {
-    var stamp = Date.parse(saved || '') || 0;
-    var cleared = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0;
-    var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
-    var tomb = tombs[String(name || '').toLowerCase()];
-    var deleted = tomb === true ? Infinity : (Date.parse(tomb || '') || 0);
-    return !(cleared && stamp <= cleared) && !(deleted && stamp <= deleted);
-  } catch (_) { return false; }
+  // Google Cloud and active files should always be restored across browsers
+  return true;
 }
 window.atplSalaryRestoreAllowed = atplSalaryRestoreAllowed;
 
