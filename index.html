@@ -4482,9 +4482,9 @@ async function handleFiles(list) {
         FILES = (FILES || []).filter(function(f) { return f && f.name !== file.name; });
         FILES.push({ name: file.name, wb: wb, sheets: sheets, buf: buf, savedAt: now });
         saveFileToDB(file.name, buf);
-        if (window.ATPLFirebase && typeof window.ATPLFirebase.saveSalaryFile === 'function') {
+        if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.uploadFile === 'function') {
           var b64Payload = atplBufToB64(buf);
-          await window.ATPLFirebase.saveSalaryFile(file.name, { original_b64: b64Payload, name: file.name }, { name: file.name, saved_at: now, uploaded_by: 'admin' });
+          await window.ATPLGoogleSync.uploadFile(file.name, b64Payload, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Admin');
         }
       } catch(err) {
         console.warn('Error saving ' + file.name, err);
@@ -4534,17 +4534,13 @@ function rmFile(i) {
   var name = f.name;
   if (!confirm('Kya aap file "' + name + '" ko delete karna chahte hain?\nYe file cloud storage aur sabhi phones/browsers se permanent delete ho jayegi.')) return;
 
-  if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.deleteFile === 'function') {
-    window.ATPLCentralFileSync.deleteFile('salary', name);
-  } else {
-    FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
-    window.FILES = FILES;
-    deleteFromDB(name);
-    if (window.ATPLFirebase && typeof window.ATPLFirebase.deleteSalaryFile === 'function') {
-      window.ATPLFirebase.deleteSalaryFile(name, 'admin').catch(function(){});
-    }
-    renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  FILES = (window.FILES || []).filter(function(x) { return x && x.name !== name; });
+  window.FILES = FILES;
+  deleteFromDB(name);
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.deleteFile === 'function') {
+    window.ATPLGoogleSync.deleteFile(name);
   }
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
 }
 
 function clearAllFiles() {
