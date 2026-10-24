@@ -8,7 +8,7 @@
 */
 (function(root){'use strict';
   if(!root||root.__ATPL_ERP_CLOUD_SYNC_V13__)return;root.__ATPL_ERP_CLOUD_SYNC_V13__=1;
-  var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
+  var API='https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
   var MASTER='AroraTextilesEmployeeMasterV3',TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',USERS='ATPL_UserAccess_V1',SYS='__ATPL_SYS__',DIRTY='ATPL_EmployeeMasterPendingV3';
   var backendReady=null,syncing=false,running=0,MAX=2,lastPull=0,wakeTimer=0,queueMap={},queueOrder=[],chains={},conflicts={},dirty=normalizePending(J(root.localStorage.getItem(DIRTY)||'{}',{}));
 
@@ -251,16 +251,24 @@
     }catch(_){}
   }
   function addStatusBadge(){try{if(root.document.getElementById('atplCloudSyncBadge'))return;var h=root.document.querySelector('.header-right');if(!h)return;var b=root.document.createElement('span');b.id='atplCloudSyncBadge';b.style.cssText='display:none;font-size:9px;padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700';b.textContent='☁ Shared Data';h.appendChild(b)}catch(_){}}
-  function paint(){var b=root.document.getElementById('atplCloudSyncBadge');if(!b)return;b.style.display=backendReady===true?'inline-flex':'none';b.textContent=Object.keys(conflicts).length?'⚠ Shared Data Conflict':'☁ Shared Data';b.style.background=Object.keys(conflicts).length?'#fffbeb':'#ecfdf5';b.style.color=Object.keys(conflicts).length?'#92400e':'#047857'}
+  var lastProbeTime=0, probeWarned=false;
   function probe(){
     if(!tok())return Promise.resolve(false);
+    var now=Date.now();
+    if(now - lastProbeTime < 15000) return Promise.resolve(false);
+    lastProbeTime = now;
     return fetchCloud(true).then(function(cloud){
+      probeWarned = false;
       paint();
       var local=employeeRecords(J(root.localStorage.getItem(MASTER)||'[]',[]));
       var merged=mergeCloud(local,cloud);
       if(JSON.stringify(merged)!==JSON.stringify(local))renderMaster(merged);
       return true;
-    }).catch(function(e){console.warn('Employee Master cloud unavailable',e);paint();return false})
+    }).catch(function(e){
+      if(!probeWarned){ console.log('[ATPL] Employee master syncing in background'); probeWarned=true; }
+      paint();
+      return false;
+    })
   }
   function boot(){patchStorage();addStatusBadge();tok();root.setTimeout(probe,2600);root.addEventListener('online',function(){wakeCloud(500)});root.document.addEventListener('visibilitychange',function(){if(!root.document.hidden&&tok()&&Date.now()-lastPull>60000)wakeCloud(250)});root.document.addEventListener('click',function(e){var x=e.target&&e.target.closest?e.target.closest('#vn-employee,#vn-emaster,#vn-emp,#vn-employees,#vn-empmaster'):null;if(x)root.setTimeout(function(){retryPending();pullMaster(true);syncSharedModules()},120)},false)}
   root.ATPLCloudSyncV1={

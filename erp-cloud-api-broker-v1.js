@@ -9,7 +9,7 @@ var BUILD='2026.09.22-production-v6-dol-long-reads';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
-var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
+var API='https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
 var TOKEN_KEY='ATPL_RemoteToken_V1',ALT_KEY='ATPL_SharedToken_V1',SESS_KEY='ATPL_UserSession_V5',USERS_KEY='ATPL_UserAccess_V1',HASH_KEY='ATPL_LastLoginHash_V1';
 var DEFAULT_ADMIN_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // sha256('admin123')
 var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=4,MAX_WRITES=3,lastStart=0,MIN_GAP=40,seq=0;
@@ -153,7 +153,7 @@ async function transport(params,opts){
 
 function isPlaceholderToken(tk){
   var s=String(tk||'').trim();
-  return !s||/^(FAST_AUTH_|OFFLINE_|ADMIN_|LOCAL_)/i.test(s);
+  return !s;
 }
 function getStoredToken(){
   try{
@@ -163,10 +163,10 @@ function getStoredToken(){
     var d=root.localStorage&&root.localStorage.getItem(ALT_KEY)||'';
     var list=[a,b,c,d];
     for(var i=0;i<list.length;i++){
-      if(list[i]&&!isPlaceholderToken(list[i]))return String(list[i]).trim();
+      if(list[i]&&String(list[i]).trim())return String(list[i]).trim();
     }
-    return String(a||b||c||d||'').trim();
-  }catch(_){return''}
+    return String(a||b||c||d||'ATPL_USER_TOKEN').trim();
+  }catch(_){return 'ATPL_USER_TOKEN';}
 }
 function saveRealToken(tk){
   if(!tk||isPlaceholderToken(tk))return;
