@@ -173,8 +173,10 @@ window.ATPLCloudDebugger = (function() {
         var logContent = document.createElement('div');
         logContent.style.cssText = 'font-family:monospace;font-size:11px;white-space:pre-wrap;color:#fca5a5;';
         setInterval(function() {
-            logContent.innerText = logBuffer.join('\n') || 'All systems nominal. Zero errors.';
-        }, 1000);
+            if (modal && modal.style.display === 'flex') {
+                logContent.innerText = logBuffer.join('\n') || 'All systems nominal. Zero errors.';
+            }
+        }, 2000);
 
         logBox.appendChild(logContent);
         leftCol.appendChild(logBox);

@@ -9,7 +9,7 @@
   var GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
   var STORAGE_KEY_FILES = 'ATPL_GOOGLE_FILES_CACHE_V1';
   var STORAGE_KEY_VERSION = 'ATPL_GOOGLE_SYNC_VERSION_V1';
-  var POLL_INTERVAL_MS = 4500;
+  var POLL_INTERVAL_MS = 25000;
 
   var state = {
     currentVersion: parseInt(localStorage.getItem(STORAGE_KEY_VERSION) || '0', 10),

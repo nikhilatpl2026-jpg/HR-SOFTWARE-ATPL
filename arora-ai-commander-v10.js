@@ -1542,27 +1542,31 @@
     attachLauncher();
   }
 
-  // Auto-monitor window.FILES so incoming files are learned dynamically
-  function monitorFiles() {
-    try {
-      if (window.FILES && Array.isArray(window.FILES)) {
-        if (window.FILES.length !== KnowledgeGraph.lastScannedFileCount) {
-          refreshKnowledgeGraph();
-          var metaBar = document.getElementById("aiMetaBar");
-          if (metaBar && KnowledgeGraph.filesSummary.length) {
-            var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";
-            KnowledgeGraph.filesSummary.forEach(function(f) {
-              html += "<span class='ai-tag' onclick=\"window.AroraAICommander.sendQuery('" + f.name + " summary')\">📄 " + f.name.slice(0, 18) + " (" + f.totalRows + " rows)</span>";
-            });
-            metaBar.innerHTML = html;
+  // Lazy monitor for files change - debounced, zero background CPU drain
+  var monitorTimer = null;
+  function scheduleKnowledgeScan() {
+    if (monitorTimer) clearTimeout(monitorTimer);
+    monitorTimer = setTimeout(function() {
+      try {
+        if (window.FILES && Array.isArray(window.FILES)) {
+          if (window.FILES.length !== KnowledgeGraph.lastScannedFileCount) {
+            refreshKnowledgeGraph();
+            var metaBar = document.getElementById("aiMetaBar");
+            if (metaBar && KnowledgeGraph.filesSummary.length) {
+              var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";
+              KnowledgeGraph.filesSummary.forEach(function(f) {
+                html += "<span class='ai-tag' onclick=\"window.AroraAICommander.sendQuery('" + f.name + " summary')\">📄 " + f.name.slice(0, 18) + " (" + f.totalRows + " rows)</span>";
+              });
+              metaBar.innerHTML = html;
+            }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }, 5000);
   }
-  setInterval(monitorFiles, 1500);
 
-  // Initial knowledge graph scan
-  setTimeout(refreshKnowledgeGraph, 500);
+  // Trigger scan only on upload or files restore, not on continuous setInterval
+  window.addEventListener('atpl-local-files-restored', scheduleKnowledgeScan);
+  window.addEventListener('atpl-file-saved', scheduleKnowledgeScan);
 
 })();

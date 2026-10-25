@@ -10,7 +10,7 @@
  }
  var BUILD='2026.09.28-permanent-cross-browser-delete-v2';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
- var API='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec';
+ var API='https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
  var SALARY_DB='AroraTextiles',SALARY_VER=1,SALARY_STORE='salaryFiles';
  var HR_DB='AroraTextilesHRDocs',HR_VER=1,HR_STORE='documents';
@@ -1293,15 +1293,25 @@
        setTimeout(function(){ syncWithServer(false); }, delay);
      });
 
-     // Periodic fallback check every 7 seconds
+     // Periodic fallback check - relaxed to 60s to prevent CPU drain
      setInterval(function(){
        if(!root.document.hidden){
          syncWithServer(false);
        }
-     }, 7000);
+     }, 60000);
 
-     var es=new root.EventSource('/api/sync/events');
-     es.addEventListener('salary_file_saved',async function(e){
+     var isLocalBackend = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || /\.run\.app$/i.test(location.hostname);
+     var es = null;
+     if (isLocalBackend) {
+       try {
+         es = new root.EventSource('/api/sync/events');
+         es.onerror = function() {
+           try { if (es) { es.close(); es = null; } } catch(_) {}
+         };
+       } catch(_) {}
+     }
+     if (es) {
+       es.addEventListener('salary_file_saved',async function(e){
        try{
          var item=JSON.parse(e.data);
          var d=item.data;
@@ -1385,8 +1395,9 @@
        }catch(_){}
      });
      es.onerror = function(){
-       setTimeout(function(){ syncWithServer(false); }, 3000);
+       try { es.close(); } catch(_) {}
      };
+    }
    }catch(err){
      console.warn('Server sync error',err);
    }
