@@ -196,10 +196,6 @@
       "id": "simul_file_A_1790769567372",
       "deleted_at": "2026-09-30T11:59:39.387Z"
     },
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
-    },
     "simul_file_a_1790771004735": {
       "id": "simul_file_A_1790771004735",
       "deleted_at": "2026-09-30T12:23:36.511Z"
@@ -1738,16 +1734,15 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791714805069"
     },
-    "salary:attendence sheet oct-26.xlsx": {
-      "id": "attendence sheet oct-26.xlsx",
-      "name": "attendence sheet oct-26.xlsx",
-      "filename": "attendence sheet oct-26.xlsx",
-      "size": 470724,
-      "uploaded_at": "2026-10-20T05:14:48.949Z",
-      "saved_at": "2026-10-20T05:14:48.949Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
+    "hr_doc:hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "name": "Fire NOC Certificate",
+      "filename": "HRD-2026-NOC-01",
+      "uploaded_at": "2026-10-20T07:17:57.158Z",
+      "updated_at": "2026-10-20T07:17:57.158Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
