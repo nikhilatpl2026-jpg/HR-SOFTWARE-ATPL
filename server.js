@@ -84,7 +84,7 @@ function writeJsonFile(filename, data) {
   }
 }
 
-const GH_TOKEN = process.env.ATPL_GITHUB_TOKEN || (function() { return ['ghp_zNVCq14dAFNeLXj', 'AhXkxQROaUbrtWD41ikJY'].join(''); })();
+const GH_TOKEN = (process.env.ATPL_GITHUB_TOKEN || '').trim();
 const GH_REPO = "nikhilatpl2026-jpg/HR-SOFTWARE-ATPL";
 const githubSyncDebouncers = {};
 
