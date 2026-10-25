@@ -1,11 +1,26 @@
 {
   "key": "hrd-test-1791714603870",
   "module": "hr_doc",
-  "updated_at": "2026-10-21T12:26:07.373Z",
+  "updated_at": "2026-10-25T12:33:46.897Z",
   "payload": {
+    "kind": "hr_doc",
+    "assigned_user_id": "",
+    "is_gzip": true,
+    "file_name": "",
+    "visibility": "all",
+    "uploaded_at": "2026-10-21T12:25:51.829Z",
     "id": "HRD-TEST-1791714603870",
+    "b64_size": 160,
+    "saved_at": "2026-10-21T12:25:51.829Z",
+    "payload_b64": "H4sIAAAAAAAAA6tWykxRslLyCHLRDXENDtE1NLc0NDc0MTMwtjA3UNJRSslPLs1NzSuJz0vMTVWyUnLLLEpVCE5MSy2pVHAsTcksgaiJL6ksAElDZJR0lOKTc/JLU5wSk7NTU0ILlKxKikpTawEsLhW/bQAAAA==",
+    "uploaded_by": "admin",
     "document_name": "Fire Safety Audit",
+    "chunks_count": 1,
+    "updated_at": "2026-10-21T12:25:51.829Z",
+    "assigned_user_name": "",
     "doc_type": "Safety",
-    "_cloudBackedUp": true
+    "name": "Fire Safety Audit",
+    "drive_id": "1Up6rCEOAO_rfCeeYkUcsjYx_8ZWGtDOb",
+    "key": "hr_doc:hrd-test-1791714603870"
   }
 }
