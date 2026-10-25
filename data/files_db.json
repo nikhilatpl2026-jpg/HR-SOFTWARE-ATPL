@@ -196,10 +196,6 @@
       "id": "simul_file_A_1790769567372",
       "deleted_at": "2026-09-30T11:59:39.387Z"
     },
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
-    },
     "simul_file_a_1790771004735": {
       "id": "simul_file_A_1790771004735",
       "deleted_at": "2026-09-30T12:23:36.511Z"
@@ -1748,15 +1744,15 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791718050909"
     },
-    "hr_doc:hrd-test-1791720776080": {
-      "id": "HRD-TEST-1791720776080",
-      "name": "Fire Safety Audit",
-      "filename": "HRD-TEST-1791720776080",
-      "uploaded_at": "2026-10-19T07:07:50.394Z",
-      "updated_at": "2026-10-19T07:07:50.394Z",
+    "hr_doc:hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "name": "Fire NOC Certificate",
+      "filename": "HRD-2026-NOC-01",
+      "uploaded_at": "2026-10-20T07:17:57.158Z",
+      "updated_at": "2026-10-20T07:17:57.158Z",
       "module": "hr_doc",
       "doc_type": "hr_doc",
-      "blob_key": "hrdoc_hrd-test-1791720776080"
+      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
