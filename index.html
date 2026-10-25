@@ -3828,8 +3828,14 @@ var MONTH_DAYS = {'1':31,'2':28,'2L':29,'3':31,'4':30,'5':31,'6':30,'7':31,'8':3
 // ═══════════════════════════════════════════════════════════════
 // Deletion barriers survive refresh and apply to every restore source.
 function atplSalaryRestoreAllowed(name, saved) {
-  // Google Cloud and active files should always be restored across browsers
-  return true;
+  try {
+    var stamp = Date.parse(saved || '') || 0;
+    var cleared = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0;
+    var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+    var tomb = tombs[String(name || '').toLowerCase()];
+    var deleted = tomb === true ? Infinity : (Date.parse(tomb || '') || 0);
+    return !(cleared && stamp <= cleared) && !(deleted && stamp <= deleted);
+  } catch (_) { return false; }
 }
 window.atplSalaryRestoreAllowed = atplSalaryRestoreAllowed;
 
@@ -15387,9 +15393,14 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
+<script src="atpl-firebase-bundle.js?v=20260926-firebase-v1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20260926-firebase-v1"></script>
+<script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED GOOGLE DRIVE & SHEETS CLOUD SYNC ENGINE -->
 <script src="atpl-google-drive-sync.js?v=20261024"></script>
-<!-- Legacy Supabase and Firebase removed for zero-quota sync -->
+<script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
+<script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
+<script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority"></script>
 <script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261019v12"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>

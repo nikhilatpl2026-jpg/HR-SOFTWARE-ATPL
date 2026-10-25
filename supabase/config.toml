@@ -1,0 +1,2 @@
+[functions.dol-api]
+verify_jwt = false
