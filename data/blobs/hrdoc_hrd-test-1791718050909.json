@@ -1,11 +1,15 @@
 {
   "key": "hrd-test-1791718050909",
   "module": "hr_doc",
-  "updated_at": "2026-10-20T05:57:41.140Z",
+  "updated_at": "2026-10-25T12:34:04.907Z",
   "payload": {
     "id": "HRD-TEST-1791718050909",
     "document_name": "Fire Safety Audit",
     "doc_type": "Safety",
-    "_cloudBackedUp": true
+    "_cloudBackedUp": true,
+    "name": "Fire Safety Audit",
+    "drive_id": "1kRvIEtId6hTdK4sPxHjp5EDjCwpVyPos",
+    "key": "hr_doc:hrd-test-1791718050909",
+    "updated_at": "2026-10-24T15:41:16.677Z"
   }
 }
