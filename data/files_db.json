@@ -1810,6 +1810,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_may_2024_xlsx_xlsx"
+    },
+    "salary:salary sheet aug 2024 atpl.xlsx": {
+      "id": "Salary Sheet Aug 2024 ATPL.xlsx",
+      "name": "Salary Sheet Aug 2024 ATPL.xlsx",
+      "filename": "Salary Sheet Aug 2024 ATPL.xlsx",
+      "size": 1447300,
+      "uploaded_at": "2026-10-26T10:42:25.701Z",
+      "saved_at": "2026-10-26T10:42:25.701Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_salary_20sheet_20aug_202024_20atpl_xlsx"
     }
   }
 }
