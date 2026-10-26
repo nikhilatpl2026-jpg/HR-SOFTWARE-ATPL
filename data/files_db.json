@@ -1,5 +1,5 @@
 {
-  "version": 478,
+  "version": 479,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -195,10 +195,6 @@
     "simul_file_a_1790769567372": {
       "id": "simul_file_A_1790769567372",
       "deleted_at": "2026-09-30T11:59:39.387Z"
-    },
-    "hrd-2026-noc-01": {
-      "id": "HRD-2026-NOC-01",
-      "deleted_at": "2026-09-30T12:23:32.284Z"
     },
     "simul_file_a_1790771004735": {
       "id": "simul_file_A_1790771004735",
@@ -1790,16 +1786,25 @@
       "doc_type": "salary",
       "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
     },
-    "salary:aug 2025 salary sheet atpl final (3).xls": {
-      "id": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "name": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "filename": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "size": 1368064,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_aug_202025_20salary_20sheet_20atpl_20final_20_3__xls"
+    "hr_doc:hrd-1791352327000-b9sfyg": {
+      "id": "HRD-1791352327000-b9sfyg",
+      "name": "Atpl Boiler Certificate (Shri Chain Singh)",
+      "filename": "HRD-1791352327000-b9sfyg",
+      "uploaded_at": "2026-10-07T05:52:07.007Z",
+      "updated_at": "2026-10-07T05:52:07.007Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "hr_doc:hrd-2026-noc-01": {
+      "id": "HRD-2026-NOC-01",
+      "name": "Fire NOC Certificate",
+      "filename": "HRD-2026-NOC-01",
+      "uploaded_at": "2026-10-20T07:17:57.158Z",
+      "updated_at": "2026-10-20T07:17:57.158Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-2026-noc-01"
     }
   }
 }
