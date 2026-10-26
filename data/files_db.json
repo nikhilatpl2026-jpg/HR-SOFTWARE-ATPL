@@ -1,5 +1,5 @@
 {
-  "version": 481,
+  "version": 480,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1800,27 +1800,15 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "salary:may_2024.xlsx.xlsx": {
-      "id": "May_2024.xlsx.xlsx",
-      "name": "May_2024.xlsx.xlsx",
-      "filename": "May_2024.xlsx.xlsx",
-      "size": 1280556,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_may_2024_xlsx_xlsx"
-    },
-    "salary:final salary sheet atpl oct 2024.xlsx": {
-      "id": "Final Salary Sheet ATPL Oct 2024.xlsx",
-      "name": "Final Salary Sheet ATPL Oct 2024.xlsx",
-      "filename": "Final Salary Sheet ATPL Oct 2024.xlsx",
-      "size": 1330788,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_final_20salary_20sheet_20atpl_20oct_202024_xlsx"
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-21T12:25:51.829Z",
+      "updated_at": "2026-10-21T12:25:51.829Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
