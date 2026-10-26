@@ -1799,6 +1799,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "salary:salary sheet aug-26 new (1).xlsx": {
+      "id": "Salary sheet aug-26 new (1).xlsx",
+      "name": "Salary sheet aug-26 new (1).xlsx",
+      "filename": "Salary sheet aug-26 new (1).xlsx",
+      "size": 56596,
+      "uploaded_at": "2026-10-26T09:40:10.679Z",
+      "saved_at": "2026-10-26T09:40:10.679Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_salary_20sheet_20aug-26_20new_20_1__xlsx"
     }
   }
 }
