@@ -1810,6 +1810,17 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_may_2024_xlsx_xlsx"
+    },
+    "salary:01-arora textiles pvt. ltd. feb-25 (3).xls": {
+      "id": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "name": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "filename": "01-ARORA TEXTILES PVT. LTD. Feb-25 (3).xls",
+      "size": 1413804,
+      "uploaded_at": "2026-10-26T10:42:25.701Z",
+      "saved_at": "2026-10-26T10:42:25.701Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_01-arora_20textiles_20pvt__20ltd__20feb-25_20_3__xls"
     }
   }
 }
