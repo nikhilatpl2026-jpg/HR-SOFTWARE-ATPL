@@ -1799,6 +1799,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "salary:f&f of dugar ji  (1).xlsx": {
+      "id": "F&F of Dugar ji  (1).xlsx",
+      "name": "F&F of Dugar ji  (1).xlsx",
+      "filename": "F&F of Dugar ji  (1).xlsx",
+      "size": 23340,
+      "uploaded_at": "2026-10-26T10:42:25.701Z",
+      "saved_at": "2026-10-26T10:42:25.701Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_f_26f_20of_20dugar_20ji_20_20_1__xlsx"
     }
   }
 }
