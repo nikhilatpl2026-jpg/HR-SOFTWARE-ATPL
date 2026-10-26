@@ -1800,16 +1800,16 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "salary:salary sheet aug 2024 atpl.xlsx": {
-      "id": "Salary Sheet Aug 2024 ATPL.xlsx",
-      "name": "Salary Sheet Aug 2024 ATPL.xlsx",
-      "filename": "Salary Sheet Aug 2024 ATPL.xlsx",
-      "size": 1447300,
+    "salary:salary sheet june-25 master (2).xlsx": {
+      "id": "Salary Sheet June-25 Master (2).xlsx",
+      "name": "Salary Sheet June-25 Master (2).xlsx",
+      "filename": "Salary Sheet June-25 Master (2).xlsx",
+      "size": 1443780,
       "uploaded_at": "2026-10-26T10:42:25.701Z",
       "saved_at": "2026-10-26T10:42:25.701Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_salary_20sheet_20aug_202024_20atpl_xlsx"
+      "blob_key": "salary_salary_20sheet_20june-25_20master_20_2__xlsx"
     }
   }
 }
