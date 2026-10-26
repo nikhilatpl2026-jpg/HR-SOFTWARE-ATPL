@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:bulk_salary_sheet_6.xlsx": {
-      "id": "Bulk_Salary_Sheet_6.xlsx",
-      "name": "Bulk_Salary_Sheet_6.xlsx",
-      "filename": "Bulk_Salary_Sheet_6.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-09-30T11:59:28.248Z",
-      "saved_at": "2026-09-30T11:59:28.248Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_6_xlsx"
     }
   }
 }
