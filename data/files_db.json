@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:offline_reconcile_file.xlsx": {
-      "id": "Offline_Reconcile_File.xlsx",
-      "name": "Offline_Reconcile_File.xlsx",
-      "filename": "Offline_Reconcile_File.xlsx",
-      "size": 16,
-      "uploaded_at": "2026-09-30T11:59:31.084Z",
-      "saved_at": "2026-09-30T11:59:31.084Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_offline_reconcile_file_xlsx"
     }
   }
 }
