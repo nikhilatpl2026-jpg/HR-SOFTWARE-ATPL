@@ -1811,16 +1811,16 @@
       "doc_type": "salary",
       "blob_key": "salary_may_2024_xlsx_xlsx"
     },
-    "salary:aug 2025 salary sheet atpl final (3).xls": {
-      "id": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "name": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "filename": "Aug 2025 Salary Sheet Atpl Final (3).xls",
-      "size": 1368064,
+    "salary:final salary sheet dec 2025 (2).xls": {
+      "id": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "name": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "filename": "FINAL SALARY SHEET DEC 2025 (2).xls",
+      "size": 1430872,
       "uploaded_at": "2026-10-26T10:42:25.701Z",
       "saved_at": "2026-10-26T10:42:25.701Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_aug_202025_20salary_20sheet_20atpl_20final_20_3__xls"
+      "blob_key": "salary_final_20salary_20sheet_20dec_202025_20_2__xls"
     }
   }
 }
