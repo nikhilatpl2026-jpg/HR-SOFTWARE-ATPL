@@ -71,12 +71,22 @@
   }
 
   async function callGoogleDrive(payload) {
-    const res = await origFetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
+    try {
+      const res = await origFetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) return { ok: false, offline: true };
+      const txt = await res.text();
+      try {
+        return JSON.parse(txt);
+      } catch (_) {
+        return { ok: false, offline: true };
+      }
+    } catch (_) {
+      return { ok: false, offline: true };
+    }
   }
 
   function getTombstones(key) {

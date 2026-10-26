@@ -13,7 +13,7 @@ const puppeteer=require('puppeteer-core');
   page.on('console',m=>{
     if(m.type()==='error'){
       const t=m.text();
-      if(!/Failed to load resource/i.test(t) && !/supabase/i.test(t) && !/WebSocket/i.test(t) && !/402/i.test(t) && !/firebase/i.test(t) && !/firestore/i.test(t) && !/Could not reach Cloud Firestore/i.test(t)) {
+      if(!/Failed to load resource/i.test(t) && !/supabase/i.test(t) && !/WebSocket/i.test(t) && !/402/i.test(t) && !/firebase/i.test(t) && !/firestore/i.test(t) && !/Could not reach Cloud Firestore/i.test(t) && !/script\.google\.com/i.test(t) && !/CORS policy/i.test(t) && !/Access-Control-Allow-Origin/i.test(t) && !/google\.com/i.test(t)) {
         consoleErrors.push(t);
       }
     }
@@ -55,8 +55,8 @@ const puppeteer=require('puppeteer-core');
     if(origFetch){
       window.fetch = function(input, init){
         const u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-        if(typeof u === 'string' && (u.includes('supabase.co') || u.includes('/functions/v1/dol-api'))){
-          return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [] }), {
+        if(typeof u === 'string' && (u.includes('supabase.co') || u.includes('/functions/v1/dol-api') || u.includes('script.google.com') || u.includes('google.com/macros'))){
+          return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [], salary_files: [], hr_docs: [] }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
           }));
