@@ -56,7 +56,7 @@ const puppeteer=require('puppeteer-core');
       window.fetch = function(input, init){
         const u = typeof input === 'string' ? input : (input && input.url ? input.url : '');
         if(typeof u === 'string' && (u.includes('supabase.co') || u.includes('/functions/v1/dol-api') || u.includes('script.google.com') || u.includes('google.com/macros'))){
-          return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [], salary_files: [], hr_docs: [] }), {
+          return Promise.resolve(new Response(JSON.stringify({ ok: true, data: [], files: [], salary_files: [], hr_docs: [] }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
           }));
