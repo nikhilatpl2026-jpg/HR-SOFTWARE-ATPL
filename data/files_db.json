@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:sent compilance sheet july-26 (12).xlsx": {
-      "id": "Sent Compilance Sheet July-26 (12).xlsx",
-      "name": "Sent Compilance Sheet July-26 (12).xlsx",
-      "filename": "Sent Compilance Sheet July-26 (12).xlsx",
-      "size": 1061492,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_sent_20compilance_20sheet_20july-26_20_12__xlsx"
     }
   }
 }
