@@ -52,9 +52,13 @@ function setMode(next){
   ['monthly','kg'].forEach(function(x){var b=q('mraMode-'+x);if(b)b.classList.toggle('active',x===next)});
 }
 function makePage(){
-  if(q('page-machineaudit'))return;
-  var content=document.querySelector('.content');if(!content)return;
-  var page=document.createElement('div');page.className='page';page.id='page-machineaudit';
+  var page=q('page-machineaudit');
+  if(!page){
+    var content=document.querySelector('.content');if(!content)return;
+    page=document.createElement('div');page.className='page';page.id='page-machineaudit';
+    content.appendChild(page);
+  }
+  if(page.querySelector('#mraResults'))return;
   page.innerHTML='<div class="mra-shell">'+
     '<div class="mra-head"><div><div class="mra-eyebrow">SALARY PAYROLL / MACHINE CONTROL</div><div class="mra-title">Machine Rate Audit</div><div class="mra-sub">Exact same machine code ke andar rate consistency check. C1C ≠ C1O ≠ C1R ≠ C1CH. Har workbook sheet/card independently audit hota hai.</div></div><label class="mra-upload">📤 Upload Attendance / Salary Sheet<input id="mraFile" type="file" accept=".xlsx,.xls,.csv"></label></div>'+
     '<div class="mra-modebar"><div><b>Compare By</b><span id="mraModeHint">Rate mode: ₹14,500 / ₹15,500 type monthly rates compare honge.</span></div><div class="mra-modeBtns"><button id="mraMode-monthly" class="active">₹ Rate</button><button id="mraMode-kg">⚖ Rate/KG</button></div></div>'+
@@ -63,12 +67,12 @@ function makePage(){
     '<div class="mra-kpis"><div class="mra-kpi"><span>Machines Scanned</span><b id="mraMachines">0</b><small>selected card only</small></div><div class="mra-kpi"><span>Employees</span><b id="mraEmployees">0</b><small>selected card only</small></div><div class="mra-kpi danger"><span>Mismatch Groups</span><b id="mraMismatch">0</b><small>selected card only</small></div><div class="mra-kpi"><span>Sheets Scanned</span><b id="mraSheets">0</b><small>selected card status</small></div></div>'+
     '<div class="mra-toolbar"><div><b>Rate Consistency Exceptions</b><small>Errors and warnings never cross the selected sheet/card.</small></div><div class="mra-tools"><select id="mraFilter"><option value="all">All machine groups</option><option value="mismatch">Mismatch only</option><option value="ok">Consistent only</option></select><button id="mraDownload" disabled>⬇ Export Audit</button></div></div>'+
     '<div class="mra-body" id="mraResults"><div class="mra-empty"><div>⚙️</div><b>Machine Rate Audit Ready</b><span>Workbook upload karo. Saare cards/sheets automatically detect honge.</span></div></div></div>';
-  content.appendChild(page);
-  q('mraFile').addEventListener('change',onFile);
-  q('mraFilter').addEventListener('change',function(){state.filter=this.value;state.viewLimit=10;render()});
-  q('mraDownload').addEventListener('click',download);
-  q('mraMode-monthly').addEventListener('click',function(){setMode('monthly')});
-  q('mraMode-kg').addEventListener('click',function(){setMode('kg')});
+  if(!page.parentNode){var content=document.querySelector('.content');if(content)content.appendChild(page);}
+  if(q('mraFile'))q('mraFile').addEventListener('change',onFile);
+  if(q('mraFilter'))q('mraFilter').addEventListener('change',function(){state.filter=this.value;state.viewLimit=10;render()});
+  if(q('mraDownload'))q('mraDownload').addEventListener('click',download);
+  if(q('mraMode-monthly'))q('mraMode-monthly').addEventListener('click',function(){setMode('monthly')});
+  if(q('mraMode-kg'))q('mraMode-kg').addEventListener('click',function(){setMode('kg')});
 }
 function addCss(){
   if(q('mra-style'))return;var s=document.createElement('style');s.id='mra-style';
