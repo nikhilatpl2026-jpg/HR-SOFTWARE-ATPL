@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:duplicate_test_file_1790769567372.xlsx": {
-      "id": "Duplicate_Test_File_1790769567372.xlsx",
-      "name": "Duplicate_Test_File_1790769567372.xlsx",
-      "filename": "Duplicate_Test_File_1790769567372.xlsx",
-      "size": 60,
-      "uploaded_at": "2026-09-30T11:59:42.412Z",
-      "saved_at": "2026-09-30T11:59:42.412Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_duplicate_test_file_1790769567372_xlsx"
     }
   }
 }
