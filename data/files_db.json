@@ -1800,16 +1800,15 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "salary:large_batch_file_13.xlsx": {
-      "id": "Large_Batch_File_13.xlsx",
-      "name": "Large_Batch_File_13.xlsx",
-      "filename": "Large_Batch_File_13.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-10-26T09:40:10.677Z",
-      "saved_at": "2026-10-26T09:40:10.677Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_13_xlsx"
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-21T12:25:51.829Z",
+      "updated_at": "2026-10-21T12:25:51.829Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
