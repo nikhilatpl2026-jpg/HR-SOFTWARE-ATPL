@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:large_batch_file_20.xlsx": {
-      "id": "Large_Batch_File_20.xlsx",
-      "name": "Large_Batch_File_20.xlsx",
-      "filename": "Large_Batch_File_20.xlsx",
-      "size": 32,
-      "uploaded_at": "2026-09-30T11:59:42.999Z",
-      "saved_at": "2026-09-30T11:59:42.999Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_large_batch_file_20_xlsx"
     }
   }
 }
