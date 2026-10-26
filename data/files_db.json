@@ -1779,16 +1779,15 @@
       "doc_type": "salary",
       "blob_key": "salary_capa_20format_xlsx"
     },
-    "salary:attendence sheet oct-26.xlsx": {
-      "id": "attendence sheet oct-26.xlsx",
-      "name": "attendence sheet oct-26.xlsx",
-      "filename": "attendence sheet oct-26.xlsx",
-      "size": 470724,
-      "uploaded_at": "2026-10-20T05:14:48.949Z",
-      "saved_at": "2026-10-20T05:14:48.949Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-21T12:25:51.829Z",
+      "updated_at": "2026-10-21T12:25:51.829Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
