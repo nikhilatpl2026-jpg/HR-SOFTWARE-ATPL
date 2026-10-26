@@ -1810,17 +1810,6 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_may_2024_xlsx_xlsx"
-    },
-    "salary:final salary sheet july 2024 atpl.xlsx": {
-      "id": "Final Salary sheet July 2024 ATPL.xlsx",
-      "name": "Final Salary sheet July 2024 ATPL.xlsx",
-      "filename": "Final Salary sheet July 2024 ATPL.xlsx",
-      "size": 1392776,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_final_20salary_20sheet_20july_202024_20atpl_xlsx"
     }
   }
 }
