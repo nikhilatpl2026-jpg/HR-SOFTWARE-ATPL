@@ -1799,17 +1799,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
-    },
-    "salary:final salary sheet april 2026.xls": {
-      "id": "Final Salary Sheet April 2026.xls",
-      "name": "Final Salary Sheet April 2026.xls",
-      "filename": "Final Salary Sheet April 2026.xls",
-      "size": 368,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_final_20salary_20sheet_20april_202026_xls"
     }
   }
 }
