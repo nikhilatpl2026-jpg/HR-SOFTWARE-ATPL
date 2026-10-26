@@ -1778,6 +1778,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_capa_20format_xlsx"
+    },
+    "hr_doc:hrd-1791352327000-b9sfyg": {
+      "id": "HRD-1791352327000-b9sfyg",
+      "name": "Atpl Boiler Certificate (Shri Chain Singh)",
+      "filename": "HRD-1791352327000-b9sfyg",
+      "uploaded_at": "2026-10-07T05:52:07.007Z",
+      "updated_at": "2026-10-07T05:52:07.007Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     }
   }
 }
