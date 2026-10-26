@@ -1767,17 +1767,6 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-test-1791720776080"
-    },
-    "salary:capa format.xlsx": {
-      "id": "CAPA format.xlsx",
-      "name": "CAPA format.xlsx",
-      "filename": "CAPA format.xlsx",
-      "size": 16460,
-      "uploaded_at": "2026-09-29T09:50:42.253Z",
-      "saved_at": "2026-09-29T09:50:42.253Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_capa_20format_xlsx"
     }
   }
 }
