@@ -1799,6 +1799,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "salary:dec salary 2023.xlsx": {
+      "id": "dec salary 2023.xlsx",
+      "name": "dec salary 2023.xlsx",
+      "filename": "dec salary 2023.xlsx",
+      "size": 1379888,
+      "uploaded_at": "2026-10-26T09:40:10.679Z",
+      "saved_at": "2026-10-26T09:40:10.679Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_dec_20salary_202023_xlsx"
     }
   }
 }
