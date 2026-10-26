@@ -1,5 +1,5 @@
 {
-  "version": 475,
+  "version": 476,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "name": "PF_ECR_Challan_May_2026.pdf",
@@ -1789,6 +1789,16 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
+    },
+    "hr_doc:hrd-test-1791714603870": {
+      "id": "HRD-TEST-1791714603870",
+      "name": "Fire Safety Audit",
+      "filename": "HRD-TEST-1791714603870",
+      "uploaded_at": "2026-10-21T12:25:51.829Z",
+      "updated_at": "2026-10-21T12:25:51.829Z",
+      "module": "hr_doc",
+      "doc_type": "hr_doc",
+      "blob_key": "hrdoc_hrd-test-1791714603870"
     }
   }
 }
