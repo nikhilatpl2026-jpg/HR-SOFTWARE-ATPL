@@ -1790,16 +1790,16 @@
       "doc_type": "salary",
       "blob_key": "salary_attendence_20sheet_20oct-26_xlsx"
     },
-    "salary:atpl- salary sheet march 2025 (1).xls": {
-      "id": "ATPL- SALARY SHEET MARCH 2025 (1).xls",
-      "name": "ATPL- SALARY SHEET MARCH 2025 (1).xls",
-      "filename": "ATPL- SALARY SHEET MARCH 2025 (1).xls",
-      "size": 359768,
-      "uploaded_at": "2026-10-26T10:42:25.701Z",
-      "saved_at": "2026-10-26T10:42:25.701Z",
+    "salary:atpl_sync_test_20260929.csv": {
+      "id": "ATPL_SYNC_TEST_20260929.csv",
+      "name": "ATPL_SYNC_TEST_20260929.csv",
+      "filename": "ATPL_SYNC_TEST_20260929.csv",
+      "size": 116,
+      "uploaded_at": "2026-09-29T05:01:48.520Z",
+      "saved_at": "2026-09-29T05:01:48.520Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_atpl-_20salary_20sheet_20march_202025_20_1__xls"
+      "blob_key": "salary_atpl_sync_test_20260929_csv"
     }
   }
 }
