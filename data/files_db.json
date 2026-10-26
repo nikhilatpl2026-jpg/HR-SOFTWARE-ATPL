@@ -1800,16 +1800,16 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "salary:june salary lokesh ji.xlsx": {
-      "id": "JUNE SALARY LOKESH JI.xlsx",
-      "name": "JUNE SALARY LOKESH JI.xlsx",
-      "filename": "JUNE SALARY LOKESH JI.xlsx",
-      "size": 207412,
+    "salary:july 2025 salary sheet atpl final (1).xls": {
+      "id": "July 2025 Salary Sheet Atpl Final (1).xls",
+      "name": "July 2025 Salary Sheet Atpl Final (1).xls",
+      "filename": "July 2025 Salary Sheet Atpl Final (1).xls",
+      "size": 1288192,
       "uploaded_at": "2026-10-26T10:42:25.701Z",
       "saved_at": "2026-10-26T10:42:25.701Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_june_20salary_20lokesh_20ji_xlsx"
+      "blob_key": "salary_july_202025_20salary_20sheet_20atpl_20final_20_1__xls"
     }
   }
 }
