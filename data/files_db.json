@@ -1822,16 +1822,16 @@
       "doc_type": "salary",
       "blob_key": "salary_pankaj_20oli_20jan-2025_xls"
     },
-    "salary:duplicate_test_file_1790769567372.xlsx": {
-      "id": "Duplicate_Test_File_1790769567372.xlsx",
-      "name": "Duplicate_Test_File_1790769567372.xlsx",
-      "filename": "Duplicate_Test_File_1790769567372.xlsx",
-      "size": 60,
-      "uploaded_at": "2026-09-30T11:59:42.412Z",
-      "saved_at": "2026-09-30T11:59:42.412Z",
+    "salary:large_batch_file_10.xlsx": {
+      "id": "Large_Batch_File_10.xlsx",
+      "name": "Large_Batch_File_10.xlsx",
+      "filename": "Large_Batch_File_10.xlsx",
+      "size": 32,
+      "uploaded_at": "2026-09-30T11:59:42.999Z",
+      "saved_at": "2026-09-30T11:59:42.999Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_duplicate_test_file_1790769567372_xlsx"
+      "blob_key": "salary_large_batch_file_10_xlsx"
     }
   }
 }
