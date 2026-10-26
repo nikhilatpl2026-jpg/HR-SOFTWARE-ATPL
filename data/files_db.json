@@ -1800,16 +1800,16 @@
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
     },
-    "salary:bulk_salary_sheet_8.xlsx": {
-      "id": "Bulk_Salary_Sheet_8.xlsx",
-      "name": "Bulk_Salary_Sheet_8.xlsx",
-      "filename": "Bulk_Salary_Sheet_8.xlsx",
-      "size": 20,
-      "uploaded_at": "2026-09-30T11:59:28.248Z",
-      "saved_at": "2026-09-30T11:59:28.248Z",
+    "salary:duplicate_test_file_1790769567372.xlsx": {
+      "id": "Duplicate_Test_File_1790769567372.xlsx",
+      "name": "Duplicate_Test_File_1790769567372.xlsx",
+      "filename": "Duplicate_Test_File_1790769567372.xlsx",
+      "size": 60,
+      "uploaded_at": "2026-09-30T11:59:42.412Z",
+      "saved_at": "2026-09-30T11:59:42.412Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_bulk_salary_sheet_8_xlsx"
+      "blob_key": "salary_duplicate_test_file_1790769567372_xlsx"
     }
   }
 }
