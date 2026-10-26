@@ -1799,6 +1799,17 @@
       "module": "hr_doc",
       "doc_type": "hr_doc",
       "blob_key": "hrdoc_hrd-1791352327000-b9sfyg"
+    },
+    "salary:salary sheet sept 2024 atpl bhoora ji.xlsx": {
+      "id": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
+      "name": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
+      "filename": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
+      "size": 417988,
+      "uploaded_at": "2026-10-26T10:42:25.701Z",
+      "saved_at": "2026-10-26T10:42:25.701Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_salary_20sheet_20sept_202024_20atpl_20bhoora_20ji_xlsx"
     }
   }
 }
