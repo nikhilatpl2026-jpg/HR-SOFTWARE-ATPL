@@ -1754,6 +1754,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     border-radius: 8px 8px 0 0;
   }
 </style>
+<script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
 </head>
 <body>
 
@@ -2033,6 +2034,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-sal">      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
+      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" style="background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
@@ -2058,7 +2060,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>🛠️ Tools</span><span class="vnav-arrow" id="arr-tools">▾</span>
     </div>
     <div class="vnav-sub" id="cat-tools">
-      <div class="vitem" id="vn-debugger" onclick="window.ATPLCloudDebugger.open()" style="color:#fbbf24;font-weight:bold"><span class="vi">??</span>Cloud Debugger</div>
+      
       <div class="vitem" id="vn-esictodol" onclick="goPage('esictodol')"><span class="vi">🩺</span>ESIC → DOL</div>
       <div class="vitem" id="vn-pftodol" onclick="goPage('pftodol')"><span class="vi">🧾</span>PF → DOL</div>
     </div>
@@ -6703,6 +6705,7 @@ function goPage(name) {
     }
   }
   if(name==='compliance') populateCompFileSelect();
+  if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
   if(name==='files') renderAllFilesPage();
   if(name==='newjoin') populateNJSelects();
@@ -8989,16 +8992,48 @@ window.emToggleMobileView = function() {
 
 function emInit() {
   try {
-    if (!EM.data || !Array.isArray(EM.data) || EM.data.length === 0) {
-      if (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) {
-        EM.data = window.EMP_MASTER_DATA;
-      } else {
-        try {
-          var saved = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]');
-          if (Array.isArray(saved) && saved.length > 0) EM.data = saved;
-        } catch(_) {}
+    var deletedMap = {};
+    try {
+      deletedMap = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}') || {};
+    } catch(_) {}
+
+    var saved = null;
+    try {
+      var rawSaved = localStorage.getItem('AroraTextilesEmployeeMasterV3');
+      if (rawSaved) {
+        var parsed = JSON.parse(rawSaved);
+        if (Array.isArray(parsed) && parsed.length > 0) saved = parsed;
       }
+    } catch(_) {}
+
+    if (saved && Array.isArray(saved)) {
+      EM.data = saved;
+    } else if (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) {
+      EM.data = window.EMP_MASTER_DATA.slice();
+    } else if (!EM.data || !Array.isArray(EM.data)) {
+      EM.data = [];
     }
+
+    // Strict tombstone filter: permanently prune deleted employees
+    EM.data = EM.data.filter(function(e) {
+      if (!e) return false;
+      var id = String(e.emp_id || '').toLowerCase().trim();
+      var idNoZero = id.replace(/^0+/, '');
+      return !deletedMap[id] && !deletedMap[idNoZero];
+    });
+
+    if (Array.isArray(window.EMP_MASTER_DATA)) {
+      window.EMP_MASTER_DATA = window.EMP_MASTER_DATA.filter(function(e) {
+        if (!e) return false;
+        var id = String(e.emp_id || '').toLowerCase().trim();
+        var idNoZero = id.replace(/^0+/, '');
+        return !deletedMap[id] && !deletedMap[idNoZero];
+      });
+    }
+
+    try {
+      localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+    } catch(_) {}
     // Ensure bank/ifsc/account fields exist
     EM.data.forEach(function(e){
       if(!e.bank_name) e.bank_name = '';
@@ -9455,8 +9490,22 @@ function emCloseModal() { document.getElementById('emModal').style.display='none
 // ── Delete ──
 function emDeleteRow(idx) {
   var e = EM.data[idx];
+  if(!e) return;
   if(!confirm('Delete karo: '+e.name+' ('+e.emp_id+')?')) return;
-  EM.data.splice(idx,1);
+  var code = String(e.emp_id || '').toLowerCase().trim();
+  try {
+    var delMap = {};
+    try { delMap = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}') || {}; } catch(_) {}
+    delMap[code] = new Date().toISOString();
+    delMap[code.replace(/^0+/, '')] = new Date().toISOString();
+    localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(delMap));
+  } catch(_) {}
+  EM.data.splice(idx, 1);
+  if(Array.isArray(window.EMP_MASTER_DATA)) {
+    window.EMP_MASTER_DATA = window.EMP_MASTER_DATA.filter(function(x){
+      return String(x.emp_id || '').toLowerCase().trim() !== code && String(x.emp_id || '').toLowerCase().trim().replace(/^0+/, '') !== code.replace(/^0+/, '');
+    });
+  }
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
   } catch(err) {}
@@ -10755,7 +10804,7 @@ function auditAndCleanEmployee(emp, rawCols) {
   });
 
   // 1b. Smart Employee Code and Name Rescue from Serial/Card contamination
-  var isSerialVal = function(v) { return /^(?:sn\s*\d+|\d{1,4}|s\.?no\.?\s*\d*)$/i.test(String(v || "").trim()); };
+  var isSerialVal = function(v) { return /^(?:s\.?no\.?\s*\d*|s\s*no\.?|serial\s*no)$/i.test(String(v || "").trim()); };
   var isCardVal = function(v) { return /^card\s*(?:no\.?)?\s*\d+/i.test(String(v || "").trim()); };
   var isKnownJob = function(v) { return /^(FITTER|OPERATOR|HELPER|SUPERVISOR|MAINTENANCE|PRODUCTION|SECURITY|HR|SALES|ACCOUNTS|MARRIED|UNMARRIED|SINGLE|MALE|FEMALE)$/i.test(String(v || "").trim()); };
 
@@ -11141,10 +11190,12 @@ function emFillSingleFromText(text) {
     });
   } else {
     var r = rawRow;
+    // Keep firstCell as emp_id unless there are 3+ cells and first cell is 1/2/3 while second is numeric employee code
     var firstCell = String(r[0] || '').trim();
-    if (/^\d{1,4}$/.test(firstCell) && r.length > 2) {
-      var secondCell = String(r[1] || '').trim();
-      if (secondCell.length > 0 && isNaN(Number(secondCell))) r = rawRow.slice(1);
+    var secondCell = String(r[1] || '').trim();
+    if (/^[0-9]$|^[1-9][0-9]?$/.test(firstCell) && /^[0-9]{3,6}$/.test(secondCell)) {
+      // First column is a small 1-2 digit serial number (1, 2, 3...) and second is actual 3-6 digit employee code
+      r = rawRow.slice(1);
     }
     var keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){ return c.key; }) : []);
     keys.forEach(function(k, ci) {
