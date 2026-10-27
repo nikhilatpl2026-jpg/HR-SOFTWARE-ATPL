@@ -197,26 +197,9 @@ async function confirmedDelete(idx){
   var e=g.EM.data[idx];if(!e)return;
   if(!confirm("Delete karo: "+e.name+" ("+e.emp_id+")?"))return;
   var c=cloud();
-  var deletedEmp=copy(e);
-  var k=empKey(deletedEmp);
-  try {
-    var m = {};
-    try { m = JSON.parse(g.localStorage.getItem("ATPL_EmployeeMasterDeletedV1") || "{}"); } catch(_) {}
-    m[String(deletedEmp.emp_id || "").toLowerCase().trim()] = new Date().toISOString();
-    m[String(deletedEmp.emp_id || "").toLowerCase().trim().replace(/^0+/, "")] = new Date().toISOString();
-    m[k] = new Date().toISOString();
-    g.localStorage.setItem("ATPL_EmployeeMasterDeletedV1", JSON.stringify(m));
-  } catch(_) {}
-  g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k && String(r.emp_id||"")!==String(deletedEmp.emp_id||"")});
-  if(Array.isArray(g.EMP_MASTER_DATA)){
-    g.EMP_MASTER_DATA=g.EMP_MASTER_DATA.filter(function(r){return empKey(r)!==k && String(r.emp_id||"")!==String(deletedEmp.emp_id||"")});
-  }
-  try { g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data)); } catch(_) {}
-  persistConfirmed({skipMirrors:true});
-  if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==="function")g.EM.selectedRows.clear();
-  refreshMasterUi();
   if(!c||typeof c.deleteMaster!=="function"){
-    paint("saved","Deleted locally ✓ (Cloud offline)",null);
+    paint("failed","Cloud unavailable — not deleted",null);
+    alert("Cloud server unavailable. Employee was NOT deleted. Please reconnect and try again.");
     return;
   }
   busy=true;
@@ -237,11 +220,16 @@ async function confirmedDelete(idx){
       var m = {};
       try { m = JSON.parse(g.localStorage.getItem("ATPL_EmployeeMasterDeletedV1") || "{}"); } catch(_) {}
       m[String(deletedEmp.emp_id || "").toLowerCase().trim()] = new Date().toISOString();
+      m[String(deletedEmp.emp_id || "").toLowerCase().trim().replace(/^0+/, "")] = new Date().toISOString();
       m[k] = new Date().toISOString();
       g.localStorage.setItem("ATPL_EmployeeMasterDeletedV1", JSON.stringify(m));
     } catch(_) {}
 
-    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k});
+    g.EM.data=g.EM.data.filter(function(r){return empKey(r)!==k && String(r.emp_id||"")!==String(deletedEmp.emp_id||"")});
+    if(Array.isArray(g.EMP_MASTER_DATA)){
+      g.EMP_MASTER_DATA=g.EMP_MASTER_DATA.filter(function(r){return empKey(r)!==k && String(r.emp_id||"")!==String(deletedEmp.emp_id||"")});
+    }
+    try { g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data)); } catch(_) {}
     if(c && typeof c.persistLocal==="function"){
       c.persistLocal(g.EM.data);
     }
