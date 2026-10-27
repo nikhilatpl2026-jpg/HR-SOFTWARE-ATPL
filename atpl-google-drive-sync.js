@@ -12,38 +12,55 @@
   window.__ATPL_CENTRAL_BACKEND_URL = "";
   window.ATPL_GET_API_BASE = function () { return ""; };
 
-  // Block dead EventSource loops
+  // Block dead EventSource loops safely
   if (window.EventSource) {
-    const OrigEventSource = window.EventSource;
-    window.EventSource = function (url, config) {
-      if (typeof url === "string" && (url.indexOf("/api/sync/") !== -1 || url.indexOf(".run.app") !== -1)) {
-        return {
-          addEventListener: function () {},
-          removeEventListener: function () {},
-          close: function () {}
-        };
-      }
-      return new OrigEventSource(url, config);
-    };
+    try {
+      const OrigEventSource = window.EventSource;
+      window.EventSource = function (url, config) {
+        if (typeof url === "string" && (url.indexOf("/api/sync/") !== -1 || url.indexOf(".run.app") !== -1)) {
+          return {
+            addEventListener: function () {},
+            removeEventListener: function () {},
+            close: function () {}
+          };
+        }
+        return new OrigEventSource(url, config);
+      };
+    } catch (_) {}
   }
 
   // Intercept dead legacy local endpoints safely without throwing
-  const origFetch = window.fetch;
-  window.fetch = async function (input, init) {
-    const url = typeof input === "string" ? input : (input && input.url) || "";
-    if (
-      url.indexOf("/api/sync/") !== -1 ||
-      url.indexOf("data/salary_files.json") !== -1 ||
-      url.indexOf("data/atpl-documents.json") !== -1 ||
-      url.indexOf("data/blobs/") !== -1
-    ) {
-      return new Response(JSON.stringify({ ok: true, blocked_legacy: true, files: [], salary_files: [], hr_docs: [] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
+  try {
+    const origFetch = window.fetch;
+    if (typeof origFetch === "function") {
+      const wrappedFetch = async function (input, init) {
+        const url = typeof input === "string" ? input : (input && input.url) || "";
+        if (
+          url.indexOf("/api/sync/") !== -1 ||
+          url.indexOf("data/salary_files.json") !== -1 ||
+          url.indexOf("data/atpl-documents.json") !== -1 ||
+          url.indexOf("data/blobs/") !== -1
+        ) {
+          return new Response(JSON.stringify({ ok: true, blocked_legacy: true, files: [], salary_files: [], hr_docs: [] }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+        return origFetch.apply(this, arguments);
+      };
+      try {
+        window.fetch = wrappedFetch;
+      } catch (e) {
+        try {
+          Object.defineProperty(window, "fetch", {
+            value: wrappedFetch,
+            writable: true,
+            configurable: true
+          });
+        } catch (_) {}
+      }
     }
-    return origFetch.apply(this, arguments);
-  };
+  } catch (_) {}
 
   // 2. HIDE ALL TOP SYNC BADGES AS REQUESTED BY USER
   function hideAllBadges() {
