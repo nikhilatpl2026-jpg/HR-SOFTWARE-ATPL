@@ -1,0 +1,26 @@
+name: Apps Script-only health safety tests
+on:
+  pull_request:
+    paths:
+      - "appscript/ATPL_AppsScript_Only_Health.gs"
+      - "tools/atpl-apps-script-only-health-test.html"
+      - "tests/apps-script-only-health.test.js"
+      - "tests/apps-script-native-health.test.js"
+      - "appscript/ATPL_Native_Health_STAGING.gs"
+      - "appscript/ATPL_Native_Sync_Demo_STAGING.gs"
+      - "tests/apps-script-native-sync-demo.test.js"
+      - "tests/atpl-employee-migration-audit.test.js"
+      - "appscript/ATPL_Employee_Migration_Audit_READ_ONLY.gs"
+  push:
+    branches:
+      - "feature/apps-script-only-drive-backend"
+jobs:
+  health-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: node --test tests/apps-script-only-health.test.js tests/apps-script-native-health.test.js tests/apps-script-native-sync-demo.test.js tests/atpl-employee-migration-audit.test.js
