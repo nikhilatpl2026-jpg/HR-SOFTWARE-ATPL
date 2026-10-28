@@ -127,6 +127,13 @@ async function confirmedSingleSave(){
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
     if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
     persistConfirmed({skipMirrors:true});refreshMasterUi();
+    try {
+      fetch('/api/sync/employee-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: [verified] })
+      }).catch(function(){});
+    } catch(_) {}
     paint('saved','Saved to cloud ✓',null);info('Saved ✓ — Backend read-back verified.',false);
     if(typeof g.emCloseModal==='function')g.emCloseModal();
   }catch(e){
@@ -184,9 +191,16 @@ async function confirmedBulkSave(){
     });
     if(confirmed.length){
       persistConfirmed({skipMirrors:true});refreshMasterUi();
+      try {
+        fetch('/api/sync/employee-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: confirmed.map(function(x){ return x.record; }) })
+        }).catch(function(){});
+      } catch(_) {}
     }
     var done={};confirmed.forEach(function(x){done[empKey(x.record)]=true});
-    g.EM_BULK_ROWS=rows.filter(function(x){return !done[empKey(x)]});
+    g.EM_BULK_ROWS=rowsToSave.filter(function(x){return !done[empKey(x)]});
     if(!g.EM_BULK_ROWS.length){
       paint('saved','All '+confirmed.length+' rows saved ✓',null);
       info('Verified cloud save ✓ — '+confirmed.length+' employees.',false);
@@ -239,6 +253,11 @@ async function confirmedDelete(idx){
       c.persistLocal(g.EM.data);
     }
     persistConfirmed({skipMirrors:true});
+    try {
+      fetch('/api/sync/employee-master/' + encodeURIComponent(deletedEmp.emp_id), {
+        method: 'DELETE'
+      }).catch(function(){});
+    } catch(_) {}
     if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==="function")g.EM.selectedRows.clear();
     refreshMasterUi();
     if(g.BroadcastChannel){

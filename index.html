@@ -13796,6 +13796,9 @@ window.aroraImportExcel=async function(input){
     if(!emps.length)throw new Error('Header mil gaya, lekin employee data rows nahi mile.');
     var n=0,u=0;emps.forEach(function(e){var s=aroraMergeEmployee(e);if(s==='NEW')n++;else if(s==='UPDATED')u++;});
     aroraSaveMasterSnapshot();aroraRefreshMaster();
+    if(window.ATPLGoogleSync&&typeof window.ATPLGoogleSync.saveEmployeeMaster==='function'){
+      window.ATPLGoogleSync.saveEmployeeMaster(EM.data);
+    }
     if(typeof emCloseModal==='function')emCloseModal();
     alert('✅ Excel Import Complete\\n\\n'+n+' NEW + '+u+' UPDATED\\n\\nSheet: '+best.sheet+'\\nHeaders auto-detect hue. Existing data ko blank cells se overwrite nahi kiya gaya.');
   }catch(e){alert('⚠️ Excel import failed\\n\\n'+(e.message||e));}

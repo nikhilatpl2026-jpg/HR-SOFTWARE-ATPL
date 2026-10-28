@@ -341,6 +341,22 @@ app.all('/api/cloud-proxy', async (req, res) => {
   }
 });
 
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+
+function syncToGoogleAppsScript(action, payload) {
+  if (process.env.NODE_ENV === 'test') return;
+  setTimeout(async () => {
+    try {
+      const data = Object.assign({ action: action }, payload || {});
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } catch (_) {}
+  }, 10);
+}
+
 // Active Server-Sent Events (SSE) connections for cross-browser live updates
 const sseClients = new Set();
 
@@ -553,6 +569,14 @@ app.post('/api/sync/files', (req, res) => {
     }
 
     writeJsonFile('files_db.json', filesDb);
+
+    if (buf) {
+      syncToGoogleAppsScript('uploadFile', {
+        fileName: name,
+        fileBase64: buf,
+        mimeType: fileRecord.mime_type
+      });
+    }
 
     // Broadcast unified event to all connected browsers
     broadcastEvent('file_saved', fileRecord);
@@ -793,6 +817,8 @@ app.delete('/api/sync/files/:id', (req, res) => {
       deleted_at: now,
       version: filesDb.version
     });
+
+    syncToGoogleAppsScript('deleteFile', { fileName: fileName });
 
     // Also fire legacy SSE events for legacy listeners
     if (fileMod === 'salary') {
@@ -1158,6 +1184,14 @@ app.post('/api/sync/salary-file', (req, res) => {
     });
     broadcastEvent('file_saved', filesDb.files[id]);
 
+    if (buf) {
+      syncToGoogleAppsScript('uploadFile', {
+        fileName: name,
+        fileBase64: buf,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+    }
+
     return res.json({ ok: true, saved: true, name });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1272,6 +1306,9 @@ app.delete('/api/sync/salary-file/:name', (req, res) => {
 
     broadcastEvent('salary_file_deleted', { name: name, deleted_at: now });
     broadcastEvent('file_deleted', { id: key, name: name, module: 'salary', deleted_at: now, version: filesDb.version });
+
+    syncToGoogleAppsScript('deleteFile', { fileName: name });
+
     return res.json({ ok: true, deleted: true, name });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1612,6 +1649,7 @@ app.delete("/api/sync/employee-master/:id", (req, res) => {
     writeJsonFile("employee_master.json", syncEmployeeMaster);
     
     broadcastEvent("employee_master_deleted", { emp_id: id, count: syncEmployeeMaster.length });
+    syncToGoogleAppsScript('deleteEmployeeMaster', { emp_id: id });
     return res.json({ ok: true, deleted: true, emp_id: id, count: syncEmployeeMaster.length });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1639,6 +1677,7 @@ app.post('/api/sync/employee-master', (req, res) => {
     writeJsonFile("employee_master.json", syncEmployeeMaster);
 
     broadcastEvent('employee_master_updated', { records: syncEmployeeMaster });
+    syncToGoogleAppsScript('saveEmployeeMaster', { records: records });
     return res.json({ ok: true, saved: true, count: syncEmployeeMaster.length });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
