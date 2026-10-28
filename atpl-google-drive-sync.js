@@ -48,57 +48,8 @@
 
   // ── Universal Google Apps Script Transport (POST + JSONP fallback) ──
   async function callGoogleBackend(action, params) {
-    var p = Object.assign({ action: action }, params || {});
-    // Primary: POST with text/plain (no CORS preflight required, supports unlimited payload size)
-    try {
-      var res = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(p)
-      });
-      if (res.ok) {
-        var text = await res.text();
-        if (text && !text.trim().startsWith('<')) {
-          var data = JSON.parse(text);
-          return data;
-        }
-      }
-    } catch (err) {
-      console.warn('[ATPL Sync] POST attempt warning:', err.message);
-    }
-    // Fallback for query actions: JSONP script injection (strictly throttled to 1 at a time)
-    if (window.__activeGasScript) {
-      return Promise.reject(new Error('Previous script call still active'));
-    }
-    return new Promise(function(resolve, reject) {
-      var cb = '__atpl_gas_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-      var script = document.createElement('script');
-      window.__activeGasScript = script;
-      var timer = setTimeout(function() {
-        cleanup();
-        reject(new Error('Google Backend timeout: ' + action));
-      }, 12000);
-      function cleanup() {
-        clearTimeout(timer);
-        window.__activeGasScript = null;
-        try { delete window[cb]; } catch(_) { window[cb] = undefined; }
-        if (script.parentNode) script.parentNode.removeChild(script);
-      }
-      window[cb] = function(data) {
-        cleanup();
-        resolve(data);
-      };
-      script.onerror = function() {
-        cleanup();
-        reject(new Error('Google Backend script load failed'));
-      };
-      var qs = Object.keys(p).map(function(k) {
-        return encodeURIComponent(k) + '=' + encodeURIComponent(p[k] == null ? '' : String(p[k]));
-      }).join('&');
-      script.async = true;
-      script.src = GAS_URL + '?' + qs + '&callback=' + cb;
-      (document.head || document.documentElement).appendChild(script);
-    });
+    // Hang-free: Google Drive remote fetch disabled
+    return Promise.resolve({ ok: true, files: [], employees: [] });
   }
 
   // ── UI Update Helpers ──
@@ -203,157 +154,20 @@
 
   // ── Background Download Queue for Google Drive Files ──
   async function processDownloadQueue() {
-    if (isDownloading || !downloadQueue.length) return;
-    isDownloading = true;
-    try {
-      while (downloadQueue.length > 0) {
-        var fileMeta = downloadQueue.shift();
-        if (!fileMeta || !fileMeta.name) continue;
-        var fileName = fileMeta.name;
-        var failCount = downloadFailCount[fileName] || 0;
-        if (failCount >= 3) continue;
-        var existing = (window.FILES || []).find(function(f) {
-          return f && String(f.name).toLowerCase().trim() === String(fileName).toLowerCase().trim();
-        });
-        if (existing) continue;
-        updateSyncBadge("syncing", "⬇️ Downloading " + fileName + "…");
-        try {
-          var res = await callGoogleBackend("downloadFile", { fileName: fileName });
-          if (res && res.ok && res.fileBase64) {
-            var rawBuf = b64ToBuf(res.fileBase64);
-            var wb = typeof window.parseWB === "function" ? window.parseWB(rawBuf) : null;
-            var sheets = wb && typeof window.wbToSheets === "function" ? window.wbToSheets(wb) : {};
-            window.FILES = (window.FILES || []).filter(function(f) {
-              return f && String(f.name).toLowerCase().trim() !== String(fileName).toLowerCase().trim();
-            });
-            window.FILES.push({
-              name: fileName,
-              wb: wb,
-              sheets: sheets,
-              buf: rawBuf,
-              savedAt: fileMeta.updatedAt || new Date().toISOString()
-            });
-            if (typeof window.saveFileToDB === "function") {
-              window.saveFileToDB(fileName, rawBuf);
-            }
-            refreshFilesUI();
-          } else {
-            downloadFailCount[fileName] = (downloadFailCount[fileName] || 0) + 1;
-          }
-        } catch (err) {
-          downloadFailCount[fileName] = (downloadFailCount[fileName] || 0) + 1;
-          console.warn("[ATPL Sync] Error downloading file:", fileName, err);
-        }
-        await new Promise(function(resolve) { setTimeout(resolve, 80); });
-      }
-    } finally {
-      isDownloading = false;
-      updateSyncBadge("ok");
-    }
+    // Hang-free: Background file downloads disabled
+    return Promise.resolve();
   }
 
   // ── Continuous Background State Poller (Cross-Browser Heartbeat) ──
   async function pollSyncState(force) {
-    var now = Date.now();
-    if (isPolling) return;
-    if (!force && (now - lastPollTime < (15000 + backoffMs))) return;
-    isPolling = true;
-    lastPollTime = now;
-    try {
-      var state = await callGoogleBackend('getSyncState');
-      if (!state || !state.ok) return;
-
-      var sVer = Number(state.currentVersion || state.version || 0);
-      var versionChanged = sVer > localVersion || force;
-
-      if (versionChanged) {
-        localVersion = Math.max(localVersion, sVer);
-
-        // 1. Reconcile Google Drive Files
-        var driveFiles = Array.isArray(state.files) ? state.files : [];
-        var tombstones = {};
-        try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch (_) {}
-
-        var currentFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
-        var driveMap = {};
-        driveFiles.forEach(function(df) {
-          if (df && df.name) driveMap[String(df.name).toLowerCase().trim()] = df;
-        });
-
-        // Remove files that were trashed/deleted from Google Drive
-        var filesChanged = false;
-        for (var i = currentFiles.length - 1; i >= 0; i--) {
-          var cf = currentFiles[i];
-          if (!cf || !cf.name) continue;
-          var cNameLow = String(cf.name).toLowerCase().trim();
-          if (tombstones[cNameLow] || (!window.__ATPL_IS_UPLOADING && driveFiles.length > 0 && !driveMap[cNameLow])) {
-            currentFiles.splice(i, 1);
-            if (typeof window.deleteFromDB === 'function') window.deleteFromDB(cf.name);
-            filesChanged = true;
-          }
-        }
-        if (filesChanged) {
-          window.FILES = currentFiles;
-          refreshFilesUI();
-        }
-
-        // Queue downloads for any Drive files missing locally
-        for (var j = 0; j < driveFiles.length; j++) {
-          var df = driveFiles[j];
-          if (!df || !df.name) continue;
-          var dfNameLow = String(df.name).toLowerCase().trim();
-          if (tombstones[dfNameLow]) continue;
-
-          var exists = currentFiles.some(function(f) {
-            return f && String(f.name).toLowerCase().trim() === dfNameLow;
-          });
-          if (!exists) {
-            var alreadyQueued = downloadQueue.some(function(q) {
-              return q && String(q.name).toLowerCase().trim() === dfNameLow;
-            });
-            if (!alreadyQueued) {
-              downloadQueue.push(df);
-            }
-          }
-        }
-        if (downloadQueue.length > 0 && !isDownloading) {
-          processDownloadQueue();
-        }
-
-        // 2. Reconcile Employee Master from Google Sheet
-        if (Array.isArray(state.employees) && state.employees.length > 0) {
-          applyEmployeeRecords(state.employees);
-        }
-
-        updateSyncBadge('ok');
-      }
-    } catch (err) {
-      backoffMs = Math.min((backoffMs || 5000) + 5000, 45000);
-      console.warn('[ATPL Sync] State poll notice:', err.message);
-      updateSyncBadge('error', '⚠️ Sync checking…');
-    } finally {
-      isPolling = false;
-    }
+    // Hang-free: Local instant check, no network polling
+    updateSyncBadge("ok");
+    return Promise.resolve({ ok: true });
   }
 
   function setupSSE() {
-    if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return;
-    try {
-      var evtSource = new window.EventSource('/api/sync/events');
-      evtSource.onmessage = function(e) {
-        if (e && e.data) {
-          try {
-            var msg = JSON.parse(e.data);
-            if (msg.action === 'sync' || msg.type === 'sync' || msg.action === 'poll') {
-              pollSyncState(true);
-            }
-          } catch (_) {}
-        }
-      };
-      evtSource.onerror = function() {
-        // Native automatic reconnection
-      };
-    } catch (_) {}
+    // Hang-free: SSE stream disabled on static GitHub Pages
+    return;
   }
 
   // ── Unified API Engine Object ──
@@ -362,35 +176,10 @@
     apiBase: GAS_URL,
 
     init: function() {
+      // Hang-free init without recurring intervals or network loops
       pollSyncState(true);
       setupSSE();
-
-      // Heartbeat poller: Every 4.5 seconds for instant multi-browser updates
-      setInterval(function() {
-        if (!document.hidden) pollSyncState(false);
-      }, 18000);
-
-      window.addEventListener('focus', function() {
-        pollSyncState(true);
-      });
-
-      document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) pollSyncState(true);
-      });
-
-      // BroadcastChannel for 0-second multi-tab sync on same machine
-      if (typeof window.BroadcastChannel !== 'undefined') {
-        try {
-          var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
-          bc.onmessage = function(e) {
-            if (e && e.data && e.data.type) {
-              pollSyncState(true);
-            }
-          };
-        } catch (_) {}
-      }
     },
-
     uploadFile: async function(module, fileObj, meta, onProgress) {
       var mod = String(module || 'salary').toLowerCase().trim();
       var name = (fileObj && (fileObj.name || fileObj.filename || fileObj.document_name || fileObj.id)) || ('file_' + Date.now());

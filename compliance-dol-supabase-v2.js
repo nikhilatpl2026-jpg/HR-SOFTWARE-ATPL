@@ -140,19 +140,8 @@ async function saveContributionIndex(recordId,type,entries,progress){
   return{ok:true,count:arr(entries).length,record:r?mapRow(r):null}
 }
 function loadRealtimeLib(){
-  if(root.supabase&&typeof root.supabase.createClient==='function')return Promise.resolve(root.supabase);
-  return new Promise(function(resolve,reject){
-    var existing=root.document.querySelector('script[data-atpl-supabase-js]');
-    if(existing){
-      if(root.supabase&&root.supabase.createClient)return resolve(root.supabase);
-      existing.addEventListener('load',function(){resolve(root.supabase)},{once:true});
-      existing.addEventListener('error',function(){reject(new Error('Supabase realtime library failed'))},{once:true});return
-    }
-    var s=root.document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';s.async=true;s.dataset.atplSupabaseJs='1';
-    s.onload=function(){if(root.supabase&&root.supabase.createClient)resolve(root.supabase);else reject(new Error('Supabase realtime library unavailable'))};
-    s.onerror=function(){reject(new Error('Supabase realtime library failed to load'))};
-    (root.document.head||root.document.documentElement).appendChild(s)
-  })
+  // Hang-free: External script injection disabled
+  return Promise.resolve(null);
 }
 async function startRealtime(){
   if(rtChannel)return true;if(rtStarting)return rtStarting;

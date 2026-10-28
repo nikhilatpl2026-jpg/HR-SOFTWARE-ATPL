@@ -25,23 +25,7 @@
     lastSyncTime: 0,
 
     init: function() {
-      var self = this;
-      // Auto-trigger sync on page load
-      window.addEventListener('load', function() {
-        setTimeout(function() { self.syncAll(false); }, 1000);
-      });
-
-      // Auto-trigger sync when user switches back to browser tab or mobile app
-      window.addEventListener('visibilitychange', function() {
-        if (!document.hidden && Date.now() - self.lastSyncTime > 15000) {
-          self.syncAll(false);
-        }
-      });
-
-      // Regular heartbeat sync every 60 seconds
-      setInterval(function() {
-        if (!document.hidden) self.syncAll(false);
-      }, 60000);
+      // Hang-free: Background polling loops disabled
     },
 
     syncAll: async function(isManual) {

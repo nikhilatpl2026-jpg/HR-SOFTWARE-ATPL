@@ -1102,7 +1102,8 @@
 
  var isReconcilingServer = false;
  var lastServerSync = 0;
- async function syncWithServer(force){
+ async function syncWithServer(force) {
+    if (!force) return false;
    if(sharedSalaryAuthority)return syncSharedSalary(force);
    if(isReconcilingServer) return;
    var now = Date.now();
@@ -1299,11 +1300,7 @@
      });
 
      // Periodic fallback check - relaxed to 60s to prevent CPU drain
-     setInterval(function(){
-       if(!root.document.hidden){
-         syncWithServer(false);
-       }
-     }, 60000);
+     /* Hang-free: 60s background sync interval removed */
 
      var isLocalBackend = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || /\.run\.app$/i.test(location.hostname);
      var es = null;
@@ -1675,12 +1672,7 @@ async function applySalarySnapshot(records){
      }
    },false);
    // Continuous cross-device sync interval: every 30s when tab is active (smooth and lag-free)
-   setInterval(function(){
-     if(!root.document.hidden && !root.__ATPL_IS_UPLOADING){
-       startFirebaseListener();
-       syncNow(false);
-     }
-   }, 30000);
+   /* Hang-free: 30s background sync interval removed */
 
    root.document.addEventListener('atpl-cloud-token-ready',function(){
      setTimeout(function(){syncNow(true);syncWithServer(true)},200);
