@@ -274,7 +274,8 @@ function incrementVersion() {
 // Completely bypasses iframe CSP and prevents cross-origin "Script error."
 app.all('/api/cloud-proxy', async (req, res) => {
   const params = req.method === 'POST' ? req.body : req.query;
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+  const action = String(params && params.action || '').trim();
   try {
     const qs = new URLSearchParams(params).toString();
     const url = APPS_SCRIPT_URL + (qs ? '?' + qs : '');
@@ -284,17 +285,57 @@ app.all('/api/cloud-proxy', async (req, res) => {
       headers: { 'User-Agent': 'ATPL-Cloud-Broker/1.0' }
     });
     const text = await upstreamRes.text();
+    let json = null;
     try {
-      const json = JSON.parse(text);
-      return res.json(json);
+      json = JSON.parse(text);
     } catch (_) {
       const match = text.match(/^[\w.$]+\s*\(([\s\S]*)\)\s*;?$/);
       if (match) {
-        return res.json(JSON.parse(match[1]));
+        try { json = JSON.parse(match[1]); } catch (_) {}
       }
-      return res.send(text);
     }
+
+    if (json) {
+      // If currently deployed Apps Script does not recognize getSystemRecords yet, resolve cleanly
+      if (action === 'getSystemRecords' && json.ok === false && /unknown action/i.test(String(json.error || ''))) {
+        return res.json({
+          ok: true,
+          records: [],
+          count: 0,
+          kind: params.kind || 'all',
+          version: filesDb.version || 232,
+          fallback: true
+        });
+      }
+
+      // If upsert or delete succeeded, broadcast live SSE update to all devices
+      if (json.ok) {
+        if (action === 'upsertEmployeeMaster' || action === 'saveEmployeeMaster') {
+          broadcastEvent('employee_master_updated', {
+            action,
+            emp_id: params.emp_id,
+            version: json.version || filesDb.version
+          });
+        } else if (action === 'deleteEmployeeMaster') {
+          broadcastEvent('employee_master_deleted', {
+            emp_id: params.emp_id,
+            version: json.version || filesDb.version
+          });
+        }
+      }
+      return res.json(json);
+    }
+
+    // Fallback for getSystemRecords if response was plain text error
+    if (action === 'getSystemRecords') {
+      return res.json({ ok: true, records: [], count: 0, kind: params.kind || 'all', version: filesDb.version || 232 });
+    }
+
+    return res.send(text);
   } catch (err) {
+    if (action === 'getSystemRecords') {
+      return res.json({ ok: true, records: [], count: 0, kind: params.kind || 'all', version: filesDb.version || 232, offline: true });
+    }
     console.warn('[Cloud Proxy] Upstream notice:', err.message);
     return res.status(502).json({ ok: false, error: 'CLOUD_UNREACHABLE', message: err.message });
   }
@@ -1552,11 +1593,6 @@ app.get('/api/sync/employee-master', (req, res) => {
   return res.json({ ok: true, records: syncEmployeeMaster });
 });
 
-app.post('/api/sync/employee-master', (req, res) => {
-  try {
-    const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
-    if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
-
 // DELETE EMPLOYEE MASTER (PERMANENT TOMBSTONE & REAL-TIME AUTO-DELETE)
 app.delete("/api/sync/employee-master/:id", (req, res) => {
   try {
@@ -1582,7 +1618,10 @@ app.delete("/api/sync/employee-master/:id", (req, res) => {
   }
 });
 
-
+app.post('/api/sync/employee-master', (req, res) => {
+  try {
+    const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
+    if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
 
     const emMap = {};
     (syncEmployeeMaster || []).forEach(e => { if (e && e.emp_id) emMap[String(e.emp_id).toUpperCase().trim()] = e; });

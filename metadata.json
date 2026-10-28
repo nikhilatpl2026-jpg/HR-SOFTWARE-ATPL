@@ -1,6 +1,6 @@
 {
-  "name": "ATPL HR & Payroll Software",
-  "description": "ATPL HR, Payroll, Statutory Compliance, and Workforce Management System.",
+  "name": "ATPL HR & Payroll ERP",
+  "description": "Enterprise HR and Payroll management software with real-time Google Sheets sync, employee master, and salary audits.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

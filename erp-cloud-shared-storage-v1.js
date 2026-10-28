@@ -10,7 +10,7 @@
  }
  var BUILD='2026.09.28-permanent-cross-browser-delete-v2';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
- var API='https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
+ var API='https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
  var SALARY_DB='AroraTextiles',SALARY_VER=1,SALARY_STORE='salaryFiles';
  var HR_DB='AroraTextilesHRDocs',HR_VER=1,HR_STORE='documents';
@@ -62,7 +62,7 @@
  function setBadge(state,msg){try{if(typeof root.updateRealtimeCloudBadge==='function'){var count=Array.isArray(root.FILES)?root.FILES.length:0;root.updateRealtimeCloudBadge(count,state==='busy'?'syncing':state==='bad'?'error':'ok',msg);return}var id='atplCloudFilesBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:10px;padding:4px 9px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}var cnt=Array.isArray(root.FILES)?root.FILES.length:0;b.textContent=msg||('☁️ Realtime Cloud ('+cnt+' files)');if(state==='bad'){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else if(state==='busy'){b.style.background='#fff7ed';b.style.color='#c2410c';b.style.borderColor='#fed7aa'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
  function storageLabel(msg){try{var x=root.document.getElementById('storageLbl');if(x&&msg)x.textContent=msg}catch(_){}}
  function isSystem(r){return !!r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)}
- async function fetchRemote(force){await ensureTokenReady();if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}d=await api({action:'getEmployeeMaster',token:token()},22000);if(!(d&&d.ok&&Array.isArray(d.records)))throw new Error(d&&d.error||'Shared records unavailable');remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}
+ async function fetchRemote(force){await ensureTokenReady();if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}try{d=await api({action:'getEmployeeMaster',token:token()},22000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}}catch(_){}return remoteRecords.slice()}
  function recordsFor(records,key){var meta=null,chunks={};(records||[]).forEach(function(r){if(r&&r.object_key===key&&r._atpl_kind==='meta')meta=r;else if(r&&r.object_key===key&&r._atpl_kind==='chunk')chunks[Number(r.index)]=String(r.data||'')});return{meta:meta,chunks:chunks}}
  async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Cloud copy is too large for current shared bridge ('+parts.length+' chunks).');var k=safeKey(kind,key),u=user()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});if(kind!=='hr_doc')setBadge('busy','☁ Saving '+text(info&&info.name||kind)+'…');try{await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});remoteRecords=[];lastPull=0;setBadge('ok','🔥 Firebase Live');return true}finally{if(kind==='hr_doc')setBadge('ok','🔥 Firebase Live')}}
  async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records.filter(function(r){return r._atpl_kind!=='chunk'||String(r.generation||'')===String(meta.generation||'')}),meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
@@ -1424,8 +1424,21 @@
  async function salarySnapshot(){
    await ensureTokenReady();
    if(!token())throw new Error('Sign in to sync files');
-   var result=await api({action:'getSystemRecords',kind:'salary_file',token:token()},22000);
-   if(!result||!result.ok||!Array.isArray(result.records))throw new Error(result&&result.error||'Shared salary read failed');
+   var result;
+   try {
+     result=await api({action:'getSystemRecords',kind:'salary_file',token:token()},22000);
+   } catch(err) {
+     result = { ok: false, error: err.message };
+   }
+   if(!result||!result.ok||!Array.isArray(result.records)){
+     if(result && /unknown action/i.test(String(result.error||''))){
+       try {
+         var syncRes = await api({action:'getSyncState'}, 14000);
+         if (syncRes && syncRes.ok) return [];
+       } catch(_) {}
+     }
+     throw new Error(result&&result.error||'Shared salary read failed');
+   }
    return result.records.filter(function(r){return r&&r.object_kind==='salary_file'});
  }
 async function applySalarySnapshot(records){

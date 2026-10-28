@@ -9,7 +9,7 @@ var BUILD='2026.09.22-production-v6-dol-long-reads';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
-var API='https://script.google.com/macros/s/AKfycbzXRtJxaZwSazLG3rcI3wJNUwursJC4zEl9-yqIzbbcNyuBXH2gdkCc1fooGPcgHe-Uig/exec';
+var API='https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 var TOKEN_KEY='ATPL_RemoteToken_V1',ALT_KEY='ATPL_SharedToken_V1',SESS_KEY='ATPL_UserSession_V5',USERS_KEY='ATPL_UserAccess_V1',HASH_KEY='ATPL_LastLoginHash_V1';
 var DEFAULT_ADMIN_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // sha256('admin123')
 var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=4,MAX_WRITES=3,lastStart=0,MIN_GAP=40,seq=0;

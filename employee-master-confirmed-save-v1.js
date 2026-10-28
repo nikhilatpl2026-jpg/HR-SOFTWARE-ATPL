@@ -87,9 +87,15 @@ function fieldsToEmployee(){
         if(norm && /^\d{2}-\d{2}-\d{4}$/.test(norm)){ val = norm; el.value = norm; }
       }
     }
-    if(c.type === 'number') out[c.key] = parseFloat(val) || 0;
-    else out[c.key] = val ? val.toUpperCase() : '';
+    if(c.type === 'number') {
+      var num = parseFloat(String(val).replace(/,/g, ''));
+      out[c.key] = isNaN(num) ? 0 : num;
+    } else {
+      out[c.key] = val ? val.toUpperCase() : '';
+    }
   });
+  if(out && out.gross && !out.new_gross) out.new_gross = out.gross;
+  if(out && out.new_gross && !out.gross) out.gross = out.new_gross;
   return valid ? out : null;
 }
 async function confirmedSingleSave(){
@@ -138,8 +144,8 @@ async function confirmedBulkSave(){
   }
   if(!g.EM||!Array.isArray(g.EM.data))return;
   var c=cloud();
-  var rows=g.EM_BULK_ROWS.slice();
-  rows.forEach(function(emp){
+  var rowsToSave=g.EM_BULK_ROWS.slice();
+  rowsToSave.forEach(function(emp){
     var k=empKey(emp),ix=g.EM.data.findIndex(function(y){return empKey(y)===k || String(y.emp_id)===String(emp.emp_id)});
     if(ix>=0){
       var merged=Object.assign({},g.EM.data[ix]);
@@ -155,12 +161,11 @@ async function confirmedBulkSave(){
   g.EM_BULK_ROWS=[];
   if(typeof g.emCloseModal==='function')g.emCloseModal();
   if(!c||typeof c.saveMany!=='function'){
-    paint('saved','Saved locally ✓ ('+rows.length+' rows)',null);
-    info('Saved '+rows.length+' employees locally to master.',false);
+    paint('saved','Saved locally ✓ ('+rowsToSave.length+' rows)',null);
+    info('Saved '+rowsToSave.length+' employees locally to master.',false);
     return;
   }
-  var rows=g.EM_BULK_ROWS.slice();
-  var items=rows.map(function(emp){
+  var items=rowsToSave.map(function(emp){
     var k=empKey(emp),old=g.EM.data.find(function(y){return empKey(y)===k})||null;
     // PRESERVE EXISTING DATA: do not overwrite account, IFSC or bank fields with blank paste cells.
     var merged=Object.assign({},old||{});

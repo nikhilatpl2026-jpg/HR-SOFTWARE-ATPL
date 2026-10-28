@@ -9552,7 +9552,10 @@ function emDoDownload(mode) {
         e.bank_name||'', e.account_no||'', e.ifsc||'', e.branch_address||'',
         e.doj||'', e.dept||'', e.desig||'', e.cat1||'', e.skill||'',
         e.pf_no||'', e.esi_no||'',
-        Math.round(e.gross||0), Math.round(e.basic||0), Math.round(e.hra||0), Math.round(e.new_gross||e.gross||0)
+        (e.gross != null && e.gross !== '' ? Number(e.gross) : (e.new_gross != null ? Number(e.new_gross) : 0)),
+        (e.basic != null && e.basic !== '' ? Number(e.basic) : 0),
+        (e.hra != null && e.hra !== '' ? Number(e.hra) : 0),
+        (e.new_gross != null && e.new_gross !== '' ? Number(e.new_gross) : (e.gross != null ? Number(e.gross) : 0))
       ]);
     });
     return rows;
@@ -9560,17 +9563,17 @@ function emDoDownload(mode) {
 
   // ── FORMULA SHEET ──
   function buildFormulaSheet(ws, startRow) {
-    // Basic+HRA=Gross formula in last column
+    // In 40-col sheet: Col 37 (c:36) Gross, Col 38 (c:37) Basic, Col 39 (c:38) HRA, Col 40 (c:39) New Gross
     dataToExport.forEach(function(e,i){
       var row = startRow + i;
-      var basicCell = XLSX.utils.encode_cell({r:row-1, c:16}); // col Q
-      var hraCell   = XLSX.utils.encode_cell({r:row-1, c:17}); // col R
-      var grossCell = XLSX.utils.encode_cell({r:row-1, c:18}); // col S
+      var basicCell = XLSX.utils.encode_cell({r:row-1, c:37}); // Col 38 = New Basic
+      var hraCell   = XLSX.utils.encode_cell({r:row-1, c:38}); // Col 39 = New HRA
+      var newGrossCell = XLSX.utils.encode_cell({r:row-1, c:39}); // Col 40 = Gross Total Salary (New)
       if(ws[basicCell] && ws[hraCell]) {
-        ws[grossCell] = {
+        ws[newGrossCell] = {
           t:'n',
           f:'='+basicCell+'+'+hraCell,
-          v:Math.round((e.basic||0)+(e.hra||0))
+          v:Number((Number(e.basic)||0) + (Number(e.hra)||0))
         };
       }
     });
@@ -10667,7 +10670,9 @@ function parseExcelClipboard(text) {
 window.parseExcelClipboard = parseExcelClipboard;
 
 function matchColumnHeader(header, counts) {
-  counts = counts || { district: 0, state: 0, gross: 0 };
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)) {
+    counts = { district: 0, state: 0, gross: 0 };
+  }
   var raw = String(header || '').trim();
   var s = raw.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s) return '';
@@ -10759,14 +10764,14 @@ function matchColumnHeader(header, counts) {
   // Check ESI / IP
   if (/\b(?:esi|esic|ip\s*no|ip\s*number)\b/i.test(s)) return 'esi_no';
 
-  // Check Salary fields
-  if (/new\s*gross/i.test(s)) return 'new_gross';
-  if (/gross.*total|total.*gross|^gross$|gross\s*salary|gross\s*wages/i.test(s)) {
+  // Check Salary fields (comprehensive pattern matching for Basic, HRA, Gross)
+  if (/new\s*gross|gross.*(?:new|\(new\))/i.test(s)) return 'new_gross';
+  if (/gross.*total|total.*gross|^gross$|gross\s*(?:salary|wages|pay|rate|amt|amount|\(.*\))?/i.test(s)) {
     counts.gross++;
     return counts.gross === 1 ? 'gross' : 'new_gross';
   }
-  if (/basic.*salary|^basic$|basic\s*wages|new\s*basic/i.test(s)) return 'basic';
-  if (/^hra$|house\s*rent|new\s*hra/i.test(s)) return 'hra';
+  if (/(?:^|\s)(?:new\s*)?basic(?:\s*(?:salary|pay|wages|rate|amt|amount|da|\+da|\(rs\)|\(amt\)|\(.*\))|\b)/i.test(s) || /^basic/i.test(s)) return 'basic';
+  if (/^h\s*r\s*a$|(?:^|\s)(?:new\s*)?hra(?:\s*(?:allowance|salary|amt|amount|\(.*\))|\b)|house\s*rent/i.test(s) || /h[\/.\-]r[\/.\-]a/i.test(raw)) return 'hra';
 
   // Check Designation / Department / Category / Skill
   if (/\b(?:designation|desig|post|role)\b/i.test(s)) return 'desig';
@@ -10990,10 +10995,28 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   }
 
-  // 8. Number fields
+  // 8. Number fields & exact salary preservation
+  if (emp.basic === undefined || emp.basic === '' || emp.basic === null) {
+    if (emp.new_basic !== undefined) emp.basic = emp.new_basic;
+    else if (emp.basic_salary !== undefined) emp.basic = emp.basic_salary;
+    else if (emp.basic_pay !== undefined) emp.basic = emp.basic_pay;
+  }
+  if (emp.hra === undefined || emp.hra === '' || emp.hra === null) {
+    if (emp.new_hra !== undefined) emp.hra = emp.new_hra;
+    else if (emp.hra_salary !== undefined) emp.hra = emp.hra_salary;
+  }
+  if (emp.gross === undefined || emp.gross === '' || emp.gross === null) {
+    if (emp.new_gross !== undefined) emp.gross = emp.new_gross;
+    else if (emp.gross_salary !== undefined) emp.gross = emp.gross_salary;
+  }
+  if (emp.new_gross === undefined || emp.new_gross === '' || emp.new_gross === null) {
+    if (emp.gross !== undefined) emp.new_gross = emp.gross;
+  }
+
   ['gross','basic','hra','new_gross'].forEach(function(numField){
-    if (emp[numField] !== undefined && emp[numField] !== null && emp[numField] !== '') {
-      emp[numField] = parseFloat(String(emp[numField]).replace(/,/g, '')) || 0;
+    if (emp[numField] !== undefined && emp[numField] !== null && String(emp[numField]).trim() !== '') {
+      var parsed = parseFloat(String(emp[numField]).replace(/,/g, ''));
+      if (!isNaN(parsed)) emp[numField] = parsed;
     }
   });
 
@@ -11172,7 +11195,8 @@ function emFillSingleFromText(text) {
 
   var firstLine = lines[0];
   var firstCols = firstLine.split('\t').map(function(s){ return String(s || '').trim(); });
-  var matchedHeaders = firstCols.map(matchColumnHeader);
+  var singleCounts = { district: 0, state: 0, gross: 0 };
+  var matchedHeaders = firstCols.map(function(s){ return matchColumnHeader(s, singleCounts); });
   var validHeaders = matchedHeaders.filter(function(k){ return k && k !== '__skip__'; }).length;
   var isHeader = (validHeaders >= 2 || (firstCols.length === 1 && validHeaders >= 1));
 
@@ -11185,16 +11209,16 @@ function emFillSingleFromText(text) {
       if (!k || k === '__skip__' || rawRow[idx] === undefined) return;
       var val = String(rawRow[idx] == null ? '' : rawRow[idx]).trim();
       var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined') ? ATPL_40_EXCEL_COLS.find(function(c){ return c.key === k; }) : null;
-      if (cDef && cDef.type === 'number') emp[k] = parseFloat(val.replace(/,/g, '')) || 0;
-      else emp[k] = val;
+      if (cDef && cDef.type === 'number') {
+        var num = parseFloat(val.replace(/,/g, ''));
+        emp[k] = isNaN(num) ? 0 : num;
+      } else emp[k] = val;
     });
   } else {
     var r = rawRow;
-    // Keep firstCell as emp_id unless there are 3+ cells and first cell is 1/2/3 while second is numeric employee code
     var firstCell = String(r[0] || '').trim();
     var secondCell = String(r[1] || '').trim();
-    if (/^[0-9]$|^[1-9][0-9]?$/.test(firstCell) && /^[0-9]{3,6}$/.test(secondCell)) {
-      // First column is a small 1-2 digit serial number (1, 2, 3...) and second is actual 3-6 digit employee code
+    if (/^[0-9]{1,4}$/.test(firstCell) && /^[0-9]{3,6}$/.test(secondCell)) {
       r = rawRow.slice(1);
     }
     var keys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS.slice() : (Array.isArray(EM_COLS) ? EM_COLS.map(function(c){ return c.key; }) : []);
@@ -11202,13 +11226,27 @@ function emFillSingleFromText(text) {
       var val = r[ci];
       if (val === undefined || val === null) val = '';
       var cDef = (typeof ATPL_40_EXCEL_COLS !== 'undefined' && ATPL_40_EXCEL_COLS[ci]) ? ATPL_40_EXCEL_COLS[ci] : null;
-      if (cDef && cDef.type === 'number') emp[k] = parseFloat(String(val).replace(/,/g, '')) || 0;
-      else emp[k] = String(val).trim();
+      if (cDef && cDef.type === 'number') {
+        var num = parseFloat(String(val).replace(/,/g, ''));
+        emp[k] = isNaN(num) ? 0 : num;
+      } else {
+        emp[k] = String(val).trim();
+      }
     });
   }
 
   // Deep audit and clean (IFSC, A/C, DOB auto-swap and format)
   emp = auditAndCleanEmployee(emp, rawRow);
+  if (emp.gross && !emp.new_gross) emp.new_gross = emp.gross;
+  if (emp.new_gross && !emp.gross) emp.gross = emp.new_gross;
+
+  // Guarantee salary inputs receive exact values
+  ['gross', 'basic', 'hra', 'new_gross'].forEach(function(sk) {
+    if (emp[sk] !== undefined && emp[sk] !== null && String(emp[sk]).trim() !== '') {
+      var sel = getEmfElement(sk);
+      if (sel) sel.value = emp[sk];
+    }
+  });
 
   var filledCount = 0;
   var allKeys = (typeof ATPL_40_COL_KEYS !== 'undefined') ? ATPL_40_COL_KEYS : Object.keys(emp);
@@ -11714,8 +11752,15 @@ function emParseBulkPaste() {
       matchedHeaders.forEach(function(k, idx) {
         if (!k || k === "__skip__" || row[idx] === undefined) return;
         var val = String(row[idx] == null ? "" : row[idx]).trim();
-        emp[k] = val;
+        if (k === 'gross' || k === 'basic' || k === 'hra' || k === 'new_gross') {
+          var num = parseFloat(val.replace(/,/g, ""));
+          emp[k] = isNaN(num) ? 0 : num;
+        } else {
+          emp[k] = val;
+        }
       });
+      if (emp.gross && !emp.new_gross) emp.new_gross = emp.gross;
+      if (emp.new_gross && !emp.gross) emp.gross = emp.new_gross;
     } else {
       var clean = row.map(function(c){ return String(c || "").trim(); });
       clean.forEach(function(val) {
@@ -11788,21 +11833,6 @@ function emParseBulkPaste() {
         }
       });
 
-      var salNums = [];
-      clean.forEach(function(val){
-        var num = parseFloat(val.replace(/,/g, ""));
-        if (!isNaN(num) && num >= 1000 && num <= 200000 && val !== emp.phone_no && val !== emp.aadhaar_no && val !== emp.account_no) {
-          salNums.push(num);
-        }
-      });
-      if (salNums.length > 0) {
-        salNums.sort(function(a, b){ return b - a; });
-        emp.gross = salNums[0];
-        emp.new_gross = salNums[0];
-        if (salNums.length > 1) emp.basic = salNums[1];
-        if (salNums.length > 2) emp.hra = salNums[2];
-      }
-
       if (!emp.emp_id && clean[0]) emp.emp_id = clean[0];
       if (!emp.name && clean[1]) emp.name = clean[1];
       if (!emp.father && clean[2]) emp.father = clean[2];
@@ -11811,12 +11841,38 @@ function emParseBulkPaste() {
       if (addrs.length > 0 && !emp.present_address) emp.present_address = addrs[0];
       if (addrs.length > 1 && !emp.permanent_address) emp.permanent_address = addrs[1];
 
+      // Map columns directly preserving exact column values and numbers
       var activeCols = (Array.isArray(EM_COLS) && EM_COLS.length > 0) ? EM_COLS : (typeof ATPL_40_EXCEL_COLS !== "undefined" ? ATPL_40_EXCEL_COLS : []);
       activeCols.forEach(function(c, ci){
-        if (!emp[c.key] && clean[ci] !== undefined && clean[ci] !== "") {
-          emp[c.key] = clean[ci];
+        if (clean[ci] !== undefined && clean[ci] !== "") {
+          if (c.type === 'number') {
+            var num = parseFloat(String(clean[ci]).replace(/,/g, ""));
+            emp[c.key] = isNaN(num) ? 0 : num;
+          } else if (!emp[c.key]) {
+            emp[c.key] = clean[ci];
+          }
         }
       });
+
+      // Fallback heuristic ONLY if salary columns were not in standard positions
+      if (emp.gross === undefined && emp.basic === undefined && emp.hra === undefined) {
+        var salNums = [];
+        clean.forEach(function(val){
+          var num = parseFloat(val.replace(/,/g, ""));
+          if (!isNaN(num) && num >= 100 && num <= 500000 && val !== emp.phone_no && val !== emp.aadhaar_no && val !== emp.account_no && val !== emp.emp_id) {
+            salNums.push(num);
+          }
+        });
+        if (salNums.length > 0) {
+          salNums.sort(function(a, b){ return b - a; });
+          emp.gross = salNums[0];
+          emp.new_gross = salNums[0];
+          if (salNums.length > 1) emp.basic = salNums[1];
+          if (salNums.length > 2) emp.hra = salNums[2];
+        }
+      }
+      if (emp.gross && !emp.new_gross) emp.new_gross = emp.gross;
+      if (emp.new_gross && !emp.gross) emp.gross = emp.new_gross;
     }
 
     if (!emp.emp_id) {
