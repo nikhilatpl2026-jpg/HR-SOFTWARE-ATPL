@@ -1,31 +1,21 @@
 /**
- * ATPL UNIFIED CROSS-BROWSER & GOOGLE DRIVE / SHEETS SYNC ENGINE
- * Single Source of Truth for Files, Employee Master, HR Docs, PF, ESIC & Challans.
- * Real-time SSE updates + Lightweight 3-second heartbeat polling.
- * Zero data loss, zero resurrection of deleted items, instant cross-device updates.
+ * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE
+ * Connects directly to Google Apps Script (Drive Folder: ATPL_HR_FILES, Sheet: 1SVGnJpzRIDHoYZ1W4VHII0m-JYrisW1xKixLNYG8u9s).
+ * 100% Free, Zero Ephemeral Server Dependency, Zero Firebase Quota Blocker, Zero Dead Endpoints.
+ * Full cross-browser, cross-device real-time sync across Chrome, Edge, Firefox, Safari and Mobile.
  */
 (function(window) {
   'use strict';
 
-  var API_BASE = '';
-  try {
-    var host = window.location && window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
-      API_BASE = window.location.origin || '';
-    } else if (window.LIVE_CLOUD_RUN_URL) {
-      API_BASE = window.LIVE_CLOUD_RUN_URL;
-    }
-  } catch (_) {
-    API_BASE = '';
-  }
-
-  window.__ATPL_CENTRAL_BACKEND_URL = API_BASE;
-  window.ATPL_GET_API_BASE = function() { return API_BASE; };
-
+  var GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
   var localVersion = 0;
   var isPolling = false;
-  var sseConnected = false;
-  var eventSource = null;
+  var downloadQueue = [];
+  var isDownloading = false;
+
+  window.ATPL_GAS_URL = GAS_URL;
+  window.ATPL_GET_API_BASE = function() { return GAS_URL; };
+  window.__ATPL_CENTRAL_BACKEND_URL = GAS_URL;
 
   // ── Helper Utilities ──
   function toB64(buf) {
@@ -53,236 +43,141 @@
     return bytes.buffer;
   }
 
-  // ── Real-Time Server-Sent Events (SSE) Listener ──
-  function setupSSE() {
-    if (typeof window.EventSource === 'undefined') return;
-    if (eventSource) {
-      try { eventSource.close(); } catch (_) {}
-    }
+  // ── Universal Google Apps Script Transport (POST + JSONP fallback) ──
+  async function callGoogleBackend(action, params) {
+    var p = Object.assign({ action: action }, params || {});
 
+    // Primary: POST with text/plain (no CORS preflight required, supports unlimited payload size)
     try {
-      eventSource = new EventSource(API_BASE + '/api/sync/events');
-
-      eventSource.addEventListener('connected', function(e) {
-        sseConnected = true;
-        try {
-          var data = JSON.parse(e.data);
-          if (data && data.version) localVersion = Math.max(localVersion, data.version);
-        } catch (_) {}
+      var res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(p)
       });
-
-      eventSource.addEventListener('file_saved', function(e) {
-        handleRemoteFileSaved(e);
-      });
-
-      eventSource.addEventListener('salary_file_saved', function(e) {
-        handleRemoteFileSaved(e);
-      });
-
-      eventSource.addEventListener('file_deleted', function(e) {
-        handleRemoteFileDeleted(e);
-      });
-
-      eventSource.addEventListener('salary_file_deleted', function(e) {
-        handleRemoteFileDeleted(e);
-      });
-
-      eventSource.addEventListener('employee_master_updated', function(e) {
-        handleRemoteEmployeeUpdated(e);
-      });
-
-      eventSource.addEventListener('employee_master_deleted', function(e) {
-        handleRemoteEmployeeDeleted(e);
-      });
-
-      eventSource.addEventListener('hr_doc_saved', function(e) {
-        handleRemoteHrDocSaved(e);
-      });
-
-      eventSource.addEventListener('hr_doc_deleted', function(e) {
-        handleRemoteHrDocDeleted(e);
-      });
-
-      eventSource.addEventListener('dol_record_saved', function(e) {
-        handleRemoteDolSaved(e);
-      });
-
-      eventSource.addEventListener('dol_record_deleted', function(e) {
-        handleRemoteDolDeleted(e);
-      });
-
-      eventSource.onerror = function() {
-        sseConnected = false;
-        try { eventSource.close(); } catch (_) {}
-        setTimeout(setupSSE, 5000);
-      };
-    } catch (err) {
-      console.warn('[ATPL Sync] SSE connection error:', err);
-    }
-  }
-
-  // ── Handle SSE Incoming Events ──
-  async function handleRemoteFileSaved(e) {
-    try {
-      var d = JSON.parse(e.data || '{}');
-      var fileObj = d.data || d;
-      var name = fileObj.name;
-      if (!name) return;
-
-      var mod = String(fileObj.module || 'salary').toLowerCase();
-      if (mod === 'salary') {
-        // Fetch full file content if buffer not in event
-        var buf = fileObj.buf;
-        if (!buf) {
-          var res = await fetch(API_BASE + '/api/sync/salary-file/' + encodeURIComponent(name));
-          if (res.ok) {
-            var j = await res.json();
-            if (j.file && j.file.buf) buf = j.file.buf;
-          }
-        }
-        if (buf) {
-          var rawBuf = typeof buf === 'string' ? b64ToBuf(buf) : buf;
-          var wb = typeof window.parseWB === 'function' ? window.parseWB(rawBuf) : null;
-          var sheets = wb && typeof window.wbToSheets === 'function' ? window.wbToSheets(wb) : {};
-
-          window.FILES = (window.FILES || []).filter(function(f) {
-            return f && String(f.name).toLowerCase() !== String(name).toLowerCase();
-          });
-          window.FILES.push({
-            name: name,
-            wb: wb,
-            sheets: sheets,
-            buf: rawBuf,
-            savedAt: fileObj.saved || fileObj.created_at || new Date().toISOString()
-          });
-
-          if (typeof window.saveFileToDB === 'function') {
-            window.saveFileToDB(name, rawBuf);
-          }
-          refreshFilesUI();
-        }
-      }
-    } catch (_) {}
-  }
-
-  function handleRemoteFileDeleted(e) {
-    try {
-      var d = JSON.parse(e.data || '{}');
-      var fileObj = d.data || d;
-      var name = fileObj.name || fileObj.id;
-      if (!name) return;
-
-      var target = String(name).toLowerCase().trim();
-      window.FILES = (window.FILES || []).filter(function(f) {
-        return f && String(f.name || '').toLowerCase().trim() !== target;
-      });
-
-      if (typeof window.deleteFromDB === 'function') {
-        window.deleteFromDB(name);
-      }
-
-      // Record tombstone locally so it won't resurrect
-      try {
-        var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
-        tombs[target] = new Date().toISOString();
-        localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
-      } catch (_) {}
-
-      refreshFilesUI();
-    } catch (_) {}
-  }
-
-  async function handleRemoteEmployeeUpdated(e) {
-    try {
-      var res = await fetch(API_BASE + '/api/sync/employee-master');
       if (res.ok) {
-        var d = await res.json();
-        if (d.records && Array.isArray(d.records) && window.EM) {
-          applyEmployeeRecords(d.records);
-        }
+        var data = await res.json();
+        return data;
       }
-    } catch (_) {}
+    } catch (err) {
+      console.warn('[ATPL Sync] POST attempt warning:', err.message);
+    }
+
+    // Fallback for query actions: JSONP script injection
+    return new Promise(function(resolve, reject) {
+      var cb = '__atpl_gas_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      var script = document.createElement('script');
+      var timer = setTimeout(function() {
+        cleanup();
+        reject(new Error('Google Backend timeout: ' + action));
+      }, 35000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        try { delete window[cb]; } catch(_) { window[cb] = undefined; }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      }
+
+      window[cb] = function(data) {
+        cleanup();
+        resolve(data);
+      };
+
+      script.onerror = function() {
+        cleanup();
+        reject(new Error('Google Backend script load failed'));
+      };
+
+      var qs = Object.keys(p).map(function(k) {
+        return encodeURIComponent(k) + '=' + encodeURIComponent(p[k] == null ? '' : String(p[k]));
+      }).join('&');
+
+      script.async = true;
+      script.src = GAS_URL + '?' + qs + '&callback=' + cb;
+      (document.head || document.documentElement).appendChild(script);
+    });
   }
 
-  function handleRemoteEmployeeDeleted(e) {
-    try {
-      var d = JSON.parse(e.data || '{}');
-      var empId = String((d.data && d.data.emp_id) || d.emp_id || '').toUpperCase().trim();
-      if (!empId) return;
+  // ── UI Update Helpers ──
+  function updateSyncBadge(status, text) {
+    var count = (Array.isArray(window.FILES) ? window.FILES.length : 0);
+    var emCount = (window.EM && Array.isArray(window.EM.data) ? window.EM.data.length : 0);
+    var defaultMsg = '☁️ Drive & Sheets (' + count + ' Files, ' + emCount + ' Emp)';
+    var msg = text || defaultMsg;
 
-      // Mark tombstone
-      try {
-        var tombs = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
-        tombs[empId.toLowerCase()] = new Date().toISOString();
-        tombs[empId.toLowerCase().replace(/^0+/, '')] = new Date().toISOString();
-        localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(tombs));
-      } catch (_) {}
-
-      if (window.EM && Array.isArray(window.EM.data)) {
-        window.EM.data = window.EM.data.filter(function(r) {
-          var code = String(r.emp_id || r.id || '').toUpperCase().trim();
-          return code !== empId && code.replace(/^0+/, '') !== empId.replace(/^0+/, '');
-        });
-        refreshEmployeeUI();
+    var badge = document.getElementById('atplCloudFilesBadge');
+    if (!badge) {
+      var headerRight = document.querySelector('.header-right') || document.querySelector('.top-nav');
+      if (headerRight) {
+        badge = document.createElement('span');
+        badge.id = 'atplCloudFilesBadge';
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;cursor:pointer;';
+        badge.title = 'Click to force sync with Google Drive and Google Sheets';
+        badge.onclick = function() { window.triggerManualCrossBrowserSync(); };
+        headerRight.appendChild(badge);
       }
-    } catch (_) {}
-  }
-
-  function handleRemoteHrDocSaved(e) {
-    try {
-      var d = JSON.parse(e.data || '{}');
-      var doc = d.data || d;
-      if (!doc || !doc.id) return;
-
-      var list = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
-      var idx = list.findIndex(function(x) { return x.id === doc.id; });
-      if (idx >= 0) list[idx] = Object.assign({}, list[idx], doc);
-      else list.push(doc);
-
-      if (typeof window.hrDocPut === 'function') {
-        window.hrDocPut(doc);
+    }
+    if (badge) {
+      badge.textContent = msg;
+      if (status === 'error') {
+        badge.style.background = '#fef2f2';
+        badge.style.color = '#b91c1c';
+        badge.style.borderColor = '#fecaca';
+      } else if (status === 'syncing') {
+        badge.style.background = '#fff7ed';
+        badge.style.color = '#c2410c';
+        badge.style.borderColor = '#fed7aa';
+      } else {
+        badge.style.background = '#ecfdf5';
+        badge.style.color = '#047857';
+        badge.style.borderColor = '#a7f3d0';
       }
-      if (typeof window.hrDocRender === 'function') {
-        window.hrDocRender();
-      }
-    } catch (_) {}
-  }
+    }
 
-  function handleRemoteHrDocDeleted(e) {
-    try {
-      var d = JSON.parse(e.data || '{}');
-      var id = String((d.data && d.data.id) || d.id || '');
-      if (!id) return;
-
-      var list = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
-      var filtered = list.filter(function(x) { return x.id !== id; });
-      if (typeof window.hrDocSetDocs === 'function') {
-        window.hrDocSetDocs(filtered);
-      }
-      if (typeof window.hrDocRender === 'function') {
-        window.hrDocRender();
-      }
-    } catch (_) {}
-  }
-
-  function handleRemoteDolSaved(e) {
-    if (typeof window.initStatutoryChallanTab === 'function') {
-      try { window.initStatutoryChallanTab(); } catch (_) {}
+    if (typeof window.updateRealtimeCloudBadge === 'function') {
+      try { window.updateRealtimeCloudBadge(count, status, msg); } catch (_) {}
     }
   }
 
-  function handleRemoteDolDeleted(e) {
-    if (typeof window.initStatutoryChallanTab === 'function') {
-      try { window.initStatutoryChallanTab(); } catch (_) {}
+  function refreshFilesUI() {
+    if (typeof window.renderFiles === 'function') {
+      try { window.renderFiles(); } catch (_) {}
     }
+    if (typeof window.renderSheets === 'function') {
+      try { window.renderSheets(); } catch (_) {}
+    }
+    if (typeof window.updStats === 'function') {
+      try { window.updStats(); } catch (_) {}
+    }
+    if (typeof window.renderAllFilesPage === 'function') {
+      try { window.renderAllFilesPage(); } catch (_) {}
+    }
+    if (typeof window.populateNJSelects === 'function') {
+      try { window.populateNJSelects(); } catch (_) {}
+    }
+    var sl = document.getElementById('storageLbl');
+    if (sl && window.FILES) sl.textContent = window.FILES.length + ' files saved';
+    updateSyncBadge('ok');
+  }
+
+  function refreshEmployeeUI() {
+    if (typeof window.aroraRefreshMaster === 'function') {
+      try { window.aroraRefreshMaster(); } catch (_) {}
+    } else {
+      if (typeof window.emFilter === 'function') {
+        try { window.emFilter(); } catch (_) {}
+      }
+      if (typeof window.emUpdateStats === 'function') {
+        try { window.emUpdateStats(); } catch (_) {}
+      }
+    }
+    updateSyncBadge('ok');
   }
 
   // ── Apply Employee Records to Memory and UI ──
   function applyEmployeeRecords(records) {
-    if (!Array.isArray(records)) return;
+    if (!Array.isArray(records) || !records.length) return;
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
-
     var valid = records.filter(function(r) {
       if (!r || !r.emp_id) return false;
       var k = String(r.emp_id).toLowerCase().trim();
@@ -302,22 +197,49 @@
     refreshEmployeeUI();
   }
 
-  function refreshFilesUI() {
-    if (typeof window.renderFiles === 'function') window.renderFiles();
-    if (typeof window.renderSheets === 'function') window.renderSheets();
-    if (typeof window.updStats === 'function') window.updStats();
-    if (typeof window.renderAllFilesPage === 'function') window.renderAllFilesPage();
-    if (typeof window.populateNJSelects === 'function') window.populateNJSelects();
-    var sl = document.getElementById('storageLbl');
-    if (sl && window.FILES) sl.textContent = window.FILES.length + ' files saved';
-  }
+  // ── Background Download Queue for Google Drive Files ──
+  async function processDownloadQueue() {
+    if (isDownloading || !downloadQueue.length) return;
+    isDownloading = true;
+    try {
+      while (downloadQueue.length > 0) {
+        var fileMeta = downloadQueue.shift();
+        if (!fileMeta || !fileMeta.name) continue;
+        var fileName = fileMeta.name;
+        var existing = (window.FILES || []).find(function(f) {
+          return f && String(f.name).toLowerCase().trim() === String(fileName).toLowerCase().trim();
+        });
+        if (existing) continue;
 
-  function refreshEmployeeUI() {
-    if (typeof window.aroraRefreshMaster === 'function') {
-      window.aroraRefreshMaster();
-    } else {
-      if (typeof window.emFilter === 'function') window.emFilter();
-      if (typeof window.emUpdateStats === 'function') window.emUpdateStats();
+        updateSyncBadge('syncing', '⬇️ Downloading ' + fileName + '…');
+        try {
+          var res = await callGoogleBackend('downloadFile', { fileName: fileName });
+          if (res && res.ok && res.fileBase64) {
+            var rawBuf = b64ToBuf(res.fileBase64);
+            var wb = typeof window.parseWB === 'function' ? window.parseWB(rawBuf) : null;
+            var sheets = wb && typeof window.wbToSheets === 'function' ? window.wbToSheets(wb) : {};
+            window.FILES = (window.FILES || []).filter(function(f) {
+              return f && String(f.name).toLowerCase().trim() !== String(fileName).toLowerCase().trim();
+            });
+            window.FILES.push({
+              name: fileName,
+              wb: wb,
+              sheets: sheets,
+              buf: rawBuf,
+              savedAt: fileMeta.updatedAt || new Date().toISOString()
+            });
+            if (typeof window.saveFileToDB === 'function') {
+              window.saveFileToDB(fileName, rawBuf);
+            }
+            refreshFilesUI();
+          }
+        } catch (err) {
+          console.warn('[ATPL Sync] Error downloading file:', fileName, err);
+        }
+      }
+    } finally {
+      isDownloading = false;
+      updateSyncBadge('ok');
     }
   }
 
@@ -325,98 +247,77 @@
   async function pollSyncState(force) {
     if (isPolling && !force) return;
     isPolling = true;
-
     try {
-      var res = await fetch(API_BASE + '/api/sync/state?summary=1');
-      if (!res.ok) return;
-      var state = await res.json();
+      var state = await callGoogleBackend('getSyncState');
       if (!state || !state.ok) return;
 
-      var sVer = Number(state.version || 0);
+      var sVer = Number(state.currentVersion || state.version || 0);
       var versionChanged = sVer > localVersion || force;
 
       if (versionChanged) {
         localVersion = Math.max(localVersion, sVer);
 
-        // 1. Reconcile Salary Files
-        var serverSalaryFiles = Array.isArray(state.salary_files) ? state.salary_files : [];
-        var tombstones = state.salary_tombstones || {};
+        // 1. Reconcile Google Drive Files
+        var driveFiles = Array.isArray(state.files) ? state.files : [];
+        var tombstones = {};
+        try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch (_) {}
 
-        // Remove tombstoned files from local
         var currentFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
-        var filesChanged = false;
+        var driveMap = {};
+        driveFiles.forEach(function(df) {
+          if (df && df.name) driveMap[String(df.name).toLowerCase().trim()] = df;
+        });
 
+        // Remove files that were trashed/deleted from Google Drive
+        var filesChanged = false;
         for (var i = currentFiles.length - 1; i >= 0; i--) {
           var cf = currentFiles[i];
-          if (!cf) continue;
-          var cNameLow = String(cf.name || '').toLowerCase().trim();
-          if (tombstones[cNameLow] || (state.tombstones && state.tombstones[cNameLow])) {
+          if (!cf || !cf.name) continue;
+          var cNameLow = String(cf.name).toLowerCase().trim();
+          if (tombstones[cNameLow] || (!window.__ATPL_IS_UPLOADING && driveFiles.length > 0 && !driveMap[cNameLow])) {
             currentFiles.splice(i, 1);
             if (typeof window.deleteFromDB === 'function') window.deleteFromDB(cf.name);
             filesChanged = true;
           }
         }
-
-        // Fetch any missing files from server
-        for (var j = 0; j < serverSalaryFiles.length; j++) {
-          var sf = serverSalaryFiles[j];
-          if (!sf || !sf.name) continue;
-          var sfNameLow = String(sf.name).toLowerCase().trim();
-          if (tombstones[sfNameLow]) continue;
-
-          var exists = currentFiles.find(function(f) {
-            return f && String(f.name).toLowerCase().trim() === sfNameLow;
-          });
-
-          if (!exists) {
-            try {
-              var fRes = await fetch(API_BASE + '/api/sync/salary-file/' + encodeURIComponent(sf.name));
-              if (fRes.ok) {
-                var fJson = await fRes.json();
-                if (fJson.file && fJson.file.buf) {
-                  var rawBuf = typeof fJson.file.buf === 'string' ? b64ToBuf(fJson.file.buf) : fJson.file.buf;
-                  var wb = typeof window.parseWB === 'function' ? window.parseWB(rawBuf) : null;
-                  var sheets = wb && typeof window.wbToSheets === 'function' ? window.wbToSheets(wb) : {};
-                  currentFiles.push({
-                    name: sf.name,
-                    wb: wb,
-                    sheets: sheets,
-                    buf: rawBuf,
-                    savedAt: sf.saved || new Date().toISOString()
-                  });
-                  if (typeof window.saveFileToDB === 'function') {
-                    window.saveFileToDB(sf.name, rawBuf);
-                  }
-                  filesChanged = true;
-                }
-              }
-            } catch (_) {}
-          }
-        }
-
         if (filesChanged) {
           window.FILES = currentFiles;
           refreshFilesUI();
         }
 
-        // 2. Reconcile Employee Master
-        if (Array.isArray(state.employee_master) && state.employee_master.length > 0) {
-          applyEmployeeRecords(state.employee_master);
+        // Queue downloads for any Drive files missing locally
+        for (var j = 0; j < driveFiles.length; j++) {
+          var df = driveFiles[j];
+          if (!df || !df.name) continue;
+          var dfNameLow = String(df.name).toLowerCase().trim();
+          if (tombstones[dfNameLow]) continue;
+
+          var exists = currentFiles.some(function(f) {
+            return f && String(f.name).toLowerCase().trim() === dfNameLow;
+          });
+          if (!exists) {
+            var alreadyQueued = downloadQueue.some(function(q) {
+              return q && String(q.name).toLowerCase().trim() === dfNameLow;
+            });
+            if (!alreadyQueued) {
+              downloadQueue.push(df);
+            }
+          }
+        }
+        if (downloadQueue.length > 0 && !isDownloading) {
+          processDownloadQueue();
         }
 
-        // 3. Reconcile HR Docs
-        if (Array.isArray(state.hr_docs) && typeof window.hrDocSetDocs === 'function') {
-          window.hrDocSetDocs(state.hr_docs);
-          if (typeof window.hrDocRender === 'function') window.hrDocRender();
+        // 2. Reconcile Employee Master from Google Sheet
+        if (Array.isArray(state.employees) && state.employees.length > 0) {
+          applyEmployeeRecords(state.employees);
         }
 
-        // 4. Statutory Challans
-        if (typeof window.initStatutoryChallanTab === 'function') {
-          try { window.initStatutoryChallanTab(); } catch (_) {}
-        }
+        updateSyncBadge('ok');
       }
-    } catch (e) {
-      console.warn('[ATPL Sync] State poll notice:', e.message);
+    } catch (err) {
+      console.warn('[ATPL Sync] State poll notice:', err.message);
+      updateSyncBadge('error', '⚠️ Sync checking…');
     } finally {
       isPolling = false;
     }
@@ -424,27 +325,42 @@
 
   // ── Unified API Engine Object ──
   var UnifiedSyncEngine = {
-    version: '2026.11.09-ENTERPRISE-UNIFIED',
-    apiBase: API_BASE,
+    version: '2026.11.09-GOOGLE-DRIVE-SHEETS-PERMANENT',
+    apiBase: GAS_URL,
 
     init: function() {
-      setupSSE();
       pollSyncState(true);
+
+      // Heartbeat poller: Every 4.5 seconds for instant multi-browser updates
       setInterval(function() {
         if (!document.hidden) pollSyncState(false);
-      }, 3500);
+      }, 4500);
 
       window.addEventListener('focus', function() {
         pollSyncState(true);
       });
+
       document.addEventListener('visibilitychange', function() {
         if (!document.hidden) pollSyncState(true);
       });
+
+      // BroadcastChannel for 0-second multi-tab sync on same machine
+      if (typeof window.BroadcastChannel !== 'undefined') {
+        try {
+          var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+          bc.onmessage = function(e) {
+            if (e && e.data && e.data.type) {
+              pollSyncState(true);
+            }
+          };
+        } catch (_) {}
+      }
     },
 
     uploadFile: async function(module, fileObj, meta, onProgress) {
       var mod = String(module || 'salary').toLowerCase().trim();
       var name = (fileObj && (fileObj.name || fileObj.filename || fileObj.document_name || fileObj.id)) || ('file_' + Date.now());
+
       if (onProgress) onProgress('preparing', 20);
 
       var rawBuf = fileObj && fileObj.buf instanceof ArrayBuffer
@@ -457,7 +373,14 @@
 
       var now = new Date().toISOString();
 
-      // If salary file, parse immediately for zero UI wait
+      // Clear local tombstone
+      try {
+        var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+        delete tombs[String(name).toLowerCase().trim()];
+        localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+      } catch (_) {}
+
+      // If salary file, parse immediately in memory for 0ms UI latency
       if (mod === 'salary' && rawBuf && typeof window.parseWB === 'function' && typeof window.wbToSheets === 'function') {
         var wb = window.parseWB(rawBuf);
         var sheets = window.wbToSheets(wb);
@@ -471,77 +394,51 @@
       }
 
       if (onProgress) onProgress('uploading', 50);
+      updateSyncBadge('syncing', '☁️ Uploading ' + name + ' to Google Drive…');
 
-      // Send to server authoritative store
-      var payload = {
-        name: name,
-        module: mod,
-        category: (meta && meta.category) || 'general',
-        buf: b64,
-        size: rawBuf ? rawBuf.byteLength : (b64 ? b64.length : 0),
-        mime_type: (fileObj && fileObj.type) || (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'),
-        meta: Object.assign({}, meta || {}, { name: name }),
-        created_at: now
-      };
-
+      window.__ATPL_IS_UPLOADING = true;
       try {
-        var res = await fetch(API_BASE + '/api/sync/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+        var res = await callGoogleBackend('uploadFile', {
+          fileName: name,
+          fileBase64: b64,
+          mimeType: (fileObj && fileObj.type) || (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
         });
-        if (res.ok) {
-          var data = await res.json();
-          if (data && data.version) localVersion = Math.max(localVersion, data.version);
+
+        if (res && res.ok) {
+          if (res.version) localVersion = Math.max(localVersion, res.version);
+          updateSyncBadge('ok');
+        }
+
+        // Notify other tabs via BroadcastChannel
+        if (typeof window.BroadcastChannel !== 'undefined') {
+          try {
+            var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+            bc.postMessage({ type: 'salary_file_saved', name: name });
+            bc.close();
+          } catch (_) {}
         }
       } catch (err) {
-        console.warn('[ATPL Sync] File save server notice:', err);
+        console.warn('[ATPL Sync] Google Drive upload error:', err);
+      } finally {
+        window.__ATPL_IS_UPLOADING = false;
       }
 
       if (onProgress) onProgress('saved', 100);
       return { id: name, name: name, module: mod, created_at: now, ok: true };
     },
 
-    uploadBulk: async function(module, fileList, metaGenerator, onFileProgress) {
-      window.__ATPL_IS_UPLOADING = true;
-      var files = Array.from(fileList || []);
-      var results = [];
-      try {
-        for (var i = 0; i < files.length; i++) {
-          var f = files[i];
-          var meta = typeof metaGenerator === 'function' ? await metaGenerator(f, i) : {};
-          if (onFileProgress) onFileProgress(i, 'uploading', 50, f.name);
-          var saved = await this.uploadFile(module, f, meta);
-          results.push({ ok: true, name: f.name, file: saved });
-          if (onFileProgress) onFileProgress(i, 'saved', 100, f.name);
-        }
-      } finally {
-        window.__ATPL_IS_UPLOADING = false;
-      }
-      refreshFilesUI();
-      return { total: files.length, saved: results.length, failed: 0, results: results };
-    },
-
     deleteFile: async function(module, idOrName) {
-      var mod = 'salary';
-      var name = '';
-      if (idOrName !== undefined && idOrName !== null && idOrName !== '') {
-        mod = String(module || 'salary').toLowerCase().trim();
-        name = String(idOrName).trim();
-      } else {
-        name = String(module || '').trim();
-      }
+      var name = String(idOrName || module || '').trim();
       if (!name) return false;
 
-      // Remove immediately from memory and local store
-      var target = name.toLowerCase();
-      if (mod === 'salary' || !mod) {
-        window.FILES = (window.FILES || []).filter(function(x) {
-          return x && String(x.name || '').toLowerCase().trim() !== target;
-        });
-        if (typeof window.deleteFromDB === 'function') window.deleteFromDB(name);
-        refreshFilesUI();
-      }
+      var target = name.toLowerCase().trim();
+
+      // Remove immediately from memory and local IndexedDB
+      window.FILES = (window.FILES || []).filter(function(x) {
+        return x && String(x.name || '').toLowerCase().trim() !== target;
+      });
+      if (typeof window.deleteFromDB === 'function') window.deleteFromDB(name);
+      refreshFilesUI();
 
       // Record tombstone locally
       try {
@@ -550,14 +447,27 @@
         localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
       } catch (_) {}
 
-      // Tell server to delete and propagate to Google Drive
-      try {
-        await Promise.allSettled([
-          fetch(API_BASE + '/api/sync/files/' + encodeURIComponent(name) + '?module=' + mod, { method: 'DELETE' }),
-          fetch(API_BASE + '/api/sync/salary-file/' + encodeURIComponent(name), { method: 'DELETE' })
-        ]);
-      } catch (_) {}
+      updateSyncBadge('syncing', '🗑️ Deleting ' + name + ' from Google Drive…');
 
+      // Send delete command to Google Drive
+      try {
+        var res = await callGoogleBackend('deleteFile', { fileName: name });
+        if (res && res.ok && res.version) {
+          localVersion = Math.max(localVersion, res.version);
+        }
+
+        if (typeof window.BroadcastChannel !== 'undefined') {
+          try {
+            var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+            bc.postMessage({ type: 'salary_file_deleted', name: name });
+            bc.close();
+          } catch (_) {}
+        }
+      } catch (err) {
+        console.warn('[ATPL Sync] Google Drive delete error:', err);
+      }
+
+      updateSyncBadge('ok');
       return true;
     },
 
@@ -569,57 +479,12 @@
       return this.deleteFile('salary', name);
     },
 
-    saveHrDoc: async function(doc) {
-      if (!doc || !doc.id) return { ok: false };
-      try {
-        var res = await fetch(API_BASE + '/api/sync/hr-doc', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(doc)
-        });
-        return await res.json();
-      } catch (_) {
-        return { ok: true, offline: true };
-      }
-    },
-
-    deleteHrDoc: async function(id) {
-      try {
-        await fetch(API_BASE + '/api/sync/hr-doc/' + encodeURIComponent(id), { method: 'DELETE' });
-        return true;
-      } catch (_) {
-        return false;
-      }
-    },
-
-    saveComplianceDoc: async function(type, name, payload) {
-      var record = Object.assign({ id: name, name: name, module: type }, payload || {});
-      try {
-        await fetch(API_BASE + '/api/sync/dol-record', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(record)
-        });
-      } catch (_) {}
-      return { ok: true };
-    },
-
-    deleteComplianceDoc: async function(type, id) {
-      try {
-        await fetch(API_BASE + '/api/sync/dol-record/' + encodeURIComponent(id), { method: 'DELETE' });
-      } catch (_) {}
-      return true;
-    },
-
     saveEmployeeMaster: async function(records) {
       if (!Array.isArray(records)) return { ok: false };
       try {
-        var res = await fetch(API_BASE + '/api/sync/employee-master', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: records })
-        });
-        return await res.json();
+        var res = await callGoogleBackend('saveEmployeeMaster', { records: records });
+        if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        return res;
       } catch (_) {
         return { ok: true, offline: true };
       }
@@ -627,10 +492,22 @@
 
     deleteEmployeeMaster: async function(empId) {
       try {
-        var res = await fetch(API_BASE + '/api/sync/employee-master/' + encodeURIComponent(empId), {
-          method: 'DELETE'
+        var res = await callGoogleBackend('deleteEmployeeMaster', { emp_id: empId });
+        if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        return res;
+      } catch (_) {
+        return { ok: true, offline: true };
+      }
+    },
+
+    upsertEmployeeMaster: async function(empId, record) {
+      try {
+        var res = await callGoogleBackend('upsertEmployeeMaster', {
+          emp_id: empId,
+          record_json: JSON.stringify(record)
         });
-        return await res.json();
+        if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        return res;
       } catch (_) {
         return { ok: true, offline: true };
       }
@@ -642,26 +519,19 @@
     },
 
     fetchAllEmployeeMaster: async function() {
-      try {
-        var res = await fetch(API_BASE + '/api/sync/employee-master');
-        if (res.ok) {
-          var d = await res.json();
-          return d.records || [];
-        }
-      } catch (_) {}
+      await pollSyncState(true);
       return (window.EM && window.EM.data) || [];
     },
 
     clearAllSalaryFiles: async function() {
+      var files = (window.FILES || []).slice();
       window.FILES = [];
-      try {
-        await fetch(API_BASE + '/api/sync/files/clear-module', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ module: 'salary' })
-        });
-      } catch (_) {}
       refreshFilesUI();
+      for (var i = 0; i < files.length; i++) {
+        if (files[i] && files[i].name) {
+          try { await callGoogleBackend('deleteFile', { fileName: files[i].name }); } catch (_) {}
+        }
+      }
       return { ok: true };
     },
 
@@ -687,17 +557,26 @@
   window.ATPLCloudSharedStorageV1 = UnifiedSyncEngine;
 
   window.triggerManualCrossBrowserSync = async function() {
-    var btn = document.getElementById('btnForceCrossBrowserSync');
-    if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
+    var btn = document.getElementById('btnForceCrossBrowserSync') || document.getElementById('crossSyncBtnLbl');
+    var oldText = btn ? btn.textContent : '';
+    if (btn) {
+      btn.textContent = '⏳ Syncing Google Cloud...';
+      if (btn.disabled !== undefined) btn.disabled = true;
+    }
     try {
       await pollSyncState(true);
       var count = window.FILES ? window.FILES.length : 0;
       var emCount = window.EM && window.EM.data ? window.EM.data.length : 0;
-      if (window.showToast) window.showToast('✅ Cross-browser sync complete (' + count + ' Files, ' + emCount + ' Employees)!');
+      if (window.showToast) {
+        window.showToast('✅ Google Drive & Sheets Sync Done (' + count + ' Files, ' + emCount + ' Employees)!');
+      }
     } catch (e) {
       if (window.showToast) window.showToast('⚠️ Sync notice: ' + (e.message || e));
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 Sync Browsers'; }
+      if (btn) {
+        btn.textContent = oldText || '🔄 Sync Browsers';
+        if (btn.disabled !== undefined) btn.disabled = false;
+      }
     }
   };
 

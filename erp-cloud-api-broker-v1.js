@@ -134,9 +134,8 @@ async function transport(params,opts){
   }catch(e){last=e}
 
   // 3. Fallback to jsonp only when not in an iframe (iframes block Apps Script)
-  var isIframe=false;
-  try{isIframe=root.self!==root.top}catch(_){isIframe=true}
-  if(!isIframe){
+  // JSONP fallback enabled everywhere
+  {
     for(var i=0;i<tries;i++){
       try{
         var data=await jsonp(params,timeout+(i*3000));

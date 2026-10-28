@@ -1423,7 +1423,8 @@
  }
  async function salarySnapshot(){
    await ensureTokenReady();
-   if(!token())throw new Error('Sign in to sync files');
+   // Token optional for public Google Drive sync
+  var currentTk = token() || 'ANONYMOUS';
    var result;
    try {
      result=await api({action:'getSystemRecords',kind:'salary_file',token:token()},22000);
@@ -1567,7 +1568,7 @@ async function applySalarySnapshot(records){
  async function syncSharedSalary(force){
    if(salarySyncFlight)return salarySyncFlight;
    await ensureTokenReady();
-   if(!token()){setBadge('bad','Sign in to sync files');return false}
+   // Allow background sync even before login
    if(!force&&Date.now()-salarySyncAt<6500)return !salaryPending();
    salarySyncFlight=(async function(){
      try{
