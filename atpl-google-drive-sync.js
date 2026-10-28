@@ -12,6 +12,9 @@
   var isPolling = false;
   var downloadQueue = [];
   var isDownloading = false;
+  var downloadFailCount = {};
+  var lastPollTime = 0;
+  var backoffMs = 0;
 
   window.ATPL_GAS_URL = GAS_URL;
   window.ATPL_GET_API_BASE = function() { return GAS_URL; };
@@ -46,7 +49,6 @@
   // ── Universal Google Apps Script Transport (POST + JSONP fallback) ──
   async function callGoogleBackend(action, params) {
     var p = Object.assign({ action: action }, params || {});
-
     // Primary: POST with text/plain (no CORS preflight required, supports unlimited payload size)
     try {
       var res = await fetch(GAS_URL, {
@@ -55,42 +57,44 @@
         body: JSON.stringify(p)
       });
       if (res.ok) {
-        var data = await res.json();
-        return data;
+        var text = await res.text();
+        if (text && !text.trim().startsWith('<')) {
+          var data = JSON.parse(text);
+          return data;
+        }
       }
     } catch (err) {
       console.warn('[ATPL Sync] POST attempt warning:', err.message);
     }
-
-    // Fallback for query actions: JSONP script injection
+    // Fallback for query actions: JSONP script injection (strictly throttled to 1 at a time)
+    if (window.__activeGasScript) {
+      return Promise.reject(new Error('Previous script call still active'));
+    }
     return new Promise(function(resolve, reject) {
       var cb = '__atpl_gas_' + Date.now() + '_' + Math.random().toString(36).slice(2);
       var script = document.createElement('script');
+      window.__activeGasScript = script;
       var timer = setTimeout(function() {
         cleanup();
         reject(new Error('Google Backend timeout: ' + action));
-      }, 35000);
-
+      }, 12000);
       function cleanup() {
         clearTimeout(timer);
+        window.__activeGasScript = null;
         try { delete window[cb]; } catch(_) { window[cb] = undefined; }
         if (script.parentNode) script.parentNode.removeChild(script);
       }
-
       window[cb] = function(data) {
         cleanup();
         resolve(data);
       };
-
       script.onerror = function() {
         cleanup();
         reject(new Error('Google Backend script load failed'));
       };
-
       var qs = Object.keys(p).map(function(k) {
         return encodeURIComponent(k) + '=' + encodeURIComponent(p[k] == null ? '' : String(p[k]));
       }).join('&');
-
       script.async = true;
       script.src = GAS_URL + '?' + qs + '&callback=' + cb;
       (document.head || document.documentElement).appendChild(script);
@@ -206,18 +210,19 @@
         var fileMeta = downloadQueue.shift();
         if (!fileMeta || !fileMeta.name) continue;
         var fileName = fileMeta.name;
+        var failCount = downloadFailCount[fileName] || 0;
+        if (failCount >= 3) continue;
         var existing = (window.FILES || []).find(function(f) {
           return f && String(f.name).toLowerCase().trim() === String(fileName).toLowerCase().trim();
         });
         if (existing) continue;
-
-        updateSyncBadge('syncing', '⬇️ Downloading ' + fileName + '…');
+        updateSyncBadge("syncing", "⬇️ Downloading " + fileName + "…");
         try {
-          var res = await callGoogleBackend('downloadFile', { fileName: fileName });
+          var res = await callGoogleBackend("downloadFile", { fileName: fileName });
           if (res && res.ok && res.fileBase64) {
             var rawBuf = b64ToBuf(res.fileBase64);
-            var wb = typeof window.parseWB === 'function' ? window.parseWB(rawBuf) : null;
-            var sheets = wb && typeof window.wbToSheets === 'function' ? window.wbToSheets(wb) : {};
+            var wb = typeof window.parseWB === "function" ? window.parseWB(rawBuf) : null;
+            var sheets = wb && typeof window.wbToSheets === "function" ? window.wbToSheets(wb) : {};
             window.FILES = (window.FILES || []).filter(function(f) {
               return f && String(f.name).toLowerCase().trim() !== String(fileName).toLowerCase().trim();
             });
@@ -228,25 +233,32 @@
               buf: rawBuf,
               savedAt: fileMeta.updatedAt || new Date().toISOString()
             });
-            if (typeof window.saveFileToDB === 'function') {
+            if (typeof window.saveFileToDB === "function") {
               window.saveFileToDB(fileName, rawBuf);
             }
             refreshFilesUI();
+          } else {
+            downloadFailCount[fileName] = (downloadFailCount[fileName] || 0) + 1;
           }
         } catch (err) {
-          console.warn('[ATPL Sync] Error downloading file:', fileName, err);
+          downloadFailCount[fileName] = (downloadFailCount[fileName] || 0) + 1;
+          console.warn("[ATPL Sync] Error downloading file:", fileName, err);
         }
+        await new Promise(function(resolve) { setTimeout(resolve, 80); });
       }
     } finally {
       isDownloading = false;
-      updateSyncBadge('ok');
+      updateSyncBadge("ok");
     }
   }
 
   // ── Continuous Background State Poller (Cross-Browser Heartbeat) ──
   async function pollSyncState(force) {
-    if (isPolling && !force) return;
+    var now = Date.now();
+    if (isPolling) return;
+    if (!force && (now - lastPollTime < (15000 + backoffMs))) return;
     isPolling = true;
+    lastPollTime = now;
     try {
       var state = await callGoogleBackend('getSyncState');
       if (!state || !state.ok) return;
@@ -316,6 +328,7 @@
         updateSyncBadge('ok');
       }
     } catch (err) {
+      backoffMs = Math.min((backoffMs || 5000) + 5000, 45000);
       console.warn('[ATPL Sync] State poll notice:', err.message);
       updateSyncBadge('error', '⚠️ Sync checking…');
     } finally {
@@ -355,7 +368,7 @@
       // Heartbeat poller: Every 4.5 seconds for instant multi-browser updates
       setInterval(function() {
         if (!document.hidden) pollSyncState(false);
-      }, 4500);
+      }, 18000);
 
       window.addEventListener('focus', function() {
         pollSyncState(true);
@@ -540,12 +553,12 @@
     },
 
     fetchAllSalaryFiles: async function() {
-      await pollSyncState(true);
+      if (!window.FILES || !window.FILES.length) { await pollSyncState(false); }
       return window.FILES || [];
     },
 
     fetchAllEmployeeMaster: async function() {
-      await pollSyncState(true);
+      if (!window.EM || !window.EM.data || !window.EM.data.length) { await pollSyncState(false); }
       return (window.EM && window.EM.data) || [];
     },
 

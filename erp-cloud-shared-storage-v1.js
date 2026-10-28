@@ -1149,19 +1149,24 @@
      if (!st || !st.ok) {
        // Static fallback for GitHub Pages (nikhilatpl2026-jpg.github.io/HR-SOFTWARE-ATPL/)
        try {
-         var sRes = await fetch('./data/salary_files.json');
-         if (!sRes || !sRes.ok) sRes = await fetch('data/salary_files.json');
-         if (sRes && sRes.ok) {
-           var sData = await sRes.json();
-           var sList = [];
-           for (var sk in sData) {
-             if (sData[sk] && sData[sk].name && sData[sk].buf) {
-               sList.push(sData[sk]);
+         if (!root.__atplStaticSalaryCache) {
+           if ((!validLocal || validLocal.length === 0) || force) {
+             var sRes = await fetch('./data/salary_files.json');
+             if (!sRes || !sRes.ok) sRes = await fetch('data/salary_files.json');
+             if (sRes && sRes.ok) {
+               var sData = await sRes.json();
+               var sList = [];
+               for (var sk in sData) {
+                 if (sData[sk] && sData[sk].name && sData[sk].buf) {
+                   sList.push(sData[sk]);
+                 }
+               }
+               root.__atplStaticSalaryCache = sList;
              }
            }
-           if (sList.length > 0) {
-             st = { ok: true, salary_files: sList, salary_tombstones: {} };
-           }
+         }
+         if (root.__atplStaticSalaryCache && root.__atplStaticSalaryCache.length > 0) {
+           st = { ok: true, salary_files: root.__atplStaticSalaryCache, salary_tombstones: {} };
          }
        } catch(_) {}
      }
@@ -1657,22 +1662,25 @@ async function applySalarySnapshot(records){
      syncWithServer(false);
      setTimeout(function(){syncNow(false)},300);
    });
+   var navDebounceTimer = null;
    root.document.addEventListener('click',function(e){
      var x=e.target&&e.target.closest?e.target.closest('#vn-cmd,#vn-files,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-empmaster,#vn-challan,#vn-audit,#vn-machineaudit'):null;
      if(x){
        startFirebaseListener();
-       syncWithServer(false);
-       setTimeout(function(){syncNow(false)},150);
+       if (navDebounceTimer) clearTimeout(navDebounceTimer);
+       navDebounceTimer = setTimeout(function(){
+         syncWithServer(false);
+         syncNow(false);
+       }, 300);
      }
    },false);
-
-   // Continuous cross-device sync interval every 8s when tab is active
+   // Continuous cross-device sync interval: every 30s when tab is active (smooth and lag-free)
    setInterval(function(){
-     if(!root.document.hidden){
+     if(!root.document.hidden && !root.__ATPL_IS_UPLOADING){
        startFirebaseListener();
        syncNow(false);
      }
-   }, 8000);
+   }, 30000);
 
    root.document.addEventListener('atpl-cloud-token-ready',function(){
      setTimeout(function(){syncNow(true);syncWithServer(true)},200);
