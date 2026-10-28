@@ -37,6 +37,11 @@ function hydrate(){
   try{
     if(!g.EM||!Array.isArray(g.EM.data))return false;
     var local=read();
+    if(local && local.length > 600) {
+      console.warn("[ATPL Guard] Purging inflated employee cache: " + local.length);
+      local = [];
+      try { localStorage.removeItem(KEY); } catch(_) {}
+    }
     // Never union an old local snapshot with the active Employee Master.
     // A deleted employee must not be re-created by a stale browser cache.
     if(!g.EM.data.length&&local.length){

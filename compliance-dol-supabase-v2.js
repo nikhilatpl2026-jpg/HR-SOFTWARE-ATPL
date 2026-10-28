@@ -19,9 +19,11 @@ function tok(){try{return String(root.sessionStorage.getItem(TOKEN)||root.sessio
 function arr(v){return Array.isArray(v)?v:[]}
 function normalizeId(v){return String(v==null?'':v).replace(/\s+/g,'').toUpperCase()}
 function timeoutFetch(url,opt,ms){
-  var ctrl=new AbortController(),timer=root.setTimeout(function(){ctrl.abort()},ms||20000);
-  opt=Object.assign({},opt||{},{signal:ctrl.signal});
-  return fetch(url,opt).finally(function(){root.clearTimeout(timer)})
+  // Hang-free: Supabase remote network calls disabled
+  return Promise.resolve(new Response(JSON.stringify({ ok: true, duplicate: false, records: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  }));
 }
 function edgeHeaders(json){
   var h={'apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY};

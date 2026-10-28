@@ -40,7 +40,8 @@
       fetchAllHrTombstones:fetchAllHrDocsFb,
       subscribeHrDocs:subscribeHrDocsFb,
       subscribeHrTombstones:subscribeHrTombstonesFb,
-      safeHrKey:hrKey
+      safeHrKey:hrKey,
+      fetchAllEmployeeMaster:async function(){ return []; }
     };
   }
 })();

@@ -2935,7 +2935,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
               <span>🖱️ <strong>Mouse se Columns Drag & Drop Karein:</strong> Kisi bhi column ko mouse se seedha pakad kar aage-peeche shift karein (Excel sequence ke hisaab se)</span>
             </div>
             <div style="display:flex;gap:6px">
-              <button type="button" onclick="emOpenAddColModal()" style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">➕ Add / Restore Column</button>
+              <button type="button" onclick="emRestoreAuthenticMaster()" style="padding:7px 12px;background:#059669;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:4px" title="Fake 7392 records ko hata kar asli 454 employees restore karein"><span>↺ Asli Master (454) Restore</span></button>
+            <button type="button" onclick="emOpenAddColModal()" style="padding:4px 10px;background:#4f46e5;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:3px">➕ Add / Restore Column</button>
               <button type="button" onclick="emResetColOrder()" style="padding:4px 9px;background:#1e293b;border:1px solid #334155;color:#cbd5e1;border-radius:5px;font-size:10px;font-weight:600;cursor:pointer">↺ Reset All Columns</button>
             </div>
           </div>
@@ -8676,6 +8677,14 @@ function emInit() {
       }
     } catch(_) {}
 
+    // Guard against bloated / corrupted synthetic cache (e.g. 7392 fake rows from previous sync)
+    if (saved && Array.isArray(saved) && saved.length > 600) {
+      console.warn('[ATPL Master] Detected inflated employee cache (' + saved.length + '); resetting to authentic Arora Textiles master records (454 employees)');
+      saved = null;
+      try {
+        localStorage.removeItem('AroraTextilesEmployeeMasterV3');
+      } catch(_) {}
+    }
     if (saved && Array.isArray(saved)) {
       EM.data = saved;
     } else if (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) {
@@ -8751,6 +8760,23 @@ function emUpdateStats() {
 }
 
 // ── Dept filter options ──
+
+window.emRestoreAuthenticMaster = function() {
+  try {
+    localStorage.removeItem('AroraTextilesEmployeeMasterV3');
+    localStorage.removeItem('ATPL_EmployeeMasterDeletedV1');
+  } catch(_) {}
+  if (Array.isArray(window.EMP_MASTER_DATA)) {
+    EM.data = window.EMP_MASTER_DATA.slice();
+  }
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+  } catch(_) {}
+  if (typeof emFilter === 'function') emFilter();
+  if (typeof emUpdateStats === 'function') emUpdateStats();
+  if (window.showToast) window.showToast('✅ Asli Employee Master (' + EM.data.length + ' Employees) restore ho gaya!');
+};
+
 function emBuildDeptFilter() {
   var depts = [...new Set(EM.data.map(function(e){return e.dept||'';}).filter(Boolean))].sort();
   var sel = document.getElementById('emDeptFilter');
