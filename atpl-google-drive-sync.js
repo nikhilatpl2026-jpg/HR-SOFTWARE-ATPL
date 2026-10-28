@@ -323,6 +323,26 @@
     }
   }
 
+  function setupSSE() {
+    if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return;
+    try {
+      var evtSource = new window.EventSource('/api/sync/events');
+      evtSource.onmessage = function(e) {
+        if (e && e.data) {
+          try {
+            var msg = JSON.parse(e.data);
+            if (msg.action === 'sync' || msg.type === 'sync' || msg.action === 'poll') {
+              pollSyncState(true);
+            }
+          } catch (_) {}
+        }
+      };
+      evtSource.onerror = function() {
+        // Native automatic reconnection
+      };
+    } catch (_) {}
+  }
+
   // ── Unified API Engine Object ──
   var UnifiedSyncEngine = {
     version: '2026.11.09-GOOGLE-DRIVE-SHEETS-PERMANENT',
@@ -330,6 +350,7 @@
 
     init: function() {
       pollSyncState(true);
+      setupSSE();
 
       // Heartbeat poller: Every 4.5 seconds for instant multi-browser updates
       setInterval(function() {
@@ -428,7 +449,12 @@
     },
 
     deleteFile: async function(module, idOrName) {
-      var name = String(idOrName || module || '').trim();
+      var name = '';
+      if (idOrName !== undefined && idOrName !== null && idOrName !== '') {
+        name = String(idOrName).trim();
+      } else if (module !== undefined && module !== null && module !== '') {
+        name = String(module).trim();
+      }
       if (!name) return false;
 
       var target = name.toLowerCase().trim();
