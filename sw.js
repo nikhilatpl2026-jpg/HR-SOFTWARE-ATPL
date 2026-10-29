@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261029-drive-v5-trigger';
+const CACHE_NAME = 'atpl-cache-v20261029-crash-fix-v7';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

@@ -757,6 +757,9 @@
  }
 
  async function cloudSaveSalary(name,buf,saved){
+   if(root.ATPLGoogleSync || root.__ATPL_IS_DOWNLOADING_DRIVE || root.__ATPL_IS_UPLOADING) {
+     return true;
+   }
    if(typeof root.atplMarkSessionUpload==='function')root.atplMarkSessionUpload('salary',name);
    if(sharedSalaryAuthority)return queueSharedSalary('save',name,saved||new Date().toISOString());
    var savedTs=saved||new Date().toISOString();
@@ -988,7 +991,11 @@
    function wrapped(name,buf,cb){
      var saved=new Date().toISOString();
      return old.call(this,name,buf,function(){
-       try{if(cb)cb()}finally{cloudSaveSalary(name,buf,saved)}
+       try{if(cb)cb()}finally{
+         if(!root.ATPLGoogleSync && !root.__ATPL_IS_DOWNLOADING_DRIVE && !root.__ATPL_IS_UPLOADING){
+           cloudSaveSalary(name,buf,saved);
+         }
+       }
      });
    }
    wrapped.__atplCloudShared=true;

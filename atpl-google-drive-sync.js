@@ -101,13 +101,25 @@
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(params)
     }).then(function(r) {
-      return r.json();
+      if (!r.ok) {
+        return { ok: false, status: r.status, offline: true };
+      }
+      return r.json().catch(function() {
+        return { ok: true, offline: true };
+      });
     }).catch(function(err) {
-      return getFromGas(url, params);
+      console.warn('[ATPL Sync] Direct POST notice:', (err && err.message) || err);
+      // NEVER fall back to getFromGas for large payloads! That causes <script> tag hanging!
+      return { ok: false, error: (err && err.message) || 'POST_FAILED', offline: true };
     });
   }
 
   function getFromGas(url, params) {
+    // ABSOLUTE PROTECTION: Never inject huge payloads into <script> tag URLs!
+    if (params && (params.fileBase64 || params.records || params.record_json || (params.data && String(params.data).length > 2000))) {
+      console.warn('[ATPL Sync] Refusing to put large payload into <script> tag to avoid browser freeze');
+      return Promise.resolve({ ok: false, error: 'PAYLOAD_TOO_LARGE_FOR_SCRIPT_TAG', offline: true });
+    }
     var qs = Object.keys(params).map(function(k) {
       var val = typeof params[k] === 'object' ? JSON.stringify(params[k]) : String(params[k] == null ? '' : params[k]);
       return encodeURIComponent(k) + '=' + encodeURIComponent(val);
@@ -362,8 +374,10 @@
 
   // ── Event-Driven Cross-Browser Sync Trigger Engine ──
   // No continuous background loops. Wakes up ONLY when upload/delete/edit happens!
+  var MY_CLIENT_ID = 'client_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
   function dispatchSyncTrigger(action, details) {
-    var payload = { action: action, details: details || {}, ts: Date.now() };
+    var payload = { action: action, details: details || {}, sender: MY_CLIENT_ID, ts: Date.now() };
 
     // 1. BroadcastChannel: Instant notification to other tabs/windows in same browser
     if (typeof window.BroadcastChannel !== 'undefined') {
@@ -390,7 +404,13 @@
   }
 
   var triggerDebounceTimer = null;
-  function onTriggerReceived(action, details) {
+  function onTriggerReceived(action, details, sender) {
+    var originSender = sender || (details && details.sender);
+    if (originSender && originSender === MY_CLIENT_ID) {
+      // Ignore our own echo! We just uploaded/deleted this file ourselves!
+      return;
+    }
+
     updateSyncBadge('syncing', '⚡ Trigger received! Auto-syncing in 2s…');
     if (triggerDebounceTimer) clearTimeout(triggerDebounceTimer);
 
@@ -482,7 +502,7 @@
           var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
           bc.onmessage = function(ev) {
             if (ev && ev.data && ev.data.action) {
-              onTriggerReceived(ev.data.action, ev.data.details);
+              onTriggerReceived(ev.data.action, ev.data.details, ev.data.sender);
             }
           };
         } catch (_) {}
@@ -494,7 +514,7 @@
           try {
             var data = JSON.parse(ev.newValue);
             if (data && data.action) {
-              onTriggerReceived(data.action, data.details);
+              onTriggerReceived(data.action, data.details, data.sender);
             }
           } catch (_) {}
         }
@@ -511,7 +531,8 @@
               var p = JSON.parse(ev.data);
               var action = (p && p.data && p.data.action) || (p && p.action);
               var details = (p && p.data && p.data.details) || (p && p.details);
-              if (action) onTriggerReceived(action, details);
+              var sender = (p && p.data && p.data.sender) || (p && p.sender);
+              if (action) onTriggerReceived(action, details, sender);
             } catch (_) {}
           });
           es.onerror = function() {};

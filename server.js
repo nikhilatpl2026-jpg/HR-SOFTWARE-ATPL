@@ -361,13 +361,75 @@ app.all('/api/cloud-proxy', async (req, res) => {
       return res.json(json);
     }
 
-    // Fallback for getSystemRecords if response was plain text error
+    // Fallbacks when upstream returned plain text / HTML (e.g. 404 or maintenance)
+    if (action === 'uploadFile') {
+      const name = params.fileName || ('file_' + Date.now());
+      filesDb.files = filesDb.files || {};
+      filesDb.files[name] = {
+        id: name,
+        name: name,
+        buf: params.fileBase64 || '',
+        mime_type: params.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        saved: new Date().toISOString()
+      };
+      filesDb.version = (filesDb.version || 232) + 1;
+      writeJsonFile('files_db.json', filesDb);
+      broadcastEvent('file_saved', filesDb.files[name]);
+      return res.json({ ok: true, version: filesDb.version, offline: true });
+    }
+    if (action === 'deleteFile') {
+      const name = params.fileName;
+      if (name && filesDb.files && filesDb.files[name]) {
+        delete filesDb.files[name];
+        filesDb.version = (filesDb.version || 232) + 1;
+        writeJsonFile('files_db.json', filesDb);
+        broadcastEvent('file_deleted', { name });
+      }
+      return res.json({ ok: true, version: filesDb.version, offline: true });
+    }
+    if (action === 'getSyncState') {
+      return res.json({
+        ok: true,
+        offline: true,
+        files: Object.values(filesDb.files || {}).map(f => ({ id: f.name, name: f.name, size: (f.buf || '').length, updatedAt: f.saved || new Date().toISOString() })),
+        employees: syncEmployeeMaster || []
+      });
+    }
+    if (action === 'downloadFile' && params.fileName) {
+      const localF = filesDb.files && filesDb.files[params.fileName];
+      if (localF) return res.json({ ok: true, name: params.fileName, fileBase64: localF.buf, offline: true });
+    }
     if (action === 'getSystemRecords') {
       return res.json({ ok: true, records: [], count: 0, kind: params.kind || 'all', version: filesDb.version || 232 });
     }
 
-    return res.send(text);
+    return res.json({ ok: false, error: 'UPSTREAM_NON_JSON', offline: true });
   } catch (err) {
+    if (action === 'uploadFile') {
+      const name = params.fileName || ('file_' + Date.now());
+      filesDb.files = filesDb.files || {};
+      filesDb.files[name] = {
+        id: name,
+        name: name,
+        buf: params.fileBase64 || '',
+        mime_type: params.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        saved: new Date().toISOString()
+      };
+      filesDb.version = (filesDb.version || 232) + 1;
+      writeJsonFile('files_db.json', filesDb);
+      broadcastEvent('file_saved', filesDb.files[name]);
+      return res.json({ ok: true, version: filesDb.version, offline: true });
+    }
+    if (action === 'deleteFile') {
+      const name = params.fileName;
+      if (name && filesDb.files && filesDb.files[name]) {
+        delete filesDb.files[name];
+        filesDb.version = (filesDb.version || 232) + 1;
+        writeJsonFile('files_db.json', filesDb);
+        broadcastEvent('file_deleted', { name });
+      }
+      return res.json({ ok: true, version: filesDb.version, offline: true });
+    }
     if (action === 'getSystemRecords') {
       return res.json({ ok: true, records: [], count: 0, kind: params.kind || 'all', version: filesDb.version || 232, offline: true });
     }
