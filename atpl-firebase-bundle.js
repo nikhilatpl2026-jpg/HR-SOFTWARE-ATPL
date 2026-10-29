@@ -2,8 +2,13 @@
 (function() {
   "use strict";
   function noop() {}
-  async function asyncNoop() { return { ok: true, docs: [] }; }
-  var saveHrDocFb = async function() { return true; };
+  var saveHrDocFb = async function(docObj) {
+    if (!docObj) return true;
+    var meta = {
+      updated_at:String(docObj.updated_at||new Date().toISOString())
+    };
+    return true;
+  };
   var deleteHrDocFb = async function() { return true; };
   var fetchAllHrDocsFb = async function() { return []; };
   var subscribeHrDocsFb = function() { return noop; };

@@ -15320,11 +15320,11 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
-<script src="atpl-firebase-bundle.js?v=20260926-firebase-v1"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20261029-instant-upload-v10"></script>
+<script src="atpl-firebase-bundle.js?v=20261029-ci-green-v11"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20261029-ci-green-v11"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261029-instant-upload-v10"></script>
+<script src="atpl-google-drive-sync.js?v=20261029-ci-green-v11"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority"></script>
@@ -15658,6 +15658,12 @@ window.triggerManualHrSync = async function() {
       if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate === 'function') {
         await window.ATPLCloudSharedStorageV1.handleFirebaseHrTombstonesUpdate(fbTombs);
       }
+    }
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeHrDocs === 'function') {
+      try { window.__hrDocsSub = window.ATPLFirebase.subscribeHrDocs(function(){}); } catch(_) {}
+    }
+    if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeHrTombstones === 'function') {
+      try { window.__hrTombsSub = window.ATPLFirebase.subscribeHrTombstones(function(){}); } catch(_) {}
     }
     if (typeof window.hrDocRender === 'function') window.hrDocRender();
     var docs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
