@@ -259,11 +259,11 @@
     try{
       var proto=root.Storage&&root.Storage.prototype;if(!proto||proto.__atplCloudMasterV13)return;var old=proto.setItem;
       proto.setItem=function(k,v){
-        var sk=String(k),isMaster=this===root.localStorage&&sk===MASTER&&!syncing,isToken=this===root.sessionStorage&&(sk===TOKEN||sk===ALT_TOKEN),before=isMaster?employeeRecords(J(this.getItem(k)||'[]',[])):null;
+        var sk=String(k),isMaster=this===root.localStorage&&sk===MASTER&&!syncing,isToken=this===root.sessionStorage&&(sk===TOKEN||sk===ALT_TOKEN),before=isMaster?employeeRecords(J(this.getItem(k)||'[]',[])):null,prevToken=isToken?String(this.getItem(sk)||''):'';
         if(isMaster){try{v=JSON.stringify(employeeRecords(J(String(v||'[]'),[])))}catch(_){}}
         var res=old.call(this,k,v);
         // Local storage edits are not permission to recreate cloud employees. Explicit saves use saveMaster.
-        if(isToken&&text(v))wakeCloud(60);return res
+        if(isToken&&text(v)&&prevToken!==String(v))wakeCloud(60);return res
       };proto.__atplCloudMasterV13=true
     }catch(_){}
   }
@@ -300,7 +300,9 @@
       }
     }catch(_){}
     try{
-      if(typeof root.EventSource!=='undefined'&&root.location&&root.location.protocol!=='file:'){
+      var _esHost=root.location?String(root.location.hostname||''):'';
+      var _esLocal=_esHost==='localhost'||_esHost==='127.0.0.1'||/\.run\.app$/i.test(_esHost);
+      if(_esLocal&&typeof root.EventSource!=='undefined'&&root.location&&root.location.protocol!=='file:'){
         var es=new root.EventSource('/api/sync/events');
         es.addEventListener('employee_master_updated',function(){probe(true);});
         es.addEventListener('employee_master_deleted',function(){probe(true);});

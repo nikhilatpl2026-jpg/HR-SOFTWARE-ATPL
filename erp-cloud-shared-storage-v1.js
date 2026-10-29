@@ -460,7 +460,7 @@
             saveLocalSalaryTombstone(row.name);
             changed++;
           }
-        } else if(!isTomb && !wasCleared && !(typeof removedSet !== 'undefined' && removedSet[lk]) && row.buf && !row._inFlight && !remoteByName[lk]){
+        } else if(!isTomb && !wasCleared && !(typeof removedSet !== 'undefined' && removedSet[lk]) && row.buf && !row._inFlight && !remoteByName[lk] && isRecentlyUploaded){
           console.log('[Data Safety Guard] Auto-backing up local file to Firestore:', row.name);
           cloudSaveSalary(row.name, row.buf, row.saved).catch(function(){});
         }
@@ -568,7 +568,7 @@
           if (delIdx >= 0) docsArrDel.splice(delIdx, 1);
         }
         changed++;
-      } else if(!remoteById[lid] && !doc._inFlight){
+      } else if(!remoteById[lid] && !doc._inFlight && (Date.now()-docTime<15000)){
         console.log('[Data Safety Guard] Auto-backing up local HR doc to Firestore:', doc.id);
         cloudSaveHr(doc).catch(function(){});
         if(root.ATPLFirebase&&typeof root.ATPLFirebase.saveHrDoc==='function'){
@@ -757,7 +757,7 @@
  }
 
  async function cloudSaveSalary(name,buf,saved){
-   if(root.ATPLGoogleSync || root.__ATPL_IS_DOWNLOADING_DRIVE || root.__ATPL_IS_UPLOADING) {
+   if(root.__ATPL_IS_DOWNLOADING_DRIVE || root.__ATPL_IS_UPLOADING) {
      return true;
    }
    if(typeof root.atplMarkSessionUpload==='function')root.atplMarkSessionUpload('salary',name);
@@ -992,7 +992,7 @@
      var saved=new Date().toISOString();
      return old.call(this,name,buf,function(){
        try{if(cb)cb()}finally{
-         if(!root.ATPLGoogleSync && !root.__ATPL_IS_DOWNLOADING_DRIVE && !root.__ATPL_IS_UPLOADING){
+         if(!root.__ATPL_IS_DOWNLOADING_DRIVE && !root.__ATPL_IS_UPLOADING){
            cloudSaveSalary(name,buf,saved);
          }
        }
@@ -1535,7 +1535,6 @@ async function applySalarySnapshot(records){
      encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});
  }
  async function flushSalaryOutbox(){
-   if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return true;
    if(salaryWriteFlight)return salaryWriteFlight;
    salaryWriteFlight=(async function(){
      await ensureTokenReady();
@@ -1576,7 +1575,6 @@ async function applySalarySnapshot(records){
    }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud sync pending');return false}
  }
  async function syncSharedSalary(force){
-   if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return true;
    if(salarySyncFlight)return salarySyncFlight;
    await ensureTokenReady();
    // Allow background sync even before login
@@ -1691,7 +1689,6 @@ async function applySalarySnapshot(records){
      try{
        var bc=new root.BroadcastChannel('ATPL_ERP_SHARED_V2');
        bc.onmessage=function(ev){
-         if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return;
          if(ev&&ev.data&&(ev.data.type==='salary_file_deleted'||ev.data.type==='salary_file_saved')){
            syncNow(true);
            syncWithServer(true);

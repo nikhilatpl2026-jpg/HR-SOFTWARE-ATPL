@@ -26,6 +26,24 @@
     if (event && event.stopImmediatePropagation) event.stopImmediatePropagation();
     return true;
   }, true);
+  // The /api/* endpoints only exist on the local Node dev server (server.js).
+  // On GitHub Pages they 404 (and EventSource reconnects forever), so short-circuit
+  // them with a synthetic 404 before any network attempt.
+  (function() {
+    try {
+      var host = window.location ? window.location.hostname : '';
+      if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) return;
+      var origFetch = window.fetch;
+      if (typeof origFetch !== 'function') return;
+      window.fetch = function(input, init) {
+        var url = (typeof input === 'string') ? input : (input && input.url) || '';
+        if (url.charAt(0) === '/' && url.indexOf('/api/') === 0) {
+          return Promise.resolve(new Response('', { status: 404, statusText: 'Not Found (static host)' }));
+        }
+        return origFetch.apply(this, arguments);
+      };
+    } catch (e) {}
+  })();
 // Register Auto-Updating Service Worker for PWA (only when top-level)
   var isIframe = false;
   try { isIframe = window.self !== window.top; } catch(e) { isIframe = true; }
@@ -15327,7 +15345,7 @@ else AInit();
 <script src="atpl-google-drive-sync.js?v=20261029-ci-green-v11"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
-<script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority"></script>
+<!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
 <script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261019v12"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>

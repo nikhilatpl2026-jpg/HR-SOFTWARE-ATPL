@@ -180,12 +180,14 @@ function saveRealToken(tk){
   if(!tk||isPlaceholderToken(tk))return;
   try{
     if(root.sessionStorage){
-      root.sessionStorage.setItem(TOKEN_KEY,tk);
-      root.sessionStorage.setItem(ALT_KEY,tk);
+      // Only write when the value actually changes: every write re-triggers
+      // cloud-sync's patched Storage.setItem -> wakeCloud, causing a request storm.
+      if(root.sessionStorage.getItem(TOKEN_KEY)!==tk)root.sessionStorage.setItem(TOKEN_KEY,tk);
+      if(root.sessionStorage.getItem(ALT_KEY)!==tk)root.sessionStorage.setItem(ALT_KEY,tk);
     }
     if(root.localStorage){
-      root.localStorage.setItem(TOKEN_KEY,tk);
-      root.localStorage.setItem(ALT_KEY,tk);
+      if(root.localStorage.getItem(TOKEN_KEY)!==tk)root.localStorage.setItem(TOKEN_KEY,tk);
+      if(root.localStorage.getItem(ALT_KEY)!==tk)root.localStorage.setItem(ALT_KEY,tk);
     }
   }catch(_){}
 }
@@ -221,7 +223,11 @@ async function ensureCloudToken(forceRefresh){
           try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-token-ready',{detail:{token:lr.token}}))}catch(_){}
           return lr.token;
         }
-      }catch(e){}
+      }catch(e){
+        // Backend unreachable: don't burn 3 more sequential candidates (minutes of blocking).
+        var _m=String(e&&e.message||e);
+        if(/CLOUD_(TIMEOUT|NETWORK|UNREACHABLE)|OFFLINE|FETCH_UNAVAILABLE/.test(_m))break;
+      }
     }
     return '';
   })().finally(function(){tokenMintPromise=null});

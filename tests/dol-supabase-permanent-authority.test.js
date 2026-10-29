@@ -13,13 +13,13 @@ test('service worker update never force reloads active ERP session', () => {
   assert.match(index, /__ATPL_UPDATE_READY__/);
 });
 
-test('DOL loader order is legacy adapter, Supabase override, then UI rebuild', () => {
+test('DOL loader order is legacy adapter, then UI rebuild (Supabase stub not loaded)', () => {
   const legacy = index.indexOf('compliance-dol-cloud-v4.js');
-  const supa = index.indexOf('compliance-dol-supabase-v2.js');
+  const supa = index.indexOf('<script src="compliance-dol-supabase-v2.js');
   const ui = index.indexOf('compliance-dol-rebuild-v2.js');
   assert.ok(legacy >= 0);
-  assert.ok(supa > legacy);
-  assert.ok(ui > supa);
+  assert.ok(supa < 0, 'compliance-dol-supabase-v2.js must not be loaded: its timeoutFetch stub returns fake responses');
+  assert.ok(ui > legacy);
 });
 
 test('Supabase adapter is authoritative for list upload delete and files', () => {

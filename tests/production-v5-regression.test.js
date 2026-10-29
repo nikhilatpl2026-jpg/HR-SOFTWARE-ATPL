@@ -107,48 +107,28 @@ test('PF or ESIC challan-only access cannot directly read Employee Master',()=>{
   assert.equal(body.includes("'pftodol'"),false);
 });
 
-test('DOL Supabase authority preserves migrated history without browser-local authority',()=>{
-  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
-  assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
+test('DOL Supabase stub is not loaded; Apps Script v4 stays authoritative',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
   assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2'));
-  assert.ok(h.indexOf('compliance-dol-cloud-v4.js') < h.indexOf('compliance-dol-supabase-v2.js'));
-  assert.ok(h.indexOf('compliance-dol-supabase-v2.js') < h.indexOf('compliance-dol-rebuild-v2.js'));
+  assert.ok(!h.includes('<script src="compliance-dol-supabase-v2.js'));
+  assert.ok(h.indexOf('compliance-dol-cloud-v4.js') < h.indexOf('compliance-dol-rebuild-v2.js'));
   assert.ok(d.includes("production-v22-supabase-original-repair"));
   assert.ok(d.includes("if(v&&v.authority==='supabase'&&typeof v.list==='function')"));
-  assert.ok(d.includes("if(vaultApi()&&vaultApi().authority==='supabase')return false"));
-  assert.ok(s.includes("authority:'supabase'"));
-  assert.ok(edge.includes('async function ensureLegacyIndex('));
-  assert.ok(edge.includes('deletedHashes.has(hash)'));
 });
 
-test('DOL delete is permanent across devices and search reads fresh Supabase authority',()=>{
-  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js'),s=read('compliance-dol-supabase-v2.js'),edge=read('supabase/functions/dol-api/index.ts');
+test('DOL delete is permanent across devices and search reads fresh cloud authority',()=>{
+  const h=read('index.html'),d=read('compliance-dol-rebuild-v2.js');
   assert.ok(h.includes('compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority'));
-  assert.ok(h.includes('compliance-dol-supabase-v2.js?v=20260928-permanent-authority'));
+  assert.ok(!h.includes('<script src="compliance-dol-supabase-v2.js'));
   assert.ok(h.includes('compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2'));
   [
     'production-v22-supabase-original-repair',
     "mode:'supabase'",
     "direct&&direct.authority==='supabase'",
-    'Deleted permanently from Supabase',
     'purgeLegacyLocalMatches',
     'librarySearchPack',
     'await cloudRecords(type)'
   ].forEach(x=>assert.ok(d.includes(x),x));
-  [
-    "authority:'supabase'",
-    "action:'delete'",
-    "action:'file'",
-    "action:'list'",
-    'atpl-dol-sync-v2'
-  ].forEach(x=>assert.ok(s.includes(x),x));
-  [
-    'const TOMBSTONES = "dol_tombstones"',
-    '.from(TOMBSTONES)',
-    'Permanent delete ledger failed',
-    'deletedHashes.has(hash)',
-    'runtime_authority: "supabase"'
-  ].forEach(x=>assert.ok(edge.includes(x),x));
   const searchStart=d.indexOf('async function searchAsync(type,qs,box)');
   assert.ok(searchStart>0);
   const searchBody=d.slice(searchStart,d.indexOf('\nfunction ',searchStart+20)>0?d.indexOf('\nfunction ',searchStart+20):d.length);
