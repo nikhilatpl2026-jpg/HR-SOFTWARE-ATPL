@@ -15480,15 +15480,14 @@ window.testAndSaveGasUrl = async function() {
 window.resetDefaultGasUrl = function() {
   localStorage.removeItem('ATPL_CUSTOM_GAS_URL');
   var inp = document.getElementById('customGasUrlInput');
-  var defaultUrl = "https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec";
-  if (inp) inp.value = defaultUrl;
-  window.ATPL_GAS_URL = defaultUrl;
+  if (inp) inp.value = '';
+  window.ATPL_GAS_URL = '';
   if (window.ATPLCloudAPI && window.ATPLCloudAPI.setCustomUrl) window.ATPLCloudAPI.setCustomUrl('');
   var fb = document.getElementById('gasUrlTestFeedback');
   if (fb) {
     fb.style.display = 'block';
     fb.style.color = '#a5b4fc';
-    fb.textContent = '🔄 Reset to default Google Apps Script URL.';
+    fb.textContent = '🔄 Cleared custom Google Apps Script URL.';
   }
 };
 

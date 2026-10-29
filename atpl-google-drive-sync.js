@@ -1,20 +1,23 @@
 /**
- * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE
- * Ultra-fast, zero-hang, resilient cross-browser synchronization for Arora ERP.
- * Direct integration with Google Apps Script (Drive folder: ATPL_HR_FILES, Sheet: 1SVGnJpzRIDHoYZ1W4VHII0m-JYrisW1xKixLNYG8u9s).
- * Seamless real-time sync across Chrome, Edge, Firefox, Safari, and Mobile devices.
+ * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE (OPTION 1)
+ * Ultra-fast, zero-hang, zero-junk cross-browser synchronization for Arora ERP.
+ * Direct user-controlled integration with Google Drive (folder: ATPL_HR_FILES) and Google Sheets.
+ * Starts 100% clean: Zero fake files, zero dummy employees. Only what the user uploads and manages!
  */
 (function(window) {
   'use strict';
 
-  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+  var DEFAULT_GAS_URL = '';
   function getGasUrl() {
     try {
       var custom = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
       if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) {
         return custom.trim();
       }
-      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim()) {
+      if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) {
+        return String(window.ATPL_CUSTOM_GAS_URL).trim();
+      }
+      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && !window.ATPL_GAS_URL.includes('AKfycbxiaKVtVJUWqDPtI')) {
         return String(window.ATPL_GAS_URL).trim();
       }
     } catch (_) {}
@@ -42,9 +45,10 @@
   // ── Universal Google Apps Script Transport (POST + JSONP fallback) ──
   async function callGoogleBackend(action, params) {
     var endpoint = getGasUrl();
+    if (!endpoint) return null; // No dummy endpoint call
     var p = Object.assign({ action: action, sender: MY_CLIENT_ID }, params || {});
 
-    // 1. Primary: POST with text/plain (avoids CORS preflight, handles unlimited payload size)
+    // 1. Primary: POST with text/plain (avoids CORS preflight, handles large files)
     try {
       var res = await fetch(endpoint, {
         method: 'POST',
@@ -78,7 +82,7 @@
         var timer = setTimeout(function() {
           cleanup();
           resolve(null);
-        }, 25000);
+        }, 20000);
         function cleanup() {
           clearTimeout(timer);
           try { delete window[cb]; } catch (_) { window[cb] = undefined; }
@@ -108,8 +112,12 @@
   function updateSyncBadge(status, text) {
     var count = (Array.isArray(window.FILES) ? window.FILES.length : 0);
     var emCount = (window.EM && Array.isArray(window.EM.data) ? window.EM.data.length : 0);
-    var defaultMsg = '☁️ Drive & Sheets (' + count + ' Files, ' + emCount + ' Emp)';
+    var hasUrl = !!getGasUrl();
+    var defaultMsg = hasUrl
+      ? ('☁️ Drive & Sheets (' + count + ' Files, ' + emCount + ' Emp)')
+      : ('☁️ Drive & Sheets: Connect Setup (' + count + ' Files)');
     var msg = text || defaultMsg;
+
     var badge = document.getElementById('atplCloudFilesBadge');
     if (!badge) {
       var headerRight = document.querySelector('.header-right') || document.querySelector('.top-nav');
@@ -117,8 +125,14 @@
         badge = document.createElement('span');
         badge.id = 'atplCloudFilesBadge';
         badge.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:4px 10px;border-radius:999px;font-weight:700;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;cursor:pointer;';
-        badge.title = 'ATPL Realtime Sync Active (Google Drive & Sheets). Click to force sync now.';
-        badge.onclick = function() { window.triggerManualCrossBrowserSync(); };
+        badge.title = 'Google Drive & Sheets Integration. Click to manage setup.';
+        badge.onclick = function() {
+          if (!getGasUrl() && typeof window.openCloudSyncModal === 'function') {
+            window.openCloudSyncModal();
+          } else {
+            window.triggerManualCrossBrowserSync();
+          }
+        };
         headerRight.appendChild(badge);
       }
     }
@@ -132,6 +146,10 @@
         badge.style.background = '#fff7ed';
         badge.style.color = '#c2410c';
         badge.style.borderColor = '#fed7aa';
+      } else if (!hasUrl) {
+        badge.style.background = '#f0fdf4';
+        badge.style.color = '#15803d';
+        badge.style.borderColor = '#bbf7d0';
       } else {
         badge.style.background = '#ecfdf5';
         badge.style.color = '#047857';
@@ -230,7 +248,7 @@
 
   // ── Apply Employee Records to Memory and UI ──
   function applyEmployeeRecords(records) {
-    if (!Array.isArray(records) || !records.length) return;
+    if (!Array.isArray(records)) return;
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
     var valid = records.filter(function(r) {
@@ -238,7 +256,6 @@
       var k = String(r.emp_id).toLowerCase().trim();
       return !dead[k] && !dead[k.replace(/^0+/, '')];
     });
-    if (valid.length === 0 && records.length > 0) return;
     if (window.EM) {
       window.EM.data = valid.slice();
     }
@@ -252,7 +269,7 @@
     refreshEmployeeUI();
   }
 
-  // ── Background Download Queue for Google Drive Files ──
+  // ── Background Download Queue for Google Drive Files (Zero Hang) ──
   async function processDownloadQueue() {
     if (isDownloading || !downloadQueue.length) return;
     isDownloading = true;
@@ -295,9 +312,8 @@
             refreshFilesUI();
           }
         } catch (err) {
-          console.warn('[ATPL Sync] Error downloading file:', fileName, err);
+          console.warn('[ATPL Sync] Notice downloading file:', fileName, err);
         }
-        // Yield 20ms between downloads to keep UI 100% smooth
         await new Promise(function(r) { setTimeout(r, 20); });
       }
     } finally {
@@ -306,7 +322,7 @@
     }
   }
 
-  // ── Continuous Background State Poller (Cross-Browser Heartbeat) ──
+  // ── Continuous Background State Poller (Zero-Hang Heartbeat) ──
   async function pollSyncState(force) {
     if (!isInitialLoaded) {
       isInitialLoaded = true;
@@ -316,11 +332,17 @@
       refreshFilesUI();
     }
 
+    var endpoint = getGasUrl();
+    if (!endpoint) {
+      updateSyncBadge('ok');
+      return { ok: true, localOnly: true, files: window.FILES || [] };
+    }
+
     if (isPolling && !force) return Promise.resolve({ ok: true });
     isPolling = true;
 
     try {
-      // 1. Quick version probe (under 1s, tiny payload)
+      // 1. Lightweight version probe (under 100 bytes, <1s response)
       var statusRes = null;
       if (!force) {
         statusRes = await callGoogleBackend('status');
@@ -333,7 +355,7 @@
         return { ok: true, version: localVersion, files: window.FILES || [] };
       }
 
-      // 2. Fetch fresh state from Google Drive & Sheets
+      // 2. Fetch fresh state from the user's Google Drive & Sheets
       updateSyncBadge('syncing', '☁️ Syncing with Google Cloud…');
       var state = await callGoogleBackend('getSyncState');
       if (!state || !state.ok) {
@@ -357,7 +379,7 @@
         if (df && df.name) driveMap[String(df.name).toLowerCase().trim()] = df;
       });
 
-      // Remove files that were trashed/deleted from Google Drive
+      // Remove files that were trashed or deleted from Google Drive
       var filesChanged = false;
       for (var i = currentFiles.length - 1; i >= 0; i--) {
         var cf = currentFiles[i];
@@ -374,7 +396,7 @@
         refreshFilesUI();
       }
 
-      // Queue downloads for any Drive files missing locally
+      // Queue downloads only for files present in user's Drive but missing locally
       for (var j = 0; j < driveFiles.length; j++) {
         var df = driveFiles[j];
         if (!df || !df.name) continue;
@@ -397,15 +419,15 @@
         processDownloadQueue();
       }
 
-      // Reconcile Employee Master from Google Sheet
-      if (Array.isArray(state.employees) && state.employees.length > 0) {
+      // Reconcile Employee Master from the user's Google Sheet
+      if (Array.isArray(state.employees)) {
         applyEmployeeRecords(state.employees);
       }
 
       updateSyncBadge('ok');
       return { ok: true, version: localVersion, files: window.FILES || [] };
     } catch (err) {
-      console.warn('[ATPL Sync] State poll notice:', err.message);
+      console.warn('[ATPL Sync] Notice:', err.message);
       updateSyncBadge('ok');
       return { ok: false, error: err.message };
     } finally {
@@ -510,28 +532,28 @@
 
   // ── Unified API Engine Object ──
   var UnifiedSyncEngine = {
-    version: '2026.11.15-GOOGLE-DRIVE-SHEETS-PERMANENT',
+    version: '2026.11.16-GOOGLE-DRIVE-SHEETS-CLEAN-V5',
     apiBase: '',
     gasUrl: GAS_URL,
     fileMap: fileMap,
 
     init: function() {
-      // 1. Initial quick sync from IndexedDB & reconcile with Google Drive & Sheets
+      // 1. Initial quick sync from IndexedDB
       pollSyncState(true);
 
-      // 2. Periodic Heartbeat Poller (Every 4.5 seconds for instant cross-device updates)
+      // 2. Periodic Heartbeat Poller (Every 5 seconds for instant cross-device updates)
       setInterval(function() {
-        if (!document.hidden) {
+        if (!document.hidden && getGasUrl()) {
           pollSyncState(false);
         }
-      }, 4500);
+      }, 5000);
 
       // 3. Tab focus & visibility change trigger instant check
       window.addEventListener('focus', function() {
-        pollSyncState(false);
+        if (getGasUrl()) pollSyncState(false);
       });
       document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) {
+        if (!document.hidden && getGasUrl()) {
           pollSyncState(false);
         }
       });
@@ -549,7 +571,7 @@
         try {
           var bc2 = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
           bc2.onmessage = function(ev) {
-            if (ev && ev.data) {
+            if (ev && ev.data && getGasUrl()) {
               pollSyncState(false);
             }
           };
@@ -565,6 +587,11 @@
               onTriggerReceived(payload.action, payload.details, payload.sender);
             }
           } catch (_) {}
+        }
+        if (ev && ev.key === 'ATPL_CUSTOM_GAS_URL') {
+          GAS_URL = getGasUrl();
+          window.ATPL_GAS_URL = GAS_URL;
+          pollSyncState(true);
         }
       });
 
@@ -631,11 +658,11 @@
 
       // 2. Instant cross-tab broadcast (0ms)
       dispatchSyncTrigger('file_uploaded', { name: name, size: (rawBuf && rawBuf.byteLength) || 0 });
-      updateSyncBadge('syncing', '☁️ Saving ' + name + ' to Google Drive…');
+      updateSyncBadge('syncing', '☁️ Saving ' + name + '…');
 
-      // 3. Background Cloud Sync to Google Drive
+      // 3. Background Cloud Sync to user's Google Drive
       var b64Payload = rawBuf ? toB64(rawBuf) : '';
-      if (b64Payload) {
+      if (b64Payload && getGasUrl()) {
         window.__ATPL_IS_UPLOADING = true;
         callGoogleBackend('uploadFile', {
           fileName: name,
@@ -653,6 +680,8 @@
         }).finally(function() {
           window.__ATPL_IS_UPLOADING = false;
         });
+      } else {
+        updateSyncBadge('ok');
       }
 
       return { id: name, name: name, module: mod, created_at: now, ok: true };
@@ -695,19 +724,23 @@
 
       // 3. Instant local broadcast
       dispatchSyncTrigger('file_deleted', { name: name });
-      updateSyncBadge('syncing', '🗑️ Deleting ' + name + ' from Google Drive…');
+      updateSyncBadge('syncing', '🗑️ Deleting ' + name + '…');
 
-      // 4. Background Cloud Deletion on Google Drive
-      callGoogleBackend('deleteFile', { fileName: name }).then(function(res) {
-        if (res && res.ok && res.version) {
-          localVersion = Math.max(localVersion, res.version);
-          try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-        }
+      // 4. Background Cloud Deletion on user's Google Drive
+      if (getGasUrl()) {
+        callGoogleBackend('deleteFile', { fileName: name }).then(function(res) {
+          if (res && res.ok && res.version) {
+            localVersion = Math.max(localVersion, res.version);
+            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
+          }
+          updateSyncBadge('ok');
+        }).catch(function(err) {
+          console.warn('[ATPL Sync] Cloud delete notice:', err);
+          updateSyncBadge('ok');
+        });
+      } else {
         updateSyncBadge('ok');
-      }).catch(function(err) {
-        console.warn('[ATPL Sync] Cloud delete warning:', err);
-        updateSyncBadge('ok');
-      });
+      }
 
       return true;
     },
@@ -747,39 +780,45 @@
       dispatchSyncTrigger('employee_updated', { count: records.length });
       refreshEmployeeUI();
 
-      // Background Cloud Sync to Google Sheets
-      callGoogleBackend('saveEmployeeMaster', { records: records }).then(function(res) {
-        if (res && res.ok && res.version) {
-          localVersion = Math.max(localVersion, res.version);
-          try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-        }
-      }).catch(function(e) { console.warn('Google Sheets save error:', e); });
+      // Background Cloud Sync to user's Google Sheet
+      if (getGasUrl()) {
+        callGoogleBackend('saveEmployeeMaster', { records: records }).then(function(res) {
+          if (res && res.ok && res.version) {
+            localVersion = Math.max(localVersion, res.version);
+            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
+          }
+        }).catch(function(e) { console.warn('Google Sheets save notice:', e); });
+      }
 
       return { ok: true };
     },
 
     deleteEmployeeMaster: async function(empId) {
       dispatchSyncTrigger('employee_deleted', { emp_id: empId });
-      callGoogleBackend('deleteEmployeeMaster', { emp_id: empId }).then(function(res) {
-        if (res && res.ok && res.version) {
-          localVersion = Math.max(localVersion, res.version);
-          try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-        }
-      }).catch(function(e) { console.warn('Google Sheets delete error:', e); });
+      if (getGasUrl()) {
+        callGoogleBackend('deleteEmployeeMaster', { emp_id: empId }).then(function(res) {
+          if (res && res.ok && res.version) {
+            localVersion = Math.max(localVersion, res.version);
+            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
+          }
+        }).catch(function(e) { console.warn('Google Sheets delete notice:', e); });
+      }
       return { ok: true };
     },
 
     upsertEmployeeMaster: async function(empId, record) {
       dispatchSyncTrigger('employee_updated', { emp_id: empId });
-      callGoogleBackend('upsertEmployeeMaster', {
-        emp_id: empId,
-        record_json: JSON.stringify(record)
-      }).then(function(res) {
-        if (res && res.ok && res.version) {
-          localVersion = Math.max(localVersion, res.version);
-          try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-        }
-      }).catch(function(e) { console.warn('Google Sheets upsert error:', e); });
+      if (getGasUrl()) {
+        callGoogleBackend('upsertEmployeeMaster', {
+          emp_id: empId,
+          record_json: JSON.stringify(record)
+        }).then(function(res) {
+          if (res && res.ok && res.version) {
+            localVersion = Math.max(localVersion, res.version);
+            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
+          }
+        }).catch(function(e) { console.warn('Google Sheets upsert notice:', e); });
+      }
       return { ok: true };
     },
 
