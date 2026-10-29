@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261029-crash-fix-v7';
+const CACHE_NAME = 'atpl-cache-v20261029-rotation-fix-v8';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

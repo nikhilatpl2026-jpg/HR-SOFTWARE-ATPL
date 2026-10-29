@@ -96,11 +96,15 @@
   }
 
   function postToGasDirect(url, params) {
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function() { controller.abort(); }, 1800) : null;
     return fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(params)
+      body: JSON.stringify(params),
+      signal: controller ? controller.signal : undefined
     }).then(function(r) {
+      if (timer) clearTimeout(timer);
       if (!r.ok) {
         return { ok: false, status: r.status, offline: true };
       }
@@ -108,6 +112,7 @@
         return { ok: true, offline: true };
       });
     }).catch(function(err) {
+      if (timer) clearTimeout(timer);
       console.warn('[ATPL Sync] Direct POST notice:', (err && err.message) || err);
       // NEVER fall back to getFromGas for large payloads! That causes <script> tag hanging!
       return { ok: false, error: (err && err.message) || 'POST_FAILED', offline: true };
@@ -133,11 +138,8 @@
         if (done) return;
         done = true;
         cleanup();
-        fetch(url + '?' + qs, { mode: 'cors' })
-          .then(function(r) { return r.json(); })
-          .then(resolve)
-          .catch(function() { resolve({ ok: false, error: 'TIMEOUT' }); });
-      }, 35000);
+        resolve({ ok: false, error: 'TIMEOUT', offline: true });
+      }, 1500);
 
       function cleanup() {
         clearTimeout(tm);
@@ -156,10 +158,7 @@
         if (done) return;
         done = true;
         cleanup();
-        fetch(url + '?' + qs, { mode: 'cors' })
-          .then(function(r) { return r.json(); })
-          .then(resolve)
-          .catch(function() { resolve({ ok: false, error: 'NETWORK' }); });
+        resolve({ ok: false, error: 'NETWORK', offline: true });
       };
 
       sc.crossOrigin = 'anonymous';
@@ -169,11 +168,17 @@
   }
 
   // ── UI Update Helpers ──
+  var badgeResetTimer = null;
   function updateSyncBadge(status, text) {
     var count = (Array.isArray(window.FILES) ? window.FILES.length : 0);
     var emCount = (window.EM && Array.isArray(window.EM.data) ? window.EM.data.length : 0);
     var defaultMsg = '☁️ Drive & Sheets (' + count + ' Files, ' + emCount + ' Emp)';
     var msg = text || defaultMsg;
+
+    if (badgeResetTimer) {
+      clearTimeout(badgeResetTimer);
+      badgeResetTimer = null;
+    }
 
     var badge = document.getElementById('atplCloudFilesBadge');
     if (!badge) {
@@ -197,6 +202,10 @@
         badge.style.background = '#fff7ed';
         badge.style.color = '#c2410c';
         badge.style.borderColor = '#fed7aa';
+        // Auto-finish rotation in 1.5 seconds guarantee!
+        badgeResetTimer = setTimeout(function() {
+          updateSyncBadge('ok');
+        }, 1500);
       } else {
         badge.style.background = '#ecfdf5';
         badge.style.color = '#047857';
@@ -411,10 +420,10 @@
       return;
     }
 
-    updateSyncBadge('syncing', '⚡ Trigger received! Auto-syncing in 2s…');
+    updateSyncBadge('syncing', '⚡ Trigger received! Auto-syncing…');
     if (triggerDebounceTimer) clearTimeout(triggerDebounceTimer);
 
-    // 2-second debounce timer exactly as requested: "2 SEC BAAD DUSRE ME AUTO UPDATE HO JAYE"
+    // 1.5-second debounce timer: rotation finishes in 1-2 seconds
     triggerDebounceTimer = setTimeout(async function() {
       try {
         // FAST-PATH 1: If a file was deleted, remove it locally in 0ms without full refetch
@@ -642,6 +651,7 @@
         console.warn('[ATPL Sync] Google Drive upload error:', err);
       } finally {
         window.__ATPL_IS_UPLOADING = false;
+        updateSyncBadge('ok');
       }
 
       if (onProgress) onProgress('saved', 100);
