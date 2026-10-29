@@ -58,9 +58,94 @@
   }
 
   // ── Universal Google Apps Script Transport (POST + JSONP fallback) ──
-  async function callGoogleBackend(action, params) {
-    // Hang-free: Google Drive remote fetch disabled
-    return Promise.resolve({ ok: true, files: [], employees: [] });
+  function getGasUrl() {
+    var custom = '';
+    try { custom = localStorage.getItem('ATPL_CUSTOM_GAS_URL') || ''; } catch(_) {}
+    return custom || window.ATPL_GAS_URL || GAS_URL;
+  }
+
+  function callGoogleBackend(action, params) {
+    params = Object.assign({ action: action }, params || {});
+    var url = getGasUrl();
+
+    // Check if running on local/run.app backend with server proxy
+    var host = (window.location && window.location.hostname) || '';
+    var isServer = host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host);
+
+    if (action === 'uploadFile' || action === 'saveEmployeeMaster' || action === 'upsertEmployeeMaster' || action === 'deleteFile') {
+      if (isServer) {
+        return fetch('/api/cloud-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params)
+        }).then(function(r) { return r.json(); }).catch(function() {
+          return postToGasDirect(url, params);
+        });
+      }
+      return postToGasDirect(url, params);
+    }
+
+    return getFromGas(url, params);
+  }
+
+  function postToGasDirect(url, params) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(params)
+    }).then(function(r) {
+      return r.json();
+    }).catch(function(err) {
+      return getFromGas(url, params);
+    });
+  }
+
+  function getFromGas(url, params) {
+    var qs = Object.keys(params).map(function(k) {
+      var val = typeof params[k] === 'object' ? JSON.stringify(params[k]) : String(params[k] == null ? '' : params[k]);
+      return encodeURIComponent(k) + '=' + encodeURIComponent(val);
+    }).join('&');
+
+    return new Promise(function(resolve) {
+      var cb = '__atpl_gcall_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      var sc = document.createElement('script');
+      var done = false;
+      var tm = setTimeout(function() {
+        if (done) return;
+        done = true;
+        cleanup();
+        fetch(url + '?' + qs, { mode: 'cors' })
+          .then(function(r) { return r.json(); })
+          .then(resolve)
+          .catch(function() { resolve({ ok: false, error: 'TIMEOUT' }); });
+      }, 18000);
+
+      function cleanup() {
+        clearTimeout(tm);
+        try { delete window[cb]; } catch(_) { window[cb] = undefined; }
+        if (sc.parentNode) sc.parentNode.removeChild(sc);
+      }
+
+      window[cb] = function(data) {
+        if (done) return;
+        done = true;
+        cleanup();
+        resolve(data || {});
+      };
+
+      sc.onerror = function() {
+        if (done) return;
+        done = true;
+        cleanup();
+        fetch(url + '?' + qs, { mode: 'cors' })
+          .then(function(r) { return r.json(); })
+          .then(resolve)
+          .catch(function() { resolve({ ok: false, error: 'NETWORK' }); });
+      };
+
+      sc.src = url + '?' + qs + '&callback=' + cb;
+      (document.head || document.documentElement).appendChild(sc);
+    });
   }
 
   // ── UI Update Helpers ──
@@ -147,7 +232,7 @@
     var valid = records.filter(function(r) {
       if (!r || !r.emp_id) return false;
       var k = String(r.emp_id).toLowerCase().trim();
-      return !dead[k] && !dead[k.replace(/^0+/, '')];
+      return k.indexOf('__atpl_sys__') !== 0 && !dead[k] && !dead[k.replace(/^0+/, '')];
     });
 
     if (window.EM) {
@@ -163,22 +248,86 @@
     refreshEmployeeUI();
   }
 
-  // ── Background Download Queue for Google Drive Files ──
-  async function processDownloadQueue() {
-    // Hang-free: Background file downloads disabled
-    return Promise.resolve();
-  }
-
   // ── Continuous Background State Poller (Cross-Browser Heartbeat) ──
   async function pollSyncState(force) {
-    // Hang-free: Local instant check, no network polling
-    updateSyncBadge("ok");
-    return Promise.resolve({ ok: true });
-  }
+    if (isPolling) return;
+    isPolling = true;
+    updateSyncBadge('syncing', '☁️ Checking Google Cloud...');
+    try {
+      var state = await callGoogleBackend('getSyncState', { _ts: Date.now() });
+      if (!state || !state.ok) {
+        updateSyncBadge('ok');
+        isPolling = false;
+        return;
+      }
 
-  function setupSSE() {
-    // Hang-free: SSE stream disabled on static GitHub Pages
-    return;
+      // 1. Sync Employee Master
+      if (Array.isArray(state.employees) && state.employees.length > 0) {
+        applyEmployeeRecords(state.employees);
+      }
+
+      // 2. Sync Files from Google Drive into Local Memory & IndexedDB
+      if (Array.isArray(state.files) && state.files.length > 0) {
+        var localFilesMap = {};
+        (window.FILES || []).forEach(function(f) {
+          if (f && f.name) localFilesMap[String(f.name).toLowerCase().trim()] = f;
+        });
+
+        var tombs = {};
+        try { tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
+
+        var changed = false;
+        for (var i = 0; i < state.files.length; i++) {
+          var rf = state.files[i];
+          if (!rf || !rf.name) continue;
+          var key = String(rf.name).toLowerCase().trim();
+          if (tombs[key]) continue;
+
+          var local = localFilesMap[key];
+          // If file not in local memory, download it from Google Drive!
+          if (!local || !local.buf) {
+            updateSyncBadge('syncing', '📥 Syncing ' + rf.name + '...');
+            var dl = await callGoogleBackend('downloadFile', { fileName: rf.name });
+            if (dl && dl.ok && dl.fileBase64) {
+              var buf = b64ToBuf(dl.fileBase64);
+              if (buf) {
+                var wb = (typeof window.parseWB === 'function') ? window.parseWB(buf) : null;
+                var sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : [];
+                var entry = {
+                  id: rf.name,
+                  name: rf.name,
+                  wb: wb,
+                  sheets: sheets,
+                  buf: buf,
+                  savedAt: rf.updatedAt || new Date().toISOString()
+                };
+
+                window.FILES = (window.FILES || []).filter(function(x) {
+                  return x && String(x.name || '').toLowerCase().trim() !== key;
+                });
+                window.FILES.push(entry);
+
+                if (typeof window.saveFileToDB === 'function') {
+                  window.saveFileToDB(rf.name, buf);
+                }
+                changed = true;
+              }
+            }
+          }
+        }
+        if (changed) {
+          refreshFilesUI();
+          if (window.showToast) window.showToast('✅ Google Drive se nayi files sync ho gayi!');
+        }
+      }
+
+      updateSyncBadge('ok');
+    } catch (err) {
+      console.warn('[ATPL Sync] pollSyncState warning:', err);
+      updateSyncBadge('ok');
+    } finally {
+      isPolling = false;
+    }
   }
 
   // ── Unified API Engine Object ──
@@ -187,9 +336,22 @@
     apiBase: GAS_URL,
 
     init: function() {
-      // Hang-free init without recurring intervals or network loops
-      pollSyncState(true);
-      setupSSE();
+      // 1. Initial sync immediately
+      setTimeout(function() { pollSyncState(true); }, 500);
+
+      // 2. Recurring background heartbeat every 20 seconds
+      setInterval(function() {
+        if (!document.hidden) {
+          pollSyncState(false);
+        }
+      }, 20000);
+
+      // 3. Sync on tab focus
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+          pollSyncState(false);
+        }
+      });
     },
     uploadFile: async function(module, fileObj, meta, onProgress) {
       var mod = String(module || 'salary').toLowerCase().trim();

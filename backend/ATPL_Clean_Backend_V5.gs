@@ -95,7 +95,10 @@ function handleRequest_(p) {
     else if (action === 'upsertComplianceCalendar') data = upsertComplianceCalendar_(p);
     else if (action === 'deleteComplianceCalendar') data = deleteComplianceCalendar_(p);
     else if (action === 'listActivity') data = listActivity_(p);
-    else if (action === 'appendActivity') data = appendActivity_(p);
+    else if (action === 'getSyncState') data = getSyncState_(p);
+    else if (action === 'uploadFile') data = uploadFile_(p);
+    else if (action === 'downloadFile') data = downloadFile_(p);
+    else if (action === 'deleteFile') data = deleteFile_(p);
     else if (action === 'setupNewCleanDatabase') data = setupNewCleanDatabase();
     else data = { ok: false, error: 'Unknown action: ' + action };
 
@@ -827,4 +830,96 @@ function appendActivity_(p) {
     String(p.details || '')
   ]);
   return { ok: true, activity_id: id };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GOOGLE DRIVE FILE ATTACHMENTS & CROSS-BROWSER SYNC
+// ═══════════════════════════════════════════════════════════════
+
+var DRIVE_FOLDER_NAME = 'ATPL_HR_FILES';
+
+function getSyncFolder_() {
+  var folders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(DRIVE_FOLDER_NAME);
+}
+
+function uploadFile_(p) {
+  var fileName = String(p.fileName || p.name || '').trim();
+  var b64 = String(p.fileBase64 || p.data || '').trim();
+  if (!fileName || !b64) return { ok: false, error: 'Missing fileName or fileBase64' };
+  var cleanB64 = b64.indexOf(',') !== -1 ? b64.split(',')[1] : b64;
+  var bytes = Utilities.base64Decode(cleanB64);
+  var mimeType = p.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  var blob = Utilities.newBlob(bytes, mimeType, fileName);
+
+  var folder = getSyncFolder_();
+  var existing = folder.getFilesByName(fileName);
+  while (existing.hasNext()) {
+    existing.next().setTrashed(true);
+  }
+  var newFile = folder.createFile(blob);
+
+  return {
+    ok: true,
+    fileId: newFile.getId(),
+    name: fileName,
+    size: newFile.getSize(),
+    updatedAt: newFile.getLastUpdated().toISOString()
+  };
+}
+
+function downloadFile_(p) {
+  var fileName = String(p.fileName || p.name || '').trim();
+  if (!fileName) return { ok: false, error: 'Missing fileName' };
+  var folder = getSyncFolder_();
+  var files = folder.getFilesByName(fileName);
+  if (!files.hasNext()) return { ok: false, error: 'File not found: ' + fileName };
+  var f = files.next();
+  var blob = f.getBlob();
+  return {
+    ok: true,
+    name: fileName,
+    fileBase64: Utilities.base64Encode(blob.getBytes()),
+    mimeType: blob.getContentType(),
+    updatedAt: f.getLastUpdated().toISOString()
+  };
+}
+
+function deleteFile_(p) {
+  var fileName = String(p.fileName || p.name || '').trim();
+  if (!fileName) return { ok: false, error: 'Missing fileName' };
+  var folder = getSyncFolder_();
+  var files = folder.getFilesByName(fileName);
+  var count = 0;
+  while (files.hasNext()) {
+    files.next().setTrashed(true);
+    count++;
+  }
+  return { ok: true, deleted: fileName, count: count };
+}
+
+function getSyncState_(p) {
+  var folder = getSyncFolder_();
+  var files = folder.getFiles();
+  var list = [];
+  while (files.hasNext()) {
+    var f = files.next();
+    if (!f.isTrashed()) {
+      list.push({
+        id: f.getId(),
+        name: f.getName(),
+        size: f.getSize(),
+        uploadedBy: 'Admin',
+        updatedAt: f.getLastUpdated().toISOString()
+      });
+    }
+  }
+  var emRes = getEmployeeMaster_({});
+  return {
+    ok: true,
+    changed: true,
+    files: list,
+    employees: emRes.records || []
+  };
 }
