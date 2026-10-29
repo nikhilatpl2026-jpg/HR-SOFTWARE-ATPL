@@ -315,16 +315,7 @@
     tok();
     setupLiveSync();
     root.setTimeout(function(){probe(true);},1200);
-    function scheduleNextProbe(){
-      root.setTimeout(function(){
-        if(!root.document.hidden&&tok()){
-          probe().finally(scheduleNextProbe);
-        } else {
-          scheduleNextProbe();
-        }
-      },9000);
-    }
-    scheduleNextProbe();
+    // Event-driven: no recurring background probe loop (prevents freeze/lag)
     root.addEventListener('online',function(){wakeCloud(300);probe(true);});
     root.document.addEventListener('visibilitychange',function(){
       if(!root.document.hidden&&tok()){

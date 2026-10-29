@@ -418,6 +418,14 @@ function broadcastEvent(eventType, payload) {
   }
 }
 
+// ── Cross-Browser Event-Driven Sync Trigger ──
+app.post('/api/sync/trigger', (req, res) => {
+  const { action, details } = req.body || {};
+  incrementVersion();
+  broadcastEvent('drive_trigger', { action: action || 'sync', details: details || {}, version: filesDb.version, timestamp: Date.now() });
+  return res.json({ ok: true, version: filesDb.version });
+});
+
 // ── SSE Endpoint for Real-Time Cross-Browser Updates (3–5s Guarantee) ──
 app.get('/api/sync/events', (req, res) => {
   res.writeHead(200, {

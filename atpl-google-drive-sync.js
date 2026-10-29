@@ -360,26 +360,172 @@
     }
   }
 
+  // ── Event-Driven Cross-Browser Sync Trigger Engine ──
+  // No continuous background loops. Wakes up ONLY when upload/delete/edit happens!
+  function dispatchSyncTrigger(action, details) {
+    var payload = { action: action, details: details || {}, ts: Date.now() };
+
+    // 1. BroadcastChannel: Instant notification to other tabs/windows in same browser
+    if (typeof window.BroadcastChannel !== 'undefined') {
+      try {
+        var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
+        bc.postMessage(payload);
+        bc.close();
+      } catch (_) {}
+    }
+
+    // 2. Storage event: Fires across all open browser windows of the app
+    try {
+      localStorage.setItem('ATPL_TRIGGER_EVENT', JSON.stringify(payload));
+    } catch (_) {}
+
+    // 3. Central Cloud / SSE Trigger: Broadcasts to different browsers & remote devices
+    try {
+      fetch('/api/sync/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(function() {});
+    } catch (_) {}
+  }
+
+  var triggerDebounceTimer = null;
+  function onTriggerReceived(action, details) {
+    updateSyncBadge('syncing', '⚡ Trigger received! Auto-syncing in 2s…');
+    if (triggerDebounceTimer) clearTimeout(triggerDebounceTimer);
+
+    // 2-second debounce timer exactly as requested: "2 SEC BAAD DUSRE ME AUTO UPDATE HO JAYE"
+    triggerDebounceTimer = setTimeout(async function() {
+      try {
+        // FAST-PATH 1: If a file was deleted, remove it locally in 0ms without full refetch
+        if (action === 'file_deleted' && details && details.name) {
+          var target = String(details.name).toLowerCase().trim();
+          window.FILES = (window.FILES || []).filter(function(x) {
+            return x && String(x.name || '').toLowerCase().trim() !== target;
+          });
+          if (typeof window.deleteFromDB === 'function') {
+            window.deleteFromDB(details.name);
+          }
+          try {
+            var tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+            tombs[target] = new Date().toISOString();
+            localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombs));
+          } catch (_) {}
+          refreshFilesUI();
+          updateSyncBadge('ok');
+          if (window.showToast) window.showToast('🗑️ ' + details.name + ' deleted via cloud trigger');
+          return;
+        }
+
+        // FAST-PATH 2: If a single file was uploaded, fetch ONLY this specific file!
+        if (action === 'file_uploaded' && details && details.name) {
+          var key = String(details.name).toLowerCase().trim();
+          var local = (window.FILES || []).find(function(f) {
+            return f && String(f.name || '').toLowerCase().trim() === key;
+          });
+          if (!local || !local.buf) {
+            updateSyncBadge('syncing', '📥 Auto-fetching ' + details.name + '…');
+            var dl = await callGoogleBackend('downloadFile', { fileName: details.name });
+            if (dl && dl.ok && dl.fileBase64) {
+              var buf = b64ToBuf(dl.fileBase64);
+              if (buf) {
+                var wb = (typeof window.parseWB === 'function') ? window.parseWB(buf) : null;
+                var sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : [];
+                var entry = {
+                  id: details.name,
+                  name: details.name,
+                  wb: wb,
+                  sheets: sheets,
+                  buf: buf,
+                  savedAt: new Date().toISOString()
+                };
+                window.FILES = (window.FILES || []).filter(function(x) {
+                  return x && String(x.name || '').toLowerCase().trim() !== key;
+                });
+                window.FILES.push(entry);
+                window.__ATPL_IS_DOWNLOADING_DRIVE = true;
+                try {
+                  if (typeof window.saveFileToDB === 'function') window.saveFileToDB(details.name, buf);
+                } finally {
+                  window.__ATPL_IS_DOWNLOADING_DRIVE = false;
+                }
+                refreshFilesUI();
+                updateSyncBadge('ok');
+                if (window.showToast) window.showToast('⚡ ' + details.name + ' auto-synced from Google Drive!');
+                return;
+              }
+            }
+          }
+        }
+
+        // General fallback: do a full sync check once
+        await pollSyncState(false);
+      } catch (err) {
+        console.warn('[ATPL Sync] Trigger sync error:', err);
+        updateSyncBadge('ok');
+      }
+    }, 2000);
+  }
+
   // ── Unified API Engine Object ──
   var UnifiedSyncEngine = {
-    version: '2026.11.10-GOOGLE-DRIVE-SHEETS-PERMANENT',
+    version: '2026.11.12-TRIGGER-DRIVEN-SYNC',
     apiBase: GAS_URL,
 
     init: function() {
-      // 1. Initial sync immediately
-      setTimeout(function() { pollSyncState(true); }, 300);
+      // 1. Initial sync once on boot (one-shot check, zero intervals!)
+      setTimeout(function() { pollSyncState(true); }, 500);
 
-      // 2. Recurring background heartbeat every 15 seconds
-      setInterval(function() {
-        if (!document.hidden) {
-          pollSyncState(false);
+      // 2. Cross-tab BroadcastChannel Trigger Listener
+      if (typeof window.BroadcastChannel !== 'undefined') {
+        try {
+          var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
+          bc.onmessage = function(ev) {
+            if (ev && ev.data && ev.data.action) {
+              onTriggerReceived(ev.data.action, ev.data.details);
+            }
+          };
+        } catch (_) {}
+      }
+
+      // 3. Cross-window / Cross-browser LocalStorage Event Trigger Listener
+      window.addEventListener('storage', function(ev) {
+        if (ev.key === 'ATPL_TRIGGER_EVENT' && ev.newValue) {
+          try {
+            var data = JSON.parse(ev.newValue);
+            if (data && data.action) {
+              onTriggerReceived(data.action, data.details);
+            }
+          } catch (_) {}
         }
-      }, 15000);
+      });
 
-      // 3. Sync on tab focus
+      // 4. Server-Sent Events (SSE) Trigger Listener for different remote devices
+      var host = (window.location && window.location.hostname) || '';
+      var isServer = host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host);
+      if (isServer && typeof window.EventSource !== 'undefined') {
+        try {
+          var es = new EventSource('/api/sync/events');
+          es.addEventListener('drive_trigger', function(ev) {
+            try {
+              var p = JSON.parse(ev.data);
+              var action = (p && p.data && p.data.action) || (p && p.action);
+              var details = (p && p.data && p.data.details) || (p && p.details);
+              if (action) onTriggerReceived(action, details);
+            } catch (_) {}
+          });
+          es.onerror = function() {};
+        } catch (_) {}
+      }
+
+      // 5. Idle return: only if user was away for > 3 minutes
+      var lastActive = Date.now();
       document.addEventListener('visibilitychange', function() {
         if (!document.hidden) {
-          pollSyncState(false);
+          if (Date.now() - lastActive > 180000) {
+            onTriggerReceived('tab_idle_return', {});
+          }
+          lastActive = Date.now();
         }
       });
     },
@@ -469,14 +615,8 @@
           updateSyncBadge('ok');
         }
 
-        // Notify other tabs via BroadcastChannel
-        if (typeof window.BroadcastChannel !== 'undefined') {
-          try {
-            var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
-            bc.postMessage({ type: 'salary_file_saved', name: name });
-            bc.close();
-          } catch (_) {}
-        }
+        // Dispatch Cross-Browser Sync Trigger!
+        dispatchSyncTrigger('file_uploaded', { name: name, size: b64.length });
       } catch (err) {
         console.warn('[ATPL Sync] Google Drive upload error:', err);
       } finally {
@@ -532,13 +672,8 @@
           localVersion = Math.max(localVersion, res.version);
         }
 
-        if (typeof window.BroadcastChannel !== 'undefined') {
-          try {
-            var bc = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
-            bc.postMessage({ type: 'salary_file_deleted', name: name });
-            bc.close();
-          } catch (_) {}
-        }
+        // Dispatch Cross-Browser Sync Trigger!
+        dispatchSyncTrigger('file_deleted', { name: name });
       } catch (err) {
         console.warn('[ATPL Sync] Google Drive delete error:', err);
       }
@@ -560,6 +695,7 @@
       try {
         var res = await callGoogleBackend('saveEmployeeMaster', { records: records });
         if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        dispatchSyncTrigger('employee_updated', { count: records.length });
         return res;
       } catch (_) {
         return { ok: true, offline: true };
@@ -570,6 +706,7 @@
       try {
         var res = await callGoogleBackend('deleteEmployeeMaster', { emp_id: empId });
         if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        dispatchSyncTrigger('employee_deleted', { emp_id: empId });
         return res;
       } catch (_) {
         return { ok: true, offline: true };
@@ -583,6 +720,7 @@
           record_json: JSON.stringify(record)
         });
         if (res && res.ok && res.version) localVersion = Math.max(localVersion, res.version);
+        dispatchSyncTrigger('employee_updated', { emp_id: empId });
         return res;
       } catch (_) {
         return { ok: true, offline: true };
