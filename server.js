@@ -285,13 +285,31 @@ app.all('/api/cloud-proxy', async (req, res) => {
   const APPS_SCRIPT_URL = getActiveAppsScriptUrl();
   const action = String(params && params.action || '').trim();
   try {
-    const qs = new URLSearchParams(params).toString();
-    const url = APPS_SCRIPT_URL + (qs ? '?' + qs : '');
-    const upstreamRes = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: { 'User-Agent': 'ATPL-Cloud-Broker/1.0' }
-    });
+    let upstreamRes;
+    const isPost = req.method === 'POST' || !!(params.fileBase64 || params.records || params.record_json || (params.payload && String(params.payload).length > 1000));
+    
+    if (isPost) {
+      upstreamRes = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+          'User-Agent': 'ATPL-Cloud-Broker/1.0'
+        },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(45000)
+      });
+    } else {
+      const qs = new URLSearchParams(params).toString();
+      const url = APPS_SCRIPT_URL + (qs ? '?' + qs : '');
+      upstreamRes = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { 'User-Agent': 'ATPL-Cloud-Broker/1.0' },
+        signal: AbortSignal.timeout(35000)
+      });
+    }
+
     const text = await upstreamRes.text();
     let json = null;
     try {
@@ -353,8 +371,20 @@ app.all('/api/cloud-proxy', async (req, res) => {
     if (action === 'getSystemRecords') {
       return res.json({ ok: true, records: [], count: 0, kind: params.kind || 'all', version: filesDb.version || 232, offline: true });
     }
-    console.warn('[Cloud Proxy] Upstream notice:', err.message);
-    return res.status(502).json({ ok: false, error: 'CLOUD_UNREACHABLE', message: err.message });
+    if (action === 'getSyncState') {
+      return res.json({
+        ok: true,
+        offline: true,
+        files: Object.values(filesDb.files || {}).map(f => ({ id: f.name, name: f.name, size: (f.buf || '').length, updatedAt: f.saved || new Date().toISOString() })),
+        employees: syncEmployeeMaster || []
+      });
+    }
+    if (action === 'downloadFile' && params.fileName) {
+      const localF = filesDb.files && filesDb.files[params.fileName];
+      if (localF) return res.json({ ok: true, name: params.fileName, fileBase64: localF.buf, offline: true });
+    }
+    console.warn('[Cloud Proxy] Upstream notice handled cleanly:', err.message);
+    return res.json({ ok: false, error: 'CLOUD_UNREACHABLE', message: err.message, offline: true });
   }
 });
 

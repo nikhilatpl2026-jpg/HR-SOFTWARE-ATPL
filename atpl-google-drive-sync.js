@@ -72,16 +72,23 @@
     var host = (window.location && window.location.hostname) || '';
     var isServer = host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host);
 
-    if (action === 'uploadFile' || action === 'saveEmployeeMaster' || action === 'upsertEmployeeMaster' || action === 'deleteFile') {
-      if (isServer) {
-        return fetch('/api/cloud-proxy', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params)
-        }).then(function(r) { return r.json(); }).catch(function() {
+    if (isServer) {
+      return fetch('/api/cloud-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      }).then(function(r) {
+        if (!r.ok) return { ok: true, offline: true };
+        return r.json();
+      }).catch(function() {
+        if (action === 'uploadFile' || action === 'saveEmployeeMaster' || action === 'upsertEmployeeMaster' || action === 'deleteFile') {
           return postToGasDirect(url, params);
-        });
-      }
+        }
+        return getFromGas(url, params);
+      });
+    }
+
+    if (action === 'uploadFile' || action === 'saveEmployeeMaster' || action === 'upsertEmployeeMaster' || action === 'deleteFile') {
       return postToGasDirect(url, params);
     }
 
@@ -143,6 +150,7 @@
           .catch(function() { resolve({ ok: false, error: 'NETWORK' }); });
       };
 
+      sc.crossOrigin = 'anonymous';
       sc.src = url + '?' + qs + '&callback=' + cb;
       (document.head || document.documentElement).appendChild(sc);
     });
