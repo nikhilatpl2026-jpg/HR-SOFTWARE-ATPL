@@ -1,6 +1,6 @@
 {
-  "name": "ATPL HR & Payroll ERP",
-  "description": "Enterprise HR and Payroll management software with real-time Google Sheets sync, employee master, and salary audits.",
+  "name": "ATPL HR & Payroll Software",
+  "description": "Centralized cross-browser synchronized HR, payroll, statutory compliance, and file management system for Arora Textiles Private Limited.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

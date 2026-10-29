@@ -10,3 +10,4 @@ data/blobs/*.bin
 .aistudio/
 bun.lock
 public/assets/aistudio/
+.playwright-cli/
