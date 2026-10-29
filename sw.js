@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261025-instant-load-v2';
+const CACHE_NAME = 'atpl-cache-v20261029-drive-v4-hotfix';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

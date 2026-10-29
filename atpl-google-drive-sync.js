@@ -118,7 +118,7 @@
           .then(function(r) { return r.json(); })
           .then(resolve)
           .catch(function() { resolve({ ok: false, error: 'TIMEOUT' }); });
-      }, 18000);
+      }, 35000);
 
       function cleanup() {
         clearTimeout(tm);
@@ -276,48 +276,70 @@
         var tombs = {};
         try { tombs = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch(_) {}
 
-        var changed = false;
-        for (var i = 0; i < state.files.length; i++) {
-          var rf = state.files[i];
-          if (!rf || !rf.name) continue;
-          var key = String(rf.name).toLowerCase().trim();
-          if (tombs[key]) continue;
+        // Deduplicate remote files by name (prevents duplicate test files)
+        var seenNames = {};
+        var uniqueRemoteFiles = [];
+        state.files.forEach(function(rf) {
+          if (!rf || !rf.name) return;
+          var k = String(rf.name).toLowerCase().trim();
+          if (!seenNames[k]) {
+            seenNames[k] = true;
+            uniqueRemoteFiles.push(rf);
+          }
+        });
 
-          var local = localFilesMap[key];
-          // If file not in local memory, download it from Google Drive!
-          if (!local || !local.buf) {
-            updateSyncBadge('syncing', '📥 Syncing ' + rf.name + '...');
-            var dl = await callGoogleBackend('downloadFile', { fileName: rf.name });
-            if (dl && dl.ok && dl.fileBase64) {
-              var buf = b64ToBuf(dl.fileBase64);
-              if (buf) {
-                var wb = (typeof window.parseWB === 'function') ? window.parseWB(buf) : null;
-                var sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : [];
-                var entry = {
-                  id: rf.name,
-                  name: rf.name,
-                  wb: wb,
-                  sheets: sheets,
-                  buf: buf,
-                  savedAt: rf.updatedAt || new Date().toISOString()
-                };
+        // Prioritize: Download files not currently in memory or IndexedDB
+        var toDownload = uniqueRemoteFiles.filter(function(rf) {
+          var k = String(rf.name).toLowerCase().trim();
+          if (tombs[k]) return false;
+          var local = localFilesMap[k];
+          return !local || !local.buf;
+        });
 
-                window.FILES = (window.FILES || []).filter(function(x) {
-                  return x && String(x.name || '').toLowerCase().trim() !== key;
-                });
-                window.FILES.push(entry);
+        if (toDownload.length > 0) {
+          for (var i = 0; i < toDownload.length; i++) {
+            var rf = toDownload[i];
+            updateSyncBadge('syncing', '📥 Syncing (' + (i + 1) + '/' + toDownload.length + ') ' + rf.name + '...');
+            try {
+              var dl = await callGoogleBackend('downloadFile', { fileName: rf.name });
+              if (dl && dl.ok && dl.fileBase64) {
+                var buf = b64ToBuf(dl.fileBase64);
+                if (buf) {
+                  var wb = (typeof window.parseWB === 'function') ? window.parseWB(buf) : null;
+                  var sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : [];
+                  var entry = {
+                    id: rf.name,
+                    name: rf.name,
+                    wb: wb,
+                    sheets: sheets,
+                    buf: buf,
+                    savedAt: rf.updatedAt || new Date().toISOString()
+                  };
 
-                if (typeof window.saveFileToDB === 'function') {
-                  window.saveFileToDB(rf.name, buf);
+                  var key = String(rf.name).toLowerCase().trim();
+                  window.FILES = (window.FILES || []).filter(function(x) {
+                    return x && String(x.name || '').toLowerCase().trim() !== key;
+                  });
+                  window.FILES.push(entry);
+
+                  window.__ATPL_IS_DOWNLOADING_DRIVE = true;
+                  try {
+                    if (typeof window.saveFileToDB === 'function') {
+                      window.saveFileToDB(rf.name, buf);
+                    }
+                  } finally {
+                    window.__ATPL_IS_DOWNLOADING_DRIVE = false;
+                  }
+
+                  // Instantly update UI on EACH file downloaded so the user sees it immediately!
+                  refreshFilesUI();
                 }
-                changed = true;
               }
+            } catch (errDl) {
+              console.warn('[ATPL Sync] Error downloading file:', rf.name, errDl);
             }
           }
-        }
-        if (changed) {
-          refreshFilesUI();
-          if (window.showToast) window.showToast('✅ Google Drive se nayi files sync ho gayi!');
+          if (window.showToast) window.showToast('✅ Google Drive se files sync ho gayi (' + window.FILES.length + ' files)!');
         }
       }
 
@@ -332,19 +354,19 @@
 
   // ── Unified API Engine Object ──
   var UnifiedSyncEngine = {
-    version: '2026.11.09-GOOGLE-DRIVE-SHEETS-PERMANENT',
+    version: '2026.11.10-GOOGLE-DRIVE-SHEETS-PERMANENT',
     apiBase: GAS_URL,
 
     init: function() {
       // 1. Initial sync immediately
-      setTimeout(function() { pollSyncState(true); }, 500);
+      setTimeout(function() { pollSyncState(true); }, 300);
 
-      // 2. Recurring background heartbeat every 20 seconds
+      // 2. Recurring background heartbeat every 15 seconds
       setInterval(function() {
         if (!document.hidden) {
           pollSyncState(false);
         }
-      }, 20000);
+      }, 15000);
 
       // 3. Sync on tab focus
       document.addEventListener('visibilitychange', function() {
@@ -353,20 +375,49 @@
         }
       });
     },
-    uploadFile: async function(module, fileObj, meta, onProgress) {
-      var mod = String(module || 'salary').toLowerCase().trim();
-      var name = (fileObj && (fileObj.name || fileObj.filename || fileObj.document_name || fileObj.id)) || ('file_' + Date.now());
+
+    uploadFile: async function(a, b, c, d) {
+      var mod = 'salary', name = '', rawBuf = null, b64 = '', mimeType = '', meta = null, onProgress = null;
+
+      // Polymorphic signature handling:
+      // Signature 1: uploadFile(fileName, b64Payload, mimeType, uploadedBy) [called by index.html line 4273]
+      // Signature 2: uploadFile(module, fileObj, meta, onProgress) [called by sync manager]
+      if (typeof a === 'string' && (typeof b === 'string' || (b && (b instanceof ArrayBuffer || b instanceof Blob)))) {
+        name = a;
+        if (typeof b === 'string') {
+          b64 = b;
+          rawBuf = b64ToBuf(b);
+        } else if (b instanceof Blob) {
+          rawBuf = await b.arrayBuffer();
+          b64 = toB64(rawBuf);
+        } else {
+          rawBuf = b;
+          b64 = toB64(rawBuf);
+        }
+        mimeType = c || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      } else {
+        mod = String(a || 'salary').toLowerCase().trim();
+        var fileObj = b || {};
+        meta = c;
+        onProgress = d;
+        name = (fileObj && (fileObj.name || fileObj.filename || fileObj.document_name || fileObj.id)) || ('file_' + Date.now());
+        if (fileObj && fileObj.buf instanceof ArrayBuffer) {
+          rawBuf = fileObj.buf;
+          b64 = toB64(rawBuf);
+        } else if (fileObj instanceof Blob) {
+          rawBuf = await fileObj.arrayBuffer();
+          b64 = toB64(rawBuf);
+        } else if (typeof fileObj.buf === 'string') {
+          b64 = fileObj.buf;
+          rawBuf = b64ToBuf(b64);
+        } else if (fileObj.original_b64 || fileObj.file_data) {
+          b64 = fileObj.original_b64 || fileObj.file_data;
+          rawBuf = b64ToBuf(b64);
+        }
+        mimeType = (fileObj && fileObj.type) || (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+      }
 
       if (onProgress) onProgress('preparing', 20);
-
-      var rawBuf = fileObj && fileObj.buf instanceof ArrayBuffer
-        ? fileObj.buf
-        : (fileObj instanceof Blob ? await fileObj.arrayBuffer() : null);
-
-      var b64 = rawBuf
-        ? toB64(rawBuf)
-        : (fileObj && (fileObj.original_b64 || fileObj.file_data || (typeof fileObj.buf === 'string' ? fileObj.buf : ''))) || '';
-
       var now = new Date().toISOString();
 
       // Clear local tombstone
@@ -377,7 +428,7 @@
       } catch (_) {}
 
       // If salary file, parse immediately in memory for 0ms UI latency
-      if (mod === 'salary' && rawBuf && typeof window.parseWB === 'function' && typeof window.wbToSheets === 'function') {
+      if (rawBuf && typeof window.parseWB === 'function' && typeof window.wbToSheets === 'function') {
         var wb = window.parseWB(rawBuf);
         var sheets = window.wbToSheets(wb);
         var entry = { id: name, name: name, wb: wb, sheets: sheets, buf: rawBuf, savedAt: now };
@@ -385,7 +436,12 @@
           return x && String(x.name || '').toLowerCase() !== name.toLowerCase();
         });
         window.FILES.push(entry);
-        if (typeof window.saveFileToDB === 'function') window.saveFileToDB(name, rawBuf);
+        window.__ATPL_IS_DOWNLOADING_DRIVE = true;
+        try {
+          if (typeof window.saveFileToDB === 'function') window.saveFileToDB(name, rawBuf);
+        } finally {
+          window.__ATPL_IS_DOWNLOADING_DRIVE = false;
+        }
         refreshFilesUI();
       }
 
@@ -397,7 +453,7 @@
         var res = await callGoogleBackend('uploadFile', {
           fileName: name,
           fileBase64: b64,
-          mimeType: (fileObj && fileObj.type) || (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
+          mimeType: mimeType
         });
 
         if (res && res.ok) {
@@ -421,6 +477,17 @@
 
       if (onProgress) onProgress('saved', 100);
       return { id: name, name: name, module: mod, created_at: now, ok: true };
+    },
+
+    uploadBulk: async function(module, fileList, meta, onProgress) {
+      var list = Array.isArray(fileList) ? fileList : Array.from(fileList || []);
+      for (var i = 0; i < list.length; i++) {
+        var f = list[i];
+        if (onProgress) onProgress(i, 'uploading', Math.round((i / list.length) * 100), f.name);
+        await this.uploadFile(module, f, meta);
+        if (onProgress) onProgress(i, 'saved', Math.round(((i + 1) / list.length) * 100), f.name);
+      }
+      return { ok: true, count: list.length };
     },
 
     deleteFile: async function(module, idOrName) {

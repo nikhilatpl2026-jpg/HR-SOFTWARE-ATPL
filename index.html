@@ -3792,6 +3792,14 @@ function atplB64ToBuf(b64) {
 }
 
 function saveFileToDB(name, arrayBuf, cb) {
+  if (window.__ATPL_IS_DOWNLOADING_DRIVE) {
+    var nowDl = new Date().toISOString();
+    if (!DB) { cb && cb(); return; }
+    var dltx = DB.transaction(DB_STORE, 'readwrite');
+    dltx.objectStore(DB_STORE).put({ name: name, buf: arrayBuf, saved: nowDl });
+    dltx.oncomplete = function() { cb && cb(); };
+    return;
+  }
   try {
     if (typeof window.atplMarkSessionUpload === 'function') window.atplMarkSessionUpload('salary', name);
     var ts = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2')||'{}');
@@ -15316,7 +15324,7 @@ else AInit();
 <script src="erp-cloud-shared-storage-v1.js?v=20260926-firebase-v1"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED GOOGLE DRIVE & SHEETS CLOUD SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261025-instant-speed"></script>
+<script src="atpl-google-drive-sync.js?v=20261029-drive-v4-hotfix"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <script src="compliance-dol-supabase-v2.js?v=20260928-permanent-authority"></script>
