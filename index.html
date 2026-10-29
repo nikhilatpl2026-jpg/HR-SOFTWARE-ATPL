@@ -83,8 +83,10 @@
 <script src="xlsx.full.min.js"></script>
 <script>
   window.__atplFirebaseQuotaExhausted = false;
-  window.ATPL_GAS_URL = "https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec";
-  window.LIVE_CLOUD_RUN_URL = window.ATPL_GAS_URL;
+  var customGas = '';
+  try { customGas = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || ''; } catch(_) {}
+  window.ATPL_GAS_URL = customGas || "https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec";
+  window.LIVE_CLOUD_RUN_URL = "https://ais-dev-eq7claowe4brgbqi363kit-427004433114.asia-southeast1.run.app";
   (function() {
     try {
       var host = (window.location && window.location.hostname) || '';
@@ -1838,6 +1840,107 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   </div>
 </div>
 
+<!-- CLOUD SYNC & GOOGLE SHEET SETUP MODAL -->
+<div id="cloudSyncOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.88);z-index:99990;align-items:center;justify-content:center;backdrop-filter:blur(10px);padding:16px;" onclick="if(event.target===this)closeCloudSyncModal()">
+  <div style="background:#0F172A;border:1px solid rgba(129,140,248,0.35);box-shadow:0 25px 60px -15px rgba(0,0,0,0.8),0 0 40px rgba(99,102,241,0.2);border-radius:20px;max-width:760px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;color:#F8FAFC;font-family:'Plus Jakarta Sans',sans-serif;">
+    <!-- Modal Header -->
+    <div style="padding:18px 24px;border-bottom:1px solid rgba(255,255,255,0.08);background:linear-gradient(135deg,rgba(30,27,75,0.7),rgba(15,23,42,0.9));display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#4F46E5,#0ea5e9);display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 15px rgba(79,70,229,0.4);">⚡</div>
+        <div>
+          <div style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:#FFFFFF;display:flex;align-items:center;gap:8px;">
+            Cross-Browser Sync & Google Sheet Setup
+            <span style="font-size:10px;padding:3px 8px;border-radius:20px;background:rgba(34,197,94,0.18);color:#4ade80;font-weight:700;border:1px solid rgba(34,197,94,0.3);">V5.5 Active</span>
+          </div>
+          <div style="font-size:12px;color:#94A3B8;">Centralized multi-browser sync engine with clean Google Drive & Sheets isolation</div>
+        </div>
+      </div>
+      <button onclick="closeCloudSyncModal()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;width:34px;height:34px;border-radius:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .2s;" onmouseover="this.style.color='#fff';this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.color='#94a3b8';this.style.background='rgba(255,255,255,0.06)'">✕</button>
+    </div>
+
+    <!-- Modal Body -->
+    <div style="padding:22px 24px;overflow-y:auto;display:flex;flex-direction:column;gap:20px;">
+      
+      <!-- Live Sync Status Banner -->
+      <div style="background:rgba(30,41,59,0.7);border:1px solid rgba(99,102,241,0.25);border-radius:14px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:12px;height:12px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;animation:pulse 2s infinite;"></div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#F1F5F9;">Central Cloud Backend Connected</div>
+            <div style="font-size:11px;color:#64748B;" id="cloudSyncStatusDesc">Express Server + Real-time SSE listening on port 3000 / Cloud Run</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="atplTriggerCrossSync(true)" style="padding:7px 14px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.4);color:#38bdf8;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;">
+            <span>🔄</span> Sync All Browsers Now
+          </button>
+          <button onclick="purgeGhostRecordsNow()" style="padding:7px 14px;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#f87171;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;" title="Purges old chunk records so employee records match cleanly">
+            <span>🧹</span> Purge Ghost Records
+          </button>
+        </div>
+      </div>
+
+      <!-- New Clean Google Sheet / Apps Script Setup Box -->
+      <div style="background:rgba(15,23,42,0.9);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:16px;">📑</span>
+            <span style="font-size:14px;font-weight:700;color:#E2E8F0;">New Blank Google Sheet / Apps Script Integration</span>
+          </div>
+          <button onclick="toggleGasScriptViewer()" style="padding:5px 12px;background:rgba(99,102,241,0.2);border:1px solid rgba(129,140,248,0.4);color:#a5b4fc;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;">
+            📋 View / Copy Clean Apps Script (V5.5)
+          </button>
+        </div>
+
+        <div style="font-size:12px;color:#94a3b8;line-height:1.6;background:rgba(255,255,255,0.03);padding:12px 14px;border-radius:10px;border-left:3px solid #818CF8;">
+          <strong style="color:#C7D2FE;">Kadam 1:</strong> Apne Google Drive me nayi blank Google Sheet banayein (kuch bhi upload karne ki zaroorat nahi hai).<br>
+          <strong style="color:#C7D2FE;">Kadam 2:</strong> Sheet me <code>Extensions &gt; Apps Script</code> kholein, purana code hatakar naya clean code paste karein aur Save (💾) karein.<br>
+          <strong style="color:#C7D2FE;">Kadam 3:</strong> <code>Deploy &gt; New deployment &gt; Web app</code> chunein (Execute as: <em>Me</em>, Who has access: <em>Anyone</em>), deploy karke <code>/exec</code> URL copy karein aur neeche paste karke Connect karein!
+        </div>
+
+        <!-- Google Apps Script URL Input -->
+        <div>
+          <label style="display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94A3B8;margin-bottom:6px;">Google Apps Script Web App URL (/exec)</label>
+          <div style="display:flex;gap:10px;">
+            <input type="text" id="customGasUrlInput" placeholder="https://script.google.com/macros/s/.../exec" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:10px 14px;font-size:12px;color:#FFFFFF;outline:none;font-family:'JetBrains Mono',monospace;">
+            <button onclick="testAndSaveGasUrl()" style="padding:10px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#FFFFFF;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(79,70,229,0.35);">
+              🔗 Connect &amp; Save
+            </button>
+            <button onclick="resetDefaultGasUrl()" style="padding:10px 14px;background:rgba(255,255,255,0.08);color:#94A3B8;border:1px solid rgba(255,255,255,0.12);border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;">
+              Reset Default
+            </button>
+          </div>
+          <div id="gasUrlTestFeedback" style="font-size:11px;margin-top:6px;display:none;"></div>
+        </div>
+
+        <!-- Code Viewer Box (Collapsible) -->
+        <div id="gasCodeViewerBox" style="display:none;background:#030712;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:11px;font-weight:700;color:#60A5FA;font-family:monospace;">ATPL_Clean_Backend_V5.gs (Zero Pre-existing Junk Records)</span>
+            <button onclick="copyGasScriptCode(this)" style="padding:5px 12px;background:#2563EB;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">
+              📋 Copy Code
+            </button>
+          </div>
+          <pre id="gasCodePre" style="max-height:220px;overflow-y:auto;background:rgba(255,255,255,0.03);padding:12px;border-radius:8px;font-size:11px;color:#A5F3FC;font-family:'JetBrains Mono',monospace;margin:0;white-space:pre-wrap;word-break:break-all;">Loading clean script...</pre>
+        </div>
+      </div>
+
+      <!-- GitHub Push Fail Fix Guide -->
+      <div style="background:rgba(30,41,59,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">🛡️</span>
+          <span style="font-size:13px;font-weight:700;color:#E2E8F0;">GitHub Token &amp; Push Fail Alert Guide</span>
+        </div>
+        <div style="font-size:12px;color:#94a3b8;line-height:1.6;">
+          • <strong style="color:#FCA5A5;">Kyu aa raha tha mail:</strong> Aapki repo ke <code>.github/workflows</code> me auto <code>git push</code> commands the, jo GitHub permissions na hone ki wajah se 403 fail ho rahe the, aur token detect hone par GitHub Secret Scanning alert bhejta hai.<br>
+          • <strong style="color:#86EFAC;">Kamyab Solution:</strong> Humne workflows me se auto-push loops band kar diye hain. Apna token GitHub settings se revoke/delete karein taaki future alerts na aayein.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- HEADER -->
 <div class="header" style="background:#0F172A;border-bottom:1px solid rgba(255,255,255,0.08);box-shadow:none;height:56px">
   <button id="mNavToggleBtn" onclick="toggleMobileNav()" aria-label="Toggle Menu" class="m-erp-hamburger">
@@ -1850,7 +1953,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   </div>
   <div class="header-right">
     <button onclick="window.AroraAICommander.open()" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
-    <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:none;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync / restore karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Cross-Browser Sync</span></button>
+    <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Sync Data</span></button>
+    <button onclick="openCloudSyncModal()" id="cloudSyncModalBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:linear-gradient(135deg,rgba(99,102,241,0.25),rgba(14,165,233,0.25));border:1px solid rgba(129,140,248,0.5);color:#c7d2fe;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Google Sheet & Cloud Sync Setup"><span style="font-size:14px">⚡</span> <span>Sheet &amp; Cloud Setup</span></button>
     <button onclick="toggleDeepScan()" id="dsBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818CF8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" onmouseover="this.style.background='rgba(129,140,248,0.25)'" onmouseout="this.style.background='rgba(129,140,248,0.15)'">
       <span style="font-size:14px">🔬</span> Deep Scan
     </button>
@@ -15265,6 +15369,172 @@ window.atplTriggerCrossSync = async function(manual) {
     setTimeout(function() {
       if (btnLbl) btnLbl.textContent = "Cross-Browser Sync";
     }, 4000);
+  }
+};
+
+window.openCloudSyncModal = function() {
+  var overlay = document.getElementById('cloudSyncOverlay');
+  if (overlay) overlay.style.display = 'flex';
+  var inp = document.getElementById('customGasUrlInput');
+  if (inp) {
+    var stored = localStorage.getItem('ATPL_CUSTOM_GAS_URL') || window.ATPL_GAS_URL || '';
+    inp.value = stored;
+  }
+  fetch('/api/sync/config')
+    .then(function(r) { return r.json(); })
+    .then(function(cfg) {
+      if (cfg && cfg.ok) {
+        var desc = document.getElementById('cloudSyncStatusDesc');
+        if (desc) {
+          desc.textContent = 'Server: ' + (cfg.backend_mode || 'Hybrid') + ' · Active Clients: ' + (cfg.clients_connected || 1) + ' · Employees: ' + (cfg.total_employees || 0) + ' · Files: ' + (cfg.total_files || 0);
+        }
+        if (cfg.gas_url && inp && !localStorage.getItem('ATPL_CUSTOM_GAS_URL')) {
+          inp.value = cfg.gas_url;
+        }
+      }
+    })
+    .catch(function(){});
+};
+
+window.closeCloudSyncModal = function() {
+  var overlay = document.getElementById('cloudSyncOverlay');
+  if (overlay) overlay.style.display = 'none';
+};
+
+window.testAndSaveGasUrl = async function() {
+  var inp = document.getElementById('customGasUrlInput');
+  var fb = document.getElementById('gasUrlTestFeedback');
+  if (!inp || !fb) return;
+  var url = inp.value.trim();
+  if (!url || !/^https:\/\/script\.google\.com\/macros\/s\//.test(url)) {
+    fb.style.display = 'block';
+    fb.style.color = '#f87171';
+    fb.textContent = '❌ Please enter a valid Google Apps Script Web App URL starting with https://script.google.com/macros/s/...';
+    return;
+  }
+  fb.style.display = 'block';
+  fb.style.color = '#38bdf8';
+  fb.textContent = '⏳ Testing connection to Google Apps Script...';
+
+  try {
+    localStorage.setItem('ATPL_CUSTOM_GAS_URL', url);
+    window.ATPL_GAS_URL = url;
+    if (window.ATPLCloudAPI && window.ATPLCloudAPI.setCustomUrl) {
+      window.ATPLCloudAPI.setCustomUrl(url);
+    }
+
+    var savedOnServer = false;
+    try {
+      var sRes = await fetch('/api/sync/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gas_url: url })
+      });
+      var sJson = await sRes.json();
+      savedOnServer = sJson && sJson.ok;
+    } catch (_) {}
+
+    var pingRes = await (window.ATPLCloudAPI ? window.ATPLCloudAPI.ping() : fetch(url + '?action=ping').then(function(r){return r.json();}));
+    if (pingRes && pingRes.ok) {
+      fb.style.color = '#4ade80';
+      fb.innerHTML = '✅ <strong>Kamyab!</strong> Google Apps Script connected successfully! ' + (pingRes.service || '') + ' (' + (pingRes.version || '') + ').' + (savedOnServer ? ' Central server synced.' : '');
+      if (window.showToast) window.showToast('✅ Google Apps Script connected & synchronized!');
+      setTimeout(function(){ window.atplTriggerCrossSync(true); }, 1000);
+    } else {
+      fb.style.color = '#fbbf24';
+      fb.textContent = '⚠️ URL saved! Note: Ping test returned unexpected response, but URL is configured.';
+    }
+  } catch (err) {
+    fb.style.color = '#f87171';
+    fb.textContent = '⚠️ Connected with warning: ' + (err.message || err) + '. Ensure script is deployed with "Who has access: Anyone".';
+  }
+};
+
+window.resetDefaultGasUrl = function() {
+  localStorage.removeItem('ATPL_CUSTOM_GAS_URL');
+  var inp = document.getElementById('customGasUrlInput');
+  var defaultUrl = "https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec";
+  if (inp) inp.value = defaultUrl;
+  window.ATPL_GAS_URL = defaultUrl;
+  if (window.ATPLCloudAPI && window.ATPLCloudAPI.setCustomUrl) window.ATPLCloudAPI.setCustomUrl('');
+  var fb = document.getElementById('gasUrlTestFeedback');
+  if (fb) {
+    fb.style.display = 'block';
+    fb.style.color = '#a5b4fc';
+    fb.textContent = '🔄 Reset to default Google Apps Script URL.';
+  }
+};
+
+window.purgeGhostRecordsNow = async function() {
+  if (!confirm('Kya aap sure hain? Ye Employee Master me se purane corrupted ghost / chunk records ko purge karega taaki saare browsers me clean data match ho sake.')) return;
+  if (window.showToast) window.showToast('🧹 Purging corrupted ghost records...');
+  try {
+    var pCount = 0;
+    try {
+      var r = await fetch('/api/sync/purge-ghosts', { method: 'POST' });
+      var j = await r.json();
+      if (j && j.ok) pCount = j.purgedCount || 0;
+    } catch (_) {}
+
+    if (window.ATPLCloudAPI && window.ATPLCloudAPI.request) {
+      try {
+        await window.ATPLCloudAPI.request({ action: 'purgeGhostRecords' });
+      } catch (_) {}
+    }
+
+    if (window.showToast) window.showToast('✅ Cleanup complete! Purged ' + pCount + ' corrupted records. Re-syncing...');
+    window.atplTriggerCrossSync(true);
+  } catch (err) {
+    if (window.showToast) window.showToast('⚠️ Cleanup error: ' + (err.message || err));
+  }
+};
+
+window.toggleGasScriptViewer = async function() {
+  var box = document.getElementById('gasCodeViewerBox');
+  if (!box) return;
+  if (box.style.display === 'none' || !box.style.display) {
+    box.style.display = 'flex';
+    var pre = document.getElementById('gasCodePre');
+    if (pre && pre.textContent === 'Loading clean script...') {
+      try {
+        var r = await fetch('/api/sync/gas-code');
+        var j = await r.json();
+        if (j && j.ok && j.code) {
+          pre.textContent = j.code;
+        } else {
+          pre.textContent = '// Please view /backend/ATPL_Clean_Backend_V5.gs in project files';
+        }
+      } catch (_) {
+        pre.textContent = '// Code can be copied directly from backend/ATPL_Clean_Backend_V5.gs';
+      }
+    }
+  } else {
+    box.style.display = 'none';
+  }
+};
+
+window.copyGasScriptCode = function(btn) {
+  var pre = document.getElementById('gasCodePre');
+  if (!pre) return;
+  var text = pre.textContent;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function() {
+      var old = btn.textContent;
+      btn.textContent = '✅ Copied!';
+      setTimeout(function(){ btn.textContent = old; }, 2500);
+      if (window.showToast) window.showToast('📋 Clean Apps Script Code copied to clipboard!');
+    });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    var old = btn.textContent;
+    btn.textContent = '✅ Copied!';
+    setTimeout(function(){ btn.textContent = old; }, 2500);
+    if (window.showToast) window.showToast('📋 Clean Apps Script Code copied to clipboard!');
   }
 };
 

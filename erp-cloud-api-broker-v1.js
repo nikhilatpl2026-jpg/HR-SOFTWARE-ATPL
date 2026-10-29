@@ -9,7 +9,16 @@ var BUILD='2026.09.22-production-v6-dol-long-reads';
 if(!root||root.__ATPL_CLOUD_API_BROKER__===BUILD)return;
 root.__ATPL_CLOUD_API_BROKER__=BUILD;
 
-var API='https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+function getApiUrl() {
+  try {
+    var custom = (root.localStorage && root.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
+    if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) {
+      return custom.trim();
+    }
+  } catch(_) {}
+  return (root.ATPL_GAS_URL && String(root.ATPL_GAS_URL).trim()) || 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+}
+var API = getApiUrl();
 var TOKEN_KEY='ATPL_RemoteToken_V1',ALT_KEY='ATPL_SharedToken_V1',SESS_KEY='ATPL_UserSession_V5',USERS_KEY='ATPL_UserAccess_V1',HASH_KEY='ATPL_LastLoginHash_V1';
 var DEFAULT_ADMIN_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // sha256('admin123')
 var inflight={},cache={},queue=[],active=0,activeWrites=0,MAX_ACTIVE=4,MAX_WRITES=3,lastStart=0,MIN_GAP=40,seq=0;
@@ -79,7 +88,7 @@ function jsonp(params,timeout){
     s.crossOrigin='anonymous';
     s.addEventListener('error',function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))},true);
     s.onerror=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))};
-    s.src=API+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
+    s.src=getApiUrl()+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
   })
 }
 async function proxyFetch(params,timeout){
@@ -101,7 +110,7 @@ async function fetchFallback(params,timeout){
   var ctrl=typeof root.AbortController==='function'?new root.AbortController():null;
   var t=root.setTimeout(function(){try{if(ctrl)ctrl.abort()}catch(_){}},timeout);
   try{
-    var p=Object.assign({},cleanParams(params),{_ts:now()}),r=await root.fetch(API+'?'+qs(p),{
+    var p=Object.assign({},cleanParams(params),{_ts:now()}),r=await root.fetch(getApiUrl()+'?'+qs(p),{
       method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',signal:ctrl?ctrl.signal:undefined
     });
     if(!r.ok)throw new Error('HTTP_'+r.status);
@@ -277,6 +286,13 @@ async function request(params,opts){
     if(action==='login'&&data&&data.ok&&data.token){
       saveRealToken(data.token);
     }
+    if(action==='getEmployeeMaster'&&data&&Array.isArray(data.records)){
+      data.records = data.records.filter(function(r){
+        var id = String((r && (r.emp_id || r.id)) || '').trim();
+        return id && id.indexOf('__ATPL_SYS__') !== 0 && id !== 'undefined' && id !== 'null';
+      });
+      data.count = data.records.length;
+    }
     if(action!=='ping'&&action!=='login'&&data&&data.ok===false&&/Valid login session required/i.test(String(data.error||''))&&!opts._retriedAuth){
       var fresh=await ensureCloudToken(true);
       if(fresh){
@@ -293,7 +309,7 @@ async function request(params,opts){
 }
 async function ping(){return request({action:'ping'},{cacheMs:15000,attempts:2,timeout:12000})}
 function clear(){cache={};inflight={}}
-function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false)},health)}
+function status(){return Object.assign({build:BUILD,online:!(root.navigator&&root.navigator.onLine===false),apiUrl:getApiUrl()},health)}
 try{
   if(!getStoredToken()){
     var initTk='FAST_AUTH_'+now();
@@ -301,7 +317,26 @@ try{
     if(root.localStorage){root.localStorage.setItem(TOKEN_KEY,initTk);root.localStorage.setItem(ALT_KEY,initTk);}
   }
 }catch(_){}
-root.ATPLCloudAPI={request:request,ping:ping,ensureToken:ensureCloudToken,clearCache:clear,status:status,version:function(){return BUILD},apiUrl:API};
+root.ATPLCloudAPI={
+  request:request,
+  ping:ping,
+  ensureToken:ensureCloudToken,
+  clearCache:clear,
+  status:status,
+  version:function(){return BUILD},
+  apiUrl:getApiUrl,
+  setCustomUrl:function(url){
+    try{
+      if(url&&url.trim()){
+        if(root.localStorage) root.localStorage.setItem('ATPL_CUSTOM_GAS_URL', url.trim());
+        root.ATPL_GAS_URL = url.trim();
+      }else{
+        if(root.localStorage) root.localStorage.removeItem('ATPL_CUSTOM_GAS_URL');
+      }
+      clear();
+    }catch(_){}
+  }
+};
 try{root.document.dispatchEvent(new CustomEvent('atpl-cloud-broker-ready',{detail:{build:BUILD}}))}catch(_){}
 root.setTimeout(function(){
   try{

@@ -270,11 +270,19 @@ function incrementVersion() {
   return filesDb.version;
 }
 
+let appConfig = readJsonFile('config.json', {
+  gas_url: process.env.GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec'
+});
+
+function getActiveAppsScriptUrl() {
+  return (appConfig && appConfig.gas_url) || process.env.GOOGLE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+}
+
 // ── Server-Side Cloud Proxy for Google Apps Script ──
 // Completely bypasses iframe CSP and prevents cross-origin "Script error."
 app.all('/api/cloud-proxy', async (req, res) => {
   const params = req.method === 'POST' ? req.body : req.query;
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+  const APPS_SCRIPT_URL = getActiveAppsScriptUrl();
   const action = String(params && params.action || '').trim();
   try {
     const qs = new URLSearchParams(params).toString();
@@ -296,6 +304,15 @@ app.all('/api/cloud-proxy', async (req, res) => {
     }
 
     if (json) {
+      // Clean ghost chunk records from EmployeeMaster
+      if (action === 'getEmployeeMaster' && Array.isArray(json.records)) {
+        json.records = json.records.filter(r => {
+          const id = String((r && (r.emp_id || r.id)) || '').trim();
+          return id && !id.startsWith('__ATPL_SYS__') && id !== 'undefined' && id !== 'null';
+        });
+        json.count = json.records.length;
+      }
+
       // If currently deployed Apps Script does not recognize getSystemRecords yet, resolve cleanly
       if (action === 'getSystemRecords' && json.ok === false && /unknown action/i.test(String(json.error || ''))) {
         return res.json({
@@ -341,10 +358,9 @@ app.all('/api/cloud-proxy', async (req, res) => {
   }
 });
 
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
-
 function syncToGoogleAppsScript(action, payload) {
   if (process.env.NODE_ENV === 'test') return;
+  const APPS_SCRIPT_URL = getActiveAppsScriptUrl();
   setTimeout(async () => {
     try {
       const data = Object.assign({ action: action }, payload || {});
@@ -458,6 +474,67 @@ app.get('/api/sync/health', (req, res) => {
     total_tombstones: Object.keys(filesDb.tombstones).length,
     timestamp: new Date().toISOString()
   });
+});
+
+// ── Real-Time Cloud & Google Apps Script Sync Config ──
+app.get('/api/sync/config', (req, res) => {
+  return res.json({
+    ok: true,
+    gas_url: getActiveAppsScriptUrl(),
+    clients_connected: sseClients.size,
+    total_employees: (syncEmployeeMaster || []).length,
+    total_files: Object.keys(filesDb.files || {}).length,
+    version: filesDb.version,
+    backend_mode: 'Real-Time Hybrid (Cloud Run + Google Apps Script)'
+  });
+});
+
+app.post('/api/sync/config', async (req, res) => {
+  try {
+    const { gas_url } = req.body || {};
+    if (!gas_url || !/^https:\/\/script\.google\.com\/macros\/s\//.test(String(gas_url).trim())) {
+      return res.status(400).json({ ok: false, error: 'Valid Google Apps Script Web App URL required (starts with https://script.google.com/macros/s/...)' });
+    }
+    const cleanUrl = String(gas_url).trim();
+    appConfig.gas_url = cleanUrl;
+    writeJsonFile('config.json', appConfig);
+    broadcastEvent('sync_config_updated', { gas_url: cleanUrl, timestamp: new Date().toISOString() });
+    return res.json({ ok: true, saved: true, gas_url: cleanUrl });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Instant Ghost / Corrupted Record Purge ──
+app.post('/api/sync/purge-ghosts', (req, res) => {
+  try {
+    const initialCount = (syncEmployeeMaster || []).length;
+    syncEmployeeMaster = (syncEmployeeMaster || []).filter(e => {
+      const eid = String((e && (e.emp_id || e.id)) || '').trim();
+      return eid && !eid.startsWith('__ATPL_SYS__') && eid !== 'undefined' && eid !== 'null';
+    });
+    const purgedFromMemory = initialCount - syncEmployeeMaster.length;
+    writeJsonFile('employee_master.json', syncEmployeeMaster);
+    broadcastEvent('employee_master_updated', { records: syncEmployeeMaster, purged: purgedFromMemory });
+    syncToGoogleAppsScript('purgeGhostRecords', {});
+    return res.json({ ok: true, purgedCount: purgedFromMemory, currentEmployees: syncEmployeeMaster.length });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Clean Google Apps Script Template Delivery ──
+app.get('/api/sync/gas-code', (req, res) => {
+  try {
+    const filePath = path.join(__dirname, 'backend', 'ATPL_Clean_Backend_V5.gs');
+    if (fs.existsSync(filePath)) {
+      const code = fs.readFileSync(filePath, 'utf8');
+      return res.json({ ok: true, code, filename: 'ATPL_Clean_Backend_V5.gs', version: '5.5-clean-isolated-sync' });
+    }
+    return res.status(404).json({ ok: false, error: 'Script template not found' });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ── Upload / Save File (Central Authoritative Entry Point) ──

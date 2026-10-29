@@ -7,7 +7,9 @@
 (function(window) {
   'use strict';
 
-  var GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+  var customGas = '';
+  try { customGas = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || ''; } catch(_) {}
+  var GAS_URL = customGas || (window.ATPL_GAS_URL || 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec');
   var localVersion = 0;
   var isPolling = false;
   var downloadQueue = [];
@@ -17,8 +19,17 @@
   var backoffMs = 0;
 
   window.ATPL_GAS_URL = GAS_URL;
-  window.ATPL_GET_API_BASE = function() { return GAS_URL; };
-  window.__ATPL_CENTRAL_BACKEND_URL = GAS_URL;
+  if (!window.__ATPL_CENTRAL_BACKEND_URL || window.__ATPL_CENTRAL_BACKEND_URL === 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec') {
+    var host = (window.location && window.location.hostname) || '';
+    if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
+      window.__ATPL_CENTRAL_BACKEND_URL = window.location.origin || '';
+    } else {
+      window.__ATPL_CENTRAL_BACKEND_URL = window.LIVE_CLOUD_RUN_URL || window.location.origin || '';
+    }
+  }
+  if (!window.ATPL_GET_API_BASE || typeof window.ATPL_GET_API_BASE !== 'function') {
+    window.ATPL_GET_API_BASE = function() { return window.__ATPL_CENTRAL_BACKEND_URL || ''; };
+  }
 
   // ── Helper Utilities ──
   function toB64(buf) {
