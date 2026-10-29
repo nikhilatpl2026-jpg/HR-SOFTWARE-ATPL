@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261029-rotation-fix-v8';
+const CACHE_NAME = 'atpl-cache-v20261029-nodrive-fast-v9';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
