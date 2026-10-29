@@ -161,7 +161,9 @@ async function transport(params,opts){
 
 function isPlaceholderToken(tk){
   var s=String(tk||'').trim();
-  return !s;
+  // Real GAS tokens look like ATPL_CLOUD_SECURE_TOKEN_<hex>; anything else listed
+  // here is a local placeholder that must be exchanged via ensureCloudToken.
+  return !s || /^(FAST_AUTH_|OFFLINE_|ADMIN_|LOCAL_)/i.test(s) || s==='ATPL_USER_TOKEN';
 }
 function getStoredToken(){
   try{
