@@ -1535,6 +1535,7 @@ async function applySalarySnapshot(records){
      encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});
  }
  async function flushSalaryOutbox(){
+   if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return true;
    if(salaryWriteFlight)return salaryWriteFlight;
    salaryWriteFlight=(async function(){
      await ensureTokenReady();
@@ -1575,6 +1576,7 @@ async function applySalarySnapshot(records){
    }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud sync pending');return false}
  }
  async function syncSharedSalary(force){
+   if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return true;
    if(salarySyncFlight)return salarySyncFlight;
    await ensureTokenReady();
    // Allow background sync even before login
@@ -1689,6 +1691,7 @@ async function applySalarySnapshot(records){
      try{
        var bc=new root.BroadcastChannel('ATPL_ERP_SHARED_V2');
        bc.onmessage=function(ev){
+         if(root.ATPLGoogleSync || root.ATPLCentralFileSync) return;
          if(ev&&ev.data&&(ev.data.type==='salary_file_deleted'||ev.data.type==='salary_file_saved')){
            syncNow(true);
            syncWithServer(true);

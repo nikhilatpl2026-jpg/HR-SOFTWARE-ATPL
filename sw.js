@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261029-nodrive-fast-v9';
+const CACHE_NAME = 'atpl-cache-v20261029-instant-upload-v10';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
