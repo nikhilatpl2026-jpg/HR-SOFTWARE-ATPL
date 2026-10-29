@@ -11,3 +11,4 @@ data/blobs/*.bin
 bun.lock
 public/assets/aistudio/
 .playwright-cli/
+node-compile-cache/
