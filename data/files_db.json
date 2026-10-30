@@ -252,8 +252,8 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:38:06.183Z",
-      "uploaded_at": "2026-10-30T17:38:06.183Z"
+      "deleted_at": "2026-10-30T17:38:25.315Z",
+      "uploaded_at": "2026-10-30T17:38:25.315Z"
     },
     "dec salary 2023.xlsx": {
       "id": "dec salary 2023.xlsx",
@@ -262,8 +262,8 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:38:06.183Z",
-      "uploaded_at": "2026-10-30T17:38:06.183Z"
+      "deleted_at": "2026-10-30T17:38:25.315Z",
+      "uploaded_at": "2026-10-30T17:38:25.315Z"
     }
   },
   "files": {
