@@ -1774,8 +1774,59 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     background: rgba(56, 189, 248, 0.08);
     border-radius: 8px 8px 0 0;
   }
+
+/* ── PROFESSIONAL ERP COLLAPSIBLE PANELS ── */
+.sidebar {
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s, padding 0.22s, opacity 0.2s !important;
+}
+.sidebar.collapsed {
+  width: 0px !important;
+  min-width: 0px !important;
+  max-width: 0px !important;
+  padding: 0px !important;
+  margin: 0px !important;
+  border-right: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+#vnav {
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s, opacity 0.2s !important;
+}
+#vnav.full-collapsed {
+  width: 0px !important;
+  min-width: 0px !important;
+  max-width: 0px !important;
+  padding: 0px !important;
+  margin: 0px !important;
+  border-right: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+/* Floating restore toggle when in full screen mode */
+#erpFloatRestoreBtn {
+  display: none;
+  position: fixed;
+  bottom: 18px;
+  left: 18px;
+  z-index: 9999;
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.25);
+  box-shadow: 0 6px 20px rgba(79,70,229,0.5);
+  border-radius: 30px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
 </style>
-<script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
+<!-- attendance auditor script removed -->
 </head>
 <body>
 
@@ -1970,12 +2021,19 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="logo-sub">Excel Commander v2 · Hindi · English · Hinglish</div>
   </div>
   <div class="header-right">
-    <button onclick="window.AroraAICommander.open()" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
+    <!-- testBtn removed -->
+    
+    <!-- PROFESSIONAL ERP PANEL TOGGLES -->
+    <button onclick="toggleERPFullView()" id="erpFullViewBtn" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(99,102,241,0.18);border:1px solid rgba(129,140,248,0.4);color:#c7d2fe;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Toggle Sidebars / Full ERP Screen View">
+      <span id="erpFullViewIcon" style="font-size:14px">◧</span> <span id="erpFullViewLbl">Full ERP View</span>
+    </button>
+    <button onclick="toggleFilesPanel()" id="erpFilesPanelBtn" style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#94a3b8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Hide/Show Upload & Files Panel">
+      <span style="font-size:13px">📂</span> <span id="erpFilesPanelLbl">Hide Files</span>
+    </button>
+
     <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Sync Data</span></button>
     <button onclick="openCloudSyncModal()" id="cloudSyncModalBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:linear-gradient(135deg,rgba(99,102,241,0.25),rgba(14,165,233,0.25));border:1px solid rgba(129,140,248,0.5);color:#c7d2fe;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Google Sheet & Cloud Sync Setup"><span style="font-size:14px">⚡</span> <span>Sheet &amp; Cloud Setup</span></button>
-    <button onclick="toggleDeepScan()" id="dsBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(129,140,248,0.15);border:1px solid rgba(129,140,248,0.3);color:#818CF8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" onmouseover="this.style.background='rgba(129,140,248,0.25)'" onmouseout="this.style.background='rgba(129,140,248,0.15)'">
-      <span style="font-size:14px">🔬</span> Deep Scan
-    </button>
+    <!-- dsBtn removed -->
     <div class="storage-badge">
       <div class="dot"></div>
       <span id="storageLbl">IndexedDB Ready</span>
@@ -2146,7 +2204,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem active" id="vn-cmd" onclick="goPage('cmd')"><span class="vi">⚡</span>Smart Commands</div>
       <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" style="color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
       <div class="vitem" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
-      <div class="vitem" id="vn-test" onclick="goPage('test')" style="background:rgba(99,102,241,0.15);color:#a5b4fc"><span class="vi">🧪</span>Test Feature</div>
+      <!-- vn-test removed -->
     </div>
   </div>
 
@@ -2157,7 +2215,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-sal">      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
-      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
+      <!-- vn-attendanceaudit removed -->
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" style="background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
@@ -2207,7 +2265,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="sb-sec">
       <div class="sb-lbl">Upload Files</div>
       <div class="dropzone" id="dz">
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt,.xlsb,.xlsm,.ods" multiple>
         <div class="dz-icon">📂</div>
         <div class="dz-text"><strong>Files yahan drop karo</strong></div>
         <div class="dz-hint">.xlsx · .xls · .csv · Multiple files</div>
@@ -4265,7 +4323,7 @@ async function handleFiles(list) {
   window.__ATPL_IS_UPLOADING = true;
   window.__ATPL_LAST_UPLOAD_TIME = Date.now();
   var validFiles = (list || []).filter(function(file) {
-    if (!file || !file.name || !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+    if (!file || !file.name || !file.name.match(/\.(xlsx|xls|csv|tsv|txt|xlsb|xlsm|ods)$/i)) {
       if (file && file.name) lg('err', '❌ Support nahi: ' + file.name);
       return false;
     }
@@ -5398,47 +5456,84 @@ function findFormulaSheet(f) {
 }
 
 // ── UNIVERSAL HUMAN-LIKE SALARY SHEET & HEADER PARSER ──
+// ── UNIVERSAL HUMAN-LIKE SALARY SHEET & HEADER PARSER (UPGRADED FOR ALL FILE FORMATS) ──
+// ── UNIVERSAL HUMAN-LIKE SALARY SHEET & HEADER PARSER (UPGRADED FOR ALL FILE FORMATS) ──
 function universalDetectSalaryCols(hdr, sampleRows) {
   var cols = {
     empCode: -1, empName: -1, dept: -1, desig: -1, category: -1,
     father: -1, dob: -1, doj: -1, dol: -1, gross: -1, basic: -1, hra: -1,
-    workDays: -1, otHours: -1, otAmount: -1, pf: -1, esic: -1,
-    netEarning: -1, netPayment: -1, manual: -1, pfNumber: -1, esiNumber: -1,
+    workDays: -1, otHours: -1, otAmount: -1, pfNumber: -1, pf: -1,
+    esiNumber: -1, esic: -1, netEarning: -1, netPayment: -1, manual: -1,
     advance: -1, loan: -1, bankName: -1, ifsc: -1, accountNo: -1,
-    aadhaar: -1, phone: -1, gender: -1
+    aadhaar: -1, phone: -1, gender: -1, bonus: -1
   };
   if (!Array.isArray(hdr) || !hdr.length) return cols;
 
   function clean(s) {
     return String(s || '')
       .toLowerCase()
-      .replace(/[₹$,/\\()_.:[\]#\-+@*]/g, ' ')
+      .replace(/[₹$,/\\()_.:\[\]#\-+@*]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
 
+  function matchesAlias(raw, alias) {
+    if (!raw || !alias) return false;
+    if (raw === alias || raw === alias + 's') return true;
+    if (alias.length <= 2) {
+      // Short alias (e.g. 'p', 'wd', 'ot') must match whole word only
+      var words = raw.split(' ');
+      return words.indexOf(alias) >= 0;
+    }
+    // Starts with, ends with, or contains as distinct word
+    if (raw.indexOf(alias) === 0 || raw.endsWith(' ' + alias)) return true;
+    var words = raw.split(' ');
+    for (var w = 0; w < words.length; w++) {
+      if (words[w] === alias || words[w].indexOf(alias) === 0) return true;
+    }
+    return raw.indexOf(' ' + alias + ' ') >= 0;
+  }
+
+  // Priority aliases (Numbers & IDs checked before deduction amounts to avoid number collisions!)
   var ALIASES = {
+    esiNumber: [
+      'esi no', 'esi number', 'esic no', 'esic number', 'ip no', 'ip number',
+      'insurance no', 'insurance number', 'esi ip no', 'esi ip', 'esic ip', 'esi code'
+    ],
+    pfNumber: [
+      'pf number', 'pf no', 'uan', 'uan no', 'universal account number',
+      'pf member id', 'uan number', 'pf a c', 'member id'
+    ],
+    accountNo: [
+      'account number', 'account no', 'account', 'a c no', 'ac no', 'bank account no', 'bank a c'
+    ],
     empCode: [
       'emp code', 'empcode', 'employee code', 'code', 'emp id', 'empid', 'employee id',
       'e code', 'ecode', 'emp no', 'empno', 'employee no', 'employee number', 'token no',
       'token', 'card no', 'badge no', 'staff no', 'staff code', 'worker code', 'worker id',
       'worker no', 'personnel no', 'emp #', 'id', 'emp_code', 'emp_id', 'staff id',
-      'badli no', 'member id'
+      'badli no', 'c no', 'ticket no', 't no', 't.no', 'sr no', 'sr.no', 's.no', 'sno', 'sl no', 'sl.no'
     ],
     empName: [
       'emp name', 'empname', 'employee name', 'name of employee', 'name', 'worker name',
       'staff name', 'full name', 'member name', 'name of worker', 'candidate name',
-      'person name', 'employee s name', 'employees name', 'associate name', 'staff'
+      'person name', 'employee s name', 'employees name', 'associate name', 'staff', 'karamchari'
     ],
     father: [
       'father', 'father name', 'fathers name', 'father s name', 'husband name', 'f h name',
       'guardian name', 'father husband name'
     ],
     dob: ['dob', 'd o b', 'date of birth', 'birth date', 'dt of birth', 'b date'],
-    doj: ['doj', 'd o j', 'date of joining', 'joining date', 'date of join', 'dt of joining', 'appointment date'],
-    dol: ['dol', 'd o l', 'date of leaving', 'date of exit', 'exit date', 'relieving date', 'leaving date', 'date of relieving'],
+    doj: [
+      'doj', 'd o j', 'date of joining', 'joining date', 'date of join', 'dt of joining',
+      'dt of join', 'appointment date', 'date of appt', 'd o a', 'doa', 'start date', 'entry date'
+    ],
+    dol: [
+      'dol', 'd o l', 'date of leaving', 'date of exit', 'exit date', 'relieving date',
+      'leaving date', 'date of relieving', 'resignation date', 'resign date', 'left date', 'end date'
+    ],
     gender: ['gender', 'sex'],
-    dept: ['department', 'dept', 'dept name', 'section', 'cost center', 'branch', 'unit', 'plant'],
+    dept: ['department', 'dept', 'dept name', 'section', 'cost center', 'branch', 'unit', 'plant', 'division'],
     desig: ['designation', 'desig', 'post', 'job title', 'role', 'trade'],
     category: ['category', 'cat', 'category 1', 'cat 1', 'category 01', 'catgrory 01', 'category 2', 'cat 2'],
     basic: [
@@ -5449,59 +5544,72 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     gross: [
       'gross salary', 'gross total salary', 'total gross salary', 'gross', 'gross pay',
       'gross wages', 'earned gross', 'earned gross salary', 'total earnings', 'total gross',
-      'gross earning salary', 'gross earned salary', 'gross amount', 'earned salary', 'gross wage'
+      'gross earning salary', 'gross earned salary', 'gross amount', 'earned salary', 'gross wage',
+      'salary gross', 'tot gross', 'total salary', 'wage rate', 'rate of pay', 'rate'
     ],
     netPayment: [
       'net salary payable', 'net payment', 'net pay', 'net salary', 'take home', 'in hand',
       'net payable', 'net amount', 'net paid', 'total payable', 'payable amount', 'total net',
-      'net amount payable', 'net sal'
+      'net amount payable', 'net sal', 'final payment', 'payout'
     ],
-    netEarning: ['net earning', 'net earnings'],
+    netEarning: ['net earning', 'net earnings', 'total earning'],
     workDays: [
       'paid days', 'working days', 'actual working days', 'present days', 'duty days',
-      'days worked', 'pdays', 'p days', 'total days', 'pay days', 'total present', 'p', 'att days', 'att'
+      'days worked', 'pdays', 'p days', 'total days', 'pay days', 'total present',
+      'att days', 'att', 'wd', 'w days', 'w.days', 'duty', 'p'
     ],
     otHours: ['over time hours', 'overtime hours', 'ot hours', 'ot hrs', 'ot time', 'overtime hrs', 'ot'],
     otAmount: ['ot amount', 'ot amt', 'overtime amount', 'ot wages', 'overtime wages'],
     pf: [
-      'pf amt', 'pf 12%', 'pf amount', 'epf', 'pf', 'p f', 'pf ded', 'pf deduction',
-      'provident fund', 'epf deduction', 'pf 12', 'epfo', 'emp pf', 'pf employee'
+      'pf deduction', 'pf amt', 'pf 12%', 'pf amount', 'epf deduction', 'pf ded',
+      'epf', 'pf', 'p f', 'provident fund', 'pf 12', 'epfo', 'emp pf', 'pf employee'
     ],
-    pfNumber: ['pf number', 'uan', 'uan no', 'universal account number', 'pf no', 'pf member id', 'uan number'],
     esic: [
-      'esiamt', 'esic 075%', 'esic amount', 'esicamt', 'esi', 'e s i', 'esic', 'esi ded',
-      'esic ded', 'esic deduction', 'esi amount', 'esi 0 75', 'esic 0 75', 'ip ded', 'esi employee'
+      'esic deduction', 'esic amt', 'esi amt', 'esic 075%', 'esic amount', 'esic ded', 'esi ded',
+      'esiamt', 'esi amount', 'esi 0 75', 'esic 0 75', 'ip ded', 'esi employee', 'esic', 'esi', 'e s i'
     ],
-    esiNumber: ['esi no', 'esic no', 'ip no', 'insurance no', 'esi number', 'ip number'],
     bankName: ['bank name', 'bank', 'bank a c', 'bank account'],
     ifsc: ['ifsc code', 'ifsc', 'branch ifsc'],
-    accountNo: ['account number', 'account no', 'account', 'a c no', 'ac no', 'bank account no'],
     aadhaar: ['aadhaar number', 'aadhaar no', 'aadhaar', 'aadhar number', 'aadhar no', 'aadhar'],
     phone: ['phone number', 'phone no', 'mobile number', 'mobile no', 'phone', 'mobile', 'contact no'],
-    manual: ['manual amount', 'manual amt', 'mam amount'],
-    advance: ['advance pay', 'advance', 'salary advance', 'staff advance', 'adv ded', 'adv'],
-    loan: ['loan', 'loan deduction']
+    manual: ['manual amount', 'manual amt', 'mam amount', 'mam', 'manual', 'cash amount', 'settlement amount'],
+    advance: ['advance pay', 'advance', 'salary advance', 'staff advance', 'adv ded', 'adv', 'adv.'],
+    loan: ['loan', 'loan deduction'],
+    bonus: ['bonus', 'earned bonus', 'earning bonus', 'diwali bonus', 'ex gratia', 'bonus amount']
   };
 
-  // Phase 1: Exact / Prefix / Suffix match
+  var fieldOrder = [
+    'esiNumber', 'pfNumber', 'accountNo', 'empCode', 'empName', 'gross', 'basic',
+    'hra', 'pf', 'esic', 'workDays', 'doj', 'dol', 'manual', 'netPayment',
+    'netEarning', 'dept', 'desig', 'category', 'father', 'dob', 'gender',
+    'advance', 'loan', 'bonus', 'bankName', 'ifsc', 'aadhaar', 'phone', 'otHours', 'otAmount'
+  ];
+
+  // Phase 1: High-precision matching
   hdr.forEach(function(h, i) {
     var raw = clean(h);
     if (!raw) return;
-    Object.keys(ALIASES).forEach(function(field) {
-      if (cols[field] >= 0) return;
-      var matches = ALIASES[field];
+    for (var fi = 0; fi < fieldOrder.length; fi++) {
+      var field = fieldOrder[fi];
+      if (cols[field] >= 0) continue;
+      var matches = ALIASES[field] || [];
       for (var k = 0; k < matches.length; k++) {
         var alias = clean(matches[k]);
-        if (raw === alias || raw === alias + 's' || raw.indexOf(alias) === 0 || raw.endsWith(' ' + alias)) {
+        if (matchesAlias(raw, alias)) {
+          // If field is esic or pf, ensure it does not explicitly contain 'no' or 'number' or 'ip'
+          if ((field === 'esic' || field === 'pf') && (raw.indexOf('no') >= 0 || raw.indexOf('num') >= 0 || raw.indexOf('uan') >= 0 || raw.indexOf('ip') >= 0)) {
+            continue;
+          }
           cols[field] = i;
           break;
         }
       }
-    });
+      if (cols[field] === i) break;
+    }
   });
 
-  // Phase 2: Substring search for missing core columns
-  ['empCode', 'empName', 'gross', 'basic', 'netPayment', 'pf', 'esic', 'workDays'].forEach(function(field) {
+  // Phase 2: Fallback substring matching for core fields
+  ['empCode', 'empName', 'gross', 'basic', 'netPayment', 'pf', 'esic', 'workDays', 'doj', 'dol', 'manual'].forEach(function(field) {
     if (cols[field] >= 0) return;
     hdr.forEach(function(h, i) {
       if (cols[field] >= 0) return;
@@ -5509,10 +5617,14 @@ function universalDetectSalaryCols(hdr, sampleRows) {
       if (!raw) return;
       var alreadyClaimed = Object.keys(cols).some(function(k){ return cols[k] === i; });
       if (alreadyClaimed) return;
-      var matches = ALIASES[field];
+      var matches = ALIASES[field] || [];
       for (var k = 0; k < matches.length; k++) {
         var alias = clean(matches[k]);
+        if (alias.length <= 2) continue; // skip 1-2 char aliases in broad search
         if (raw.indexOf(alias) >= 0) {
+          if ((field === 'esic' || field === 'pf') && (raw.indexOf('no') >= 0 || raw.indexOf('num') >= 0 || raw.indexOf('uan') >= 0 || raw.indexOf('ip') >= 0)) {
+            continue;
+          }
           cols[field] = i;
           break;
         }
@@ -5526,11 +5638,11 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     var numCols = hdr.length;
     for (var c = 0; c < numCols; c++) {
       var numericCount = 0, alphaCount = 0, totalCount = 0;
-      for (var r = 0; r < Math.min(15, sampleRows.length); r++) {
+      for (var r = 0; r < Math.min(25, sampleRows.length); r++) {
         var val = sampleRows[r] ? String(sampleRows[r][c] || '').trim() : '';
         if (!val) continue;
         totalCount++;
-        if (/^\d{1,8}$/.test(val) || /^[A-Z]{1,3}\d{1,6}$/i.test(val)) numericCount++;
+        if (/^\d{3,8}$/.test(val) || /^[A-Za-z]{1,3}\d{1,6}$/i.test(val)) numericCount++;
         else if (/^[A-Za-z\s.]{3,35}$/.test(val)) alphaCount++;
       }
       colStats.push({ col: c, numeric: numericCount, alpha: alphaCount, total: totalCount });
@@ -5547,62 +5659,8 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     }
   }
 
-  // Final safety index fallback
-  if (cols.empCode < 0 && cols.empName < 0 && hdr.length >= 2) {
-    cols.empCode = 0;
-    cols.empName = 1;
-  } else if (cols.empCode < 0 && cols.empName >= 1) {
-    cols.empCode = cols.empName === 0 ? 1 : 0;
-  } else if (cols.empName < 0 && cols.empCode >= 0) {
-    cols.empName = cols.empCode === 0 ? 1 : 0;
-  }
-
   return cols;
 }
-
-function findUniversalHeaderRow(rowsRaw) {
-  if (!Array.isArray(rowsRaw) || !rowsRaw.length) return 0;
-  var bestIdx = 0, maxScore = -1;
-  var KEYWORDS = ['emp', 'code', 'name', 'basic', 'gross', 'salary', 'pf', 'esi', 'days', 'dept', 'desig', 'doj', 'father', 'total', 'payable', 'uan'];
-  var maxSearch = Math.min(25, rowsRaw.length);
-  for (var i = 0; i < maxSearch; i++) {
-    var row = rowsRaw[i];
-    if (!Array.isArray(row)) continue;
-    var rowStr = row.map(function(c){ return String(c||'').toLowerCase(); }).join(' ');
-    var score = 0;
-    KEYWORDS.forEach(function(kw) {
-      if (rowStr.indexOf(kw) >= 0) score++;
-    });
-    if ((rowStr.indexOf('emp') >= 0 || rowStr.indexOf('code') >= 0) && (rowStr.indexOf('name') >= 0 || rowStr.indexOf('basic') >= 0)) {
-      score += 3;
-    }
-    if (score > maxScore) {
-      maxScore = score;
-      bestIdx = i;
-    }
-  }
-
-  if (bestIdx > 0 && maxScore >= 2) {
-    var prevRow = rowsRaw[bestIdx - 1];
-    if (Array.isArray(prevRow)) {
-      var prevStr = prevRow.join(' ').toLowerCase();
-      if (prevStr.indexOf('earning') >= 0 || prevStr.indexOf('deduction') >= 0 || prevStr.indexOf('salary') >= 0) {
-        var merged = [];
-        var maxLen = Math.max(prevRow.length, rowsRaw[bestIdx].length);
-        var lastPrefix = '';
-        for (var c = 0; c < maxLen; c++) {
-          var top = String(prevRow[c] || '').trim();
-          if (top) lastPrefix = top;
-          var bot = String(rowsRaw[bestIdx][c] || '').trim();
-          merged.push(bot ? (lastPrefix && bot.indexOf(lastPrefix) < 0 ? (lastPrefix + ' ' + bot) : bot) : top);
-        }
-        rowsRaw[bestIdx] = merged;
-      }
-    }
-  }
-  return bestIdx;
-}
-
 function detectSalaryCols(hdr, sampleRows) {
   return universalDetectSalaryCols(hdr, sampleRows);
 }
@@ -5671,12 +5729,11 @@ function fmtDateDisplay(val) {
 }
 
 // ── MASTER DATA SCANNER v4 — tracks source file for every field ──
+// ── MASTER DATA SCANNER v5 (UNIVERSAL MULTI-FILE & ALL-SHEET COMPATIBLE) ──
 function buildEmployeeMasterData() {
   if(!FILES.length) return {};
-
   var sortedFiles = FILES.map(function(f){ return {f:f, ord:exMonthOrder(f.name)}; })
                          .sort(function(a,b){ return a.ord - b.ord; });
-
   var mNms=['','January','February','March','April','May','June','July','August','September','October','November','December'];
   var empData = {};
 
@@ -5684,37 +5741,20 @@ function buildEmployeeMasterData() {
     var f=sf.f, ord=sf.ord, mo=ord%100, yr=Math.floor(ord/100);
     var mLbl=(mo>=1&&mo<=12)?mNms[mo]+' '+yr:f.name.replace(/\.[^.]+$/,'');
 
-    // For Arora Textiles format:
-    // Sheet1/Data = personal info (DOJ, DOL, PF Number, UAN)
-    // Manisha Mam/Sheet3 = payroll data (Manual Amount, PDays, PF, ESIC, Gross)
-    // We scan PRIORITY sheets only — not all sheets (avoids picking wrong data from bank sheets)
-    // FIXED: Fourmala Sheet is the MAIN salary sheet in Arora Textiles format
-    // Scan ALL sheets that have emp code data — sort by priority
-    // But skip bank/card/attendance/advance sheets (they don't have Manual Amount)
-    var skipSheets = ['advance','bank','hdfc','sbi','non sbi','non hdfc','card','attendance',
-      'attandance','payment','canteen','construction','dying','etp','felting','gp',
-      'hand to cone','kw','mp','maintance','packing','pakki','security','shorting',
-      'condancer','department wise','cash payment'];
-    
-    function isSkipSheet(sn) {
-      var snl = sn.toLowerCase();
-      return skipSheets.some(function(s){ return snl.indexOf(s)>=0; });
-    }
-
-    // Priority: Fourmala Sheet first (has Manual Amount), then others
-    var highPriority = ['Fourmala Sheet','fourmala sheet','Fourmala sheet','Formula Sheet','formula sheet',
+    // Priority sheets first, then all remaining sheets (NO HARD-CODED SKIPPING!)
+    var prioritySheetNames = [
+      'Fourmala Sheet','fourmala sheet','Formula Sheet','formula sheet',
       'Manisha Mam','manisha mam','Manisah Mam',
-      'Salary Sheet','salary sheet','Non Staff','non staff','Staff','staff',
-      'Sheet1','sheet1','Data','data'];
-    
+      'Salary Sheet','salary sheet','Salary','salary','Staff','staff','Non Staff','non staff',
+      'Muster','muster','Muster Register','muster register','Sheet1','sheet1','Data','data'
+    ];
+
     var sheetsToScan = [];
-    // Add high priority sheets first (if they exist and not skip)
-    highPriority.forEach(function(p){
-      if(f.wb.Sheets[p] && !isSkipSheet(p) && sheetsToScan.indexOf(p)<0) sheetsToScan.push(p);
+    prioritySheetNames.forEach(function(p){
+      if(f.wb.Sheets[p] && sheetsToScan.indexOf(p)<0) sheetsToScan.push(p);
     });
-    // Then add any remaining sheets (except skip sheets)
     f.wb.SheetNames.forEach(function(sn){
-      if(!isSkipSheet(sn) && sheetsToScan.indexOf(sn)<0) sheetsToScan.push(sn);
+      if(sheetsToScan.indexOf(sn)<0) sheetsToScan.push(sn);
     });
     if(!sheetsToScan.length) sheetsToScan = [f.wb.SheetNames[0]];
 
@@ -5722,40 +5762,72 @@ function buildEmployeeMasterData() {
       var ws = f.wb.Sheets[sn];
       if(!ws) return;
 
-      // Read with raw:true to get actual cell values including dates
       var rowsRaw = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
       var rowsStr = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
       if(!rowsRaw.length) return;
 
-      // Find actual header row (within first 10 rows)
-      var hdrIdx = 0;
-      for(var hi=0;hi<Math.min(10,rowsRaw.length);hi++){
-        var hh=rowsRaw[hi].join(' ').toLowerCase();
-        if(hh.indexOf('emp')>=0||hh.indexOf('code')>=0||hh.indexOf('name')>=0){hdrIdx=hi;break;}
+      // Scan up to 35 rows to find the best table header
+      var bestHdrIdx = 0;
+      var bestHdrScore = -1;
+      var maxHeaderSearch = Math.min(35, rowsRaw.length);
+
+      for (var hi = 0; hi < maxHeaderSearch; hi++) {
+        var rowText = (rowsRaw[hi] || []).map(function(x){ return String(x||'').toLowerCase(); }).join(' ');
+        var score = 0;
+        if (/emp|code|worker|staff|token|badge|id|card/i.test(rowText)) score += 5;
+        if (/name|karamchari/i.test(rowText)) score += 4;
+        if (/gross|salary|wages|rate/i.test(rowText)) score += 3;
+        if (/basic|hra|bonus/i.test(rowText)) score += 2;
+        if (/pf|epf|esi|esic/i.test(rowText)) score += 2;
+        if (/doj|dol|joining|leaving|exit/i.test(rowText)) score += 3;
+        if (/pdays|working|present|duty|days/i.test(rowText)) score += 2;
+        if (/s\.no|sr\.no|sno|serial/i.test(rowText)) score += 1;
+
+        if (score > bestHdrScore) {
+          bestHdrScore = score;
+          bestHdrIdx = hi;
+        }
       }
-      var hdr=rowsRaw[hdrIdx], cols=detectSalaryCols(hdr);
-      // Skip this sheet if empCode column could not be reliably detected
+
+      var hdr = rowsRaw[bestHdrIdx] || [];
+      var sampleRows = rowsRaw.slice(bestHdrIdx + 1, bestHdrIdx + 20);
+      var cols = detectSalaryCols(hdr, sampleRows);
+
+      // If empCode could not be detected, try row + 1 or content sniffing
+      if (cols.empCode < 0 && bestHdrIdx + 1 < rowsRaw.length) {
+        var nextHdr = rowsRaw[bestHdrIdx + 1] || [];
+        var nextCols = detectSalaryCols(nextHdr, rowsRaw.slice(bestHdrIdx + 2, bestHdrIdx + 20));
+        if (nextCols.empCode >= 0) {
+          bestHdrIdx = bestHdrIdx + 1;
+          hdr = nextHdr;
+          cols = nextCols;
+        }
+      }
+
+      // If still no employee code, skip this individual sheet
       if(cols.empCode < 0) return;
 
-      for(var r=hdrIdx+1;r<rowsRaw.length;r++){
-        var code = String(rowsRaw[r][cols.empCode]||'').trim().replace(/\.0$/,'');
-        if(!code||!code.match(/\d/)||code.length<3) continue;
-        // Clean code
-        try{ code=String(parseInt(code)); }catch(e){ continue; }
+      for(var r = bestHdrIdx + 1; r < rowsRaw.length; r++){
+        var rawCode = String(rowsRaw[r] ? rowsRaw[r][cols.empCode] || '' : '').trim().replace(/\.0$/,'');
+        if(!rawCode || !rawCode.match(/\d/) || rawCode.length < 2) continue;
 
-        var name   = String(rowsRaw[r][cols.empName]||'').trim();
-        var dept   = cols.dept>=0 ? String(rowsRaw[r][cols.dept]||'').trim() : '';
+        // Clean code (accept integer or alphanumeric code)
+        var code = rawCode;
+        if (/^\d+$/.test(rawCode)) {
+          try { code = String(parseInt(rawCode, 10)); } catch(e) {}
+        }
 
-        // DOJ — use both raw and string versions for best parse
-        var dojRaw = cols.doj>=0 ? rowsRaw[r][cols.doj] : '';
-        var dojStr = cols.doj>=0 ? String(rowsStr[r] ? (rowsStr[r][cols.doj]||'') : '').trim() : '';
-        var dojVal = dojRaw || dojStr;
+        var name = cols.empName >= 0 ? String(rowsRaw[r][cols.empName] || '').trim() : '';
+        var dept = cols.dept >= 0 ? String(rowsRaw[r][cols.dept] || '').trim() : '';
+
+        // DOJ & DOL
+        var dojRaw = cols.doj >= 0 ? rowsRaw[r][cols.doj] : '';
+        var dojStr = cols.doj >= 0 ? String(rowsStr[r] ? (rowsStr[r][cols.doj]||'') : '').trim() : '';
         var dojParsed = smartParseDate(dojRaw) || smartParseDate(dojStr);
         var dojDisplay = dojParsed ? fmtDateDisplay(dojParsed) : (dojStr||'');
 
-        // DOL — same
-        var dolRaw = cols.dol>=0 ? rowsRaw[r][cols.dol] : '';
-        var dolStr = cols.dol>=0 ? String(rowsStr[r] ? (rowsStr[r][cols.dol]||'') : '').trim() : '';
+        var dolRaw = cols.dol >= 0 ? rowsRaw[r][cols.dol] : '';
+        var dolStr = cols.dol >= 0 ? String(rowsStr[r] ? (rowsStr[r][cols.dol]||'') : '').trim() : '';
         var dolParsed = smartParseDate(dolRaw) || smartParseDate(dolStr);
         var dolDisplay = dolParsed ? fmtDateDisplay(dolParsed) : (dolStr||'');
 
@@ -5763,124 +5835,158 @@ function buildEmployeeMasterData() {
         var basic  = sflt(rowsRaw[r][cols.basic]);
         var hra    = sflt(rowsRaw[r][cols.hra]);
         var wd     = sflt(rowsRaw[r][cols.workDays]);
-        var pf     = sflt(rowsRaw[r][cols.pf]);
-        var esic   = sflt(rowsRaw[r][cols.esic]);
-        var advVal   = cols.advance>=0  ? sflt(rowsRaw[r][cols.advance])  : 0;
-        var loanVal  = cols.loan>=0     ? sflt(rowsRaw[r][cols.loan])     : 0;
-        // Bonus column — check multiple names
-        var bonusVal = 0;
-        if (hdr) {
-          hdr.forEach(function(h,ci) {
-            var hh = String(h||'').toLowerCase().trim();
-            if (hh === 'bonus' || hh === 'earning bonus' || hh === 'earned bonus') {
+        var rawPf  = sflt(rowsRaw[r][cols.pf]);
+        var rawEsi = sflt(rowsRaw[r][cols.esic]);
+        var advVal = cols.advance >= 0 ? sflt(rowsRaw[r][cols.advance]) : 0;
+        var loanVal= cols.loan >= 0 ? sflt(rowsRaw[r][cols.loan]) : 0;
+        var ne     = sflt(rowsRaw[r][cols.netEarning]);
+        var np     = sflt(rowsRaw[r][cols.netPayment]);
+        var manual = sflt(rowsRaw[r][cols.manual]);
+
+        // CRITICAL DATA SANITY GUARD: ESI & PF Deductions vs Account/IP Numbers!
+        // Prevents multi-crore glitches (e.g. 2,70,74,77,131 IP Number parsed as deduction!)
+        var pf = rawPf;
+        var esic = rawEsi;
+        var detectedEsiNo = cols.esiNumber >= 0 ? String(rowsRaw[r][cols.esiNumber] || '').trim() : '';
+        var detectedPfNo  = cols.pfNumber >= 0 ? String(rowsRaw[r][cols.pfNumber] || '').trim() : '';
+
+        // If ESI parsed value > 15,000, it is an ESI Insurance / IP Number, NOT monthly deduction!
+        if (esic > 15000) {
+          if (!detectedEsiNo) detectedEsiNo = String(Math.round(esic));
+          // Recompute statutory 0.75% deduction if gross wage <= 21,000
+          if (gross > 0 && gross <= 21000) {
+            esic = Math.round(gross * 0.0075);
+          } else {
+            esic = 0;
+          }
+        }
+
+        // If PF parsed value > 25,000, it is a UAN / PF Account Number!
+        if (pf > 25000) {
+          if (!detectedPfNo) detectedPfNo = String(Math.round(pf));
+          if (basic > 0) {
+            pf = Math.min(1800, Math.round(basic * 0.12));
+          } else if (gross > 0) {
+            pf = Math.min(1800, Math.round(gross * 0.12));
+          } else {
+            pf = 0;
+          }
+        }
+
+        // Bonus column detection
+        var bonusVal = cols.bonus >= 0 ? sflt(rowsRaw[r][cols.bonus]) : 0;
+        if (bonusVal === 0 && hdr) {
+          hdr.forEach(function(h, ci) {
+            var hh = String(h || '').toLowerCase().trim();
+            if (hh === 'bonus' || hh === 'earning bonus' || hh === 'earned bonus' || hh === 'diwali bonus') {
               var bv = sflt(rowsRaw[r][ci]);
               if (bv > 0) bonusVal = bv;
             }
           });
         }
-        // PF Number check — if pfNumber column exists and is blank, employee has no PF
-        var pfNumVal = cols.pfNumber>=0 ? String(rowsRaw[r][cols.pfNumber]||'').trim() : '__UNKNOWN__';
-        var hasPFNum = pfNumVal==='__UNKNOWN__' || (pfNumVal.length>0 && pfNumVal!=='0' && pfNumVal.toLowerCase()!=='no' && pfNumVal.toLowerCase()!=='n/a' && pfNumVal!=='-');
-        if(!hasPFNum) pf=0;  // No PF number = no PF deduction
-        var ne     = sflt(rowsRaw[r][cols.netEarning]);
-        var np     = sflt(rowsRaw[r][cols.netPayment]);
-        var manual = sflt(rowsRaw[r][cols.manual]);
 
-        var hasActivity = gross>0 || manual>0 || ne>0 || np>0;
+        var pfNumVal = detectedPfNo || (cols.pfNumber >= 0 ? String(rowsRaw[r][cols.pfNumber] || '').trim() : '__UNKNOWN__');
+        var hasPFNum = pfNumVal === '__UNKNOWN__' || (pfNumVal.length > 0 && pfNumVal !== '0' && pfNumVal.toLowerCase() !== 'no' && pfNumVal.toLowerCase() !== 'n/a' && pfNumVal !== '-');
+        if(!hasPFNum) pf = 0;
+
+        var hasActivity = gross > 0 || manual > 0 || ne > 0 || np > 0 || wd > 0 || basic > 0;
 
         if(!empData[code]){
-          empData[code]={
-            code:code, name:'', dept:'',
-            doj:'', dojDate:null, dojFile:'',
-            dolField:'', dolDate:null, dolFile:'',
-            lastGross:0, lastBasic:0, lastHra:0, lastWD:0,
-            lastPF:0, lastESIC:0, lastManual:0, lastNE:0, lastNP:0,
-            lastAdvance:0, lastLoan:0, lastBonus:0, lastBonusFile:'',
-            lastGrossFile:'', lastPFFile:'', lastESICFile:'', lastManualFile:'',
-            months:[], firstFile:f.name, lastActiveFile:'',
-            hasPF: true,  // will be set false if pfNumber col found and blank
-            debug:[]  // track what was found in each file
+          empData[code] = {
+            code: code, name: '', dept: '',
+            doj: '', dojDate: null, dojFile: '',
+            dolField: '', dolDate: null, dolFile: '',
+            lastGross: 0, lastBasic: 0, lastHra: 0, lastWD: 0,
+            lastPF: 0, lastESIC: 0, lastManual: 0, lastNE: 0, lastNP: 0,
+            lastAdvance: 0, lastLoan: 0, lastBonus: 0, lastBonusFile: '',
+            lastGrossFile: '', lastPFFile: '', lastESICFile: '', lastManualFile: '',
+            months: [], firstFile: f.name, lastActiveFile: '',
+            hasPF: true,
+            esiNo: detectedEsiNo, pfNo: detectedPfNo,
+            debug: []
           };
         }
+
         var e = empData[code];
+        if(name && name.length > 1 && name.toLowerCase() !== 'nan') e.name = name;
+        if(dept) e.dept = dept;
+        if(detectedEsiNo && !e.esiNo) e.esiNo = detectedEsiNo;
+        if(detectedPfNo && !e.pfNo) e.pfNo = detectedPfNo;
 
-        // Name — keep latest non-trivial name
-        if(name&&name.length>1&&name.toLowerCase()!=='nan') e.name=name;
-        if(dept) e.dept=dept;
-
-        // DOJ — CRITICAL FIX: only update if we got a VALID parsed date
-        // and it's different from what we have (first non-empty wins for DOJ)
+        // DOJ
         if(dojParsed && !isNaN(dojParsed.getTime()) && !e.dojDate) {
-          e.doj     = dojDisplay;
+          e.doj = dojDisplay;
           e.dojDate = dojParsed;
-          e.dojFile = f.name + ' ['+sn+']';
+          e.dojFile = f.name + ' [' + sn + ']';
         }
 
-        // DOL — CRITICAL FIX: only update if valid parsed date
+        // DOL
         if(dolParsed && !isNaN(dolParsed.getTime())) {
-          // Take the LATEST DOL date found (most recent file)
           if(!e.dolDate || dolParsed > e.dolDate) {
             e.dolField = dolDisplay;
-            e.dolDate  = dolParsed;
-            e.dolFile  = f.name + ' ['+sn+']';
+            e.dolDate = dolParsed;
+            e.dolFile = f.name + ' [' + sn + ']';
           }
         }
 
-        // Financial values — always take latest non-zero
-        if(gross>0)  { e.lastGross=gross;  e.lastGrossFile=f.name; }
-        if(basic>0)    e.lastBasic=basic;
-        if(hra>0)      e.lastHra=hra;
-        if(wd>0)       e.lastWD=wd;
-        // Update hasPF — if ANY sheet shows pfNumber column blank, mark false
-        if(cols.pfNumber>=0 && !hasPFNum) e.hasPF=false;
-        if(pf>0)     { e.lastPF=pf;    e.lastPFFile=f.name; }
-        if(esic>0)   { e.lastESIC=esic; e.lastESICFile=f.name; }
-        if(manual>0) { e.lastManual=manual; e.lastManualFile=f.name; }
-        if(advVal>0)   e.lastAdvance=advVal;
-        if(loanVal>0)  e.lastLoan=loanVal;
-        if(bonusVal>0) { e.lastBonus=bonusVal; e.lastBonusFile=f.name+' ['+sn+']'; }
-        if(ne>0)       e.lastNE=ne;
-        if(np>0)       e.lastNP=np;
+        if(gross > 0) { e.lastGross = gross; e.lastGrossFile = f.name; }
+        if(basic > 0) e.lastBasic = basic;
+        if(hra > 0) e.lastHra = hra;
+        if(wd > 0) e.lastWD = wd;
 
-        // Debug info
+        if(cols.pfNumber >= 0 && !hasPFNum) e.hasPF = false;
+        if(pf > 0) { e.lastPF = pf; e.lastPFFile = f.name; }
+        if(esic > 0) { e.lastESIC = esic; e.lastESICFile = f.name; }
+        if(manual > 0) { e.lastManual = manual; e.lastManualFile = f.name; }
+        if(advVal > 0) e.lastAdvance = advVal;
+        if(loanVal > 0) e.lastLoan = loanVal;
+        if(bonusVal > 0) { e.lastBonus = bonusVal; e.lastBonusFile = f.name + ' [' + sn + ']'; }
+        if(ne > 0) e.lastNE = ne;
+        if(np > 0) e.lastNP = np;
+
         e.debug.push({
-          file:f.name, sheet:sn, month:mLbl,
-          doj:dojDisplay, dol:dolDisplay,
-          gross:gross, manual:manual, pf:pf, esic:esic, wd:wd
+          file: f.name, sheet: sn, month: mLbl,
+          doj: dojDisplay, dol: dolDisplay,
+          gross: gross, manual: manual, pf: pf, esic: esic, wd: wd
         });
 
         e.months.push({
-          ord:ord, lbl:mLbl, file:f.name, sheet:sn,
-          hasActivity:hasActivity, manual:manual,
-          gross:gross, wd:wd, pf:pf, esic:esic,
-          np:np, ne:ne, bonus:bonusVal
+          ord: ord, lbl: mLbl, file: f.name, sheet: sn,
+          hasActivity: hasActivity, manual: manual,
+          gross: gross, wd: wd, pf: pf, esic: esic,
+          np: np, ne: ne, bonus: bonusVal
         });
 
-        if(hasActivity) e.lastActiveFile=f.name;
+        if(hasActivity) e.lastActiveFile = f.name;
       }
     });
   });
 
-  // Post-process
+  // Post-process all employees
   Object.keys(empData).forEach(function(code){
     var e = empData[code];
-    e.months.sort(function(a,b){return a.ord-b.ord;});
-    // FIXED: If employee has no PF number, force lastPF = 0
+    e.months.sort(function(a,b){ return a.ord - b.ord; });
+
     if(!e.hasPF) { e.lastPF = 0; e.lastPFFile = 'No PF Number in sheet'; }
-    // FIXED: lastSalaryMonth = last month where MANUAL AMOUNT > 0 only
-    // gross>0 is NOT enough — employee may be in sheet but unpaid (manual=0 = left)
+
+    // Last salary active month:
+    // 1st Priority: Month where Manual Amount > 0
+    // 2nd Priority (if no manual amount in any file): Month where gross > 0 or np > 0 or wd > 0
     var lastActiveMo = null;
-    e.months.forEach(function(m){ if(m.manual>0) lastActiveMo=m; });
+    e.months.forEach(function(m){ if(m.manual > 0) lastActiveMo = m; });
+    if(!lastActiveMo) {
+      e.months.forEach(function(m){ if(m.hasActivity) lastActiveMo = m; });
+    }
+
     e.lastSalaryMonth = lastActiveMo ? lastActiveMo.lbl : (e.months.length ? e.months[e.months.length-1].lbl : '');
     e.lastSalaryOrd   = lastActiveMo ? lastActiveMo.ord : 0;
-    e.totalMonthsPresent = e.months.filter(function(m){return m.manual>0;}).length;
-    
-    // Track DOL month bonus (the bonus of the actual leaving month)
+    e.totalMonthsPresent = e.months.filter(function(m){ return m.hasActivity; }).length;
+
+    // Track DOL month bonus
     e.dolMonthBonus = 0;
     e.dolMonthBonusFile = '';
     if (lastActiveMo) {
-      // Find the month matching DOL in months array
-      var dolMo = e.months.filter(function(m){return m.ord===lastActiveMo.ord;})[0];
+      var dolMo = e.months.filter(function(m){ return m.ord === lastActiveMo.ord; })[0];
       if (dolMo && dolMo.bonus > 0) {
         e.dolMonthBonus = dolMo.bonus;
         e.dolMonthBonusFile = dolMo.file || '';
@@ -5890,20 +5996,16 @@ function buildEmployeeMasterData() {
       }
     }
 
-    // PREV MONTH NET PAYMENT: Find net payment of month BEFORE the DOL month
-    // DOL = last month where manual > 0
-    // Previous month = the month just before DOL month in chronological order
+    // PREV MONTH NET PAYMENT (Month before DOL month)
     e.prevMonthNP = 0;
     e.prevMonthLbl = '';
     e.prevMonthFile = '';
     if (lastActiveMo) {
-      // Find the month just before lastActiveMo
-      var sortedMonths = e.months.slice().sort(function(a,b){return a.ord-b.ord;});
+      var sortedMonths = e.months.slice().sort(function(a,b){ return a.ord - b.ord; });
       var dolIdx = -1;
-      for (var mi=0; mi<sortedMonths.length; mi++) {
+      for (var mi = 0; mi < sortedMonths.length; mi++) {
         if (sortedMonths[mi].ord === lastActiveMo.ord) { dolIdx = mi; break; }
       }
-      // Look backwards for a month with NP > 0
       if (dolIdx > 0) {
         for (var pi = dolIdx - 1; pi >= 0; pi--) {
           var prevMo = sortedMonths[pi];
@@ -5913,23 +6015,30 @@ function buildEmployeeMasterData() {
             e.prevMonthFile = prevMo.file;
             break;
           }
-          // Also try net earning if NP not available
           if (prevMo.ne > 0 && e.prevMonthNP === 0) {
             e.prevMonthNP = prevMo.ne;
             e.prevMonthLbl = prevMo.lbl + ' (Net Earning)';
             e.prevMonthFile = prevMo.file;
           }
+          if (prevMo.manual > 0 && e.prevMonthNP === 0) {
+            e.prevMonthNP = prevMo.manual;
+            e.prevMonthLbl = prevMo.lbl + ' (Manual Amount)';
+            e.prevMonthFile = prevMo.file;
+          }
         }
       }
-      // If no previous month found, fall back to DOL month net payment
       if (e.prevMonthNP === 0) {
         if (lastActiveMo.np > 0) {
           e.prevMonthNP = lastActiveMo.np;
-          e.prevMonthLbl = lastActiveMo.lbl + ' (same month — no prev found)';
+          e.prevMonthLbl = lastActiveMo.lbl + ' (same month)';
           e.prevMonthFile = lastActiveMo.file;
         } else if (e.lastNP > 0) {
           e.prevMonthNP = e.lastNP;
           e.prevMonthLbl = 'Latest available Net Payment';
+          e.prevMonthFile = '';
+        } else if (e.lastManual > 0) {
+          e.prevMonthNP = e.lastManual;
+          e.prevMonthLbl = 'Latest Manual Amount';
           e.prevMonthFile = '';
         }
       }
@@ -15860,6 +15969,59 @@ document.addEventListener('click', function(e) {
     </div>
 
     
+
+<!-- ERP FULLSCREEN RESTORE BUTTON -->
+<button id="erpFloatRestoreBtn" onclick="toggleERPFullView()">
+  <span>◨</span> Show Sidebars
+</button>
+
+<script>
+window.__ERP_FILES_HIDDEN = false;
+window.__ERP_FULLSCREEN = false;
+
+function toggleFilesPanel() {
+  var sb = document.querySelector('.sidebar');
+  var btnLbl = document.getElementById('erpFilesPanelLbl');
+  if (!sb) return;
+  window.__ERP_FILES_HIDDEN = !window.__ERP_FILES_HIDDEN;
+  if (window.__ERP_FILES_HIDDEN) {
+    sb.classList.add('collapsed');
+    if (btnLbl) btnLbl.textContent = 'Show Files';
+  } else {
+    sb.classList.remove('collapsed');
+    if (btnLbl) btnLbl.textContent = 'Hide Files';
+  }
+}
+
+function toggleERPFullView() {
+  var vnav = document.getElementById('vnav');
+  var sb = document.querySelector('.sidebar');
+  var floatBtn = document.getElementById('erpFloatRestoreBtn');
+  var icon = document.getElementById('erpFullViewIcon');
+  var lbl = document.getElementById('erpFullViewLbl');
+  
+  window.__ERP_FULLSCREEN = !window.__ERP_FULLSCREEN;
+  
+  if (window.__ERP_FULLSCREEN) {
+    if (vnav) vnav.classList.add('full-collapsed');
+    if (sb) sb.classList.add('collapsed');
+    if (floatBtn) floatBtn.style.display = 'flex';
+    if (icon) icon.textContent = '◨';
+    if (lbl) lbl.textContent = 'Exit Full ERP';
+    window.__ERP_FILES_HIDDEN = true;
+  } else {
+    if (vnav) vnav.classList.remove('full-collapsed');
+    if (sb) sb.classList.remove('collapsed');
+    if (floatBtn) floatBtn.style.display = 'none';
+    if (icon) icon.textContent = '◧';
+    if (lbl) lbl.textContent = 'Full ERP View';
+    window.__ERP_FILES_HIDDEN = false;
+  }
+  var filesLbl = document.getElementById('erpFilesPanelLbl');
+  if (filesLbl) filesLbl.textContent = window.__ERP_FILES_HIDDEN ? 'Show Files' : 'Hide Files';
+}
+</script>
+
 </body>
 </html>
 
