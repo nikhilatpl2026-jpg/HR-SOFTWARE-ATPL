@@ -26,34 +26,4 @@ jobs:
           sleep 1
           node tests/browser-runtime-smoke.js
 
-  live-backend-readiness:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: Verify live Backend V5 deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-          URL='https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec'
-          ok=0
-          last=''
-          for attempt in 1 2 3; do
-            last="$(curl -fsSL --connect-timeout 8 --max-time 20 --retry 1 --retry-delay 1 "$URL?action=ping&_ts=$(date +%s)" || true)"
-            if printf '%s' "$last" | grep -Fq '"version":"5.2-dol-orphan-index-cleanup"'; then
-              ok=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "::warning::Backend V5 deployment is pending; frontend regression is not failed by an external deployment action."
-            {
-              echo '### ⚠ Backend deployment pending'
-              echo ''
-              echo 'The live Apps Script endpoint is not yet `5.2-dol-orphan-index-cleanup`.'
-              echo ''
-              printf 'Live ping response: `%s`\n' "$last"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          printf 'Live Backend V5 verified: %s\n' "$last"
+  
