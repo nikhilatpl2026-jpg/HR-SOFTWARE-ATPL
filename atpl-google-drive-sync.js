@@ -7,7 +7,7 @@
 (function(window) {
   'use strict';
 
-  var DEFAULT_GAS_URL = '';
+  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
   function getGasUrl() {
     try {
       var custom = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
@@ -17,7 +17,7 @@
       if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) {
         return String(window.ATPL_CUSTOM_GAS_URL).trim();
       }
-      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && !window.ATPL_GAS_URL.includes('AKfycbxiaKVtVJUWqDPtI')) {
+      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim()) {
         return String(window.ATPL_GAS_URL).trim();
       }
     } catch (_) {}
@@ -348,7 +348,9 @@
         statusRes = await callGoogleBackend('status');
       }
       var remoteVersion = statusRes ? Number(statusRes.currentVersion || 0) : 0;
-      var needFullSync = force || (statusRes && remoteVersion > localVersion) || localVersion === 0;
+      // V5 Apps Script has no 'status' action or monotonically increasing version.
+      // In that deployment fetch authoritative state instead of treating unknown status as unchanged.
+      var needFullSync = force || !statusRes || !statusRes.ok || !Number.isFinite(remoteVersion) || remoteVersion === 0 || remoteVersion > localVersion || localVersion === 0;
 
       if (!needFullSync) {
         updateSyncBadge('ok');
@@ -546,7 +548,7 @@
         if (!document.hidden && getGasUrl()) {
           pollSyncState(false);
         }
-      }, 5000);
+      }, 15000);
 
       // 3. Tab focus & visibility change trigger instant check
       window.addEventListener('focus', function() {
@@ -613,6 +615,10 @@
           rawBuf = fileObj;
         } else if (typeof fileObj.buf === 'string') {
           rawBuf = b64ToBuf(fileObj.buf);
+        } else if (typeof fileObj.original_b64 === 'string' && fileObj.original_b64) {
+          rawBuf = b64ToBuf(fileObj.original_b64);
+        } else if (typeof fileObj.file_data === 'string' && fileObj.file_data) {
+          rawBuf = b64ToBuf(fileObj.file_data);
         }
       } else if (typeof a === 'string') {
         name = a;
@@ -662,29 +668,26 @@
 
       // 3. Background Cloud Sync to user's Google Drive
       var b64Payload = rawBuf ? toB64(rawBuf) : '';
-      if (b64Payload && getGasUrl()) {
-        window.__ATPL_IS_UPLOADING = true;
-        callGoogleBackend('uploadFile', {
+      if (!b64Payload || !getGasUrl()) {
+        updateSyncBadge('error', 'Cloud upload NOT saved: missing file data or backend URL');
+        return { id: name, name: name, module: mod, ok: false, error: 'Missing file data or backend URL. Local copy may exist.' };
+      }
+      window.__ATPL_IS_UPLOADING = true;
+      try {
+        var uploadRes = await callGoogleBackend('uploadFile', {
           fileName: name,
           fileBase64: b64Payload,
-          mimeType: (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf')
-        }).then(function(res) {
-          if (res && res.ok && res.version) {
-            localVersion = Math.max(localVersion, res.version);
-            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-          }
-          updateSyncBadge('ok');
-        }).catch(function(err) {
-          console.warn('[ATPL Sync] Cloud save warning:', err);
-          updateSyncBadge('ok');
-        }).finally(function() {
-          window.__ATPL_IS_UPLOADING = false;
+          mimeType: (mod === 'salary' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/octet-stream')
         });
-      } else {
+        if (!uploadRes || !uploadRes.ok) {
+          updateSyncBadge('error', 'Cloud upload FAILED: ' + ((uploadRes && uploadRes.error) || 'Backend unavailable'));
+          return { id: name, name: name, module: mod, ok: false, error: (uploadRes && uploadRes.error) || 'Cloud backend unavailable' };
+        }
         updateSyncBadge('ok');
+        return { id: name, name: name, module: mod, created_at: now, ok: true };
+      } finally {
+        window.__ATPL_IS_UPLOADING = false;
       }
-
-      return { id: name, name: name, module: mod, created_at: now, ok: true };
     },
 
     uploadBulk: async function(module, fileList, meta, onProgress) {
@@ -727,21 +730,16 @@
       updateSyncBadge('syncing', '🗑️ Deleting ' + name + '…');
 
       // 4. Background Cloud Deletion on user's Google Drive
-      if (getGasUrl()) {
-        callGoogleBackend('deleteFile', { fileName: name }).then(function(res) {
-          if (res && res.ok && res.version) {
-            localVersion = Math.max(localVersion, res.version);
-            try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
-          }
-          updateSyncBadge('ok');
-        }).catch(function(err) {
-          console.warn('[ATPL Sync] Cloud delete notice:', err);
-          updateSyncBadge('ok');
-        });
-      } else {
-        updateSyncBadge('ok');
+      if (!getGasUrl()) {
+        updateSyncBadge('error', 'Cloud delete NOT confirmed: backend URL missing');
+        return false;
       }
-
+      var deleteRes = await callGoogleBackend('deleteFile', { fileName: name });
+      if (!deleteRes || !deleteRes.ok) {
+        updateSyncBadge('error', 'Cloud delete FAILED: ' + ((deleteRes && deleteRes.error) || 'Backend unavailable'));
+        return false;
+      }
+      updateSyncBadge('ok');
       return true;
     },
 
