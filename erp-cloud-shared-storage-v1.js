@@ -17,7 +17,7 @@
  var CHUNK=3200,MAX_CHUNKS=600,CONCURRENCY=4,lastPull=0,pulling=null,remoteRecords=[];
  var TOMB_STORAGE_KEY='ATPL_SALARY_TOMBSTONES_V2',HR_TOMB_KEY='ATPL_HR_TOMBSTONES_V2';
  var firebaseUnsubscribe=null;
- var sharedSalaryAuthority=!!(root.location && (/(^|\.)github\.io$/i.test(root.location.hostname) || (root.location.hostname && root.location.hostname!=="localhost" && root.location.hostname!=="127.0.0.1" && !/\.run\.app$/i.test(root.location.hostname))));
+var sharedSalaryAuthority = false; // Zero-Hang: Never chunk Excel files into 600 SystemRecords rows!
  var salarySyncFlight=null, salarySyncAt=0, salaryWriteFlight=null;
  var SALARY_OUTBOX='ATPL_SALARY_OUTBOX_V1', SALARY_CLEAR_KEY='__ALL_SALARY__';
 
@@ -329,8 +329,8 @@
        for(var i=0; i<rows.length; i++){
          var r = rows[i];
          var existing = curFiles.find(function(f){
-           return f && f.name === r.name && f.wb && dateMs(f.savedAt) === dateMs(r.saved);
-         });
+  return f && String(f.name || '').toLowerCase() === String(r.name || '').toLowerCase() && f.wb;
+});
          if(existing){
            nextFiles.push(existing);
          } else if(r.buf){
