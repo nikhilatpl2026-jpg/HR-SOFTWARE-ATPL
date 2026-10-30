@@ -1,108 +1,103 @@
 /**
- * ATPL GitHub Direct Cloud Sync Engine v2.0
- * Zero-Quota, Zero-Limit, Real-Time Cross-Browser Cloud File Sync
- * Backed by GitHub REST API + raw.githubusercontent + BroadcastChannel + LocalStorage Bridge
+ * ATPL GitHub Cloud Sync Engine v3.0  (drop-in replacement for v2.0)
+ *
+ * WHY v3:
+ *  v2 kept every salary file (base64) inside data/sync/sync_state.json. That file grew past 1 MB, so the
+ *  GitHub Contents API stopped returning its content, the "update index" step failed silently and other
+ *  browsers never saw new uploads / deletes (and every poll downloaded MBs => hangs).
+ *
+ * HOW v3 WORKS:
+ *  - data/sync/manifest_v2.json  = tiny index (name, saved time, size)  -> a few KB, polled every 20s
+ *  - data/sync/salary_files/salary_<name>.json  = the real file         -> downloaded ONLY when new/changed
+ *  - data/sync/hr_docs/hr_<id>.json                                      -> same idea for HR documents
+ *  - Deletes are tombstones inside the manifest, so Browser A delete => Browser B delete.
+ *  - READING needs no token (raw.githubusercontent.com).  WRITING needs a GitHub token that is stored
+ *    in the browser only (localStorage 'ATPL_GITHUB_SYNC_TOKEN'). No token is hard-coded any more.
+ *
+ * ONE-TIME SETUP (admin browser(s) that upload/delete):
+ *    ATPLGitHubSync.setToken('github_pat_xxx')     // run once in browser console, or ATPLGitHubSync.promptToken()
+ *
  * Author: ATPL Engineering
  */
 (function(root) {
   'use strict';
+
+  if (root.ATPLGitHubSync && root.ATPLGitHubSync.__version === 3) return;
+
+  var TEST_CFG = root.ATPL_GH_SYNC_TEST_CONFIG || {};
 
   var CONFIG = {
     owner: 'nikhilatpl2026-jpg',
     repo: 'HR-SOFTWARE-ATPL',
     branch: 'main',
     syncPath: 'data/sync',
+    manifestName: 'manifest_v2.json',
+    pollMs: TEST_CFG.pollMs || 20000,          // how often other browsers look for changes
+    startupDelayMs: TEST_CFG.startupDelayMs != null ? TEST_CFG.startupDelayMs : 8000, // let local DB load first
+    downloadPauseMs: TEST_CFG.downloadPauseMs != null ? TEST_CFG.downloadPauseMs : 250,
+    retryBaseMs: TEST_CFG.retryBaseMs != null ? TEST_CFG.retryBaseMs : 2000,
+    tombstoneKeepDays: 120,
     getToken: function() {
       try {
-        var local = root.localStorage ? root.localStorage.getItem('ATPL_GITHUB_SYNC_TOKEN') : '';
-        if (local && local.trim()) return local.trim();
-      } catch (_) {}
-      return ['ghp_', 'zNVCq14dAF', 'NeLXjAhXkxQR', 'OaUbrtWD41ikJY'].join('');
+        var t = root.localStorage ? root.localStorage.getItem('ATPL_GITHUB_SYNC_TOKEN') : '';
+        return (t || '').trim();
+      } catch (_) { return ''; }
     }
   };
 
-  // State cache
-  var localSyncState = {
-    version: 1,
-    last_updated: 0,
-    salary_files: {},
-    salary_tombstones: {},
-    hr_docs: {},
-    hr_tombstones: {}
-  };
+  var MANIFEST = CONFIG.manifestName;
+  var startedAt = Date.now();
 
-  // Active Subscribers
+  //  state 
+  var remote = null;                 // last manifest seen from GitHub (normalized)
+  var remoteLegacy = null;           // virtual manifest built from directory listing (only until manifest exists)
+  var lastLegacyAt = 0;
+  var lastPollAt = 0;
+  var lastError = '';
+  var pollPromise = null;
+  var writeChain = Promise.resolve();
+  var pendingWrites = 0;
+  var hrFull = {};                   // id -> full HR doc (small), kept in memory
+  var knownSalaryTombs = {};         // name -> true (already announced to subscribers)
+  var knownHrTombs = {};
+  var deliveredAt = {};              // 'name:saved_ms' -> ms when we last handed that version to the app
+  var attempts = {};                 // 'name:saved_ms' -> download attempts
+  var inited = false;
+
   var salarySubscribers = [];
   var salaryTombSubscribers = [];
   var hrSubscribers = [];
   var hrTombSubscribers = [];
 
-  function notifySalarySubscribers(allFiles, removedNames) {
-    if (!allFiles && !removedNames) return;
-    salarySubscribers.forEach(function(fn) {
-      try {
-        fn({ all: allFiles || [], removedNames: removedNames || [] });
-      } catch (e) {
-        console.warn('[ATPL-Sync] Salary subscriber err', e);
-      }
-    });
+  //  helpers 
+  function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+  function dateMs(v) {
+    if (v == null || v === '') return 0;
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    if (/^\d{10,}$/.test(String(v))) return Number(v);
+    var n = Date.parse(v);
+    return isFinite(n) ? n : 0;
   }
 
-  function notifySalaryTombSubscribers(tombsList) {
-    if (!tombsList || !tombsList.length) return;
-    salaryTombSubscribers.forEach(function(fn) {
-      try { fn(tombsList); } catch (e) { console.warn('[ATPL-Sync] Salary tombstone err', e); }
-    });
-  }
-
-  function notifyHrSubscribers(allDocs) {
-    if (!allDocs || !allDocs.length) return;
-    hrSubscribers.forEach(function(fn) {
-      try { fn({ all: allDocs }); } catch (e) { console.warn('[ATPL-Sync] HR subscriber err', e); }
-    });
-  }
-
-  function notifyHrTombSubscribers(tombsList) {
-    if (!tombsList || !tombsList.length) return;
-    hrTombSubscribers.forEach(function(fn) {
-      try { fn(tombsList); } catch (e) { console.warn('[ATPL-Sync] HR tombstone err', e); }
-    });
-  }
-
-  // Robust Unicode Base64 Encoding/Decoding for arbitrary file sizes
   function b64EncodeUnicode(str) {
     try {
       return btoa(unescape(encodeURIComponent(str)));
     } catch (_) {
-      try {
-        var bytes = new TextEncoder().encode(str);
-        var bin = '';
-        var len = bytes.length;
-        for (var i = 0; i < len; i += 8192) {
-          bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, len)));
-        }
-        return btoa(bin);
-      } catch (e) {
-        return btoa(str);
+      var bytes = new TextEncoder().encode(str);
+      var bin = '';
+      for (var i = 0; i < bytes.length; i += 8192) {
+        bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + 8192, bytes.length)));
       }
+      return btoa(bin);
     }
   }
 
   function b64DecodeUnicode(str) {
-    try {
-      var bin = atob(str);
-      var bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) {
-        bytes[i] = bin.charCodeAt(i);
-      }
-      return new TextDecoder().decode(bytes);
-    } catch (_) {
-      try {
-        return decodeURIComponent(escape(atob(str)));
-      } catch (e) {
-        return atob(str);
-      }
-    }
+    var bin = atob(str);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
   }
 
   function extractBase64(payloadOrBuf) {
@@ -111,552 +106,621 @@
     if (typeof payloadOrBuf.original_b64 === 'string') return payloadOrBuf.original_b64;
     if (payloadOrBuf.buf) {
       if (typeof payloadOrBuf.buf === 'string') return payloadOrBuf.buf;
-      if (typeof root.bufToB64 === 'function') {
-        try { return root.bufToB64(payloadOrBuf.buf); } catch (_) {}
-      }
+      if (typeof root.bufToB64 === 'function') { try { return root.bufToB64(payloadOrBuf.buf); } catch (_) {} }
     }
-    if (typeof root.bufToB64 === 'function') {
-      try { return root.bufToB64(payloadOrBuf); } catch (_) {}
-    }
-    if (typeof root.bytesToB64 === 'function') {
-      try { return root.bytesToB64(payloadOrBuf); } catch (_) {}
-    }
+    if (typeof root.bufToB64 === 'function') { try { return root.bufToB64(payloadOrBuf); } catch (_) {} }
+    if (typeof root.bytesToB64 === 'function') { try { return root.bytesToB64(payloadOrBuf); } catch (_) {} }
     return '';
   }
 
-  // Cross-Tab Instant Sync (Same Device, 0ms latency)
-  var channel = null;
-  try {
-    if (typeof root.BroadcastChannel === 'function') {
-      channel = new root.BroadcastChannel('atpl_github_cloud_sync_v2');
-      channel.onmessage = function(ev) {
-        if (ev && ev.data) handleIncomingSyncMessage(ev.data);
-      };
-    }
-  } catch (_) {}
-
-  // Fallback storage event for cross-window / tab sync
-  try {
-    if (root.addEventListener) {
-      root.addEventListener('storage', function(ev) {
-        if (ev && ev.key === 'ATPL_GITHUB_SYNC_EVENT' && ev.newValue) {
-          try {
-            var data = JSON.parse(ev.newValue);
-            handleIncomingSyncMessage(data);
-          } catch (_) {}
-        }
-      });
-    }
-  } catch (_) {}
-
-  function broadcastEvent(data) {
-    if (channel) {
-      try { channel.postMessage(data); } catch (_) {}
-    }
-    try {
-      if (root.localStorage) {
-        data._timestamp = Date.now();
-        root.localStorage.setItem('ATPL_GITHUB_SYNC_EVENT', JSON.stringify(data));
-      }
-    } catch (_) {}
+  var lastToastAt = 0;
+  function toast(msg) {
+    var now = Date.now();
+    if (now - lastToastAt < 30000) return;
+    lastToastAt = now;
+    try { if (typeof root.showToast === 'function') root.showToast(msg); } catch (_) {}
   }
 
-  async function handleIncomingSyncMessage(msg) {
-    if (!msg || !msg.type) return;
-
-    if (msg.type === 'salary_saved' && msg.doc) {
-      var doc = msg.doc;
-      localSyncState.salary_files[doc.name] = doc;
-      delete localSyncState.salary_tombstones[doc.name];
-
-      // 1. Notify ATPLFirebase subscribers
-      notifySalarySubscribers([doc], []);
-
-      // 2. Also ensure IndexedDB putSalary & UI refresh
-      try {
-        if (typeof root.putSalary === 'function' && doc.original_b64) {
-          var realBuf = doc.original_b64;
-          if (typeof root.b64ToBuf === 'function') realBuf = root.b64ToBuf(doc.original_b64);
-          await root.putSalary(doc.name, realBuf, doc.saved || doc.saved_at || Date.now());
-        }
-        if (typeof root.refreshSalaryUi === 'function') root.refreshSalaryUi(true);
-      } catch (err) {
-        console.warn('[ATPL-Sync] Incoming salary save apply err', err);
-      }
-    }
-
-    if (msg.type === 'salary_deleted' && msg.name) {
-      delete localSyncState.salary_files[msg.name];
-      localSyncState.salary_tombstones[msg.name] = { name: msg.name, deleted_at: msg.deleted_at || new Date().toISOString() };
-
-      notifySalaryTombSubscribers([{ name: msg.name, deleted_at: msg.deleted_at || new Date().toISOString() }]);
-      notifySalarySubscribers([], [msg.name]);
-
-      try {
-        if (typeof root.deleteSalaryFromDb === 'function') {
-          await root.deleteSalaryFromDb(msg.name);
-        } else if (typeof root.deleteSalary === 'function') {
-          await root.deleteSalary(msg.name);
-        }
-        if (typeof root.refreshSalaryUi === 'function') root.refreshSalaryUi(true);
-      } catch (err) {
-        console.warn('[ATPL-Sync] Incoming salary delete apply err', err);
-      }
-    }
-
-    if (msg.type === 'hr_doc_saved' && msg.doc) {
-      localSyncState.hr_docs[msg.doc.id] = msg.doc;
-      delete localSyncState.hr_tombstones[msg.doc.id];
-      notifyHrSubscribers([msg.doc]);
-      try {
-        if (typeof root.putHrDocLocal === 'function') await root.putHrDocLocal(msg.doc);
-      } catch (_) {}
-    }
-
-    if (msg.type === 'hr_doc_deleted' && msg.id) {
-      delete localSyncState.hr_docs[msg.id];
-      localSyncState.hr_tombstones[msg.id] = { id: msg.id, deleted_at: msg.deleted_at || new Date().toISOString() };
-      notifyHrTombSubscribers([{ id: msg.id, deleted_at: msg.deleted_at || new Date().toISOString() }]);
-      try {
-        if (typeof root.deleteHrDocLocal === 'function') await root.deleteHrDocLocal(msg.id);
-      } catch (_) {}
+  function reportError(what, e) {
+    var msg = (e && e.message) ? e.message : String(e);
+    lastError = what + ': ' + msg;
+    try { console.warn('[ATPL-Sync] ' + lastError, e); } catch (_) {}
+    if (msg === 'NO_TOKEN') {
+      toast('WARNING: Cloud sync token set nahi hai - ye change sirf is browser me hai. Admin: ATPLGitHubSync.promptToken()');
+    } else if (e && e.status === 401) {
+      toast('WARNING: GitHub sync token galat ya expire ho gaya hai - naya token set karein.');
+    } else {
+      toast('WARNING: Cloud sync fail (' + what + '). Thodi der me dobara try hoga.');
     }
   }
 
-  // GitHub REST API wrapper
-  async function githubApi(subpath, method, body) {
-    var url = 'https://api.github.com/repos/' + CONFIG.owner + '/' + CONFIG.repo + '/contents/' + CONFIG.syncPath + '/' + subpath;
-    var headers = {
-      'Accept': 'application/vnd.github.v3+json',
-      'Authorization': 'Bearer ' + CONFIG.getToken(),
-      'User-Agent': 'ATPL-HR-SyncEngine-v2'
-    };
+  //  GitHub REST 
+  function apiUrl(sub, withRef) {
+    return 'https://api.github.com/repos/' + CONFIG.owner + '/' + CONFIG.repo + '/contents/' +
+      CONFIG.syncPath + '/' + sub + (withRef ? ('?ref=' + encodeURIComponent(CONFIG.branch)) : '');
+  }
+
+  function rawUrl(sub) {
+    return 'https://raw.githubusercontent.com/' + CONFIG.owner + '/' + CONFIG.repo + '/' +
+      CONFIG.branch + '/' + CONFIG.syncPath + '/' + sub + '?_t=' + Date.now() + Math.floor(Math.random() * 1000);
+  }
+
+  async function githubApi(sub, method, body) {
+    method = method || 'GET';
+    var token = CONFIG.getToken();
+    if (method !== 'GET' && !token) throw new Error('NO_TOKEN');
+    var headers = { 'Accept': 'application/vnd.github+json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
     if (body) headers['Content-Type'] = 'application/json';
-
-    var res = await fetch(url, {
-      method: method || 'GET',
+    var res = await fetch(apiUrl(sub, method === 'GET'), {
+      method: method,
       headers: headers,
       body: body ? JSON.stringify(body) : undefined
     });
-
     if (!res.ok) {
       if (res.status === 404 && method === 'GET') return null;
       var err = await res.json().catch(function() { return {}; });
-      throw new Error(err.message || ('GitHub API Error ' + res.status));
+      var e = new Error(err.message || ('GitHub API Error ' + res.status));
+      e.status = res.status;
+      throw e;
     }
     return await res.json();
   }
 
-  // Update sync_state.json in GitHub
-  async function updateRemoteSyncState(updater) {
-    try {
-      var stateSha = null;
-      var currentState = {};
-      var cur = await githubApi('sync_state.json', 'GET');
-      if (cur && cur.content) {
-        stateSha = cur.sha;
-        try { currentState = JSON.parse(b64DecodeUnicode(cur.content)); } catch (_) {}
+  // Create/update one file (retries on sha / branch conflicts). sha is ALWAYS read from the API,
+  // which returns it even for files bigger than 1 MB.
+  async function putFile(sub, text, message) {
+    for (var attempt = 0; attempt < 4; attempt++) {
+      var existing = null;
+      try { existing = await githubApi(sub, 'GET'); }
+      catch (e) { if (e.status === 401 || e.status === 403) throw e; }
+      var body = { message: message, content: b64EncodeUnicode(text), branch: CONFIG.branch };
+      if (existing && existing.sha && !Array.isArray(existing)) body.sha = existing.sha;
+      try {
+        return await githubApi(sub, 'PUT', body);
+      } catch (e2) {
+        if ((e2.status === 409 || e2.status === 422) && attempt < 3) { await sleep(400 * (attempt + 1)); continue; }
+        throw e2;
       }
-
-      currentState.version = 1;
-      currentState.last_updated = Date.now();
-      currentState.salary_files = currentState.salary_files || {};
-      currentState.salary_tombstones = currentState.salary_tombstones || {};
-      currentState.hr_docs = currentState.hr_docs || {};
-      currentState.hr_tombstones = currentState.hr_tombstones || {};
-
-      updater(currentState);
-
-      var body = {
-        message: '[Cloud Sync] Update sync state ' + new Date().toISOString(),
-        content: b64EncodeUnicode(JSON.stringify(currentState, null, 2)),
-        branch: CONFIG.branch
-      };
-      if (stateSha) body.sha = stateSha;
-
-      await githubApi('sync_state.json', 'PUT', body);
-      localSyncState = currentState;
-    } catch (e) {
-      console.warn('[ATPL-Sync] updateRemoteSyncState warning:', e);
     }
   }
 
-  // Cross-Device Polling Engine (Every 5 seconds & on Tab Focus)
-  var isPolling = false;
-  async function pollRemoteState() {
-    if (isPolling) return;
-    isPolling = true;
-    try {
-      var remoteState = null;
-      var rawUrl = 'https://raw.githubusercontent.com/' + CONFIG.owner + '/' + CONFIG.repo + '/' + CONFIG.branch + '/' + CONFIG.syncPath + '/sync_state.json?_t=' + Date.now();
-      var res = await fetch(rawUrl, { cache: 'no-store' }).catch(function() { return null; });
-      if (res && res.ok) {
-        remoteState = await res.json().catch(function() { return null; });
+  async function deleteFile(sub, message) {
+    for (var attempt = 0; attempt < 4; attempt++) {
+      var existing = await githubApi(sub, 'GET');
+      if (!existing || !existing.sha || Array.isArray(existing)) return false;
+      try {
+        await githubApi(sub, 'DELETE', { message: message, sha: existing.sha, branch: CONFIG.branch });
+        return true;
+      } catch (e) {
+        if ((e.status === 409 || e.status === 422) && attempt < 3) { await sleep(400 * (attempt + 1)); continue; }
+        if (e.status === 404) return false;
+        throw e;
       }
-
-      // If raw failed or 404, fall back to GitHub API
-      if (!remoteState) {
-        var apiRes = await githubApi('sync_state.json', 'GET').catch(function() { return null; });
-        if (apiRes && apiRes.content) {
-          try { remoteState = JSON.parse(b64DecodeUnicode(apiRes.content)); } catch (_) {}
-        }
-      }
-
-      if (!remoteState || !remoteState.last_updated) {
-        isPolling = false;
-        return;
-      }
-
-      if (remoteState.last_updated > (localSyncState.last_updated || 0)) {
-        // Detect newly saved salary files
-        var newFiles = [];
-        var remSalary = remoteState.salary_files || {};
-        for (var name in remSalary) {
-          var remItem = remSalary[name];
-          var locItem = localSyncState.salary_files[name];
-          if (!locItem || (locItem.saved || locItem.saved_at || 0) < (remItem.saved || remItem.saved_at || 0)) {
-            newFiles.push(remItem);
-          }
-        }
-
-        // Detect deleted salary files
-        var newTombs = [];
-        var remTombs = remoteState.salary_tombstones || {};
-        for (var tname in remTombs) {
-          if (!localSyncState.salary_tombstones[tname]) {
-            newTombs.push(remTombs[tname]);
-          }
-        }
-
-        localSyncState = remoteState;
-
-        if (newFiles.length > 0) {
-          notifySalarySubscribers(newFiles, []);
-          newFiles.forEach(function(f) {
-            try {
-              if (typeof root.putSalary === 'function' && f.original_b64) {
-                var b = typeof root.b64ToBuf === 'function' ? root.b64ToBuf(f.original_b64) : f.original_b64;
-                root.putSalary(f.name, b, f.saved || f.saved_at || Date.now()).then(function() {
-                  if (typeof root.refreshSalaryUi === 'function') root.refreshSalaryUi(true);
-                });
-              }
-            } catch (_) {}
-          });
-        }
-
-        if (newTombs.length > 0) {
-          notifySalaryTombSubscribers(newTombs);
-          notifySalarySubscribers([], newTombs.map(function(t) { return t.name; }));
-          newTombs.forEach(function(t) {
-            try {
-              if (typeof root.deleteSalaryFromDb === 'function') {
-                root.deleteSalaryFromDb(t.name).then(function() {
-                  if (typeof root.refreshSalaryUi === 'function') root.refreshSalaryUi(true);
-                });
-              } else if (typeof root.deleteSalary === 'function') {
-                root.deleteSalary(t.name).then(function() {
-                  if (typeof root.refreshSalaryUi === 'function') root.refreshSalaryUi(true);
-                });
-              }
-            } catch (_) {}
-          });
-        }
-      }
-    } catch (_) {}
-    isPolling = false;
+    }
+    return false;
   }
 
-  // Poll on tab focus & periodically
-  if (typeof root.window !== 'undefined') {
-    root.window.addEventListener('focus', pollRemoteState);
-    if (root.document) {
-      root.document.addEventListener('visibilitychange', function() {
-        if (!root.document.hidden) pollRemoteState();
+  async function fetchRawJson(sub) {
+    var res = await fetch(rawUrl(sub), { cache: 'no-store' });
+    if (!res.ok) throw new Error('download failed ' + res.status);
+    return await res.json();
+  }
+
+  function salarySub(name) { return 'salary_files/salary_' + encodeURIComponent(name) + '.json'; }
+  function hrSub(id) { return 'hr_docs/hr_' + encodeURIComponent(id) + '.json'; }
+
+  //  manifest 
+  function emptyManifest() {
+    return { version: 2, rev: 0, last_updated: 0, salary_files: {}, salary_tombstones: {}, hr_docs: {}, hr_tombstones: {} };
+  }
+
+  function normalizeManifest(m) {
+    m = m || {};
+    m.version = 2;
+    m.rev = m.rev || 0;
+    m.last_updated = m.last_updated || 0;
+    m.salary_files = m.salary_files || {};
+    m.salary_tombstones = m.salary_tombstones || {};
+    m.hr_docs = m.hr_docs || {};
+    m.hr_tombstones = m.hr_tombstones || {};
+    return m;
+  }
+
+  function pruneTombstones(m) {
+    var cutoff = Date.now() - CONFIG.tombstoneKeepDays * 86400000;
+    ['salary_tombstones', 'hr_tombstones'].forEach(function(k) {
+      Object.keys(m[k]).forEach(function(key) {
+        var t = dateMs(m[k][key] && m[k][key].deleted_at);
+        if (t && t < cutoff) delete m[k][key];
+      });
+    });
+  }
+
+  // returns {status:'ok'|'missing'|'error', data}
+  async function fetchRemoteManifest() {
+    try {
+      var res = await fetch(rawUrl(MANIFEST), { cache: 'no-store' });
+      if (res.status === 404) return { status: 'missing' };
+      if (!res.ok) return { status: 'error' };
+      var d = await res.json();
+      if (!d || d.version !== 2) return { status: 'error' };
+      return { status: 'ok', data: normalizeManifest(d) };
+    } catch (_) {
+      return { status: 'error' };
+    }
+  }
+
+  // Build a manifest from the files that already exist in the repo (first-time migration from v2).
+  async function legacyManifest() {
+    var m = emptyManifest();
+    var sal = await githubApi('salary_files', 'GET').catch(function() { return null; });
+    if (Array.isArray(sal)) {
+      sal.forEach(function(it) {
+        if (it && it.type === 'file' && /^salary_.+\.json$/.test(it.name)) {
+          var nm = it.name.slice(7, -5);
+          m.salary_files[nm] = { name: nm, saved_ms: 0, saved_at: '', size: it.size || 0, legacy: true };
+        }
       });
     }
-    setInterval(pollRemoteState, 5000);
+    var hr = await githubApi('hr_docs', 'GET').catch(function() { return null; });
+    if (Array.isArray(hr)) {
+      hr.forEach(function(it) {
+        if (it && it.type === 'file' && /^hr_.+\.json$/.test(it.name)) {
+          var id = it.name.slice(3, -5);
+          m.hr_docs[id] = { id: id, name: id, updated_at: '', size: it.size || 0, legacy: true };
+        }
+      });
+    }
+    return m;
   }
 
+  async function readManifestForWrite() {
+    var meta = await githubApi(MANIFEST, 'GET');
+    if (!meta || Array.isArray(meta)) return { m: null, sha: null };
+    var m = null;
+    if (meta.content) {
+      try { m = JSON.parse(b64DecodeUnicode(String(meta.content).replace(/\s/g, ''))); } catch (_) {}
+    }
+    if (!m) {
+      var r = await fetchRemoteManifest();
+      if (r.status === 'ok') m = r.data;
+    }
+    if (m && m.version !== 2) m = null;
+    return { m: m, sha: meta.sha };
+  }
+
+  // Read-modify-write of the tiny manifest with conflict retries.
+  async function updateManifest(updater, message) {
+    var lastErr;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      var cur = await readManifestForWrite();
+      var m = normalizeManifest(cur.m || await legacyManifest());
+      updater(m);
+      pruneTombstones(m);
+      m.rev = (m.rev || 0) + 1;
+      m.last_updated = Date.now();
+      var body = {
+        message: message || ('[Cloud Sync] Manifest rev ' + m.rev),
+        content: b64EncodeUnicode(JSON.stringify(m)),
+        branch: CONFIG.branch
+      };
+      if (cur.sha) body.sha = cur.sha;
+      try {
+        await githubApi(MANIFEST, 'PUT', body);
+        remote = m;
+        return m;
+      } catch (e) {
+        lastErr = e;
+        if (e.status === 409 || e.status === 422) { await sleep(300 + Math.random() * 500 * (attempt + 1)); continue; }
+        throw e;
+      }
+    }
+    throw lastErr || new Error('manifest update failed');
+  }
+
+  // All writes go through one queue (no overlapping commits from this browser) and retry on failure.
+  function enqueueWrite(job) {
+    pendingWrites++;
+    var run = async function() {
+      var lastErr;
+      for (var i = 0; i <= 3; i++) {
+        try { return await job(); }
+        catch (e) {
+          lastErr = e;
+          if (e && (e.message === 'NO_TOKEN' || e.status === 401 || e.status === 403)) break;
+          await sleep(CONFIG.retryBaseMs * (i + 1));
+        }
+      }
+      throw lastErr;
+    };
+    var p = writeChain.then(run);
+    writeChain = p.catch(function() {});
+    return p.finally(function() { pendingWrites--; });
+  }
+
+  //  local app helpers 
+  function localFiles() { return Array.isArray(root.FILES) ? root.FILES : []; }
+
+  function findLocal(name) {
+    var arr = localFiles(), low = String(name).toLowerCase();
+    for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].name === name) return arr[i]; }
+    for (var j = 0; j < arr.length; j++) { if (arr[j] && String(arr[j].name).toLowerCase() === low) return arr[j]; }
+    return null;
+  }
+
+  function localSalaryTombMs(name) {
+    try {
+      var t = JSON.parse(root.localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}');
+      var v = t[String(name).toLowerCase()];
+      if (v === true) return Infinity;
+      return dateMs(v);
+    } catch (_) { return 0; }
+  }
+
+  function slimSalary(e) {
+    return {
+      name: e.name, saved: e.saved_ms || 0, saved_at: e.saved_at || '', size: e.size || 0,
+      rows_count: e.rows_count || 0, sheets_count: e.sheets_count || 1,
+      uploaded_by: e.uploaded_by || 'admin', updated_at: e.updated_at || e.saved_at || ''
+    };
+  }
+
+  function metaList(m) {
+    return Object.keys(m.salary_files).map(function(k) { return slimSalary(m.salary_files[k]); });
+  }
+
+  // Hand data to the ERP storage layer (it writes IndexedDB + refreshes the UI).
+  async function deliverSalary(payload) {
+    var S = root.ATPLCloudSharedStorageV1;
+    if (S && typeof S.handleFirebaseFilesUpdate === 'function') {
+      try { await S.handleFirebaseFilesUpdate(payload); } catch (e) { console.warn('[ATPL-Sync] deliver salary err', e); }
+    } else {
+      salarySubscribers.forEach(function(fn) { try { fn(payload); } catch (_) {} });
+    }
+  }
+
+  async function deliverHr(payload) {
+    var S = root.ATPLCloudSharedStorageV1;
+    if (S && typeof S.handleFirebaseHrUpdate === 'function') {
+      try { await S.handleFirebaseHrUpdate(payload); } catch (e) { console.warn('[ATPL-Sync] deliver hr err', e); }
+    } else {
+      hrSubscribers.forEach(function(fn) { try { fn(payload); } catch (_) {} });
+    }
+  }
+
+  function needDownload(name, e) {
+    var last = deliveredAt[name + ':' + (e.saved_ms || 0)] || 0;
+    if (last && Date.now() - last < 120000) return false;       // just delivered, give UI time
+    var savedMs = e.saved_ms || 0;
+    if ((attempts[name + ':' + savedMs] || 0) >= 4) return false; // give up until it changes
+    var lt = localSalaryTombMs(name);
+    if (lt && lt > savedMs) return false;                         // deleted locally after that version
+    var loc = findLocal(name);
+    if (!loc) return true;
+    if (!savedMs) return false;                                   // legacy entry and we already have the file
+    return savedMs > dateMs(loc.savedAt || loc.saved);
+  }
+
+  //  polling (other browsers) 
+  async function applyManifest(m) {
+    // 1) deletes done in another browser
+    var removed = [], newTombs = [];
+    Object.keys(m.salary_tombstones).forEach(function(name) {
+      if (m.salary_files[name]) return;
+      var t = m.salary_tombstones[name];
+      if (!t || name === '__ALL__') return;
+      if (!knownSalaryTombs[name]) { knownSalaryTombs[name] = true; newTombs.push({ name: name, deleted_at: t.deleted_at }); }
+      var loc = findLocal(name);
+      if (loc && dateMs(loc.savedAt || loc.saved) <= dateMs(t.deleted_at)) removed.push(name);
+    });
+    if (newTombs.length) {
+      salaryTombSubscribers.forEach(function(fn) { try { fn(newTombs); } catch (_) {} });
+    }
+    if (removed.length) {
+      await deliverSalary({ all: metaList(m), removedNames: removed });
+    }
+
+    // 2) new / changed salary files (only the ones we really need)
+    var todo = Object.keys(m.salary_files).filter(function(n) { return needDownload(n, m.salary_files[n]); });
+    for (var i = 0; i < todo.length; i++) {
+      var name = todo[i], e = m.salary_files[name], key = name + ':' + (e.saved_ms || 0);
+      attempts[key] = (attempts[key] || 0) + 1;
+      try {
+        var doc = await fetchRawJson(salarySub(name));
+        if (!doc || (!doc.original_b64 && !doc.sheets)) { deliveredAt[key] = Date.now(); continue; }
+        var docMs = dateMs(doc.saved_at || doc.saved);
+        if (e.saved_ms && docMs && docMs < e.saved_ms) throw new Error('stale copy, retry'); // CDN lag
+        doc.name = doc.name || name;
+        doc.saved_at = new Date(docMs || e.saved_ms || Date.now()).toISOString();
+        doc.sheets = doc.sheets || [];     // storage layer skips docs without 'sheets'
+        var all = metaList(m).map(function(x) { return x.name === name ? doc : x; });
+        deliveredAt[key] = Date.now();
+        await deliverSalary({ all: all, removedNames: [] });
+        doc = null; all = null;
+        if (i < todo.length - 1) await sleep(CONFIG.downloadPauseMs); // keep the UI responsive
+      } catch (err) {
+        console.warn('[ATPL-Sync] download failed for', name, err && err.message);
+      }
+    }
+
+    // 3) HR documents (small): keep full copies in memory
+    var hrChanged = false;
+    for (var id in m.hr_docs) {
+      var he = m.hr_docs[id], cached = hrFull[id];
+      if (cached && dateMs(cached.updated_at) >= dateMs(he.updated_at)) continue;
+      if (cached && he.legacy) continue;
+      try {
+        var hd = await fetchRawJson(hrSub(id));
+        if (hd && hd.id) { hrFull[id] = hd; hrChanged = true; }
+      } catch (_) {}
+    }
+    var hrNewTombs = [];
+    Object.keys(m.hr_tombstones).forEach(function(id2) {
+      if (m.hr_docs[id2]) return;
+      if (hrFull[id2]) { delete hrFull[id2]; hrChanged = true; }
+      if (!knownHrTombs[id2]) { knownHrTombs[id2] = true; hrNewTombs.push({ id: id2, deleted_at: m.hr_tombstones[id2].deleted_at }); }
+    });
+    if (hrNewTombs.length) hrTombSubscribers.forEach(function(fn) { try { fn(hrNewTombs); } catch (_) {} });
+    if (hrChanged) await deliverHr({ all: Object.keys(hrFull).map(function(k) { return hrFull[k]; }) });
+  }
+
+  async function doPoll() {
+    var r = await fetchRemoteManifest();
+    var m;
+    if (r.status === 'error') return;
+    if (r.status === 'missing') {
+      // manifest not created yet (first run after upgrade): use the repo folder listing, at most every 10 min
+      if (!remoteLegacy || Date.now() - lastLegacyAt > 600000) {
+        lastLegacyAt = Date.now();
+        try { remoteLegacy = await legacyManifest(); } catch (_) { return; }
+      }
+      m = remoteLegacy;
+    } else {
+      m = r.data;
+    }
+    remote = m;
+    // wait a moment after page load so the local DB / FILES list is populated before comparing
+    if (Date.now() - startedAt < CONFIG.startupDelayMs) return;
+    await applyManifest(m);
+  }
+
+  function pollRemoteState() {
+    if (pollPromise) return pollPromise;
+    pollPromise = doPoll().catch(function(e) { lastError = 'poll: ' + (e && e.message); })
+      .then(function() { lastPollAt = Date.now(); pollPromise = null; });
+    return pollPromise;
+  }
+
+  async function pollIfStale(maxAgeMs) {
+    if (remote && Date.now() - lastPollAt < maxAgeMs) return;
+    await pollRemoteState();
+  }
+
+  function startPolling() {
+    if (!root.window && typeof root.addEventListener !== 'function') return;
+    try {
+      root.addEventListener('focus', function() { pollRemoteState(); });
+      if (root.document) {
+        root.document.addEventListener('visibilitychange', function() { if (!root.document.hidden) pollRemoteState(); });
+      }
+    } catch (_) {}
+    setInterval(function() {
+      if (root.document && root.document.hidden) return;
+      pollRemoteState();
+    }, CONFIG.pollMs);
+    setTimeout(pollRemoteState, CONFIG.startupDelayMs + 500);
+  }
+
+  //  public API 
   var ATPLGitHubSync = {
-    // ═══════════════════════════════════════════════════════════════
-    // SALARY FILES
-    // ═══════════════════════════════════════════════════════════════
+    __version: 3,
+
+    setToken: function(t) {
+      try { root.localStorage.setItem('ATPL_GITHUB_SYNC_TOKEN', String(t || '').trim()); } catch (_) {}
+      lastError = '';
+      return !!CONFIG.getToken();
+    },
+    clearToken: function() { try { root.localStorage.removeItem('ATPL_GITHUB_SYNC_TOKEN'); } catch (_) {} },
+    promptToken: function() {
+      var t = root.prompt ? root.prompt('GitHub sync token (fine-grained, Contents: read/write on HR-SOFTWARE-ATPL):') : '';
+      if (t) return this.setToken(t);
+      return false;
+    },
+    syncNow: function() { return pollRemoteState(); },
+    status: function() {
+      return {
+        version: 3, hasToken: !!CONFIG.getToken(), lastPollAt: lastPollAt, lastError: lastError,
+        manifestRev: remote ? remote.rev : null,
+        remoteFiles: remote ? Object.keys(remote.salary_files).length : null,
+        pendingWrites: pendingWrites
+      };
+    },
+
+    //  SALARY FILES 
     saveSalaryFile: async function(name, payloadOrBuf, meta) {
       try {
         var base64 = extractBase64(payloadOrBuf);
-        var savedTs = (meta && meta.saved_at) || Date.now();
-
+        var sheets = payloadOrBuf && Array.isArray(payloadOrBuf.sheets) ? payloadOrBuf.sheets : undefined;
+        if (!base64 && !sheets) { console.warn('[ATPL-Sync] nothing to upload for', name); return true; }
+        var savedMs = dateMs(meta && meta.saved_at) || Date.now();
+        var savedIso = new Date(savedMs).toISOString();
+        var rows = (meta && meta.rows_count) || (sheets ? sheets.reduce(function(a, s) { return a + Math.max(0, (s.rows || []).length - 1); }, 0) : 0);
+        var shCount = (meta && meta.sheets_count) || (sheets ? sheets.length : 1);
         var doc = {
-          name: name,
-          saved: savedTs,
-          saved_at: savedTs,
-          original_b64: base64,
-          rows_count: (meta && meta.rows_count) || (payloadOrBuf && payloadOrBuf.sheets ? payloadOrBuf.sheets.reduce(function(acc, s) { return acc + Math.max(0, (s.rows || []).length - 1); }, 0) : 0),
-          sheets_count: (meta && meta.sheets_count) || (payloadOrBuf && payloadOrBuf.sheets ? payloadOrBuf.sheets.length : 1),
-          sheets: payloadOrBuf && Array.isArray(payloadOrBuf.sheets) ? payloadOrBuf.sheets : undefined,
-          uploaded_by: (meta && meta.uploaded_by) || 'admin',
-          updated_at: new Date().toISOString()
+          name: name, saved: savedMs, saved_at: savedIso, original_b64: base64,
+          rows_count: rows, sheets_count: shCount, sheets: sheets,
+          uploaded_by: (meta && meta.uploaded_by) || 'admin', updated_at: new Date().toISOString()
         };
-
-        localSyncState.salary_files[name] = doc;
-        delete localSyncState.salary_tombstones[name];
-
-        // 1. Instant 0ms Cross-Tab Broadcast
-        broadcastEvent({
-          type: 'salary_saved',
-          doc: doc
-        });
-
-        // 2. Commit individual file to GitHub repository in background
-        var safeFilename = 'salary_' + encodeURIComponent(name) + '.json';
-        var existing = await githubApi('salary_files/' + safeFilename, 'GET').catch(function() { return null; });
-        var commitBody = {
-          message: '[Cloud Sync] Upload ' + name,
-          content: b64EncodeUnicode(JSON.stringify(doc)),
-          branch: CONFIG.branch
+        var entry = {
+          name: name, saved_ms: savedMs, saved_at: savedIso, size: base64.length,
+          rows_count: rows, sheets_count: shCount, uploaded_by: doc.uploaded_by, updated_at: doc.updated_at
         };
-        if (existing && existing.sha) commitBody.sha = existing.sha;
+        deliveredAt[name + ':' + savedMs] = Date.now();     // our own upload: don't pull it back
+        delete knownSalaryTombs[name];
 
-        await githubApi('salary_files/' + safeFilename, 'PUT', commitBody);
-
-        // 3. Update sync_state.json in GitHub
-        await updateRemoteSyncState(function(state) {
-          state.salary_files[name] = doc;
-          delete state.salary_tombstones[name];
+        await enqueueWrite(async function() {
+          await putFile(salarySub(name), JSON.stringify(doc), '[Cloud Sync] Upload ' + name);
+          await updateManifest(function(m) {
+            m.salary_files[name] = entry;
+            delete m.salary_tombstones[name];
+          }, '[Cloud Sync] Index ' + name);
         });
-
         return true;
       } catch (err) {
-        console.warn('[ATPL-Sync] saveSalaryFile err:', err);
-        return true; // Return true so UI never blocks
+        reportError('upload ' + name, err);
+        return true; // never block the UI
       }
     },
 
     deleteSalaryFile: async function(name) {
       try {
-        delete localSyncState.salary_files[name];
-        var tomb = { name: name, deleted_at: new Date().toISOString() };
-        localSyncState.salary_tombstones[name] = tomb;
-
-        // 1. Instant 0ms Cross-Tab Broadcast
-        broadcastEvent({
-          type: 'salary_deleted',
-          name: name,
-          deleted_at: tomb.deleted_at
+        await enqueueWrite(async function() {
+          await deleteFile(salarySub(name), '[Cloud Sync] Delete ' + name);
+          await updateManifest(function(m) {
+            delete m.salary_files[name];
+            m.salary_tombstones[name] = { name: name, deleted_at: new Date().toISOString() };
+          }, '[Cloud Sync] Index delete ' + name);
         });
-
-        // 2. Delete file in GitHub
-        var safeFilename = 'salary_' + encodeURIComponent(name) + '.json';
-        var existing = await githubApi('salary_files/' + safeFilename, 'GET').catch(function() { return null; });
-        if (existing && existing.sha) {
-          await githubApi('salary_files/' + safeFilename, 'DELETE', {
-            message: '[Cloud Sync] Delete ' + name,
-            sha: existing.sha,
-            branch: CONFIG.branch
-          });
-        }
-
-        // 3. Update sync_state.json in GitHub
-        await updateRemoteSyncState(function(state) {
-          delete state.salary_files[name];
-          state.salary_tombstones[name] = tomb;
-        });
-
         return true;
       } catch (err) {
-        console.warn('[ATPL-Sync] deleteSalaryFile err:', err);
+        reportError('delete ' + name, err);
         return true;
       }
     },
 
     clearAllSalaryFiles: async function() {
       try {
-        var names = Object.keys(localSyncState.salary_files);
-        for (var i = 0; i < names.length; i++) {
-          await this.deleteSalaryFile(names[i]);
-        }
+        await enqueueWrite(async function() {
+          var cur = await readManifestForWrite();
+          var m0 = normalizeManifest(cur.m || await legacyManifest());
+          var names = {};
+          Object.keys(m0.salary_files).forEach(function(n) { names[n] = true; });
+          localFiles().forEach(function(f) { if (f && f.name) names[f.name] = true; });
+          var list = Object.keys(names);
+          for (var i = 0; i < list.length; i++) {
+            if (m0.salary_files[list[i]]) await deleteFile(salarySub(list[i]), '[Cloud Sync] Delete ' + list[i]);
+          }
+          var nowIso = new Date().toISOString();
+          await updateManifest(function(m) {
+            list.forEach(function(n) {
+              delete m.salary_files[n];
+              m.salary_tombstones[n] = { name: n, deleted_at: nowIso };
+            });
+          }, '[Cloud Sync] Index clear all');
+        });
         return true;
       } catch (e) {
+        reportError('clear all', e);
         return true;
       }
     },
 
     fetchAllSalaryFiles: async function() {
-      try {
-        var rawUrl = 'https://raw.githubusercontent.com/' + CONFIG.owner + '/' + CONFIG.repo + '/' + CONFIG.branch + '/' + CONFIG.syncPath + '/sync_state.json?_t=' + Date.now();
-        var res = await fetch(rawUrl, { cache: 'no-store' }).catch(function() { return null; });
-        if (res && res.ok) {
-          var state = await res.json().catch(function() { return null; });
-          if (state && state.salary_files) {
-            localSyncState = state;
-            var list = [];
-            for (var k in state.salary_files) {
-              list.push(state.salary_files[k]);
-            }
-            return list;
-          }
-        }
-      } catch (_) {}
-
-      // Fallback: iterate local cache
-      var cached = [];
-      for (var ck in localSyncState.salary_files) {
-        cached.push(localSyncState.salary_files[ck]);
-      }
-      return cached;
+      await pollIfStale(10000);
+      return remote ? metaList(remote) : [];
     },
 
     fetchAllTombstones: async function() {
-      var tombs = [];
-      for (var k in localSyncState.salary_tombstones) {
-        tombs.push(localSyncState.salary_tombstones[k]);
-      }
-      return tombs;
+      await pollIfStale(10000);
+      var out = [];
+      if (remote) Object.keys(remote.salary_tombstones).forEach(function(k) {
+        if (!remote.salary_files[k]) out.push(remote.salary_tombstones[k]);
+      });
+      return out;
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // HR DOCUMENTS
-    // ═══════════════════════════════════════════════════════════════
+    //  HR DOCUMENTS 
     saveHrDoc: async function(doc) {
       if (!doc || !doc.id) return true;
       try {
         doc.updated_at = doc.updated_at || new Date().toISOString();
-        localSyncState.hr_docs[doc.id] = doc;
-        delete localSyncState.hr_tombstones[doc.id];
-
-        broadcastEvent({
-          type: 'hr_doc_saved',
-          doc: doc
-        });
-
-        var safeFilename = 'hr_' + encodeURIComponent(doc.id) + '.json';
-        var existing = await githubApi('hr_docs/' + safeFilename, 'GET').catch(function() { return null; });
-        var commitBody = {
-          message: '[Cloud Sync] Upload HR doc ' + (doc.name || doc.id),
-          content: b64EncodeUnicode(JSON.stringify(doc)),
-          branch: CONFIG.branch
-        };
-        if (existing && existing.sha) commitBody.sha = existing.sha;
-
-        await githubApi('hr_docs/' + safeFilename, 'PUT', commitBody);
-
-        await updateRemoteSyncState(function(state) {
-          state.hr_docs[doc.id] = doc;
-          delete state.hr_tombstones[doc.id];
+        hrFull[doc.id] = doc;
+        delete knownHrTombs[doc.id];
+        var text = JSON.stringify(doc);
+        var entry = { id: doc.id, name: doc.document_name || doc.name || doc.id, updated_at: doc.updated_at, size: text.length };
+        await enqueueWrite(async function() {
+          await putFile(hrSub(doc.id), text, '[Cloud Sync] Upload HR doc ' + entry.name);
+          await updateManifest(function(m) {
+            m.hr_docs[doc.id] = entry;
+            delete m.hr_tombstones[doc.id];
+          }, '[Cloud Sync] Index HR doc ' + doc.id);
         });
         return true;
       } catch (err) {
+        reportError('HR upload', err);
         return true;
       }
     },
 
     deleteHrDoc: async function(id) {
       try {
-        delete localSyncState.hr_docs[id];
-        var tomb = { id: id, deleted_at: new Date().toISOString() };
-        localSyncState.hr_tombstones[id] = tomb;
-
-        broadcastEvent({
-          type: 'hr_doc_deleted',
-          id: id,
-          deleted_at: tomb.deleted_at
-        });
-
-        var safeFilename = 'hr_' + encodeURIComponent(id) + '.json';
-        var existing = await githubApi('hr_docs/' + safeFilename, 'GET').catch(function() { return null; });
-        if (existing && existing.sha) {
-          await githubApi('hr_docs/' + safeFilename, 'DELETE', {
-            message: '[Cloud Sync] Delete HR doc ' + id,
-            sha: existing.sha,
-            branch: CONFIG.branch
-          });
-        }
-
-        await updateRemoteSyncState(function(state) {
-          delete state.hr_docs[id];
-          state.hr_tombstones[id] = tomb;
+        delete hrFull[id];
+        await enqueueWrite(async function() {
+          await deleteFile(hrSub(id), '[Cloud Sync] Delete HR doc ' + id);
+          await updateManifest(function(m) {
+            delete m.hr_docs[id];
+            m.hr_tombstones[id] = { id: id, deleted_at: new Date().toISOString() };
+          }, '[Cloud Sync] Index HR delete ' + id);
         });
         return true;
       } catch (err) {
+        reportError('HR delete', err);
         return true;
       }
     },
 
     fetchAllHrDocs: async function() {
-      var docs = [];
-      for (var k in localSyncState.hr_docs) docs.push(localSyncState.hr_docs[k]);
-      return docs;
+      await pollIfStale(15000);
+      return Object.keys(hrFull).map(function(k) { return hrFull[k]; });
     },
 
     fetchAllHrTombstones: async function() {
-      var tombs = [];
-      for (var k in localSyncState.hr_tombstones) tombs.push(localSyncState.hr_tombstones[k]);
-      return tombs;
+      await pollIfStale(15000);
+      var out = [];
+      if (remote) Object.keys(remote.hr_tombstones).forEach(function(k) {
+        if (!remote.hr_docs[k]) out.push(remote.hr_tombstones[k]);
+      });
+      return out;
     },
 
-    // ═══════════════════════════════════════════════════════════════
-    // SEAMLESS INTEGRATION INTO ATPLFirebase & ERP STORAGE
-    // ═══════════════════════════════════════════════════════════════
+    //  hook into the ERP (same drop-in object the app already expects: window.ATPLFirebase) 
     init: function() {
+      if (inited) return;
+      inited = true;
       var self = this;
       root.ATPLGitHubSync = self;
 
-      // Immunize against Firebase Quota Exceeded flags
       try {
         Object.defineProperty(root, '__atplFirebaseQuotaExhausted', {
-          get: function() { return false; },
-          set: function() {},
-          configurable: true
+          get: function() { return false; }, set: function() {}, configurable: true
         });
-      } catch (_) {
-        root.__atplFirebaseQuotaExhausted = false;
+      } catch (_) { root.__atplFirebaseQuotaExhausted = false; }
+
+      function sub(list, cb, initial) {
+        if (typeof cb === 'function') {
+          list.push(cb);
+          if (initial) initial().then(function(v) { if (v) { try { cb(v); } catch (_) {} } }).catch(function() {});
+        }
+        return function() { var i = list.indexOf(cb); if (i !== -1) list.splice(i, 1); };
       }
 
-      // Provide complete drop-in replacement for window.ATPLFirebase
       root.ATPLFirebase = {
         init: function() {},
-        saveSalaryFile: function(name, payloadOrBuf, meta) {
-          return self.saveSalaryFile(name, payloadOrBuf, meta);
-        },
-        deleteSalaryFile: function(name) {
-          return self.deleteSalaryFile(name);
-        },
-        clearAllSalaryFiles: function() {
-          return self.clearAllSalaryFiles();
-        },
-        fetchAllSalaryFiles: function() {
-          return self.fetchAllSalaryFiles();
-        },
-        fetchAllTombstones: function() {
-          return self.fetchAllTombstones();
-        },
+        saveSalaryFile: function(n, p, m) { return self.saveSalaryFile(n, p, m); },
+        deleteSalaryFile: function(n) { return self.deleteSalaryFile(n); },
+        clearAllSalaryFiles: function() { return self.clearAllSalaryFiles(); },
+        fetchAllSalaryFiles: function() { return self.fetchAllSalaryFiles(); },
+        fetchAllTombstones: function() { return self.fetchAllTombstones(); },
         subscribeSalaryFiles: function(cb) {
-          if (typeof cb === 'function') {
-            salarySubscribers.push(cb);
-            self.fetchAllSalaryFiles().then(function(files) {
-              if (files && files.length > 0) {
-                try { cb({ all: files, removedNames: [] }); } catch (_) {}
-              }
-            });
-          }
-          return function() {
-            var idx = salarySubscribers.indexOf(cb);
-            if (idx !== -1) salarySubscribers.splice(idx, 1);
-          };
+          return sub(salarySubscribers, cb, function() {
+            return self.fetchAllSalaryFiles().then(function(f) { return f.length ? { all: f, removedNames: [] } : null; });
+          });
         },
         subscribeTombstones: function(cb) {
-          if (typeof cb === 'function') {
-            salaryTombSubscribers.push(cb);
-            self.fetchAllTombstones().then(function(tombs) {
-              if (tombs && tombs.length > 0) {
-                try { cb(tombs); } catch (_) {}
-              }
-            });
-          }
-          return function() {
-            var idx = salaryTombSubscribers.indexOf(cb);
-            if (idx !== -1) salaryTombSubscribers.splice(idx, 1);
-          };
+          return sub(salaryTombSubscribers, cb, function() {
+            return self.fetchAllTombstones().then(function(t) { return t.length ? t : null; });
+          });
         },
         decodeDocPayload: function(doc) {
           if (!doc) return doc;
@@ -664,50 +728,24 @@
           if (doc.original_b64) return { name: doc.name, original_b64: doc.original_b64, v: 1, sheets: doc.sheets };
           return doc;
         },
-        saveHrDoc: function(doc) {
-          return self.saveHrDoc(doc);
-        },
-        deleteHrDoc: function(id) {
-          return self.deleteHrDoc(id);
-        },
+        saveHrDoc: function(d) { return self.saveHrDoc(d); },
+        deleteHrDoc: function(id) { return self.deleteHrDoc(id); },
         decodeHrPayload: function(doc) {
           if (!doc) return doc;
           if (doc.payload) return doc.payload;
           return doc;
         },
-        fetchAllHrDocs: function() {
-          return self.fetchAllHrDocs();
-        },
-        fetchAllHrTombstones: function() {
-          return self.fetchAllHrTombstones();
-        },
+        fetchAllHrDocs: function() { return self.fetchAllHrDocs(); },
+        fetchAllHrTombstones: function() { return self.fetchAllHrTombstones(); },
         subscribeHrDocs: function(cb) {
-          if (typeof cb === 'function') {
-            hrSubscribers.push(cb);
-            self.fetchAllHrDocs().then(function(docs) {
-              if (docs && docs.length > 0) {
-                try { cb({ all: docs }); } catch (_) {}
-              }
-            });
-          }
-          return function() {
-            var idx = hrSubscribers.indexOf(cb);
-            if (idx !== -1) hrSubscribers.splice(idx, 1);
-          };
+          return sub(hrSubscribers, cb, function() {
+            return self.fetchAllHrDocs().then(function(d) { return d.length ? { all: d } : null; });
+          });
         },
         subscribeHrTombstones: function(cb) {
-          if (typeof cb === 'function') {
-            hrTombSubscribers.push(cb);
-            self.fetchAllHrTombstones().then(function(tombs) {
-              if (tombs && tombs.length > 0) {
-                try { cb(tombs); } catch (_) {}
-              }
-            });
-          }
-          return function() {
-            var idx = hrTombSubscribers.indexOf(cb);
-            if (idx !== -1) hrTombSubscribers.splice(idx, 1);
-          };
+          return sub(hrTombSubscribers, cb, function() {
+            return self.fetchAllHrTombstones().then(function(t) { return t.length ? t : null; });
+          });
         },
         safeKey: function(k) { return String(k || '').replace(/[^a-zA-Z0-9_-]/g, '_'); },
         safeHrKey: function(k) { return String(k || '').replace(/[^a-zA-Z0-9_-]/g, '_'); },
@@ -715,24 +753,12 @@
         saveEmployeeMaster: async function() { return true; }
       };
 
-      // Initial state fetch
-      pollRemoteState();
-
-      console.log('[ATPL-Sync] Zero-Quota Cloud Sync Engine v2.0 active & attached to ATPLFirebase.');
+      startPolling();
+      try { console.log('[ATPL-Sync] Cloud Sync Engine v3.0 active (manifest based). Token:', !!CONFIG.getToken() ? 'set' : 'NOT set (read-only)'); } catch (_) {}
     }
   };
 
   root.ATPLGitHubSync = ATPLGitHubSync;
 
-  // Run initialization immediately so that subsequent scripts find ATPLFirebase defined
-  try {
-    ATPLGitHubSync.init();
-  } catch (_) {}
-
-  // Also bind to DOMContentLoaded if document is still loading
-  if (typeof root.document !== 'undefined' && root.document.readyState === 'loading') {
-    root.document.addEventListener('DOMContentLoaded', function() {
-      try { ATPLGitHubSync.init(); } catch (_) {}
-    });
-  }
+  try { ATPLGitHubSync.init(); } catch (e) { try { console.warn('[ATPL-Sync] init failed', e); } catch (_) {} }
 })(typeof window !== 'undefined' ? window : this);
