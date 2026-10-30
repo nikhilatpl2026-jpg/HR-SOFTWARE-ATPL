@@ -224,6 +224,26 @@
       "sha256_hash": "a2e94d28ddfb8b071475b4825aa35c116149fd3e48d959386ae8e15b88f5f7ec",
       "deleted_at": "2026-10-19T07:01:58.570Z",
       "deleted_by": "admin"
+    },
+    "salary:final salary sheet atpl oct 2024.xlsx": {
+      "id": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "name": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "filename": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-30T17:36:48.168Z",
+      "uploaded_at": "2026-10-30T17:36:48.168Z"
+    },
+    "final salary sheet atpl oct 2024.xlsx": {
+      "id": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "name": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "filename": "Final Salary Sheet ATPL Oct 2024.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-30T17:36:48.168Z",
+      "uploaded_at": "2026-10-30T17:36:48.168Z"
     }
   },
   "files": {
@@ -338,20 +358,6 @@
       "uploaded_by": "admin",
       "created_at": "2026-10-17T07:48:41.694Z",
       "updated_at": "2026-10-17T07:48:41.694Z"
-    },
-    "sal_b2353c91c4e2b7cc": {
-      "id": "sal_b2353c91c4e2b7cc",
-      "module": "salary",
-      "category": "audit",
-      "name": "Final Salary Sheet ATPL Oct 2024.xlsx",
-      "size": 1330788,
-      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "056aea209ab54da797c9dc0614206f282426bb3f40b6d5b6d27674515598b592",
-      "sheets": null,
-      "saved": "2026-10-17T07:46:33.635Z",
-      "uploaded_by": "admin",
-      "created_at": "2026-10-17T07:46:33.635Z",
-      "updated_at": "2026-10-17T07:46:33.635Z"
     },
     "sal_fd483de6319fde66": {
       "id": "sal_fd483de6319fde66",
@@ -4683,17 +4689,6 @@
       "module": "salary",
       "doc_type": "salary",
       "blob_key": "salary_atpl_machine_rate_audit_xlsx"
-    },
-    "salary:salary sheet sept 2024 atpl bhoora ji.xlsx": {
-      "id": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "name": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "filename": "Salary Sheet Sept 2024 ATPL Bhoora Ji.xlsx",
-      "size": 417988,
-      "uploaded_at": "2026-10-30T17:26:05.749Z",
-      "saved_at": "2026-10-30T17:26:05.749Z",
-      "module": "salary",
-      "doc_type": "salary",
-      "blob_key": "salary_salary_20sheet_20sept_202024_20atpl_20bhoora_20ji_xlsx"
     }
   }
 }
