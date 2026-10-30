@@ -232,8 +232,8 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:37:02.131Z",
-      "uploaded_at": "2026-10-30T17:37:02.131Z"
+      "deleted_at": "2026-10-30T17:36:48.168Z",
+      "uploaded_at": "2026-10-30T17:36:48.168Z"
     },
     "final salary sheet atpl oct 2024.xlsx": {
       "id": "Final Salary Sheet ATPL Oct 2024.xlsx",
@@ -242,8 +242,28 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:37:02.131Z",
-      "uploaded_at": "2026-10-30T17:37:02.131Z"
+      "deleted_at": "2026-10-30T17:36:48.168Z",
+      "uploaded_at": "2026-10-30T17:36:48.168Z"
+    },
+    "salary:final salary sheet april 2024.xlsx": {
+      "id": "Final Salary Sheet April 2024.xlsx",
+      "name": "Final Salary Sheet April 2024.xlsx",
+      "filename": "Final Salary Sheet April 2024.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-30T17:37:09.091Z",
+      "uploaded_at": "2026-10-30T17:37:09.091Z"
+    },
+    "final salary sheet april 2024.xlsx": {
+      "id": "Final Salary Sheet April 2024.xlsx",
+      "name": "Final Salary Sheet April 2024.xlsx",
+      "filename": "Final Salary Sheet April 2024.xlsx",
+      "module": "salary",
+      "doc_type": "salary_tombstone",
+      "file_hash": "",
+      "deleted_at": "2026-10-30T17:37:09.091Z",
+      "uploaded_at": "2026-10-30T17:37:09.091Z"
     }
   },
   "files": {
@@ -288,20 +308,6 @@
       "uploaded_by": "admin",
       "created_at": "2026-10-17T07:49:28.607Z",
       "updated_at": "2026-10-17T07:49:28.607Z"
-    },
-    "sal_2bfecfd4c6c5be4d": {
-      "id": "sal_2bfecfd4c6c5be4d",
-      "module": "salary",
-      "category": "audit",
-      "name": "Final Salary Sheet April 2024.xlsx",
-      "size": 1295336,
-      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "55857bc7fe34d9895dea127bfa246373d1a181d2bd8af9072d3413e2fe17cae9",
-      "sheets": null,
-      "saved": "2026-10-17T07:46:16.161Z",
-      "uploaded_by": "admin",
-      "created_at": "2026-10-17T07:46:16.161Z",
-      "updated_at": "2026-10-17T07:46:16.161Z"
     },
     "sal_801e283f5ad97d53": {
       "id": "sal_801e283f5ad97d53",
