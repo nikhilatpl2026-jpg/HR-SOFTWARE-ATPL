@@ -4684,16 +4684,16 @@
       "doc_type": "salary",
       "blob_key": "salary_atpl_machine_rate_audit_xlsx"
     },
-    "salary:dec salary 2023.xlsx": {
-      "id": "dec salary 2023.xlsx",
-      "name": "dec salary 2023.xlsx",
-      "filename": "dec salary 2023.xlsx",
-      "size": 1379888,
+    "salary:final salary sheet april 2026.xls": {
+      "id": "Final Salary Sheet April 2026.xls",
+      "name": "Final Salary Sheet April 2026.xls",
+      "filename": "Final Salary Sheet April 2026.xls",
+      "size": 368,
       "uploaded_at": "2026-10-30T17:26:05.749Z",
       "saved_at": "2026-10-30T17:26:05.749Z",
       "module": "salary",
       "doc_type": "salary",
-      "blob_key": "salary_dec_20salary_202023_xlsx"
+      "blob_key": "salary_final_20salary_20sheet_20april_202026_xls"
     }
   }
 }
