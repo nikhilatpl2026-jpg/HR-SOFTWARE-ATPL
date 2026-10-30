@@ -1,5 +1,5 @@
 {
-  "version": 467,
+  "version": 468,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "id": "pf_challan_2026_05",
@@ -4672,6 +4672,17 @@
       "doc_type": "pf",
       "blob_key": "pf_v2_pf_e219092863b6cdc8551fcd94",
       "uploaded_at": "2026-10-30T17:12:58.969Z"
+    },
+    "salary:atpl_machine_rate_audit.xlsx": {
+      "id": "ATPL_Machine_Rate_Audit.xlsx",
+      "name": "ATPL_Machine_Rate_Audit.xlsx",
+      "filename": "ATPL_Machine_Rate_Audit.xlsx",
+      "size": 149156,
+      "uploaded_at": "2026-10-25T12:28:28.292Z",
+      "saved_at": "2026-10-25T12:28:28.292Z",
+      "module": "salary",
+      "doc_type": "salary",
+      "blob_key": "salary_atpl_machine_rate_audit_xlsx"
     }
   }
 }
