@@ -2051,72 +2051,81 @@ function start(){setTimeout(function(){boot().catch(function(e){console.error('C
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 
 root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},syncCloud:syncCloudIndexes,version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__}};
-})(window);
-
-window.cd2AttachOriginalFile = async function(type, id, input) {
-  if (!input || !input.files || !input.files[0]) return;
-  var f = input.files[0];
-  var buf = await f.arrayBuffer();
-  var h = await sha256(buf);
-  var rec = (state[type].rows || []).find(function(x){ return String(x.id) === String(id); });
-  if (!rec) return;
-  rec.size = f.size;
-  rec.hash = h;
-  rec.fileHash = h;
-  rec.hasOriginalFile = true;
-  rec.cloudOnly = false;
-  var blob = new Blob([buf], { type: 'application/pdf' });
-  rec.blob = blob;
-  try { await opfsSave(rec, blob); } catch(_) {}
-  await dbPut(rec);
-  upsertStateRow(type, rec);
-  renderFiles(type);
-  
-  // Upload to central sync server
-  try {
-    var _base = (root.ATPLCentralFileSync && root.ATPLCentralFileSync.apiBase) || '';
-    var bytes = new Uint8Array(buf);
-    var binary = '';
-    for (var bi = 0; bi < bytes.length; bi += 8192) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(bi, bi + 8192));
-    }
-    var b64 = btoa(binary);
-    fetch(_base + '/api/sync/files', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: rec.id,
-        name: rec.name,
-        module: type,
-        size: f.size,
-        mime_type: 'application/pdf',
-        buf: b64,
-        hash: h,
-        period: rec.period
-      })
-    }).catch(function(){});
-  } catch(_) {}
-  
-  openViewer(type, id);
-};
-
-
-// Real-time multi-device challan deletion broadcast listener
-try {
-  if (typeof BroadcastChannel !== 'undefined') {
-    var _cdBc = new BroadcastChannel('ATPL_ERP_SHARED_V2');
-    _cdBc.addEventListener('message', function(ev) {
-      if (ev && ev.data && (ev.data.type === 'challan_deleted' || ev.data.type === 'salary_file_deleted')) {
-        var deadId = String(ev.data.id || ev.data.name || '').trim();
-        ['pf', 'esic', 'dol'].forEach(function(t) {
-          if (state && state[t] && Array.isArray(state[t].rows)) {
-            state[t].rows = state[t].rows.filter(function(r) {
-              return String(r.id) !== deadId && String(r.name) !== deadId;
-            });
-            if (typeof renderRows === 'function') renderRows(t);
-          }
-        });
+  // Attach Original File function (inside IIFE so state, sha256, opfsSave, dbPut are in scope)
+  root.cd2AttachOriginalFile = async function(type, id, input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var f = input.files[0];
+    var buf = await f.arrayBuffer();
+    var h = await sha256(buf);
+    var rec = (state[type] && state[type].rows || []).find(function(x){ return String(x.id) === String(id); });
+    if (!rec) return;
+    rec.size = f.size;
+    rec.hash = h;
+    rec.fileHash = h;
+    rec.hasOriginalFile = true;
+    rec.cloudOnly = false;
+    var blob = new Blob([buf], { type: 'application/pdf' });
+    rec.blob = blob;
+    try { await opfsSave(rec, blob); } catch(_) {}
+    await dbPut(rec);
+    upsertStateRow(type, rec);
+    renderFiles(type);
+    
+    // Upload to central sync server
+    try {
+      var _base = (root.ATPLCentralFileSync && root.ATPLCentralFileSync.apiBase) || '';
+      var bytes = new Uint8Array(buf);
+      var binary = '';
+      for (var bi = 0; bi < bytes.length; bi += 8192) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(bi, bi + 8192));
       }
-    });
+      var b64 = btoa(binary);
+      fetch(_base + '/api/sync/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: rec.id,
+          name: rec.name,
+          module: type,
+          size: f.size,
+          mime_type: 'application/pdf',
+          buf: b64,
+          hash: h,
+          period: rec.period
+        })
+      }).catch(function(){});
+    } catch(_) {}
+    
+    openViewer(type, id);
+  };
+  if (typeof window !== 'undefined') {
+    window.cd2AttachOriginalFile = root.cd2AttachOriginalFile;
   }
-} catch(_) {}
+
+  // Real-time multi-device challan deletion broadcast listener (inside IIFE so state and renderRows are in scope)
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      var _cdBc = new BroadcastChannel('ATPL_ERP_SHARED_V2');
+      _cdBc.addEventListener('message', function(ev) {
+        if (ev && ev.data && (ev.data.type === 'challan_deleted' || ev.data.type === 'salary_file_deleted')) {
+          var deadId = String(ev.data.id || ev.data.name || '').trim();
+          ['pf', 'esic', 'dol'].forEach(function(t) {
+            var s = (typeof state !== 'undefined' ? state : null) || (root.__ATPL_DOL_STATE__ || null);
+            if (s && s[t] && Array.isArray(s[t].rows)) {
+              s[t].rows = s[t].rows.filter(function(r) {
+                return String(r.id) !== deadId && String(r.name) !== deadId;
+              });
+              if (typeof renderRows === 'function') renderRows(t);
+            }
+          });
+        }
+      });
+    }
+  } catch(_) {}
+
+  root.__ATPL_DOL_STATE__ = state;
+  if (typeof window !== 'undefined') {
+    window.__ATPL_DOL_STATE__ = state;
+  }
+
+})(typeof window !== 'undefined' ? window : this);
