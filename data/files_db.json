@@ -245,41 +245,41 @@
       "deleted_at": "2026-10-30T17:36:48.168Z",
       "uploaded_at": "2026-10-30T17:36:48.168Z"
     },
-    "salary:final salary sheet april 2026.xls": {
-      "id": "Final Salary Sheet April 2026.xls",
-      "name": "Final Salary Sheet April 2026.xls",
-      "filename": "Final Salary Sheet April 2026.xls",
+    "salary:dec salary 2023.xlsx": {
+      "id": "dec salary 2023.xlsx",
+      "name": "dec salary 2023.xlsx",
+      "filename": "dec salary 2023.xlsx",
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:37:58.198Z",
-      "uploaded_at": "2026-10-30T17:37:58.198Z"
+      "deleted_at": "2026-10-30T17:38:06.183Z",
+      "uploaded_at": "2026-10-30T17:38:06.183Z"
     },
-    "final salary sheet april 2026.xls": {
-      "id": "Final Salary Sheet April 2026.xls",
-      "name": "Final Salary Sheet April 2026.xls",
-      "filename": "Final Salary Sheet April 2026.xls",
+    "dec salary 2023.xlsx": {
+      "id": "dec salary 2023.xlsx",
+      "name": "dec salary 2023.xlsx",
+      "filename": "dec salary 2023.xlsx",
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:37:58.198Z",
-      "uploaded_at": "2026-10-30T17:37:58.198Z"
+      "deleted_at": "2026-10-30T17:38:06.183Z",
+      "uploaded_at": "2026-10-30T17:38:06.183Z"
     }
   },
   "files": {
-    "sal_a91bd6c215ccd451": {
-      "id": "sal_a91bd6c215ccd451",
+    "sal_7645d77b27fe5f20": {
+      "id": "sal_7645d77b27fe5f20",
       "module": "salary",
       "category": "audit",
-      "name": "dec salary 2023.xlsx",
-      "size": 1379888,
+      "name": "Final Salary Sheet April 2026.xls",
+      "size": 473540,
       "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "sha256_hash": "7392fd29b2e6de2d77d231fcf0a55195f06cc8bdf6dc7aac89393c8c060ca7f6",
+      "sha256_hash": "1477616d167ad252c331026cff994122ca0657144a605d9c3ca33473be580553",
       "sheets": null,
-      "saved": "2026-10-17T07:45:36.681Z",
+      "saved": "2026-09-28T08:37:22.622Z",
       "uploaded_by": "admin",
-      "created_at": "2026-10-17T07:45:36.681Z",
-      "updated_at": "2026-10-17T07:45:36.681Z"
+      "created_at": "2026-09-28T08:37:22.622Z",
+      "updated_at": "2026-09-28T08:37:22.622Z"
     },
     "sal_0c14f568abbf1246": {
       "id": "sal_0c14f568abbf1246",
