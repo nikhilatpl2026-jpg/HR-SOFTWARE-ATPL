@@ -1,5 +1,5 @@
 {
-  "version": 469,
+  "version": 470,
   "tombstones": {
     "pf_ecr_challan_may_2026.pdf": {
       "id": "pf_challan_2026_05",
@@ -232,8 +232,8 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:36:48.168Z",
-      "uploaded_at": "2026-10-30T17:36:48.168Z"
+      "deleted_at": "2026-10-30T17:37:02.131Z",
+      "uploaded_at": "2026-10-30T17:37:02.131Z"
     },
     "final salary sheet atpl oct 2024.xlsx": {
       "id": "Final Salary Sheet ATPL Oct 2024.xlsx",
@@ -242,8 +242,8 @@
       "module": "salary",
       "doc_type": "salary_tombstone",
       "file_hash": "",
-      "deleted_at": "2026-10-30T17:36:48.168Z",
-      "uploaded_at": "2026-10-30T17:36:48.168Z"
+      "deleted_at": "2026-10-30T17:37:02.131Z",
+      "uploaded_at": "2026-10-30T17:37:02.131Z"
     }
   },
   "files": {
