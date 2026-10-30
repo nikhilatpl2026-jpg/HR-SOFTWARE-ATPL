@@ -4266,11 +4266,111 @@ async function atplDirectServerSync(force) {
   } finally {
     isAtplDirectSyncing = false;
   }
+async function handleFiles(list) {
+  window.__ATPL_IS_UPLOADING = true;
+  window.__ATPL_LAST_UPLOAD_TIME = Date.now();
+  var validFiles = (list || []).filter(function(file) {
+    if (!file || !file.name || !file.name.match(/\.(xlsx|xls|csv)$/i)) {
+      if (file && file.name) lg('err', '❌ Support nahi: ' + file.name);
+      return false;
+    }
+    return true;
+  });
+  if (!validFiles.length) {
+    window.__ATPL_IS_UPLOADING = false;
+    return;
+  }
+  var total = validFiles.length;
+  var lbl = document.getElementById('storageLbl');
+  if (window.showToast) window.showToast('⏳ Uploading ' + total + ' file(s) across all browsers...');
+  try {
+    for (var i = 0; i < total; i++) {
+      var file = validFiles[i];
+      if (lbl) lbl.textContent = 'Saving (' + (i + 1) + '/' + total + '): ' + file.name;
+      // Yield 20ms so UI never freezes during multi-file upload
+      await new Promise(function(r) { setTimeout(r, 20); });
+      var buf = await file.arrayBuffer();
+      var wb = parseWB(buf);
+      var sheets = wbToSheets(wb);
+      var now = new Date().toISOString();
+      FILES = (FILES || []).filter(function(f) { return f && String(f.name).toLowerCase() !== String(file.name).toLowerCase(); });
+      FILES.push({ id: file.name, name: file.name, wb: wb, sheets: sheets, buf: buf, savedAt: now });
+      window.FILES = FILES;
+      window.__ATPL_IS_DOWNLOADING_DRIVE = true;
+      saveFileToDB(file.name, buf);
+      window.__ATPL_IS_DOWNLOADING_DRIVE = false;
+      if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.uploadFile === 'function') {
+        await window.ATPLGoogleSync.uploadFile('salary', { name: file.name, buf: buf, savedAt: now });
+      }
+      lg('ok', '💾 (' + (i + 1) + '/' + total + ') Saved & Synced: <b>' + file.name + '</b>');
+    }
+  } catch (err) {
+    console.warn('Upload error:', err);
+  } finally {
+    window.__ATPL_IS_UPLOADING = false;
+    window.__ATPL_LAST_UPLOAD_TIME = Date.now();
+  }
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  if (lbl) lbl.textContent = (window.FILES || FILES).length + ' files saved';
+  if (window.showToast) window.showToast('✅ Uploaded & synced across all browsers!');
 }
 
-// Background sync loop - ultra lightweight (Hang-free: periodic timer disabled)
-// ══ Hang-free ERP Engine: Background continuous fetch loops, Firebase listeners, and SSE disabled ══
-// ═══════════════════════════════════════════════════════════════
+function renderFiles() {
+  var sec = document.getElementById('filesSec');
+  var list = document.getElementById('filesList');
+  if (sec) sec.style.display = 'block';
+  var listFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
+  if (!listFiles.length) {
+    if (list) list.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:12px 6px;text-align:center">No saved files yet<br><span style="font-size:10px;color:#6366f1">Click Sync Browsers below</span></div>';
+    var fc = document.getElementById('fileCount');
+    if (fc) fc.textContent = '(0)';
+    updFOTags();
+    return;
+  }
+  document.getElementById('fileCount').textContent = '(' + listFiles.length + ')';
+  list.innerHTML = listFiles.map(function(f, i) {
+    var rows = f.sheets ? Object.values(f.sheets).reduce(function(a,r){return a+Math.max(0,r.length-1);},0) : 0;
+    var shCount = (f.wb && f.wb.SheetNames) ? f.wb.SheetNames.length : 1;
+    return '<div class="file-item" onclick="openFileViewer('+i+')">' +
+      '<div class="fi-icon">📊</div>' +
+      '<div class="fi-info">' +
+        '<div class="fi-name">' + f.name + '</div>' +
+        '<div class="fi-meta">' + shCount + ' sheets · ' + rows + ' rows</div>' +
+      '</div>' +
+      '<span class="fi-view-btn" onclick="event.stopPropagation();openFileViewer('+i+')">👁 View</span>' +
+      '<span class="fi-saved">💾</span>' +
+      '<button class="fi-rm" onclick="event.stopPropagation();rmFile(' + i + ')" title="Remove">✕</button>' +
+    '</div>';
+  }).join('');
+  updFOTags();
+}
+
+async function rmFile(i) {
+  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
+  var f = list[i];
+  if (!f) return;
+  var name = f.name;
+  if (!confirm('Kya aap file "' + name + '" ko delete karna chahte hain?\nYe file cloud storage aur sabhi phones/browsers se permanent delete ho jayegi.')) return;
+  FILES = (window.FILES || []).filter(function(x) { return x && String(x.name).toLowerCase() !== String(name).toLowerCase(); });
+  window.FILES = FILES;
+  deleteFromDB(name);
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.deleteFile === 'function') {
+    await window.ATPLGoogleSync.deleteFile('salary', name);
+  }
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+}
+
+async function clearAllFiles() {
+  if (!confirm('Saari files sabhi browsers se delete karna chahte ho?')) return;
+  isRestoringAborted = true;
+  window.FILES = [];
+  FILES = [];
+  clearDB();
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.clearAllSalaryFiles === 'function') {
+    await window.ATPLGoogleSync.clearAllSalaryFiles();
+  }
+  renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+}// ═══════════════════════════════════════════════════════════════
 // FILE UPLOAD
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('fileInput').addEventListener('change', function(e) {
@@ -15236,17 +15336,9 @@ window.hrDocAttachFiles = async function(id,input){
     if(typeof window.showToast==='function')window.showToast('📎 Attachment save ho raha hai…');
     var list=[];
     for(var i=0;i<files.length;i++)list.push(await ARead(files[i]));
-    var d=Object.assign({},docs[idx]);
-    d.file_data_list=list;
-    d.file_data=list[0].data;
-    d.file_name=list.map(function(x){return x.name;}).join(' + ');
-    d.file_type=list[0].type||'application/octet-stream';
-    d.updated_at=new Date().toISOString();
-
-    var done=function(){
-      if(typeof window.hrDocRender==='function')window.hrDocRender();
-      if(typeof window.showToast==='function')
-        window.showToast('✅ '+list.length+' attachment'+(list.length>1?'s':'')+' saved — file name ab table mein visible hai.');
+    <!-- PURANI FREEZE KARNE WALI SCRIPTS HATAYEIN -->
+<script src="atpl-google-drive-sync.js?v=20261109-zero-freeze"></script>
+<script src="atpl-central-file-sync.js?v=20261109-zero-freeze"></script>  window.showToast('✅ '+list.length+' attachment'+(list.length>1?'s':'')+' saved — file name ab table mein visible hai.');
     };
     if(typeof window.hrDocPut==='function')window.hrDocPut(d,done);
     else done();
