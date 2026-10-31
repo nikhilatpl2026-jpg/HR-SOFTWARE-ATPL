@@ -17,7 +17,7 @@
  var CHUNK=3200,MAX_CHUNKS=600,CONCURRENCY=4,lastPull=0,pulling=null,remoteRecords=[];
  var TOMB_STORAGE_KEY='ATPL_SALARY_TOMBSTONES_V2',HR_TOMB_KEY='ATPL_HR_TOMBSTONES_V2';
  var firebaseUnsubscribe=null;
-var sharedSalaryAuthority = false; // Zero-Hang: Never chunk Excel files into 600 SystemRecords rows!
+var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600 SystemRecords rows!
  var salarySyncFlight=null, salarySyncAt=0, salaryWriteFlight=null;
  var SALARY_OUTBOX='ATPL_SALARY_OUTBOX_V1', SALARY_CLEAR_KEY='__ALL_SALARY__';
 
@@ -68,7 +68,8 @@ var sharedSalaryAuthority = false; // Zero-Hang: Never chunk Excel files into 60
  async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records.filter(function(r){return r._atpl_kind!=='chunk'||String(r.generation||'')===String(meta.generation||'')}),meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
  function trimRows(rows){rows=(rows||[]).map(function(r){r=Array.isArray(r)?r.slice():[];while(r.length&&String(r[r.length-1]==null?'':r[r.length-1]).trim()==='')r.pop();return r});while(rows.length&&(!rows[rows.length-1]||!rows[rows.length-1].some(function(v){return String(v==null?'':v).trim()!==''})))rows.pop();return rows}
  function workbookPayload(name,buf){if(!root.XLSX)throw new Error('Excel engine unavailable');var wb=root.XLSX.read(buf,{type:'array',cellDates:false,cellText:true});return{v:1,name:name,sheets:wb.SheetNames.map(function(sn){var rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});return{name:sn,rows:trimRows(rows)}})}}
- function payloadBuffer(p){if(p&&p.original_b64)return b64ToBuf(p.original_b64);if(!root.XLSX||!p||!Array.isArray(p.sheets))throw new Error('Shared workbook invalid');var wb=root.XLSX.utils.book_new();p.sheets.forEach(function(s){var ws=root.XLSX.utils.aoa_to_sheet(Array.isArray(s.rows)?s.rows:[]);root.XLSX.utils.book_append_sheet(wb,ws,String(s.name||'Sheet').slice(0,31)||'Sheet')});return root.XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true})}
+ function payloadBuffer(p){
+  if(p&&p.original_b64)return b64ToBuf(p.original_b64);if(!root.XLSX||!p||!Array.isArray(p.sheets))throw new Error('Shared workbook invalid');var wb=root.XLSX.utils.book_new();p.sheets.forEach(function(s){var ws=root.XLSX.utils.aoa_to_sheet(Array.isArray(s.rows)?s.rows:[]);root.XLSX.utils.book_append_sheet(wb,ws,String(s.name||'Sheet').slice(0,31)||'Sheet')});return root.XLSX.write(wb,{bookType:'xlsx',type:'array',compression:true})}
  function openDb(name,ver,store,keyPath){return new Promise(function(ok,no){try{var r=indexedDB.open(name,ver);r.onupgradeneeded=function(){if(!r.result.objectStoreNames.contains(store))r.result.createObjectStore(store,keyPath?{keyPath:keyPath}:undefined)};r.onsuccess=function(){ok(r.result)};r.onerror=function(){no(r.error)}}catch(e){no(e)}})}
  async function salaryRows(){try{var d=await openDb(SALARY_DB,SALARY_VER,SALARY_STORE,'name');return await new Promise(function(ok){var r=d.transaction(SALARY_STORE,'readonly').objectStore(SALARY_STORE).getAll();r.onsuccess=function(){d.close();ok(r.result||[])};r.onerror=function(){d.close();ok([])}})}catch(_){return[]}}
  function salaryRestoreAllowed(name,saved){
@@ -329,7 +330,7 @@ var sharedSalaryAuthority = false; // Zero-Hang: Never chunk Excel files into 60
        for(var i=0; i<rows.length; i++){
          var r = rows[i];
          var existing = curFiles.find(function(f){
-  return f && String(f.name || '').toLowerCase() === String(r.name || '').toLowerCase() && f.wb;
+  return f && String(f.name || '').toLowerCase() === String(r.name || '').toLowerCase() && f.wb && (f.savedAt === r.saved);
 });
          if(existing){
            nextFiles.push(existing);

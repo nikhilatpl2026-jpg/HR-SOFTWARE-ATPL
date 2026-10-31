@@ -487,7 +487,9 @@
     },
 
     deleteFile: async function(module, idOrName) {
-      var name = String(idOrName || module || '').trim();
+      var name = '';
+      if (idOrName !== undefined && idOrName !== null && idOrName !== '') name = String(idOrName).trim();
+      else name = String(module || '').trim();
       if (!name) return false;
       var target = name.toLowerCase().trim();
 

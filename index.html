@@ -338,7 +338,8 @@
     }
   });
 })();
-  <script>
+</script>
+<script>
   window.__atplFirebaseQuotaExhausted = false;
   var customGas = '';
   try { customGas = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || ''; } catch(_) {}
@@ -2446,7 +2447,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="sb-sec">
       <div class="sb-lbl">Upload Files</div>
       <div class="dropzone" id="dz">
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt,.xlsb,.xlsm,.ods" multiple>
         <div class="dz-icon">📂</div>
         <div class="dz-text"><strong>Files yahan drop karo</strong></div>
         <div class="dz-hint">.xlsx · .xls · .csv · Multiple files</div>
@@ -5667,7 +5668,7 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     empName: [
       'emp name', 'empname', 'employee name', 'name of employee', 'name', 'worker name',
       'staff name', 'full name', 'member name', 'name of worker', 'candidate name',
-      'person name', 'employee s name', 'employees name', 'associate name', 'staff'
+      'person name', 'employee s name', 'employees name', 'associate name', 'staff', 'karamchari', 'karmchari'
     ],
     father: [
       'father', 'father name', 'fathers name', 'father s name', 'husband name', 'f h name',
@@ -5688,7 +5689,7 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     gross: [
       'gross salary', 'gross total salary', 'total gross salary', 'gross', 'gross pay',
       'gross wages', 'earned gross', 'earned gross salary', 'total earnings', 'total gross',
-      'gross earning salary', 'gross earned salary', 'gross amount', 'earned salary', 'gross wage'
+      'gross earning salary', 'gross earned salary', 'gross amount', 'earned salary', 'gross wage', 'rate'
     ],
     netPayment: [
       'net salary payable', 'net payment', 'net pay', 'net salary', 'take home', 'in hand',
@@ -5698,7 +5699,7 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     netEarning: ['net earning', 'net earnings'],
     workDays: [
       'paid days', 'working days', 'actual working days', 'present days', 'duty days',
-      'days worked', 'pdays', 'p days', 'total days', 'pay days', 'total present', 'p', 'att days', 'att'
+      'days worked', 'pdays', 'p days', 'total days', 'pay days', 'total present', 'p', 'att days', 'att', 'wd', 'w d', 'w days', 'working day'
     ],
     otHours: ['over time hours', 'overtime hours', 'ot hours', 'ot hrs', 'ot time', 'overtime hrs', 'ot'],
     otAmount: ['ot amount', 'ot amt', 'overtime amount', 'ot wages', 'overtime wages'],
@@ -5717,7 +5718,7 @@ function universalDetectSalaryCols(hdr, sampleRows) {
     accountNo: ['account number', 'account no', 'account', 'a c no', 'ac no', 'bank account no'],
     aadhaar: ['aadhaar number', 'aadhaar no', 'aadhaar', 'aadhar number', 'aadhar no', 'aadhar'],
     phone: ['phone number', 'phone no', 'mobile number', 'mobile no', 'phone', 'mobile', 'contact no'],
-    manual: ['manual amount', 'manual amt', 'mam amount'],
+    manual: ['manual amount', 'manual amt', 'mam amount', 'cash amount', 'cash amt', 'cash', 'manual'],
     advance: ['advance pay', 'advance', 'salary advance', 'staff advance', 'adv ded', 'adv'],
     loan: ['loan', 'loan deduction']
   };
@@ -5726,12 +5727,17 @@ function universalDetectSalaryCols(hdr, sampleRows) {
   hdr.forEach(function(h, i) {
     var raw = clean(h);
     if (!raw) return;
-    Object.keys(ALIASES).forEach(function(field) {
+    var fieldOrder = Object.keys(ALIASES);
+    // prioritize number identifiers over deductions
+    fieldOrder = fieldOrder.filter(f => f === "esiNumber" || f === "pfNumber").concat(fieldOrder.filter(f => f !== "esiNumber" && f !== "pfNumber"));
+    fieldOrder.forEach(function(field) {
       if (cols[field] >= 0) return;
       var matches = ALIASES[field];
       for (var k = 0; k < matches.length; k++) {
         var alias = clean(matches[k]);
-        if (raw === alias || raw === alias + 's' || raw.indexOf(alias) === 0 || raw.endsWith(' ' + alias)) {
+        if (raw === alias || raw === alias + "s" || raw.indexOf(alias) === 0 || raw.endsWith(" " + alias)) {
+          if ((field === "pf" || field === "esic") && (raw.includes("no") || raw.includes("number") || raw.includes("num") || raw.includes("uan"))) continue;
+          if (field === "workDays" && (raw.includes("number") || raw.includes("pf") || raw.includes("esi"))) continue;
           cols[field] = i;
           break;
         }

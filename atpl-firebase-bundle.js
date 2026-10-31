@@ -5,6 +5,7 @@
 
   var saveHrDocFb = async function(docObj) {
     if (!docObj) return true;
+    docObj = Object.assign({}, docObj, { updated_at:String(docObj.updated_at||new Date().toISOString()) });
     if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.uploadFile === 'function') {
       try { await window.ATPLGoogleSync.uploadFile('hr_doc', docObj); } catch(_) {}
     }
