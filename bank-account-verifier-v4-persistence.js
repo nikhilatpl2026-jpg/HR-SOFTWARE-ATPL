@@ -121,10 +121,15 @@ function exactOps(cur,ref){
   }
   ops.reverse();if(ops.length>4)return ops.slice(0,4).join(' • ')+' • +'+(ops.length-4)+' more';return ops.join(' • ');
 }
+var __enhancingIssues = false;
 function enhanceIssues(){
+  if(__enhancingIssues)return;
+  __enhancingIssues = true;
+  try{
   var s=state();if(!s||!Array.isArray(s.issues))return;
   s.issues.forEach(function(x){var exp=x.expected&&x.expected.account||x.master&&x.master.account||'';if(!exp)(x.histories||[]).some(function(h){if(h&&h.account){exp=h.account;return true}return false});var det=exactOps(x.current&&x.current.account,exp);if(det){x.exactDigitDetail=det;if(x.message.indexOf(det)<0)x.message=x.message+' • '+det}});
   var area=q('bavResults');if(!area)return;area.querySelectorAll('tr[data-i]').forEach(function(tr){var i=Number(tr.getAttribute('data-i')),x=s.issues[i],el=tr.querySelectorAll('td')[6]&&tr.querySelectorAll('td')[6].querySelector('.bav-bad');if(x&&el&&el.textContent!==x.message)el.textContent=x.message})
+  }finally{__enhancingIssues = false;}
 }
 function watchResults(){var area=q('bavResults');if(!area||observer)return;observer=new MutationObserver(function(){setTimeout(enhanceIssues,0)});observer.observe(area,{childList:true,subtree:true});enhanceIssues()}
 function patchCorrectionAutosave(){

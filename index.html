@@ -4632,7 +4632,9 @@ var VIEWER_FILE_IDX = -1;
 
 function openFileViewer(fi) {
   VIEWER_FILE_IDX = fi;
-  var f = FILES[fi];
+  var allFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (FILES || []);
+  var f = allFiles[fi];
+  if (!f) return;
   document.getElementById('fvTitle').textContent = f.name + ' — ' + f.wb.SheetNames.length + ' sheets';
   var sheetsHtml = f.wb.SheetNames.map(function(sn, si) {
     return '<div class="fv-sheet-tab' + (si === 0 ? ' active' : '') + '" onclick="viewSheet(' + fi + ',' + si + ',this)">' + sn + '</div>';
@@ -4653,7 +4655,9 @@ function viewSheet(fi, si, el) {
 }
 
 function renderViewerSheet(fi, si) {
-  var f = FILES[fi];
+  var allFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (FILES || []);
+  var f = allFiles[fi];
+  if (!f || !f.wb || !f.wb.SheetNames) return;
   var sn = f.wb.SheetNames[si];
   var rows = f.sheets[sn];
   if (!rows || !rows.length) {
@@ -6712,6 +6716,8 @@ function swOut(name) {
 
 function goPage(name) {
   if (name === 'dashboard') name = 'cmd';
+  var lp = document.getElementById('landingPage');
+  if (lp) { lp.style.display = 'none'; lp.style.pointerEvents = 'none'; lp.classList.add('hidden'); }
   if (window.innerWidth <= 768) {
     var mNav = document.getElementById('vnav');
     var mBdrop = document.getElementById('mNavBackdrop');
