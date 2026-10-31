@@ -91,7 +91,7 @@
               return {
                 name: s.name,
                 wb: wb,
-                sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : [],
+                sheets: wb && typeof wbToSheets === 'function' ? wbToSheets(wb) : {},
                 buf: s.buf,
                 savedAt: s.saved
               };

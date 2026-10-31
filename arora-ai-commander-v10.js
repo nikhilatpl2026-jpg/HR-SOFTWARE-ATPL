@@ -267,7 +267,7 @@
         }
         var mStats = KnowledgeGraph.months[monthKey];
 
-        for (var i = headerIdx + 1; i < rows.length; i++) {
+        for (var i = headerIdx + 1; i < Math.min(rows.length, headerIdx + 300); i++) {
           var rData = rows[i];
           if (!Array.isArray(rData)) continue;
 
@@ -1550,7 +1550,7 @@
       try {
         if (window.FILES && Array.isArray(window.FILES)) {
           if (window.FILES.length !== KnowledgeGraph.lastScannedFileCount) {
-            refreshKnowledgeGraph();
+            if (typeof window.requestIdleCallback === 'function') { window.requestIdleCallback(function(){ refreshKnowledgeGraph(); }, { timeout: 4000 }); } else { setTimeout(refreshKnowledgeGraph, 200); }
             var metaBar = document.getElementById("aiMetaBar");
             if (metaBar && KnowledgeGraph.filesSummary.length) {
               var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";

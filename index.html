@@ -4564,7 +4564,7 @@ function renderFiles() {
   }
   document.getElementById('fileCount').textContent = '(' + listFiles.length + ')';
   list.innerHTML = listFiles.map(function(f, i) {
-    var rows = Object.values(f.sheets).reduce(function(a,r){return a+Math.max(0,r.length-1);},0);
+    var rows = (f && f.wb) ? fastTotalWorkbookRows(f.wb) : (f.sheets ? Object.values(f.sheets).reduce(function(a,r){return a+Math.max(0,(r||[]).length-1);},0) : 0);
     return '<div class="file-item" onclick="openFileViewer('+i+')">' +
       '<div class="fi-icon">📊</div>' +
       '<div class="fi-info">' +
@@ -4694,7 +4694,7 @@ function renderAllFilesPage() {
   }
   var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
   var totalSheets = 0, totalRows = 0;
-  allFiles.forEach(function(f) { totalSheets += (f.wb && f.wb.SheetNames ? f.wb.SheetNames.length : 0); Object.values(f.sheets || {}).forEach(function(r) { totalRows += Math.max(0, r.length - 1); }); });
+  allFiles.forEach(function(f) { totalSheets += (f.wb && f.wb.SheetNames ? f.wb.SheetNames.length : 0); totalRows += (f && f.wb) ? fastTotalWorkbookRows(f.wb) : 0; });
   html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + allFiles.length + '</div><div class="card-lbl">Total Files</div></div>';
   html += '<div class="card safe" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
   html += '<div class="card warn" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
@@ -4702,7 +4702,7 @@ function renderAllFilesPage() {
   html += '</div>';
 
   allFiles.forEach(function(f, i) {
-    var rows = Object.values(f.sheets || {}).reduce(function(a, r) { return a + Math.max(0, r.length - 1); }, 0);
+    var rows = (f && f.wb) ? fastTotalWorkbookRows(f.wb) : 0;
     var savedAt = f.savedAt ? new Date(f.savedAt).toLocaleString('en-IN') : '';
     html += '<div style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
     html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#4F46E5,#6366F1);display:flex;align-items:center;gap:10px">';
@@ -4849,15 +4849,18 @@ function downloadInlineFile(fi) {
 function populateNJSelects() {
   var oldSel = document.getElementById('njOldFile');
   var newSel = document.getElementById('njNewFile');
+  if (!oldSel || !newSel) return;
+  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
   var opts = '<option value="">-- Select File --</option>';
-  FILES.forEach(function(f, i) { opts += '<option value="' + i + '">' + f.name + '</option>'; });
+  (list || []).forEach(function(f, i) { opts += '<option value="' + i + '">' + (f && f.name || ('File ' + (i+1))) + '</option>'; });
   oldSel.innerHTML = opts;
   newSel.innerHTML = opts;
-  // Auto-select: sort by month order, oldest = old, newest = new
-  if(FILES.length >= 2) {
-    var sorted = FILES.map(function(f, i){return{i:i, ord:exMonthOrder(f.name)};}).sort(function(a,b){return a.ord-b.ord;});
-    oldSel.value = sorted[0].i;
-    newSel.value = sorted[sorted.length-1].i;
+  if(list.length >= 2) {
+    var sorted = list.map(function(f, i){return{i:i, ord:exMonthOrder(f.name)};}).sort(function(a,b){return a.ord-b.ord;});
+    if (sorted[0] && sorted[sorted.length-1]) {
+      oldSel.value = sorted[0].i;
+      newSel.value = sorted[sorted.length-1].i;
+    }
   }
 }
 
@@ -6788,7 +6791,7 @@ function toggleVcat(catId) {
 
 function updStats() {
   document.getElementById('sF').textContent=FILES.length;
-  var sh=0,rows=0;FILES.forEach(function(f){sh+=f.wb.SheetNames.length;Object.values(f.sheets).forEach(function(r){rows+=Math.max(0,r.length-1);});});
+  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES; var sh=0,rows=0; (list||[]).forEach(function(f){ if(f&&f.wb){ sh+=f.wb.SheetNames?f.wb.SheetNames.length:0; rows+=fastTotalWorkbookRows(f.wb); } });
   document.getElementById('sSh').textContent=sh;document.getElementById('sR').textContent=rows;
   document.getElementById('sCh').textContent=CHANGES;
   updFOTags();
