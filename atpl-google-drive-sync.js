@@ -107,17 +107,21 @@
     }, 60);
   }
 
+  var emUiTimer = null;
   function refreshEmployeeUI() {
-    requestAnimationFrame(function() {
-      if (typeof window.aroraRefreshMaster === 'function') {
-        try { window.aroraRefreshMaster(); } catch (_) {}
-      } else {
-        try { if (typeof window.emFilter === 'function') window.emFilter(); } catch (_) {}
-        try { if (typeof window.emUpdateStats === 'function') window.emUpdateStats(); } catch (_) {}
-      }
-      updateSyncBadge('ok');
-      notifySubscribers('employee');
-    });
+    clearTimeout(emUiTimer);
+    emUiTimer = setTimeout(function() {
+      requestAnimationFrame(function() {
+        if (typeof window.aroraRefreshMaster === 'function') {
+          try { window.aroraRefreshMaster(); } catch (_) {}
+        } else {
+          try { if (typeof window.emFilter === 'function') window.emFilter(); } catch (_) {}
+          try { if (typeof window.emUpdateStats === 'function') window.emUpdateStats(); } catch (_) {}
+        }
+        updateSyncBadge('ok');
+        notifySubscribers('employee');
+      });
+    }, 50);
   }
 
   function notifySubscribers(mod) {
@@ -156,23 +160,39 @@
     }
   }
 
+  var _lastAppliedEmpFp = '';
   function applyEmployeeRecords(records) {
     if (!Array.isArray(records) || !records.length) return;
+    var len = records.length;
+    var fp = len + ':' + (records[0] ? records[0].emp_id : '') + ':' + (records[len - 1] ? records[len - 1].emp_id : '');
+    if (_lastAppliedEmpFp === fp && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
+      return; // Already applied and unchanged — zero CPU freeze!
+    }
+    _lastAppliedEmpFp = fp;
+
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
-    var valid = records.filter(function(r) {
-      if (!r || !r.emp_id) return false;
+    var valid = [];
+    for (var i = 0; i < len; i++) {
+      var r = records[i];
+      if (!r || !r.emp_id) continue;
       var k = String(r.emp_id).toLowerCase().trim();
-      if (k.indexOf('__atpl_sys__') === 0) return false;
-      return !dead[k] && !dead[k.replace(/^0+/, '')];
-    });
+      if (k.indexOf('__atpl_sys__') === 0) continue;
+      if (dead[k] || dead[k.replace(/^0+/, '')]) continue;
+      valid.push(r);
+    }
     if (!valid.length) return;
     if (window.EM) window.EM.data = valid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
       Array.prototype.push.apply(window.EMP_MASTER_DATA, valid);
     }
-    try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(valid)); } catch (_) {}
+    // Only persist directly to localStorage if under 3000 records to prevent browser quota crashes on 11k+ records
+    try {
+      if (valid.length < 3000) {
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(valid));
+      }
+    } catch (_) {}
     refreshEmployeeUI();
   }
 
@@ -228,6 +248,7 @@
   }
 
   // ── Poll Sync State (Cross-Browser Upload & Delete Reconciliation) ──
+  var lastPollTimestamp = 0;
   async function pollSyncState(force) {
     if (!isInitialLoaded) {
       isInitialLoaded = true;
@@ -238,6 +259,12 @@
     if (!endpoint || window.__ATPL_IS_UPLOADING) {
       return { ok: true, files: window.FILES || [] };
     }
+
+    var now = Date.now();
+    if (!force && (now - lastPollTimestamp < 10000)) {
+      return Promise.resolve({ ok: true, throttled: true });
+    }
+    lastPollTimestamp = now;
 
     if (isPolling && !force) return Promise.resolve({ ok: true });
     isPolling = true;
@@ -396,13 +423,22 @@
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) {
           pollSyncState(false);
         }
-      }, 15000);
+      }, 25000);
 
+      var pollDebounceTimer = null;
       window.addEventListener('focus', function() {
-        if (getGasUrl()) pollSyncState(false);
+        clearTimeout(pollDebounceTimer);
+        pollDebounceTimer = setTimeout(function() {
+          if (getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
+        }, 1500);
       });
       document.addEventListener('visibilitychange', function() {
-        if (!document.hidden && getGasUrl()) pollSyncState(false);
+        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) {
+          clearTimeout(pollDebounceTimer);
+          pollDebounceTimer = setTimeout(function() {
+            pollSyncState(false);
+          }, 1500);
+        }
       });
 
       if (typeof window.BroadcastChannel !== 'undefined') {

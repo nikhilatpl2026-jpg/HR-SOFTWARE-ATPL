@@ -215,7 +215,7 @@
           fileInfo.totalRows += shRows;
           return;
         }
-        var rows = Array.isArray(sheets[sn]) ? sheets[sn] : [];
+        var rows = (ws && ws.__cachedRowsFmt) ? ws.__cachedRowsFmt : (Array.isArray(sheets[sn]) && !f.wb ? sheets[sn] : []);
         if (!rows.length) {
           fileInfo.sheets.push({ name: sn, rowCount: shRows, type: 'General' });
           fileInfo.totalRows += shRows;
