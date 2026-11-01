@@ -36,14 +36,8 @@ function persist(){
 function hydrate(){
   try{
     if(!g.EM||!Array.isArray(g.EM.data))return false;
+    // Support full enterprise employee dataset (11k+ employees) safely
     var local=read();
-    if(local && local.length > 600) {
-      console.warn("[ATPL Guard] Purging inflated employee cache: " + local.length);
-      local = [];
-      try { localStorage.removeItem(KEY); } catch(_) {}
-    }
-    // Never union an old local snapshot with the active Employee Master.
-    // A deleted employee must not be re-created by a stale browser cache.
     if(!g.EM.data.length&&local.length){
       var deleted={};
       try{deleted=JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1')||'{}')}catch(_){}

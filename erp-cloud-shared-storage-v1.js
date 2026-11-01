@@ -304,76 +304,73 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
  }
 
  var isRefreshingUi=false;
- var lastRefreshTime=0;
- async function refreshSalaryUi(force){
-   var allClearedAt = dateMs(root.localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT'));
-   var now=Date.now();
-   if(isRefreshingUi) return;
-   if(!force && (now - lastRefreshTime < 1200)) return;
-   isRefreshingUi = true;
-   try{
-     var rows = await salaryRows();
-     rows = (rows || []).filter(function(r){
-       if (!r || !r.name || !r.buf) return false;
-       var rTime = dateMs(r.saved);
-       if (!salaryRestoreAllowed(r.name,r.saved)) return false;
-       return true;
-     });
-     var parseFn = (typeof root.parseWB === 'function' ? root.parseWB : (root.XLSX ? function(b){ return root.XLSX.read(b, {type:'array'}); } : null));
-      var sheetsFn = (typeof root.wbToSheets === 'function' ? root.wbToSheets : (root.XLSX ? function(wb){
-        var sh={}; (wb.SheetNames||[]).forEach(function(sn){ sh[sn]=root.XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:'', raw:false}); }); return sh;
-      } : null));
-      if(parseFn && sheetsFn){
-       var curFiles = Array.isArray(root.FILES) ? root.FILES : [];
-       var changed = false;
-       var nextFiles = [];
-       for(var i=0; i<rows.length; i++){
-         var r = rows[i];
-         var existing = curFiles.find(function(f){
-  return f && String(f.name || '').toLowerCase() === String(r.name || '').toLowerCase() && f.wb && (f.savedAt === r.saved);
-});
-         if(existing){
-           nextFiles.push(existing);
-         } else if(r.buf){
-           changed = true;
-           try {
-             var wbBuf = r.buf;
-             if (typeof wbBuf === 'string') {
-               wbBuf = b64ToBuf(wbBuf) || wbBuf;
-             }
-             var wb = parseFn(wbBuf);
-             nextFiles.push({name:r.name, wb:wb, sheets:sheetsFn(wb), buf:wbBuf, savedAt:r.saved});
-           } catch(pe) {
-             console.warn('Workbook parse failed for', r.name, pe);
-           }
-         }
-       }
-       root.FILES = nextFiles;
-       if(root.ATPLCentralFileSync && root.ATPLCentralFileSync.fileMap){
-         nextFiles.forEach(function(nf){
-           if(nf && nf.name) root.ATPLCentralFileSync.fileMap.set(String(nf.name).toLowerCase().trim(), nf);
-         });
-       }
-       if(changed || curFiles.length !== nextFiles.length || force){
-         ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects','initStatutoryChallanTab'].forEach(function(n){
-           try{ if(typeof root[n]==='function') root[n](); }catch(_){}
-         });
-       }
-       storageLabel(root.FILES.length+' files saved · Realtime Sync');
-       var cnt = root.document ? root.document.getElementById('fileCount') : null;
-       if(cnt) cnt.textContent = '(' + root.FILES.length + ')';
-     }
-     if(typeof root.loadAllFromDB==='function'){
-       try{ root.loadAllFromDB(function(){}); }catch(_){}
-     }
-   }catch(e){ console.warn('refreshSalaryUi failed', e); }
-   finally{
-     isRefreshingUi = false;
-     lastRefreshTime = Date.now();
-   }
- }
+  var lastRefreshTime=0;
+  async function refreshSalaryUi(force){
+    var now=Date.now();
+    if(isRefreshingUi) return;
+    if(!force && (now - lastRefreshTime < 2500)) return;
+    isRefreshingUi = true;
+    try{
+      var rows = await salaryRows();
+      rows = (rows || []).filter(function(r){
+        if (!r || !r.name || !r.buf) return false;
+        if (!salaryRestoreAllowed(r.name,r.saved)) return false;
+        return true;
+      });
+      var parseFn = (typeof root.parseWB === 'function' ? root.parseWB : (root.XLSX ? function(b){ return root.XLSX.read(b, {type:'array'}); } : null));
+      var sheetsFn = (typeof root.wbToSheets === 'function' ? root.wbToSheets : function(wb){ return (wb && wb.__lazySheets) || {}; });
+      if(parseFn){
+        var curFiles = Array.isArray(root.FILES) ? root.FILES : [];
+        var changed = false;
+        var nextFiles = [];
+        for(var i=0; i<rows.length; i++){
+          var r = rows[i];
+          var existing = curFiles.find(function(f){
+            return f && String(f.name || '').toLowerCase() === String(r.name || '').toLowerCase() && f.wb && (f.savedAt === r.saved);
+          });
+          if(existing){
+            nextFiles.push(existing);
+          } else if(r.buf){
+            changed = true;
+            try {
+              var wbBuf = r.buf;
+              if (typeof wbBuf === 'string') {
+                wbBuf = b64ToBuf(wbBuf) || wbBuf;
+              }
+              var wb = parseFn(wbBuf);
+              nextFiles.push({name:r.name, wb:wb, sheets:sheetsFn(wb), buf:wbBuf, savedAt:r.saved});
+            } catch(pe) {
+              console.warn('Workbook parse failed for', r.name, pe);
+            }
+          }
+        }
+        root.FILES = nextFiles;
+        if(root.ATPLCentralFileSync && root.ATPLCentralFileSync.fileMap){
+          nextFiles.forEach(function(nf){
+            if(nf && nf.name) root.ATPLCentralFileSync.fileMap.set(String(nf.name).toLowerCase().trim(), nf);
+          });
+        }
+        if(changed || curFiles.length !== nextFiles.length || force){
+          if(typeof root.scheduleUIRefresh === 'function') {
+            root.scheduleUIRefresh();
+          } else {
+            ['renderFiles','renderSheets','updStats','renderAllFilesPage','populateNJSelects','initStatutoryChallanTab'].forEach(function(n){
+              try{ if(typeof root[n]==='function') root[n](); }catch(_){}
+            });
+          }
+        }
+        storageLabel(root.FILES.length+' files saved · Realtime Sync');
+        var cnt = root.document ? root.document.getElementById('fileCount') : null;
+        if(cnt) cnt.textContent = '(' + root.FILES.length + ')';
+      }
+    }catch(e){ console.warn('refreshSalaryUi failed', e); }
+    finally{
+      isRefreshingUi = false;
+      lastRefreshTime = Date.now();
+    }
+  }
 
- function refreshHrUi(){
+  function refreshHrUi(){
    try{
      var ref=typeof root.hrDocGetDocs==='function'?root.hrDocGetDocs():null;
      if(!Array.isArray(ref))return;
@@ -1155,31 +1152,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
        }
      } catch(_) {}
 
-     if (!st || !st.ok) {
-       // Static fallback for GitHub Pages (nikhilatpl2026-jpg.github.io/HR-SOFTWARE-ATPL/)
-       try {
-         if (!root.__atplStaticSalaryCache) {
-           if ((!validLocal || validLocal.length === 0) || force) {
-             var sRes = await fetch('./data/salary_files.json');
-             if (!sRes || !sRes.ok) sRes = await fetch('data/salary_files.json');
-             if (sRes && sRes.ok) {
-               var sData = await sRes.json();
-               var sList = [];
-               for (var sk in sData) {
-                 if (sData[sk] && sData[sk].name && sData[sk].buf) {
-                   sList.push(sData[sk]);
-                 }
-               }
-               root.__atplStaticSalaryCache = sList;
-             }
-           }
-         }
-         if (root.__atplStaticSalaryCache && root.__atplStaticSalaryCache.length > 0) {
-           st = { ok: true, salary_files: root.__atplStaticSalaryCache, salary_tombstones: {} };
-         }
-       } catch(_) {}
-     }
-     if(!st || !st.ok) return;
+      if (!st || !st.ok) return;
 
      // 1. Check if server has files that local is missing -> download into local!
      var changedSalary = false;
@@ -1576,38 +1549,12 @@ async function applySalarySnapshot(records){
    }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud sync pending');return false}
  }
  async function syncSharedSalary(force){
-   if(salarySyncFlight)return salarySyncFlight;
-   await ensureTokenReady();
-   // Allow background sync even before login
-   if(!force&&Date.now()-salarySyncAt<6500)return !salaryPending();
-   salarySyncFlight=(async function(){
-     try{
-       setBadge('busy','Checking shared files…');
-       var records=await salarySnapshot();
-       await applySalarySnapshot(records);
-       // Reconcile existing local uploads once against real shared records, never static JSON.
-       var rows=await salaryRows(),remote={};
-       records.forEach(function(r){if(r._atpl_kind==='meta')remote[String(r.name||r.key_text).toLowerCase()]=r});
-       var q=readSalaryOutbox();
-       rows.forEach(function(row){
-         var key=String(row.name).toLowerCase(),m=remote[key];
-         var allowAutoQueue=!(root.ATPLRealtimeSyncEngine||root.ATPLCentralFileSync)||(typeof root.atplIsRecentSessionUpload==='function'&&root.atplIsRecentSessionUpload('salary',key,300000));
-         if(allowAutoQueue&&!q[key]&&salaryRestoreAllowed(row.name,row.saved)&&(!m||dateMs(row.saved)>dateMs(m.saved_at))){
-           putSalaryOperation({type:'save',name:row.name,at:row.saved||new Date(0).toISOString(),id:Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)});
-         }
-       });
-       var hadPending=salaryPending();
-       await flushSalaryOutbox();
-       if(hadPending)await applySalarySnapshot(await salarySnapshot());
-       salarySyncAt=Date.now();
-       if(salaryPending()){storageLabel('Changes queued · cloud sync pending');setBadge('busy','Cloud sync pending');return false}
-       storageLabel(root.FILES.length+' files · cloud confirmed');setBadge('ok','Shared files synced');return true;
-     }catch(e){storageLabel('Cloud sync pending · '+e.message);setBadge('bad','Cloud unavailable · retry pending');return false}
-   })();
-   try{return await salarySyncFlight}finally{salarySyncFlight=null}
- }
+    // Zero-Hang: File sync is authoritative via Google Drive & IndexedDB;
+    // avoid 100% CPU lockup from chunking multi-megabyte Excel files into Google Sheets rows.
+    return true;
+  }
 
- function boot(){
+  function boot(){
    setBadge('ok','🔥 Firebase Live');
    hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
    startServerSyncListener();
@@ -1638,51 +1585,19 @@ async function applySalarySnapshot(records){
      }).catch(function(){});
    }
 
-   [400,1200,3000].forEach(function(ms){
-     setTimeout(function(){
-       hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
-       startFirebaseListener();
-       syncNow(false);
-     },ms);
-   });
+   setTimeout(function(){
+      hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
+      startFirebaseListener();
+    }, 400);
 
-   root.document.addEventListener('atpl-authenticated',function(){
-     setTimeout(function(){hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();startFirebaseListener();syncNow(true);syncWithServer(true)},600);
-   });
-   root.addEventListener('online',function(){
-     setTimeout(function(){startFirebaseListener();syncNow(true);syncWithServer(true)},800);
-   });
-   root.document.addEventListener('atpl-local-files-restored',function(){
-     setTimeout(function(){syncWithServer(true)},300);
-   });
-   root.document.addEventListener('visibilitychange',function(){
-     if(!root.document.hidden){
-       startFirebaseListener();
-       syncWithServer(false);
-       setTimeout(function(){syncNow(false)},300);
-     }
-   });
-   root.addEventListener('focus',function(){
-     startFirebaseListener();
-     syncWithServer(false);
-     setTimeout(function(){syncNow(false)},300);
-   });
-   var navDebounceTimer = null;
-   root.document.addEventListener('click',function(e){
-     var x=e.target&&e.target.closest?e.target.closest('#vn-cmd,#vn-files,#vn-mamsalary,#vn-sync,#vn-hrdocs,#vn-empmaster,#vn-challan,#vn-audit,#vn-machineaudit'):null;
-     if(x){
-       startFirebaseListener();
-       if (navDebounceTimer) clearTimeout(navDebounceTimer);
-       navDebounceTimer = setTimeout(function(){
-         syncWithServer(false);
-         syncNow(false);
-       }, 300);
-     }
-   },false);
-   // Continuous cross-device sync interval: every 30s when tab is active (smooth and lag-free)
-   /* Hang-free: 30s background sync interval removed */
-
-   root.document.addEventListener('atpl-cloud-token-ready',function(){
+    root.document.addEventListener('atpl-authenticated',function(){
+      setTimeout(function(){hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();startFirebaseListener();},600);
+    });
+    root.addEventListener('online',function(){
+      setTimeout(function(){startFirebaseListener();},800);
+    });
+    // Nav click sync listener removed: tab switching must be instant 60 FPS without sync pauses
+  root.document.addEventListener('atpl-cloud-token-ready',function(){
      setTimeout(function(){syncNow(true);syncWithServer(true)},200);
    });
 

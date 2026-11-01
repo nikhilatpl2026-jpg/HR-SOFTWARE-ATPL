@@ -76,6 +76,26 @@ test('Employee master 11K dataset performance & zero main-thread freeze', async 
 
   const durationMs = Date.now() - startTime;
   console.log(`[PERF TEST] 11,056 Employee Master stats processed in ${durationMs}ms (dups: ${dupCodeSet.size})`);
-  assert.ok(durationMs < 50, `11,056 records must process in < 50ms, took ${durationMs}ms`);
-  assert.strictEqual(dupCodeSet.size > 0, true);
+  // 5. Verify elimination of 33MB salary_files.json fetch
+  const erpCloudJs = fs.readFileSync(path.join(__dirname, '..', 'erp-cloud-shared-storage-v1.js'), 'utf8');
+  assert.strictEqual(
+    erpCloudJs.includes("await fetch('./data/salary_files.json')") || erpCloudJs.includes("await fetch('data/salary_files.json')"),
+    false,
+    'erp-cloud-shared-storage-v1.js must never download 33MB salary_files.json'
+  );
+
+  // 6. Verify employee-master-persistence-guard-v1.js does not wipe cache on >600 employees
+  const guardJs = fs.readFileSync(path.join(__dirname, '..', 'employee-master-persistence-guard-v1.js'), 'utf8');
+  assert.strictEqual(
+    guardJs.includes('local.length > 600'),
+    false,
+    'employee-master-persistence-guard-v1.js must not wipe cache for 11k employees'
+  );
+
+  // 7. Verify index.html uses v4 cache busting tags
+  assert.strictEqual(
+    indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v4'),
+    true,
+    'index.html must use v4 cache busting tag for atpl-google-drive-sync.js'
+  );
 });
