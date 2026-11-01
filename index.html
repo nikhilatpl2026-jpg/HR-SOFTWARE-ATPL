@@ -192,18 +192,26 @@
     var origRead = window.XLSX.read;
     var origSheetToJson = window.XLSX.utils && window.XLSX.utils.sheet_to_json;
 
-    window.XLSX.read = function(data, opts) {
+   window.XLSX.read = function(data, opts) {
       if (data && data.SheetNames && data.Sheets) return data;
       var key = fastHashBuf(data);
       if (WB_CACHE.has(key)) return WB_CACHE.get(key);
-      var wb = origRead.call(window.XLSX, data, Object.assign({}, opts || {}, {
-        cellStyles: false,
-        cellHTML: false,
-        cellNF: false
-      }));
-      if (WB_CACHE.size > 80) WB_CACHE.delete(WB_CACHE.keys().next().value);
-      WB_CACHE.set(key, wb);
-      return wb;
+      try {
+        var safeOpts = Object.assign({}, opts || {}, {
+          dense: true,
+          cellStyles: false,
+          cellHTML: false,
+          cellNF: false,
+          sheetRows: 5000
+        });
+        var wb = origRead.call(window.XLSX, data, safeOpts);
+        if (WB_CACHE.size > 80) WB_CACHE.delete(WB_CACHE.keys().next().value);
+        WB_CACHE.set(key, wb);
+        return wb;
+      } catch (e) {
+        console.warn("XLSX.read safe fallback:", e);
+        return { SheetNames: [], Sheets: {} };
+      }
     };
 
     if (typeof origSheetToJson === 'function') {
@@ -4150,15 +4158,31 @@ function clearDB(cb) {
 }
 
 function parseWB(buf) {
-  if (typeof buf === 'string') {
-    try {
-      var bin = atob(buf);
-      var bytes = new Uint8Array(bin.length);
-      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      buf = bytes.buffer;
-    } catch (_) {}
+  if (!buf) return { SheetNames: [], Sheets: {} };
+  if (buf.SheetNames && buf.Sheets) return buf;
+  try {
+    var raw = buf;
+    if (typeof raw === 'string') {
+      var clean = raw.indexOf(',') >= 0 ? raw.split(',')[1] : raw;
+      clean = clean.replace(/[^A-Za-z0-9+/=]/g, '').trim();
+      var bin = atob(clean);
+      var u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      raw = u8;
+    } else if (!(raw instanceof Uint8Array)) {
+      raw = new Uint8Array(raw);
+    }
+    return XLSX.read(raw, { 
+      type: 'array', 
+      dense: true, 
+      cellDates: false, 
+      cellStyles: false,
+      sheetRows: 5000 
+    });
+  } catch (err) {
+    console.error("Corrupt sheet safely blocked:", err);
+    return { SheetNames: [], Sheets: {} };
   }
-  return XLSX.read(buf instanceof Uint8Array ? buf : new Uint8Array(buf), { type: 'array', cellDates: true, raw: false });
 }
 
 function wbToSheets(wb) {
@@ -4249,14 +4273,16 @@ function restoreSavedFilesIncremental() {
             if (!atplSalaryRestoreAllowed(f.name, f.saved)) {
               continue;
             }
-            var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
+           var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
             if (!live) {
               var wb = parseWB(f.buf);
-              FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
-              FILES.push({ name: f.name, wb: wb, sheets: wbToSheets(wb), buf: f.buf, fromDB: true, savedAt: f.saved });
-              window.FILES = FILES;
-              loaded++;
-              batchLoaded = true;
+              if (wb && wb.SheetNames && wb.SheetNames.length > 0) {
+                FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
+                FILES.push({ name: f.name, wb: wb, sheets: wbToSheets(wb), buf: f.buf, fromDB: true, savedAt: f.saved });
+                window.FILES = FILES;
+                loaded++;
+                batchLoaded = true;
+              }
             }
           } catch(e) { failed++; console.warn('Could not parse saved file:', f && f.name, e); }
         }
