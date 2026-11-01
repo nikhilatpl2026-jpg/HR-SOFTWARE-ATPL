@@ -262,23 +262,7 @@
   }
 
   window.parseWB = function(buf) {
-    if (!buf) return { SheetNames: [], Sheets: {} };
-    if (buf.SheetNames && buf.Sheets) return buf;
-    var raw = buf;
-    if (typeof raw === 'string') {
-      try {
-        var clean = raw.indexOf(',') >= 0 ? raw.split(',')[1] : raw;
-        var bin = atob(clean.trim());
-        var u8 = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-        raw = u8;
-      } catch (_) {}
-    } else if (!(raw instanceof Uint8Array)) {
-      raw = new Uint8Array(raw);
-    }
-    var wb = window.XLSX.read(raw, { type: 'array', cellDates: true, raw: false });
-    createLazySheets(wb);
-    return wb;
+    return parseWB(buf);
   };
 
   window.wbToSheets = function(wb) {
@@ -4275,6 +4259,10 @@ function restoreSavedFilesIncremental() {
             }
            var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
             if (!live) {
+              if (f.name && f.name.toLowerCase().includes('attend')) {
+                console.warn('Skipping corrupted attendance file to prevent freeze:', f.name);
+                continue;
+              }
               var wb = parseWB(f.buf);
               if (wb && wb.SheetNames && wb.SheetNames.length > 0) {
                 FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
