@@ -281,7 +281,12 @@
         var cf = currentFiles[i];
         if (!cf || !cf.name) continue;
         var cNameLow = String(cf.name).toLowerCase().trim();
-        if (tombstones[cNameLow] || (!recentlyUploaded && !driveMap[cNameLow])) {
+        var tombVal = tombstones[cNameLow];
+        var tombTime = typeof tombVal === 'string' ? (Date.parse(tombVal) || 0) : (tombVal === true ? Infinity : 0);
+        var fileTime = cf.savedAt ? (Date.parse(cf.savedAt) || 0) : 0;
+        var isTomb = tombVal && (tombTime > fileTime);
+        var isMissing = false; // Protected against accidental wipe
+        if (isTomb || isMissing) {
           currentFiles.splice(i, 1);
           window.__ATPL_IS_DOWNLOADING_DRIVE = true;
           if (typeof window.deleteFromDB === 'function') {
@@ -391,7 +396,7 @@
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) {
           pollSyncState(false);
         }
-      }, 4500);
+      }, 15000);
 
       window.addEventListener('focus', function() {
         if (getGasUrl()) pollSyncState(false);

@@ -95,6 +95,8 @@
     renderSlice();
   }
 
+  window.createVirtualTable = createVirtualTable;
+
   // Hook into existing global renderTbl
   var originalRenderTbl = window.renderTbl;
   window.renderTbl = function(rows, chArr, title) {

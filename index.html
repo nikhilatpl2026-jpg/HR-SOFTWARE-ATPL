@@ -336,6 +336,22 @@
         return origDash(force);
       };
     }
+
+    window.fastSheetRowCount = fastSheetRowCount;
+    window.fastTotalWorkbookRows = fastTotalWorkbookRows;
+
+    var _renderBatchTimer = null;
+    window.scheduleUIRefresh = function() {
+      if (_renderBatchTimer) return;
+      _renderBatchTimer = requestAnimationFrame(function() {
+        _renderBatchTimer = null;
+        try { if (typeof window.renderFiles === 'function') window.renderFiles(); } catch(_) {}
+        try { if (typeof window.renderSheets === 'function') window.renderSheets(); } catch(_) {}
+        try { if (typeof window.updStats === 'function') window.updStats(); } catch(_) {}
+        try { if (typeof window.renderAllFilesPage === 'function') window.renderAllFilesPage(); } catch(_) {}
+        try { if (typeof window.populateNJSelects === 'function') window.populateNJSelects(); } catch(_) {}
+      });
+    };
   });
 })();
 </script>
@@ -4177,10 +4193,17 @@ function parseWB(buf) {
 }
 
 function wbToSheets(wb) {
+  if (typeof createLazySheets === 'function') {
+    return createLazySheets(wb);
+  }
   var sheets = {};
-  wb.SheetNames.forEach(function(sn) {
-    sheets[sn] = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false });
-  });
+  if (wb && Array.isArray(wb.SheetNames)) {
+    wb.SheetNames.forEach(function(sn) {
+      sheets[sn] = (window.XLSX && window.XLSX.utils && typeof window.XLSX.utils.sheet_to_json === 'function')
+        ? window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false })
+        : [];
+    });
+  }
   return sheets;
 }
 window.parseWB = parseWB;
@@ -4414,7 +4437,7 @@ async function atplDirectServerSync(force) {
             try {
               var fRes = await fetch('/api/sync/salary-file/' + encodeURIComponent(targetFile.name));
               var fJson = await fRes.json();
-              if (fJson && fJson.ok && fJson.file && fJson.file.buf && atplSalaryRestoreAllowed(fileName, fJson.file.saved || itemData.saved)) {
+              if (fJson && fJson.ok && fJson.file && fJson.file.buf && atplSalaryRestoreAllowed(targetFile.name, fJson.file.saved || targetFile.saved)) {
                 rawBuf = fJson.file.buf;
               }
             } catch (_) {}
@@ -4446,8 +4469,11 @@ async function atplDirectServerSync(force) {
           console.warn('[Sync-Download] Error fetching', targetFile.name, downloadErr);
         }
 
-        if (dIdx % 2 === 0 || dIdx === toDownload.length - 1) {
-          renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+        if (dIdx === toDownload.length - 1) {
+          if (typeof scheduleUIRefresh === 'function') scheduleUIRefresh();
+          else { renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects(); }
+        } else if (dIdx % 5 === 0) {
+          if (typeof scheduleUIRefresh === 'function') scheduleUIRefresh();
           await new Promise(function(r) { setTimeout(r, 0); });
         }
       }
@@ -4551,31 +4577,99 @@ async function handleFiles(list) {
   window.__ATPL_LAST_UPLOAD_TIME = Date.now();
 }
 
+function safeGetWorkbookRows(f) {
+  if (!f) return 0;
+  try {
+    if (f.wb) {
+      if (typeof window.fastTotalWorkbookRows === 'function') {
+        return window.fastTotalWorkbookRows(f.wb);
+      }
+      if (typeof fastTotalWorkbookRows === 'function') {
+        return fastTotalWorkbookRows(f.wb);
+      }
+    }
+  } catch (_) {}
+  try {
+    if (f.sheets && typeof f.sheets === 'object') {
+      var sum = 0;
+      var keys = Object.keys(f.sheets);
+      for (var k = 0; k < keys.length; k++) {
+        var shRows = f.sheets[keys[k]];
+        if (Array.isArray(shRows)) {
+          sum += Math.max(0, shRows.length - 1);
+        }
+      }
+      return sum;
+    }
+  } catch (_) {}
+  return 0;
+}
+window.safeGetWorkbookRows = safeGetWorkbookRows;
+
+function safeGetSheetNames(f) {
+  if (!f) return [];
+  try {
+    if (f.wb && Array.isArray(f.wb.SheetNames) && f.wb.SheetNames.length) {
+      return f.wb.SheetNames;
+    }
+  } catch (_) {}
+  try {
+    if (f.sheets && typeof f.sheets === 'object') {
+      return Object.keys(f.sheets);
+    }
+  } catch (_) {}
+  return [];
+}
+window.safeGetSheetNames = safeGetSheetNames;
+
+function getAllLoadedSalaryFiles() {
+  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (Array.isArray(FILES) && FILES.length ? FILES : []);
+  if (!list.length && window.ATPLCentralFileSync && window.ATPLCentralFileSync.fileMap && window.ATPLCentralFileSync.fileMap.size > 0) {
+    list = Array.from(window.ATPLCentralFileSync.fileMap.values());
+    window.FILES = list;
+    FILES = list;
+  }
+  return list;
+}
+window.getAllLoadedSalaryFiles = getAllLoadedSalaryFiles;
+
 function renderFiles() {
   var sec = document.getElementById('filesSec');
   var list = document.getElementById('filesList');
   if (sec) sec.style.display = 'block';
-  var listFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
+  var listFiles = getAllLoadedSalaryFiles();
+  var fc = document.getElementById('fileCount');
   if (!listFiles.length) {
     if (list) list.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:12px 6px;text-align:center">No saved files yet<br><span style="font-size:10px;color:#6366f1">Click Sync Browsers below</span></div>';
-    var fc = document.getElementById('fileCount');
     if (fc) fc.textContent = '(0)';
     return;
   }
-  document.getElementById('fileCount').textContent = '(' + listFiles.length + ')';
-  list.innerHTML = listFiles.map(function(f, i) {
-    var rows = (f && f.wb) ? fastTotalWorkbookRows(f.wb) : (f.sheets ? Object.values(f.sheets).reduce(function(a,r){return a+Math.max(0,(r||[]).length-1);},0) : 0);
-    return '<div class="file-item" onclick="openFileViewer('+i+')">' +
-      '<div class="fi-icon">📊</div>' +
-      '<div class="fi-info">' +
-        '<div class="fi-name">' + f.name + '</div>' +
-        '<div class="fi-meta">' + f.wb.SheetNames.length + ' sheets · ' + rows + ' rows</div>' +
-      '</div>' +
-      '<span class="fi-view-btn" onclick="event.stopPropagation();openFileViewer('+i+')">👁 View</span>' +
-      '<span class="fi-saved">💾</span>' +
-      '<button class="fi-rm" onclick="event.stopPropagation();rmFile(' + i + ')" title="Remove">✕</button>' +
-    '</div>';
-  }).join('');
+  if (fc) fc.textContent = '(' + listFiles.length + ')';
+  if (list) {
+    list.innerHTML = listFiles.map(function(f, i) {
+      if (!f) return '';
+      try {
+        var sheetNames = safeGetSheetNames(f);
+        var numSheets = sheetNames.length || 1;
+        var rows = safeGetWorkbookRows(f);
+        var fName = (f && f.name) ? String(f.name) : ('File ' + (i + 1));
+        var safeName = typeof esc === 'function' ? esc(fName) : fName;
+        return '<div class="file-item" onclick="openFileViewer('+i+')">' +
+          '<div class="fi-icon">📊</div>' +
+          '<div class="fi-info">' +
+            '<div class="fi-name">' + safeName + '</div>' +
+            '<div class="fi-meta">' + numSheets + ' sheets · ' + rows.toLocaleString() + ' rows</div>' +
+          '</div>' +
+          '<span class="fi-view-btn" onclick="event.stopPropagation();openFileViewer('+i+')">👁 View</span>' +
+          '<span class="fi-saved">💾</span>' +
+          '<button class="fi-rm" onclick="event.stopPropagation();rmFile(' + i + ')" title="Remove">✕</button>' +
+        '</div>';
+      } catch (err) {
+        console.warn('renderFiles item error', err);
+        return '';
+      }
+    }).join('');
+  }
   updFOTags();
 }
 
@@ -4613,17 +4707,29 @@ function clearAllFiles() {
 
 function renderSheets() {
   var sec = document.getElementById('sheetsSec');
-  if (!FILES.length) { sec.style.display = 'none'; return; }
-  sec.style.display = 'block';
-  document.getElementById('sheetTags').innerHTML = FILES.flatMap(function(f, fi) {
-    return f.wb.SheetNames.map(function(sn) {
-      var lbl = (FILES.length > 1 ? f.name.replace(/\.[^.]+$/, '').substring(0,12) + ': ' : '') + sn;
-      return '<span class="stag" onclick="prevSheet(' + fi + ',\'' + sn.replace(/'/g,"\\'") + '\')">' + lbl + '</span>';
+  var list = getAllLoadedSalaryFiles();
+  if (!list.length) { if (sec) sec.style.display = 'none'; return; }
+  if (sec) sec.style.display = 'block';
+  var tagsEl = document.getElementById('sheetTags');
+  if (!tagsEl) return;
+  tagsEl.innerHTML = list.flatMap(function(f, fi) {
+    var sns = safeGetSheetNames(f);
+    return sns.map(function(sn) {
+      var lbl = (list.length > 1 ? (f.name || 'File').replace(/\.[^.]+$/, '').substring(0,12) + ': ' : '') + sn;
+      var safeLbl = typeof esc === 'function' ? esc(lbl) : lbl;
+      return '<span class="stag" onclick="prevSheet(' + fi + ',\'' + sn.replace(/'/g,"\\'") + '\')">' + safeLbl + '</span>';
     });
   }).join('');
 }
 
-function prevSheet(fi, sn) { renderTbl(FILES[fi].sheets[sn], [], 'Preview: ' + sn); swOut('tbl'); }
+function prevSheet(fi, sn) {
+  var list = getAllLoadedSalaryFiles();
+  var f = list[fi];
+  if (!f) return;
+  var rows = (f.sheets && f.sheets[sn]) || (f.wb && f.wb.Sheets && f.wb.Sheets[sn] && window.XLSX && window.XLSX.utils && window.XLSX.utils.sheet_to_json(f.wb.Sheets[sn], { header: 1, defval: '', raw: false })) || [];
+  renderTbl(rows, [], 'Preview: ' + sn);
+  swOut('tbl');
+}
 
 // ═══════════════════════════════════════════════════════════════
 // FILE VIEWER (FULL SCREEN)
@@ -4632,69 +4738,95 @@ var VIEWER_FILE_IDX = -1;
 
 function openFileViewer(fi) {
   VIEWER_FILE_IDX = fi;
-  var allFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (FILES || []);
+  var allFiles = getAllLoadedSalaryFiles();
   var f = allFiles[fi];
   if (!f) return;
-  document.getElementById('fvTitle').textContent = f.name + ' — ' + f.wb.SheetNames.length + ' sheets';
-  var sheetsHtml = f.wb.SheetNames.map(function(sn, si) {
-    return '<div class="fv-sheet-tab' + (si === 0 ? ' active' : '') + '" onclick="viewSheet(' + fi + ',' + si + ',this)">' + sn + '</div>';
+  var sheetNames = safeGetSheetNames(f);
+  var fTitle = document.getElementById('fvTitle');
+  if (fTitle) fTitle.textContent = (f.name || 'File') + ' — ' + sheetNames.length + ' sheets';
+  var sheetsHtml = sheetNames.map(function(sn, si) {
+    var safeSn = typeof esc === 'function' ? esc(sn) : sn;
+    return '<div class="fv-sheet-tab' + (si === 0 ? ' active' : '') + '" onclick="viewSheet(' + fi + ',' + si + ',this)">' + safeSn + '</div>';
   }).join('');
-  document.getElementById('fvSheets').innerHTML = sheetsHtml;
+  var fvSheets = document.getElementById('fvSheets');
+  if (fvSheets) fvSheets.innerHTML = sheetsHtml;
   renderViewerSheet(fi, 0);
-  document.getElementById('fileViewerOverlay').classList.add('show');
+  var fvOverlay = document.getElementById('fileViewerOverlay');
+  if (fvOverlay) fvOverlay.classList.add('show');
 }
 
 function closeFileViewer() {
-  document.getElementById('fileViewerOverlay').classList.remove('show');
+  var fvOverlay = document.getElementById('fileViewerOverlay');
+  if (fvOverlay) fvOverlay.classList.remove('show');
 }
 
 function viewSheet(fi, si, el) {
   document.querySelectorAll('.fv-sheet-tab').forEach(function(t) { t.classList.remove('active'); });
-  el.classList.add('active');
+  if (el) el.classList.add('active');
   renderViewerSheet(fi, si);
 }
 
 function renderViewerSheet(fi, si) {
-  var allFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (FILES || []);
+  var allFiles = getAllLoadedSalaryFiles();
   var f = allFiles[fi];
-  if (!f || !f.wb || !f.wb.SheetNames) return;
-  var sn = f.wb.SheetNames[si];
-  var rows = f.sheets[sn];
-  if (!rows || !rows.length) {
-    document.getElementById('fvBody').innerHTML = '<div class="empty"><div class="empty-ico">📭</div><div class="empty-txt">Sheet khali hai</div></div>';
+  if (!f) return;
+  var sheetNames = safeGetSheetNames(f);
+  var sn = sheetNames[si] || sheetNames[0];
+  var fvBody = document.getElementById('fvBody');
+  if (!fvBody) return;
+  if (!sn) {
+    fvBody.innerHTML = '<div class="empty"><div class="empty-ico">📭</div><div class="empty-txt">Sheet khali hai</div></div>';
     return;
   }
-  var hdr = rows[0], body = rows.slice(1);
-  var html = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">' + sn + ' — ' + body.length + ' rows × ' + hdr.length + ' cols</div>';
+  var rows = (f.sheets && f.sheets[sn]) || (f.wb && f.wb.Sheets && f.wb.Sheets[sn] && window.XLSX && window.XLSX.utils && window.XLSX.utils.sheet_to_json(f.wb.Sheets[sn], { header: 1, defval: '', raw: false })) || [];
+  if (!rows || !rows.length) {
+    fvBody.innerHTML = '<div class="empty"><div class="empty-ico">📭</div><div class="empty-txt">Sheet khali hai</div></div>';
+    return;
+  }
+  var hdr = rows[0] || [], body = rows.slice(1);
+  var safeSn = typeof esc === 'function' ? esc(sn) : sn;
+  var html = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);margin-bottom:6px">' + safeSn + ' — ' + body.length + ' rows × ' + hdr.length + ' cols</div>';
   html += '<table><thead><tr><th>#</th>';
-  hdr.forEach(function(h, ci) { html += '<th>' + (h || 'Col' + (ci+1)) + '</th>'; });
+  hdr.forEach(function(h, ci) { var safeH = typeof esc === 'function' ? esc(h || 'Col' + (ci+1)) : (h || 'Col' + (ci+1)); html += '<th>' + safeH + '</th>'; });
   html += '</tr></thead><tbody>';
   body.slice(0, 500).forEach(function(row, ri) {
     html += '<tr><td style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:9px">' + (ri + 1) + '</td>';
     for (var c = 0; c < hdr.length; c++) {
-      var val = row[c] !== undefined && row[c] !== null && row[c] !== '' ? row[c] : '';
-      html += '<td>' + (val === '' ? '<span class="blank-val">—</span>' : val) + '</td>';
+      var val = (row && row[c] !== undefined && row[c] !== null && row[c] !== '') ? row[c] : '';
+      var safeVal = typeof esc === 'function' ? esc(val) : val;
+      html += '<td>' + (val === '' ? '<span class="blank-val">—</span>' : safeVal) + '</td>';
     }
     html += '</tr>';
   });
   if (body.length > 500) html += '<tr><td colspan="' + (hdr.length + 1) + '" style="text-align:center;color:var(--muted);font-style:italic">...showing 500 of ' + body.length + ' rows</td></tr>';
   html += '</tbody></table>';
-  document.getElementById('fvBody').innerHTML = html;
+  fvBody.innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ALL FILES PAGE
+// ALL FILES PAGE (LAZY LOADED & MEMOIZED)
 // ═══════════════════════════════════════════════════════════════
-function renderAllFilesPage() {
+window.__allFilesNeedsRender = true;
+function renderAllFilesPage(force) {
+  var pg = document.getElementById('page-files');
+  if (!force && (!pg || !pg.classList.contains('active'))) {
+    window.__allFilesNeedsRender = true;
+    return;
+  }
+  window.__allFilesNeedsRender = false;
   var area = document.getElementById('allFilesArea');
-  var allFiles = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
+  if (!area) return;
+  var allFiles = getAllLoadedSalaryFiles();
   if (!allFiles.length) {
     area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:10px 20px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Sync Browsers</button></div></div>';
     return;
   }
   var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
   var totalSheets = 0, totalRows = 0;
-  allFiles.forEach(function(f) { totalSheets += (f.wb && f.wb.SheetNames ? f.wb.SheetNames.length : 0); totalRows += (f && f.wb) ? fastTotalWorkbookRows(f.wb) : 0; });
+  allFiles.forEach(function(f) {
+    totalSheets += safeGetSheetNames(f).length;
+    totalRows += safeGetWorkbookRows(f);
+  });
   html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + allFiles.length + '</div><div class="card-lbl">Total Files</div></div>';
   html += '<div class="card safe" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
   html += '<div class="card warn" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
@@ -4702,27 +4834,36 @@ function renderAllFilesPage() {
   html += '</div>';
 
   allFiles.forEach(function(f, i) {
-    var rows = (f && f.wb) ? fastTotalWorkbookRows(f.wb) : 0;
-    var savedAt = f.savedAt ? new Date(f.savedAt).toLocaleString('en-IN') : '';
-    html += '<div style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
-    html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#4F46E5,#6366F1);display:flex;align-items:center;gap:10px">';
-    html += '<div style="font-size:20px">📊</div>';
-    html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + f.name + '</div>';
-    html += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px">' + (f.wb && f.wb.SheetNames ? f.wb.SheetNames.length : 1) + ' sheets • ' + rows + ' rows' + (savedAt?' • '+savedAt:'') + '</div></div>';
-    html += '<div style="display:flex;gap:8px;align-items:center">';
-    html += '<button onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
-    html += '<button onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
-    html += '</div></div>';
-    html += '<div style="padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #EEF2FF;background:#F8FAFF">';
-    if (f.wb && f.wb.SheetNames) {
-      f.wb.SheetNames.forEach(function(sn, si) {
-        var shRows = f.sheets && f.sheets[sn] ? Math.max(0, f.sheets[sn].length - 1) : 0;
-        html += '<span onclick="openInlineViewer(' + i + ',' + si + ')" style="padding:3px 10px;background:#EEF2FF;color:#4F46E5;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer">' + sn + ' <span style="opacity:0.6">('+shRows+')</span></span>';
+    if (!f) return;
+    try {
+      var rows = safeGetWorkbookRows(f);
+      var sheetNames = safeGetSheetNames(f);
+      var numSheets = sheetNames.length || 1;
+      var savedAt = f.savedAt ? new Date(f.savedAt).toLocaleString('en-IN') : '';
+      var fName = (f && f.name) ? String(f.name) : ('File ' + (i + 1));
+      var safeName = typeof esc === 'function' ? esc(fName) : fName;
+      html += '<div style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
+      html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#4F46E5,#6366F1);display:flex;align-items:center;gap:10px">';
+      html += '<div style="font-size:20px">📊</div>';
+      html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + safeName + '</div>';
+      html += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px">' + numSheets + ' sheets • ' + rows.toLocaleString() + ' rows' + (savedAt?' • '+savedAt:'') + '</div></div>';
+      html += '<div style="display:flex;gap:8px;align-items:center">';
+      html += '<button onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
+      html += '<button onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
+      html += '</div></div>';
+      html += '<div style="padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #EEF2FF;background:#F8FAFF">';
+      sheetNames.forEach(function(sn, si) {
+        var ws = f.wb && f.wb.Sheets && f.wb.Sheets[sn];
+        var shRows = (ws && typeof window.fastSheetRowCount === 'function') ? window.fastSheetRowCount(ws) : (f.sheets && f.sheets[sn] ? Math.max(0, f.sheets[sn].length - 1) : 0);
+        var safeSn = typeof esc === 'function' ? esc(sn) : sn;
+        html += '<span onclick="openInlineViewer(' + i + ',' + si + ')" style="padding:3px 10px;background:#EEF2FF;color:#4F46E5;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer">' + safeSn + ' <span style="opacity:0.6">('+shRows+')</span></span>';
       });
+      html += '</div>';
+      html += '<div id="inline-viewer-' + i + '" style="display:none"></div>';
+      html += '</div>';
+    } catch (e) {
+      console.warn('renderAllFilesPage item error', e);
     }
-    html += '</div>';
-    html += '<div id="inline-viewer-' + i + '" style="display:none"></div>';
-    html += '</div>';
   });
   area.innerHTML = html;
 }
@@ -4731,10 +4872,14 @@ function renderAllFilesPage() {
 var INLINE_EDIT_STATE = {}; // fi_si -> {changes:{}}
 
 function openInlineViewer(fi, si) {
-  var f = FILES[fi];
-  var sn = f.wb.SheetNames[si];
+  var allFiles = getAllLoadedSalaryFiles();
+  var f = allFiles[fi];
+  if (!f) return;
+  var sheetNames = safeGetSheetNames(f);
+  var sn = sheetNames[si] || sheetNames[0];
   var viewerId = 'inline-viewer-' + fi;
   var viewer = document.getElementById(viewerId);
+  if (!viewer) return;
 
   // Toggle same sheet
   if (viewer.dataset.openSheet === si.toString() && viewer.style.display !== 'none') {
@@ -4749,10 +4894,14 @@ function openInlineViewer(fi, si) {
 }
 
 function renderInlineSheet(fi, si) {
-  var f = FILES[fi];
-  var sn = f.wb.SheetNames[si];
-  var rows = f.sheets[sn] || [];
+  var allFiles = getAllLoadedSalaryFiles();
+  var f = allFiles[fi];
+  if (!f) return;
+  var sheetNames = safeGetSheetNames(f);
+  var sn = sheetNames[si] || sheetNames[0];
+  var rows = (f.sheets && f.sheets[sn]) || (f.wb && f.wb.Sheets && f.wb.Sheets[sn] && window.XLSX && window.XLSX.utils && window.XLSX.utils.sheet_to_json(f.wb.Sheets[sn], { header: 1, defval: '', raw: false })) || [];
   var viewer = document.getElementById('inline-viewer-' + fi);
+  if (!viewer) return;
   var key = fi + '_' + si;
   if (!INLINE_EDIT_STATE[key]) INLINE_EDIT_STATE[key] = {changes:{}};
 
@@ -6680,27 +6829,42 @@ function fmtD(v){if(!v)return '';if(typeof v==='object'&&v.getFullYear){return v
 function parseDate(str){if(!str)return null;var m=str.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);if(m)return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]));var m2=str.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);if(m2)return new Date(parseInt(m2[1]),parseInt(m2[2])-1,parseInt(m2[3]));return null;}
 
 // ── UI ──────────────────────────────────────────────────────────
-function renderTbl(rows,chArr,title) {
-  if(!rows||!rows.length)return;
-  var chSet=new Set();(chArr||[]).forEach(function(c){chSet.add((c.r||0)+'-'+(c.c||0));});
-  var hdr=rows[0],body=rows.slice(1);
-  document.getElementById('sR').textContent=body.length;
-  document.getElementById('sC').textContent=hdr.length;
-  var html='<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);margin-bottom:8px;letter-spacing:2px;text-transform:uppercase">'+title+'</div>';
-  html+='<table><thead><tr><th>#</th>';
-  hdr.forEach(function(h){html+='<th>'+h+'</th>';});
-  html+='</tr></thead><tbody>';
-  body.forEach(function(row,ri){
-    html+='<tr><td style="color:var(--muted);font-family:\'JetBrains Mono\',monospace">'+(ri+1)+'</td>';
-    row.forEach(function(cell,ci){
-      var isC=chSet.has((ri+1)+'-'+ci),isEmpty=(cell===''||cell===null||cell===undefined);
-      html+='<td class="'+(isC?'changed':'')+'">'+( isEmpty?'<span class="blank-val">—</span>':cell)+'</td>';
+function renderTbl(rows, chArr, title) {
+  if (!rows || !rows.length) return;
+  var wrap = document.getElementById('tblWrap');
+  if (wrap && typeof window.createVirtualTable === 'function' && rows.length > 30) {
+    var sR = document.getElementById('sR'), sC = document.getElementById('sC');
+    if (sR) sR.textContent = rows.length - 1;
+    if (sC) sC.textContent = (rows[0] || []).length;
+    return window.createVirtualTable(wrap, rows, chArr, title, { viewportHeight: 540 });
+  }
+  var chSet = new Set(); (chArr || []).forEach(function(c) { chSet.add((c.r || 0) + '-' + (c.c || 0)); });
+  var hdr = rows[0] || [], body = rows.slice(1);
+  var sR = document.getElementById('sR'), sC = document.getElementById('sC');
+  if (sR) sR.textContent = body.length;
+  if (sC) sC.textContent = hdr.length;
+  var maxRows = 250;
+  var displayBody = body.slice(0, maxRows);
+  var html = '<div style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:var(--muted);margin-bottom:8px;letter-spacing:2px;text-transform:uppercase">' + title + (body.length > maxRows ? ' (Showing first ' + maxRows + ' of ' + body.length.toLocaleString() + ' rows)' : '') + '</div>';
+  html += '<table><thead><tr><th>#</th>';
+  hdr.forEach(function(h) { html += '<th>' + (h || '') + '</th>'; });
+  html += '</tr></thead><tbody>';
+  displayBody.forEach(function(row, ri) {
+    html += '<tr><td style="color:var(--muted);font-family:\'JetBrains Mono\',monospace">' + (ri + 1) + '</td>';
+    hdr.forEach(function(_, ci) {
+      var cell = row ? row[ci] : '';
+      var isC = chSet.has((ri + 1) + '-' + ci), isEmpty = (cell === '' || cell === null || cell === undefined);
+      html += '<td class="' + (isC ? 'changed' : '') + '">' + (isEmpty ? '<span class="blank-val">—</span>' : cell) + '</td>';
     });
-    html+='</tr>';
+    html += '</tr>';
   });
-  html+='</tbody></table>';
-  document.getElementById('tblWrap').innerHTML=html;
+  if (body.length > maxRows) {
+    html += '<tr><td colspan="' + (hdr.length + 1) + '" style="text-align:center;padding:12px;color:#6366f1;font-weight:700">⚡ Showing ' + maxRows + ' of ' + body.length.toLocaleString() + ' rows for instant 60 FPS performance</td></tr>';
+  }
+  html += '</tbody></table>';
+  if (wrap) wrap.innerHTML = html;
 }
+window.renderTbl = renderTbl;
 
 function lg(type,text) {
   var area=document.getElementById('logArea');
@@ -6762,7 +6926,7 @@ function goPage(name) {
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
-  if(name==='files') renderAllFilesPage();
+  if(name==='files') renderAllFilesPage(true);
   if(name==='newjoin') populateNJSelects();
   if(name==='empmaster') {
     var ep=document.getElementById('page-empmaster');

@@ -129,9 +129,20 @@
     return null;
   }
 
+  var _lastScannedSig = '';
+  var _kgFileCache = new Map();
+
   // Scan and learn from every loaded file, sheet, and master table
-  function refreshKnowledgeGraph() {
+  function refreshKnowledgeGraph(force) {
     var files = Array.isArray(window.FILES) ? window.FILES : [];
+    var masterCount = (window.EMP_MASTER_DATA && window.EMP_MASTER_DATA.length) || (window.EM && window.EM.data && window.EM.data.length) || 0;
+    var curSig = files.length + ':' + files.map(function(f){ return (f.name||'') + '@' + (f.savedAt||''); }).join('|') + ':EM=' + masterCount;
+    
+    if (!force && curSig === _lastScannedSig && KnowledgeGraph.filesSummary.length > 0) {
+      return;
+    }
+    _lastScannedSig = curSig;
+
     KnowledgeGraph.filesSummary = [];
     KnowledgeGraph.anomalies = [];
     KnowledgeGraph.months = {};
@@ -191,9 +202,25 @@
         totalRows: 0
       };
 
-      Object.keys(sheets).forEach(function(sn) {
+      var sheetNames = (f.wb && Array.isArray(f.wb.SheetNames)) ? f.wb.SheetNames : Object.keys(sheets);
+      sheetNames.forEach(function(sn, snIdx) {
+        var ws = f.wb && f.wb.Sheets && f.wb.Sheets[sn];
+        var shRows = (ws && typeof window.fastSheetRowCount === 'function') ? window.fastSheetRowCount(ws) : (f.sheets && f.sheets[sn] ? Math.max(0, f.sheets[sn].length - 1) : 0);
+        if (shRows === 0) {
+          fileInfo.sheets.push({ name: sn, rowCount: 0, type: 'Empty' });
+          return;
+        }
+        if (snIdx >= 2 && !force) {
+          fileInfo.sheets.push({ name: sn, rowCount: shRows, type: 'Salary Sheet' });
+          fileInfo.totalRows += shRows;
+          return;
+        }
         var rows = Array.isArray(sheets[sn]) ? sheets[sn] : [];
-        if (!rows.length) return;
+        if (!rows.length) {
+          fileInfo.sheets.push({ name: sn, rowCount: shRows, type: 'General' });
+          fileInfo.totalRows += shRows;
+          return;
+        }
 
         var sheetPeriod = parseMonthYear(sn) || period || { key: '2026-07', label: 'July 2026', month: 7, year: 2026 };
 
@@ -1542,23 +1569,23 @@
     attachLauncher();
   }
 
-  // Lazy monitor for files change - debounced, zero background CPU drain
+  // Lazy monitor for files change - lightweight metadata only, zero CPU freeze
   var monitorTimer = null;
   function scheduleKnowledgeScan() {
     if (monitorTimer) clearTimeout(monitorTimer);
     monitorTimer = setTimeout(function() {
       try {
-        if (window.FILES && Array.isArray(window.FILES)) {
-          if (window.FILES.length !== KnowledgeGraph.lastScannedFileCount) {
-            if (typeof window.requestIdleCallback === 'function') { window.requestIdleCallback(function(){ refreshKnowledgeGraph(); }, { timeout: 4000 }); } else { setTimeout(refreshKnowledgeGraph, 200); }
-            var metaBar = document.getElementById("aiMetaBar");
-            if (metaBar && KnowledgeGraph.filesSummary.length) {
-              var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";
-              KnowledgeGraph.filesSummary.forEach(function(f) {
-                html += "<span class='ai-tag' onclick=\"window.AroraAICommander.sendQuery('" + f.name + " summary')\">📄 " + f.name.slice(0, 18) + " (" + f.totalRows + " rows)</span>";
-              });
-              metaBar.innerHTML = html;
-            }
+        var files = window.getAllLoadedSalaryFiles ? window.getAllLoadedSalaryFiles() : (Array.isArray(window.FILES) ? window.FILES : []);
+        if (files.length) {
+          var metaBar = document.getElementById("aiMetaBar");
+          if (metaBar) {
+            var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";
+            files.forEach(function(f) {
+              var fName = f && f.name ? f.name : "Salary Sheet";
+              var totalR = (typeof window.safeGetWorkbookRows === 'function') ? window.safeGetWorkbookRows(f) : 0;
+              html += "<span class='ai-tag' onclick=\"window.AroraAICommander.sendQuery('" + fName + " summary')\">📄 " + fName.slice(0, 18) + " (" + totalR + " rows)</span>";
+            });
+            metaBar.innerHTML = html;
           }
         }
       } catch (_) {}
