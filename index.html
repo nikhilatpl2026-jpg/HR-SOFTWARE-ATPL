@@ -223,15 +223,27 @@
     if (!wb || !Array.isArray(wb.SheetNames)) return {};
     if (wb.__lazySheets) return wb.__lazySheets;
     var target = {};
+    var sheetDataCache = {};
     wb.SheetNames.forEach(function(sn) {
       Object.defineProperty(target, sn, {
         enumerable: true,
         configurable: true,
         get: function() {
+          if (sheetDataCache[sn]) return sheetDataCache[sn];
           var ws = wb.Sheets && wb.Sheets[sn];
-          return ws ? window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false }) : [];
+          var rows = [];
+          if (ws) {
+            if (ws.__cachedRowsFmt) {
+              rows = ws.__cachedRowsFmt;
+            } else if (window.XLSX && window.XLSX.utils && typeof window.XLSX.utils.sheet_to_json === 'function') {
+              rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+            }
+          }
+          sheetDataCache[sn] = rows;
+          return rows;
         },
         set: function(val) {
+          sheetDataCache[sn] = val;
           var ws = wb.Sheets && wb.Sheets[sn];
           if (ws) ws.__cachedRowsFmt = val;
         }
@@ -282,51 +294,8 @@
 
   // 5. FAST NON-BLOCKING UI RENDERS
   window.addEventListener('DOMContentLoaded', function() {
-    window.updStats = function() {
-      var list = Array.isArray(window.FILES) ? window.FILES : [];
-      var sf = document.getElementById('sF');
-      if (sf) sf.textContent = list.length;
-      var sh = 0, rows = 0;
-      list.forEach(function(f) {
-        if (f && f.wb && Array.isArray(f.wb.SheetNames)) {
-          sh += f.wb.SheetNames.length;
-          rows += fastTotalWorkbookRows(f.wb);
-        }
-      });
-      var sSh = document.getElementById('sSh'), sR = document.getElementById('sR'), sCh = document.getElementById('sCh');
-      if (sSh) sSh.textContent = sh;
-      if (sR) sR.textContent = rows;
-      if (sCh && typeof window.CHANGES !== 'undefined') sCh.textContent = window.CHANGES;
-    };
-
-    window.renderFiles = function() {
-      var sec = document.getElementById('filesSec'), list = document.getElementById('filesList');
-      if (sec) sec.style.display = 'block';
-      var listFiles = Array.isArray(window.FILES) ? window.FILES : [];
-      var fc = document.getElementById('fileCount');
-      if (!listFiles.length) {
-        if (list) list.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:12px 6px;text-align:center">No saved files yet</div>';
-        if (fc) fc.textContent = '(0)';
-        return;
-      }
-      if (fc) fc.textContent = '(' + listFiles.length + ')';
-      if (list) {
-        list.innerHTML = listFiles.map(function(f, i) {
-          var shLen = (f && f.wb && f.wb.SheetNames) ? f.wb.SheetNames.length : 1;
-          var rows = (f && f.wb) ? fastTotalWorkbookRows(f.wb) : 0;
-          return '<div class="file-item" onclick="openFileViewer(' + i + ')">' +
-            '<div class="fi-icon">📊</div>' +
-            '<div class="fi-info">' +
-              '<div class="fi-name">' + f.name + '</div>' +
-              '<div class="fi-meta">' + shLen + ' sheets · ' + rows + ' rows</div>' +
-            '</div>' +
-            '<span class="fi-view-btn" onclick="event.stopPropagation();openFileViewer(' + i + ')">👁 View</span>' +
-            '<span class="fi-saved">💾</span>' +
-            '<button class="fi-rm" onclick="event.stopPropagation();rmFile(' + i + ')" title="Remove">✕</button>' +
-          '</div>';
-        }).join('');
-      }
-    };
+    if (typeof window.updStats !== 'function' && typeof updStats === 'function') window.updStats = updStats;
+    if (typeof window.renderFiles !== 'function' && typeof renderFiles === 'function') window.renderFiles = renderFiles;
 
     var origDash = window.empDashboardRender;
     if (typeof origDash === 'function') {
@@ -4261,7 +4230,8 @@ function restoreSavedFilesIncremental() {
       if (lbl) lbl.textContent = 'Restoring '+saved.length+' saved files…';
       function finishRestore() {
         if (isRestoringAborted) return;
-        renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+        window.FILES = FILES;
+        renderFiles(); renderSheets(); updStats(); renderAllFilesPage(true); populateNJSelects();
         if (lbl) lbl.textContent = FILES.length + ' files saved';
         lg('info', '💾 ' + loaded + ' saved file(s) restored in background' + (failed ? ' · '+failed+' skipped' : ''));
         try { document.dispatchEvent(new CustomEvent('atpl-local-files-restored',{detail:{loaded:loaded,failed:failed}})); } catch(_) {}
@@ -4271,15 +4241,11 @@ function restoreSavedFilesIncremental() {
       }
       function step(deadline) {
         if (isRestoringAborted) return;
-        var allClearedAt = 0;
-        try { allClearedAt = Date.parse(localStorage.getItem('ATPL_ALL_SALARY_CLEARED_AT') || '') || 0; } catch(_) {}
         var processed = 0;
-        while (at < saved.length && processed < 1) {
+        while (at < saved.length && processed < 2) {
           var f = saved[at++]; processed++;
           try {
-            var fileSavedAt = f && f.saved ? (Date.parse(f.saved) || 0) : 0;
             if (!atplSalaryRestoreAllowed(f.name, f.saved)) {
-              // File was saved before user clicked Clear All -> skip!
               continue;
             }
             var live = FILES.find(function(x){return x && x.name === f.name && x.wb;});
@@ -4287,18 +4253,23 @@ function restoreSavedFilesIncremental() {
               var wb = parseWB(f.buf);
               FILES = FILES.filter(function(x){return !x || x.name !== f.name;});
               FILES.push({ name: f.name, wb: wb, sheets: wbToSheets(wb), buf: f.buf, fromDB: true, savedAt: f.saved });
+              window.FILES = FILES;
               loaded++;
+              renderFiles();
+              renderSheets();
+              updStats();
+              renderAllFilesPage(true);
             }
           } catch(e) { failed++; console.warn('Could not parse saved file:', f && f.name, e); }
         }
         if (isRestoringAborted) return;
         if (lbl) lbl.textContent = 'Restoring saved files '+at+' / '+saved.length+'…';
         if (at >= saved.length) { finishRestore(); return; }
-        if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:500});
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:200});
         else setTimeout(step,16);
       }
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:800});
-      else setTimeout(step,50);
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(step,{timeout:300});
+      else setTimeout(step,20);
     });
   });
 }
@@ -4623,12 +4594,17 @@ function safeGetSheetNames(f) {
 window.safeGetSheetNames = safeGetSheetNames;
 
 function getAllLoadedSalaryFiles() {
-  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : (Array.isArray(FILES) && FILES.length ? FILES : []);
+  var list = [];
+  if (Array.isArray(window.FILES) && window.FILES.length) {
+    list = window.FILES;
+  } else if (Array.isArray(FILES) && FILES.length) {
+    list = FILES;
+  }
   if (!list.length && window.ATPLCentralFileSync && window.ATPLCentralFileSync.fileMap && window.ATPLCentralFileSync.fileMap.size > 0) {
     list = Array.from(window.ATPLCentralFileSync.fileMap.values());
-    window.FILES = list;
-    FILES = list;
   }
+  window.FILES = list;
+  FILES = list;
   return list;
 }
 window.getAllLoadedSalaryFiles = getAllLoadedSalaryFiles;
@@ -4670,8 +4646,9 @@ function renderFiles() {
       }
     }).join('');
   }
-  updFOTags();
+  if (typeof updFOTags === 'function') updFOTags();
 }
+window.renderFiles = renderFiles;
 
 function rmFile(i) {
   var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES;
@@ -5747,23 +5724,33 @@ function buildDOLWB(results) {
 // ═══════════════════════════════════════════════════════════════
 
 function findFormulaSheet(f) {
-  // CRITICAL FIX: Sheet must have actual employee data (emp codes), not just exist
-  // An empty Sheet3 was causing Nov 2025 to show wrong DOL
+  if (!f) return null;
+  if (f.__cachedFormulaSheet) return f.__cachedFormulaSheet;
+  if (!f.wb || !f.wb.Sheets) return null;
 
   function sheetHasData(ws) {
     if (!ws) return false;
+    if (ws.__hasDataVerified !== undefined) return ws.__hasDataVerified;
     var ref = ws['!ref'];
-    if (!ref) return false;
-    var rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
-    if (rows.length < 2) return false;
+    if (!ref) { ws.__hasDataVerified = false; return false; }
+    var m = String(ref).match(/:[A-Za-z]+(\d+)$/);
+    var rowCount = m ? parseInt(m[1], 10) : 0;
+    if (rowCount < 2) { ws.__hasDataVerified = false; return false; }
+
+    var rows = ws.__cachedRowsFmt || (window.XLSX && window.XLSX.utils && typeof window.XLSX.utils.sheet_to_json === 'function' ? window.XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:false}) : []);
+    if (rows.length < 2) { ws.__hasDataVerified = false; return false; }
     var hdr = rows[0];
-    if (!hdr || hdr.length < 3) return false;
+    if (!hdr || hdr.length < 3) { ws.__hasDataVerified = false; return false; }
     // Must have at least one 4-6 digit emp code in first 5 data rows
     for (var r = 1; r < Math.min(rows.length, 6); r++) {
       for (var c = 0; c < rows[r].length; c++) {
-        if (String(rows[r][c] || '').trim().match(/^\d{4,6}$/)) return true;
+        if (String(rows[r][c] || '').trim().match(/^\d{4,6}$/)) {
+          ws.__hasDataVerified = true;
+          return true;
+        }
       }
     }
+    ws.__hasDataVerified = false;
     return false;
   }
 
@@ -5780,17 +5767,25 @@ function findFormulaSheet(f) {
   // First pass: priority sheets with actual data
   for (var i = 0; i < priority.length; i++) {
     var ws = f.wb.Sheets[priority[i]];
-    if (ws && sheetHasData(ws)) return ws;
+    if (ws && sheetHasData(ws)) {
+      f.__cachedFormulaSheet = ws;
+      return ws;
+    }
   }
 
   // Second pass: any sheet with data
   for (var j = 0; j < f.wb.SheetNames.length; j++) {
     var ws2 = f.wb.Sheets[f.wb.SheetNames[j]];
-    if (sheetHasData(ws2)) return ws2;
+    if (sheetHasData(ws2)) {
+      f.__cachedFormulaSheet = ws2;
+      return ws2;
+    }
   }
 
   // Last resort
-  return f.wb.Sheets[f.wb.SheetNames[0]];
+  var fallback = f.wb.Sheets[f.wb.SheetNames[0]] || null;
+  f.__cachedFormulaSheet = fallback;
+  return fallback;
 }
 
 // ── UNIVERSAL HUMAN-LIKE SALARY SHEET & HEADER PARSER ──
@@ -15751,17 +15746,17 @@ else AInit();
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>
 <!-- Legacy permanent-sync replaced by Google Drive Sync -->
 <!-- AI Commander & Smart Chat Assistant -->
-<script src="arora-ai-commander-v10.js?v=20261101-nofreeze-v1"></script>
-<script src="atpl-ai.js?v=20261101-nofreeze-v1"></script>
+<script src="arora-ai-commander-v10.js?v=20261101-nofreeze-v2"></script>
+<script src="atpl-ai.js?v=20261101-nofreeze-v2"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
-<script src="atpl-firebase-bundle.js?v=20261101-nofreeze-v1"></script>
+<script src="atpl-firebase-bundle.js?v=20261101-nofreeze-v2"></script>
 <script src="atpl-github-cloud-sync-v1.js?v=20261029-v2"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20261101-nofreeze-v1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20261101-nofreeze-v2"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261101-nofreeze-v1"></script>
+<script src="atpl-google-drive-sync.js?v=20261101-nofreeze-v2"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
@@ -16224,7 +16219,7 @@ document.addEventListener('click', function(e) {
 
 
 <script src="atpl-cloud-debugger.js?v=1790774655.36861.84687.79887&cb=20261019v12"></script>
-<script src="atpl-virtual-salary-grid.js?v=20261101-nofreeze-v1"></script>
+<script src="atpl-virtual-salary-grid.js?v=20261101-nofreeze-v2"></script>
 
 <!-- ══ ADD / RESTORE / REMOVE COLUMN MODAL ══ -->
     <div id="emColModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:999999;align-items:center;justify-content:center" onclick="if(event.target===this)emCloseAddColModal()">
