@@ -5,7 +5,7 @@
 (function(window) {
   'use strict';
 
-var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzgcX5CL9GvtXeRwqQKQ7DKMM1BqbaZFHoqmJw7YUmdAnUev_6kzucom-MuZ6h_E6E_/exec';
+var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 
   function getGasUrl() {
     try {
