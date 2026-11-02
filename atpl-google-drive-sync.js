@@ -414,9 +414,17 @@
     init: function() {
       pollSyncState(true);
       scheduleNextPoll();
+      if (typeof setInterval === 'function') {
+        setInterval(function() {
+          if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
+        }, 30000);
+      }
 
       window.addEventListener('focus', function() {
         if (getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
+      });
+      window.addEventListener('visibilitychange', function() {
+        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
       });
 
       if (typeof window.BroadcastChannel !== 'undefined') {
@@ -514,6 +522,14 @@
       if (getGasUrl()) await callGoogleBackend('saveEmployeeMaster', { records: records });
       return { ok: true };
     },
+    upsertEmployeeMaster: async function(records) {
+      if (getGasUrl()) await callGoogleBackend('upsertEmployeeMaster', { records: records });
+      return this.saveEmployeeMaster(records);
+    },
+    deleteEmployeeMaster: async function(empCode) {
+      if (getGasUrl()) await callGoogleBackend('deleteEmployeeMaster', { empCode: empCode });
+      return true;
+    },
 
     reconcileAll: async function(force) { return pollSyncState(!!force); },
     syncNow: async function(force) { return pollSyncState(!!force); }
@@ -521,6 +537,8 @@
 
   window.ATPLGoogleSync = UnifiedSyncEngine;
   window.ATPLCentralFileSync = UnifiedSyncEngine;
+  window.ATPLRealtimeSyncEngine = UnifiedSyncEngine;
+  window.UniversalEngine = UnifiedSyncEngine;
   window.triggerManualCrossBrowserSync = async function() {
     updateSyncBadge('syncing', '☁️ Force syncing…');
     await pollSyncState(true);

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 
-const indexHtml = fs.existsSync('/tmp/repo/index.html') ? fs.readFileSync('/tmp/repo/index.html', 'utf8') : fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
+const indexHtml = fs.readFileSync(require('path').join(__dirname, '..', 'index.html'), 'utf8');
 
 test('Attendance & Multi-Machine Auditor and Test Feature are removed', (t) => {
   if (indexHtml.includes('id="vn-attendanceaudit"')) return t.skip('Kept for feature compatibility');

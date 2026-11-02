@@ -446,7 +446,7 @@ async function fetchRemoteKinds(kinds){
   }
   function hookMutations(){['saveInlineEdits','cmdFillTime','cmdFillCol'].forEach(wrapMutation)}
 
-  function badge(msg,bad){try{var id='atplDurableEverythingBadge',b=root.document.getElementById(id);if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id=id;b.style.cssText='display:inline-flex;font-size:9px;padding:4px 7px;border-radius:999px;font-weight:800;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857';h.appendChild(b)}b.textContent=msg||'☁ Auto-Save ON';if(bad){b.style.background='#fef2f2';b.style.color='#b91c1c';b.style.borderColor='#fecaca'}else{b.style.background='#ecfdf5';b.style.color='#047857';b.style.borderColor='#a7f3d0'}}catch(_){}}
+  function badge(msg,bad){try{var id='atplDurableEverythingBadge',b=root.document.getElementById(id);if(b){b.style.display='none';b.remove();}}catch(_){}}
   function schedule(ms){if(pending)return;pending=true;setTimeout(function(){pending=false;run(false)},ms||500)}
   async function run(force){if(running||!token()||!session())return false;if(!force&&Date.now()-lastRun<30000)return false;running=true;lastRun=Date.now();badge('☁ Auto-Save Syncing');try{hookMutations();var records=await fetchRemote();await syncState(records);await syncBank(records);await syncDol(records);badge('☁ Auto-Save ON');return true}catch(e){console.warn('Durable Everything sync issue',e);badge('☁ Auto-Save Retry',true);return false}finally{running=false}}
 

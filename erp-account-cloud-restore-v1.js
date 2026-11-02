@@ -60,8 +60,7 @@ async function syncUsers(){
 function badge(msg,bad){
   try{
     var b=root.document.getElementById('atplAccountCloudBadge');
-    if(!b){var h=root.document.querySelector('.header-right');if(!h)return;b=root.document.createElement('span');b.id='atplAccountCloudBadge';b.style.cssText='font-size:9px;padding:4px 7px;border-radius:999px;border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;font-weight:800;display:none';h.appendChild(b)}
-    b.style.display=token()?'inline-flex':'none';b.textContent=msg||'☁ Account Sync';b.style.borderColor=bad?'#fecaca':'#a7f3d0';b.style.background=bad?'#fef2f2':'#ecfdf5';b.style.color=bad?'#b91c1c':'#047857'
+    if(b){b.style.display='none';b.remove();}
   }catch(_){}
 }
 function syncNow(force){
