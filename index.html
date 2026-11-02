@@ -8,6 +8,8 @@
 <meta property="og:title" content="ATPL HR & Payroll Software">
 <meta property="og:description" content="Centralized cross-browser synchronized HR, payroll, statutory compliance, and file management system for Arora Textiles Private Limited.">
 <script>
+  // 🛑 BLOCK AUTO-RELOAD LOOP
+  window.location.reload = function() { console.warn("Blocked auto-reload!"); };
   // Global error safety shield for iframe and cross-origin environments
   window.onerror = function(msg, url, line, col, err) {
     return true; // Completely prevent cross-origin Script error propagation to AI Studio iframe host
@@ -59,14 +61,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function(window) {
   'use strict';
-
-  // 1. UNREGISTER & KILL ALL SERVICE WORKERS (Stops loading cached frozen files)
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(regs) {
-      regs.forEach(function(r) { r.unregister(); });
-    }).catch(function() {});
-  }
-
+  
   // 2. HARD-KILL TOXIC BACKGROUND SCRIPTS BEFORE THEY CAN RUN
   try {
     Object.defineProperty(window, 'firebase', { value: undefined, writable: false, configurable: false });
