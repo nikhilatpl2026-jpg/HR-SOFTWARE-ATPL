@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261101-nofreeze-v4';
+const CACHE_NAME = 'atpl-cache-v20261102-zerofreeze-v1';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
