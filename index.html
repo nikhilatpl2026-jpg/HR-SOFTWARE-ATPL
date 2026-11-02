@@ -717,17 +717,17 @@ body {
 
 /* STATS */
 .stats {
-  display: flex; gap: 8px; padding: 8px 18px;
+  display: flex; gap: 10px; padding: 10px 18px;
   background: var(--white); border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .stat {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; background: var(--surface);
+  padding: 6px 12px; background: var(--surface);
   border: 1px solid var(--border); border-radius: 8px;
 }
-.stat-val { font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--accent); font-weight: 500; }
-.stat-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+.stat-val { font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--accent); font-weight: 700; }
+.stat-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
 /* OUT TABS */
 .out-tabs {
@@ -1062,24 +1062,111 @@ td.blank-val { color: var(--muted); font-style: italic; }
 .page { animation:fadeSlide .25s ease; }
 .page.active { display:flex; animation:fadeSlide .2s ease; }
 
-/* ── SIDEBAR COLLAPSE ─────────────────────────── */
-#vnav { transition:width .25s ease; }
-#vnav.collapsed { width:52px!important; }
-#vnav.collapsed .vnav-cat { padding:11px 0; justify-content:center; font-size:0; letter-spacing:0; }
-#vnav.collapsed .vnav-cat .vnav-arrow { display:none; }
-#vnav.collapsed .vitem { padding:10px 0; justify-content:center; }
-#vnav.collapsed .vitem span:not(.vi) { display:none; }
-#vnav.collapsed .vbadge { position:absolute; top:4px; right:4px; }
-#vnav.collapsed .vnav-sub { max-height:500px!important; }
-
-/* Sidebar toggle button */
-#sidebarToggle {
-  position:absolute; bottom:12px; left:0; right:0;
-  display:flex; justify-content:center; padding:8px;
-  cursor:pointer; color:rgba(255,255,255,0.3);
-  font-size:16px; transition:color .15s;
+/* ── ENHANCED PANEL TOGGLES & ERP LAYOUT (YELLOW & BLUE HIGHLIGHTED PANELS) ── */
+#vnav {
+  transition: width .22s cubic-bezier(0.4, 0, 0.2, 1), opacity .2s ease, min-width .22s ease;
 }
-#sidebarToggle:hover { color:rgba(255,255,255,0.7); }
+#vnav.nav-hidden {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+  border-right: none !important;
+  padding: 0 !important;
+}
+#vnav.collapsed { width: 52px !important; }
+#vnav.collapsed .vnav-cat { padding: 11px 0; justify-content: center; font-size: 0; letter-spacing: 0; }
+#vnav.collapsed .vnav-cat .vnav-arrow { display: none; }
+#vnav.collapsed .vitem { padding: 10px 0; justify-content: center; }
+#vnav.collapsed .vitem span:not(.vi) { display: none; }
+#vnav.collapsed .vbadge { position: absolute; top: 4px; right: 4px; }
+#vnav.collapsed .vnav-sub { max-height: 500px !important; }
+
+/* Files and Sheets Sidebar Drawer */
+.sidebar {
+  transition: width .22s cubic-bezier(0.4, 0, 0.2, 1), opacity .2s ease, min-width .22s ease, padding .2s ease;
+}
+.sidebar.sidebar-hidden {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  border-right: none !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  overflow: hidden !important;
+}
+
+/* Header Toggle Buttons */
+.erp-header-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  transition: all .15s ease;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: #cbd5e1;
+  line-height: 1.2;
+}
+.erp-header-toggle-btn:hover {
+  background: rgba(255,255,255,0.14);
+  color: #ffffff;
+  border-color: rgba(255,255,255,0.28);
+}
+.erp-header-toggle-btn.active {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(129, 140, 248, 0.55);
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.25);
+}
+.erp-header-toggle-btn.collapsed {
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+.erp-toggle-count-badge {
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 800;
+  background: #6366f1;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+}
+.edge-toggle-handle {
+  display: none;
+  position: fixed;
+  z-index: 100;
+  cursor: pointer;
+  padding: 6px 9px;
+  border-radius: 0 8px 8px 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 2px 4px 14px rgba(0,0,0,0.3);
+  transition: transform .15s, background .15s;
+}
+.edge-toggle-handle:hover {
+  transform: translateX(3px);
+}
+body.nav-collapsed #edgeNavHandle { display: flex !important; align-items: center; gap: 4px; }
+body.files-collapsed #edgeFilesHandle { display: flex !important; align-items: center; gap: 4px; }
+
+/* Responsive adjustments for windowed pages when nav is collapsed */
+body.nav-collapsed #page-empdashboard.active.dash-windowed,
+body.nav-collapsed #page-empmaster.active.em-windowed,
+body.nav-collapsed #page-hrdocs.active.hr-windowed {
+  left: 18px !important;
+}
 
 /* Mobile cards vs Desktop table display */
 .mobile-only-cards-container { display: none; }
@@ -1163,17 +1250,19 @@ body.dash-windowed #page-empdashboard.active.dash-windowed { position:fixed !imp
 
 /* ── SMART COMMAND FILE SELECTOR ─────────────── */
 .cmd-file-filter {
-  display:flex; gap:6px; padding:8px 12px;
-  background:#F8FAFF; border-bottom:1px solid #EEF2FF;
-  flex-wrap:wrap; align-items:center; flex-shrink:0;
+  display: flex; gap: 8px; padding: 10px 18px;
+  background: #F8FAFC; border-bottom: 1px solid #E2E8F0;
+  flex-wrap: wrap; align-items: center; flex-shrink: 0;
 }
 .cmd-file-tag {
-  padding:3px 10px; border-radius:20px; font-size:10px; font-weight:600;
-  cursor:pointer; border:1.5px solid #C7D2FE; color:#4F46E5; background:#EEF2FF;
-  transition:all .15s; white-space:nowrap;
+  padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  cursor: pointer; border: 1.5px solid #C7D2FE; color: #4F46E5; background: #EEF2FF;
+  transition: all .15s; white-space: nowrap;
 }
-.cmd-file-tag.selected { background:#4F46E5; color:#fff; border-color:#4F46E5; }
-.cmd-file-tag.all-tag { background:#0F172A; color:#fff; border-color:#0F172A; }
+.cmd-file-tag:hover { background: #E0E7FF; }
+.cmd-file-tag.selected { background: #4F46E5; color: #fff; border-color: #4F46E5; box-shadow: 0 2px 6px rgba(79,70,229,0.25); }
+.cmd-file-tag.all-tag { background: #0F172A; color: #fff; border-color: #0F172A; }
+.cmd-file-tag.all-tag.selected { background: #0F172A; color: #38bdf8; border-color: #38bdf8; }
 
 /* HR Documents — same full-screen behaviour as Employee Master */
 #page-hrdocs { display:none; }
@@ -2049,6 +2138,18 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="logo-name">Arora Textiles <span>AI</span></div>
     <div class="logo-sub">Excel Commander v2 · Hindi · English · Hinglish</div>
   </div>
+  <!-- ERP Panel Toggles (Yellow & Blue highlighted in screenshot) -->
+  <div class="header-nav-toggles" style="display:flex;align-items:center;gap:8px;margin-left:20px;">
+    <button id="btnToggleNav" onclick="toggleNavMenu()" class="erp-header-toggle-btn active" title="Left Navigation Menu hide/unhide">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+      <span>Menu</span>
+    </button>
+    <button id="btnToggleFiles" onclick="toggleFilesPanel()" class="erp-header-toggle-btn active" title="Upload Files & Sheets panel hide/unhide">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>Files &amp; Sheets</span>
+      <span id="filesHeaderBadge" class="erp-toggle-count-badge">0</span>
+    </button>
+  </div>
   <div class="header-right">
     <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" class="erp-cross-sync-btn" title="Doosre browser ya device se data sync karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Cross-Browser Sync</span></button>
     <div class="storage-badge">
@@ -2264,22 +2365,30 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   </div>
 
   <!-- Collapse All / Expand All -->
-  <div style="padding:8px 14px;border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="padding:8px 14px 14px;border-top:1px solid rgba(255,255,255,0.06)">
     <button onclick="toggleAllVcats()" id="collapseAllBtn" style="width:100%;padding:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:8px;cursor:pointer;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .15s" onmouseover="this.style.background='rgba(255,255,255,0.12)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'">
       <span id="collapseAllIcon">⊟</span><span id="collapseAllTxt">Saare Collapse Karo</span>
     </button>
   </div>
+</div>
 
-  <!-- Sidebar toggle -->
-  <div id="sidebarToggle" onclick="toggleSidebar()" title="Sidebar hide/show">⟨</div>
+<!-- Floating edge toggle handles when panels are collapsed -->
+<div id="edgeNavHandle" class="edge-toggle-handle" onclick="toggleNavMenu()" title="Navigation Menu dikhao" style="top:66px;left:0;background:#0f172a;color:#93c5fd;border:1px solid #334155;border-left:none;">
+  <span>☰</span> <span>Menu</span>
+</div>
+<div id="edgeFilesHandle" class="edge-toggle-handle" onclick="toggleFilesPanel()" title="Files & Sheets drawer dikhao" style="top:104px;left:0;background:#1e293b;color:#38bdf8;border:1px solid #334155;border-left:none;">
+  <span>📂</span> <span>Files</span>
 </div>
 
 <div class="layout">
 
-  <!-- SIDEBAR -->
-  <div class="sidebar">
+  <!-- SIDEBAR (Files & Sheets Drawer - Blue Highlighted in screenshot) -->
+  <div class="sidebar" id="atplFilePanel">
     <div class="sb-sec">
-      <div class="sb-lbl">Upload Files</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="sb-lbl" style="margin-bottom:0">Upload Files</div>
+        <button type="button" onclick="toggleFilesPanel()" title="Files & Sheets panel hide karo" style="background:#f1f5f9;border:1px solid #cbd5e1;color:#64748b;cursor:pointer;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;display:flex;align-items:center;gap:3px;transition:all .15s" onmouseover="this.style.background='#e2e8f0';this.style.color='#0f172a'" onmouseout="this.style.background='#f1f5f9';this.style.color='#64748b'">⟨ Hide</button>
+      </div>
       <div class="dropzone" id="dz">
         <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt,.xlsb,.xlsm,.ods" multiple>
         <div class="dz-icon">📂</div>
@@ -2360,14 +2469,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <!-- ══ PAGE: SMART COMMANDS ══ -->
     <div class="page active" id="page-cmd">
-      <!-- File Filter Bar -->
-      <div style="margin:10px 18px 0;background:linear-gradient(90deg,rgba(99,102,241,0.2),rgba(56,189,248,0.2));border:1px solid rgba(129,140,248,0.4);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="goPage('test')">
-        <span style="font-size:18px">🧪</span>
-        <div>
-          <span style="font-size:13px;font-weight:800;color:#38bdf8">🤖 Arora AI Commander v10 (Click to Open AI)</span>
-          <span style="font-size:11px;color:#94a3b8;margin-left:8px">➔ Click to open Test Feature</span>
-        </div>
-      </div>
       <div class="cmd-file-filter" id="cmdFileFilter">
         <span style="font-size:10px;font-weight:700;color:#64748b;white-space:nowrap">Kaam karo:</span>
         <span class="cmd-file-tag all-tag selected" id="cff-all" onclick="setCmdFileFilter('all')">📂 All Files</span>
@@ -4185,6 +4286,8 @@ window.updateRealtimeCloudBadge = function(count, status, message) {
   if (sl) sl.textContent = message || total + ' files saved';
   var fc = document.getElementById('fileCount');
   if (fc) fc.textContent = '(' + total + ')';
+  var fhb = document.getElementById('filesHeaderBadge');
+  if (fhb) fhb.textContent = total;
 };
 
 function atplUsesSharedSalaryCloud(){return !window.ATPLFirebase && !!(window.location && /(^|\.)github\.io$/i.test(window.location.hostname));}
@@ -4496,12 +4599,15 @@ function renderFiles() {
   if (sec) sec.style.display = 'block';
   var listFiles = getAllLoadedSalaryFiles();
   var fc = document.getElementById('fileCount');
+  var fhb = document.getElementById('filesHeaderBadge');
   if (!listFiles.length) {
     if (list) list.innerHTML = '<div style="font-size:11px;color:#94a3b8;padding:12px 6px;text-align:center">No saved files yet<br><span style="font-size:10px;color:#6366f1">Click Sync Browsers below</span></div>';
     if (fc) fc.textContent = '(0)';
+    if (fhb) fhb.textContent = '0';
     return;
   }
   if (fc) fc.textContent = '(' + listFiles.length + ')';
+  if (fhb) fhb.textContent = listFiles.length;
   if (list) {
     list.innerHTML = listFiles.map(function(f, i) {
       if (!f) return '';
@@ -8811,20 +8917,101 @@ function toggleAllVcats() {
   }
 }
 
-function toggleSidebar() {
-  SIDEBAR_COLLAPSED = !SIDEBAR_COLLAPSED;
-  var vnav = document.getElementById('vnav');
-  var btn = document.getElementById('sidebarToggle');
-  if (SIDEBAR_COLLAPSED) {
-    vnav.classList.add('collapsed');
-    btn.innerHTML = '⟩';
-    btn.title = 'Sidebar show karo';
-  } else {
-    vnav.classList.remove('collapsed');
-    btn.innerHTML = '⟨';
-    btn.title = 'Sidebar hide karo';
-  }
+// ═══════════════════════════════════════════════
+// ERP NAVIGATION & FILES/SHEETS PANEL TOGGLES
+// (Yellow & Blue highlighted panels)
+// ═══════════════════════════════════════════════
+var ATPL_NAV_HIDDEN = false;
+var ATPL_FILES_HIDDEN = false;
+
+function updateToggleBadges() {
+  try {
+    var count = (window.FILES && window.FILES.length) || 0;
+    var b = document.getElementById('filesHeaderBadge');
+    if (b) b.textContent = count;
+  } catch(_) {}
 }
+
+window.toggleNavMenu = function(forceState) {
+  var vnav = document.getElementById('vnav');
+  var btn = document.getElementById('btnToggleNav');
+  if (!vnav) return;
+  
+  if (typeof forceState === 'boolean') {
+    ATPL_NAV_HIDDEN = forceState;
+  } else {
+    ATPL_NAV_HIDDEN = !ATPL_NAV_HIDDEN;
+  }
+  
+  if (ATPL_NAV_HIDDEN) {
+    vnav.classList.add('nav-hidden');
+    document.body.classList.add('nav-collapsed');
+    if (btn) {
+      btn.classList.remove('active');
+      btn.classList.add('collapsed');
+      btn.title = 'Navigation Menu dikhao (Click to show Menu)';
+    }
+  } else {
+    vnav.classList.remove('nav-hidden');
+    document.body.classList.remove('nav-collapsed');
+    if (btn) {
+      btn.classList.add('active');
+      btn.classList.remove('collapsed');
+      btn.title = 'Navigation Menu chhupao (Click to hide Menu)';
+    }
+  }
+  try { localStorage.setItem('ATPL_NAV_HIDDEN', ATPL_NAV_HIDDEN ? '1' : '0'); } catch(_) {}
+};
+
+window.toggleFilesPanel = function(forceState) {
+  var p = document.getElementById('atplFilePanel') || document.querySelector('.sidebar');
+  var btn = document.getElementById('btnToggleFiles');
+  if (!p) return;
+  
+  if (typeof forceState === 'boolean') {
+    ATPL_FILES_HIDDEN = forceState;
+  } else {
+    ATPL_FILES_HIDDEN = !ATPL_FILES_HIDDEN;
+  }
+  
+  if (ATPL_FILES_HIDDEN) {
+    p.classList.add('sidebar-hidden');
+    document.body.classList.add('files-collapsed');
+    if (btn) {
+      btn.classList.remove('active');
+      btn.classList.add('collapsed');
+      btn.title = 'Files & Sheets panel dikhao (Click to show Files)';
+    }
+  } else {
+    p.classList.remove('sidebar-hidden');
+    document.body.classList.remove('files-collapsed');
+    if (btn) {
+      btn.classList.add('active');
+      btn.classList.remove('collapsed');
+      btn.title = 'Files & Sheets panel chhupao (Click to hide Files)';
+    }
+  }
+  updateToggleBadges();
+  try { localStorage.setItem('ATPL_FILES_HIDDEN', ATPL_FILES_HIDDEN ? '1' : '0'); } catch(_) {}
+};
+
+// Backward-compatible alias
+window.toggleSidebar = function() {
+  window.toggleNavMenu();
+};
+
+// Initialize panel states
+try {
+  var navPref = localStorage.getItem('ATPL_NAV_HIDDEN');
+  if (navPref === '1') {
+    setTimeout(function() { window.toggleNavMenu(true); }, 50);
+  }
+  var filesPref = localStorage.getItem('ATPL_FILES_HIDDEN');
+  if (filesPref === '1') {
+    setTimeout(function() { window.toggleFilesPanel(true); }, 50);
+  }
+  setTimeout(updateToggleBadges, 100);
+} catch(_) {}
 
 // ═══════════════════════════════════════════════
 // SMART COMMAND FILE FILTER

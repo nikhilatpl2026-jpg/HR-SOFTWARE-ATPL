@@ -42,8 +42,17 @@ function addCss(){
     '#crossSyncBtn:hover,.erp-cross-sync-btn:hover{background:#e0f2fe!important;border-color:#7dd3fc!important;color:#0369a1!important;transform:translateY(-1px)!important;box-shadow:0 2px 5px rgba(2,132,199,0.12)!important;}',
     '.storage-badge{display:inline-flex!important;align-items:center!important;gap:6px!important;padding:5px 12px!important;background:#f8fafc!important;border:1px solid #e2e8f0!important;color:#475569!important;font-size:11px!important;font-weight:600!important;border-radius:20px!important;box-shadow:none!important;}',
     '.storage-badge .dot{width:7px!important;height:7px!important;background:#22c55e!important;border-radius:50%!important;box-shadow:0 0 0 2px rgba(34,197,94,0.2)!important;}',
-    /* ── Clean Sidebar ── */
-    '#vnav{width:228px!important;background:#ffffff!important;border-right:1px solid #e2e8f0!important;box-shadow:1px 0 3px rgba(0,0,0,0.02)!important;color:#334155!important;}',
+    /* ── Clean Sidebar & Panel Toggles ── */
+    '#vnav{width:228px!important;background:#ffffff!important;border-right:1px solid #e2e8f0!important;box-shadow:1px 0 3px rgba(0,0,0,0.02)!important;color:#334155!important;transition:width .22s ease,opacity .2s ease!important;}',
+    '#vnav.nav-hidden{width:0!important;min-width:0!important;max-width:0!important;padding:0!important;border-right:none!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;}',
+    '.sidebar{transition:width .22s ease,opacity .2s ease!important;}',
+    '.sidebar.sidebar-hidden{width:0!important;min-width:0!important;max-width:0!important;padding:0!important;border-right:none!important;box-shadow:none!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;}',
+    '.erp-header-toggle-btn{display:inline-flex!important;align-items:center!important;gap:6px!important;padding:5px 12px!important;background:#f8fafc!important;border:1px solid #cbd5e1!important;color:#334155!important;border-radius:8px!important;font-size:11px!important;font-weight:700!important;cursor:pointer!important;transition:all .15s ease!important;}',
+    '.erp-header-toggle-btn:hover{background:#f1f5f9!important;border-color:#94a3b8!important;color:#0f172a!important;}',
+    '.erp-header-toggle-btn.active{background:#ede9fe!important;border-color:#a5b4fc!important;color:#4338ca!important;box-shadow:0 1px 3px rgba(79,70,229,0.12)!important;}',
+    '.erp-header-toggle-btn.collapsed{background:#f1f5f9!important;border-color:#e2e8f0!important;color:#94a3b8!important;}',
+    '.erp-toggle-count-badge{padding:1px 6px!important;border-radius:10px!important;font-size:10px!important;font-weight:800!important;background:#4f46e5!important;color:#ffffff!important;}',
+    '#sidebarToggle{display:none!important;}',
     '#vnav>div:first-child{padding:16px 14px 10px!important;border-bottom:1px solid #f1f5f9!important;background:#ffffff!important;}',
     '#vnav>div:first-child>div{color:#94a3b8!important;font-size:9px!important;letter-spacing:1px!important;font-weight:700!important;}',
     '.vnav-group{border-bottom:1px solid #f1f5f9!important;padding:6px 0!important;}',
@@ -55,8 +64,6 @@ function addCss(){
     '.vitem.active{color:#4338ca!important;background:#ede9fe!important;font-weight:800!important;box-shadow:inset 3px 0 0 #4f46e5!important;}',
     '.vi{width:18px!important;font-size:13px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;}',
     '.vbadge{font-size:9px!important;padding:2px 6px!important;border-radius:12px!important;font-weight:700!important;}',
-    '#sidebarToggle{color:#94a3b8!important;border-top:1px solid #f1f5f9!important;background:#ffffff!important;}',
-    '#sidebarToggle:hover{color:#4f46e5!important;}',
     /* ── Content & ERP Workspace ── */
     '.content{background:#f8fafc!important;}',
     '.page-top{margin:16px 20px 0!important;padding:18px 20px!important;border:1px solid #e2e8f0!important;border-radius:14px!important;background:#ffffff!important;box-shadow:0 1px 3px rgba(0,0,0,0.03)!important;}',

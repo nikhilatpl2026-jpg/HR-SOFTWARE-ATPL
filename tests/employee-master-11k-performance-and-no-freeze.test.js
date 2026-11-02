@@ -92,10 +92,10 @@ test('Employee master 11K dataset performance & zero main-thread freeze', async 
     'employee-master-persistence-guard-v1.js must not wipe cache for 11k employees'
   );
 
-  // 7. Verify index.html uses v4 cache busting tags
+  // 7. Verify index.html uses v4/v5 cache busting tags
   assert.strictEqual(
-    indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v4'),
+    indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v4') || indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v5'),
     true,
-    'index.html must use v4 cache busting tag for atpl-google-drive-sync.js'
+    'index.html must use v4/v5 cache busting tag for atpl-google-drive-sync.js'
   );
 });
