@@ -10,7 +10,7 @@
  }
  var BUILD='2026.09.28-permanent-cross-browser-delete-v2';
  if(!root||root.__ATPL_CLOUD_SHARED_STORAGE_V1__===BUILD)return;root.__ATPL_CLOUD_SHARED_STORAGE_V1__=BUILD;
- var API='https://script.google.com/macros/s/AKfycbzgcX5CL9GvtXeRwqQKQ7DKMM1BqbaZFHoqmJw7YUmdAnUev_6kzucom-MuZ6h_E6E_/exec';
+ var API='https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
  var TOKEN='ATPL_RemoteToken_V1',ALT='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',SYS='__ATPL_SYS__';
  var SALARY_DB='AroraTextiles',SALARY_VER=1,SALARY_STORE='salaryFiles';
  var HR_DB='AroraTextilesHRDocs',HR_VER=1,HR_STORE='documents';
