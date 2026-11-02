@@ -8,7 +8,7 @@
 */
 (function(root){'use strict';
   if(!root||root.__ATPL_ERP_CLOUD_SYNC_V13__)return;root.__ATPL_ERP_CLOUD_SYNC_V13__=1;
-  var API='https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+ var API='https://script.google.com/macros/s/AKfycbzgcX5CL9GvtXeRwqQKQ7DKMM1BqbaZFHoqmJw7YUmdAnUev_6kzucom-MuZ6h_E6E_/exec';
   var MASTER='AroraTextilesEmployeeMasterV3',TOKEN='ATPL_RemoteToken_V1',ALT_TOKEN='ATPL_SharedToken_V1',SESS='ATPL_UserSession_V5',USERS='ATPL_UserAccess_V1',SYS='__ATPL_SYS__',DIRTY='ATPL_EmployeeMasterPendingV3';
   var backendReady=null,syncing=false,running=0,MAX=2,lastPull=0,wakeTimer=0,queueMap={},queueOrder=[],chains={},conflicts={},dirty=normalizePending(J(root.localStorage.getItem(DIRTY)||'{}',{}));
 
