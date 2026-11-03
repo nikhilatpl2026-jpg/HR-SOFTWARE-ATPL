@@ -176,6 +176,28 @@
       return !dead[k] && !dead[k.replace(/^0+/, '')];
     });
     if (!valid.length) return;
+    // Data-loss guard: never replace a fuller browser snapshot with a partial cloud list.
+    var previous = [];
+    try { previous = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]'); } catch (_) {}
+    if (!Array.isArray(previous)) previous = [];
+    var byId = {};
+    previous.forEach(function(r) { if (r && r.emp_id != null) byId[String(r.emp_id).trim().toLowerCase()] = r; });
+    valid = valid.map(function(r) {
+      var old = byId[String(r.emp_id).trim().toLowerCase()];
+      if (!old) return r;
+      var safe = Object.assign({}, old, r);
+      Object.keys(old).forEach(function(k) {
+        if ((r[k] === '' || r[k] == null) && old[k] !== '' && old[k] != null) safe[k] = old[k];
+      });
+      return safe;
+    });
+    if (previous.length > valid.length) {
+      var merged = {}, order = [];
+      previous.forEach(function(r) { if (r && r.emp_id != null) { var k = String(r.emp_id).trim().toLowerCase(); if (!merged[k]) order.push(k); merged[k] = r; } });
+      valid.forEach(function(r) { var k = String(r.emp_id).trim().toLowerCase(); if (!merged[k]) order.push(k); merged[k] = r; });
+      valid = order.map(function(k){ return merged[k]; });
+      console.warn('[ATPL Employee Master] Partial cloud snapshot; retained local records. Restore/upload complete source separately.');
+    }
     if (window.EM) window.EM.data = valid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
