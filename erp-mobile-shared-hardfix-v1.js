@@ -112,8 +112,26 @@ function clearMasterView(){
   return 0
 }
 function injectMaster(records){
-  // Replace from cloud, never merge with browser-local records.
-  return _old_injectMaster(records);
+  // Preserve local records if the server returns an incomplete Employee Master.
+  // This is a display/cache safety guard only; it does not upload local data.
+  var local=[];
+  try{local=cleanMaster(J(root.localStorage.getItem(MASTER)||'[]',[]))}catch(_){}
+  records=cleanMaster(records);
+  if(!records.length&&local.length)return local.length;
+  var merged={},order=[];
+  local.forEach(function(r){var k=text(r.emp_id).toLowerCase();if(k&&!merged[k]){merged[k]=r;order.push(k)}});
+  records.forEach(function(r){
+    var k=text(r.emp_id).toLowerCase();if(!k)return;
+    var old=merged[k]||{},safe=Object.assign({},old,r);
+    Object.keys(old).forEach(function(field){if((r[field]==null||r[field]==='')&&old[field]!=null&&old[field]!=='')safe[field]=old[field]});
+    if(!merged[k])order.push(k);
+    merged[k]=safe;
+  });
+  if(local.length>records.length){
+    console.warn('[ATPL] Incomplete Employee Master cloud result; locally cached employees protected.');
+    return _old_injectMaster(order.map(function(k){return merged[k]}));
+  }
+  return _old_injectMaster(records.map(function(r){return merged[text(r.emp_id).toLowerCase()]||r}));
 }
 function _old_injectMaster(records){
   records=cleanMaster(records);
