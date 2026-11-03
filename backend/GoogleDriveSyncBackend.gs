@@ -240,7 +240,7 @@ function getEmployeeMaster_(p) {
     for (var r = 1; r < data.length; r++) {
       var row = data[r];
       var empId = String(row[colMap["emp_id"] !== undefined ? colMap["emp_id"] : 0] || "").trim();
-      if (!empId) continue;
+      if (!empId || empId.indexOf("__ATPL_SYS__") === 0) continue;
       
       var isDeleted = row[colMap["_atpl_deleted"]] === true || String(row[colMap["_atpl_deleted"]]).toLowerCase() === "true";
       if (isDeleted || dead[empId.toLowerCase()] || dead[empId.toLowerCase().replace(/^0+/, "")]) {
@@ -295,6 +295,10 @@ function upsertEmployeeMaster_(p) {
   }
   if (!id && rec.emp_id) id = String(rec.emp_id).trim();
   if (!id) return { ok: false, error: "emp_id required" };
+  // PF/ESIC, HR and durable chunks are not employee rows.
+  if (id.indexOf("__ATPL_SYS__") === 0 || rec._atpl_system === true) {
+    return upsertSystemRecord_(id, rec);
+  }
 
   var dead = getTombstoneSet_();
   var cleanKey = id.toLowerCase().replace(/^0+/, "");
@@ -377,6 +381,7 @@ function upsertEmployeeMaster_(p) {
 function deleteEmployeeMaster_(p) {
   var id = String(p.emp_id || "").trim();
   if (!id) return { ok: false, error: "emp_id required" };
+  if (id.indexOf("__ATPL_SYS__") === 0) return deleteSystemRecord_(id);
 
   var sheet = ensureEmployeeMasterSheet_();
   var tombSheet = ensureTombstonesSheet_();
@@ -520,6 +525,48 @@ function saveEmployeeMaster_(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// Dedicated backend authority for special records (PF, ESIC, HR, UI state and chunks).
+// Never store these documents as employee rows: EmployeeMaster only stores EM_FIELD_KEYS.
+function upsertSystemRecord_(id, rec) {
+  if (!id || id.indexOf("__ATPL_SYS__") !== 0 || !rec || rec._atpl_system !== true) {
+    return { ok:false, error:"Invalid system record" };
+  }
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ensureSystemRecordsSheet_();
+    var lr = sheet.getLastRow(), target = 0;
+    if (lr > 1) {
+      var ids = sheet.getRange(2, 1, lr - 1, 1).getValues();
+      for (var i=0; i<ids.length; i++) {
+        if (String(ids[i][0]) === id) { target = i + 2; break; }
+      }
+    }
+    var kind = String(rec.object_kind || "system").toLowerCase();
+    var row = [id, kind, JSON.stringify(rec), String(rec.uploaded_by || "ERP"), new Date().toISOString()];
+    if (target) sheet.getRange(target, 1, 1, 5).setValues([row]);
+    else sheet.appendRow(row);
+    var ver = bumpSyncVersion_();
+    return { ok:true, emp_id:id, systemRecord:true, verified:true, version:ver };
+  } finally { lock.releaseLock(); }
+}
+
+function deleteSystemRecord_(id) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var sheet = ensureSystemRecordsSheet_(), lr = sheet.getLastRow(), deleted = 0;
+    if (lr > 1) {
+      var ids = sheet.getRange(2, 1, lr - 1, 1).getValues();
+      for (var i=ids.length-1; i>=0; i--) {
+        if (String(ids[i][0]) === id) { sheet.deleteRow(i+2); deleted++; }
+      }
+    }
+    var ver = bumpSyncVersion_();
+    return { ok:true, deleted:true, systemRecord:true, count:deleted, version:ver };
+  } finally { lock.releaseLock(); }
 }
 
 // ── System Records (Files, Chunks, Durable State) ──
