@@ -78,8 +78,11 @@
         toUpload.push(r);
       }
     });
+    // Do not auto-upload orphan local rows on cloud refresh. A partial cloud list,
+    // missing old browser records or stale cached rows must never silently mutate
+    // the shared employee database. Explicit verified Save/Import is the write path.
     if(toUpload.length){
-      root.setTimeout(function(){try{enqueue(toUpload)}catch(_){}},100);
+      console.warn('[ATPL Employee Master] '+toUpload.length+' local-only records retained; explicit verified cloud import required.');
     }
     return order.map(function(k){return map[k]})
   }
