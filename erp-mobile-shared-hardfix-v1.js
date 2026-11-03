@@ -123,7 +123,11 @@ function injectMaster(records){
   records.forEach(function(r){
     var k=text(r.emp_id).toLowerCase();if(!k)return;
     var old=merged[k]||{},safe=Object.assign({},old,r);
-    Object.keys(old).forEach(function(field){if((r[field]==null||r[field]==='')&&old[field]!=null&&old[field]!=='')safe[field]=old[field]});
+    Object.keys(old).forEach(function(field){
+      var missing=r[field]==null||r[field]==='';
+      var wageLost=['basic','hra','gross','new_gross'].indexOf(field)>=0&&Number(r[field])===0&&Number(old[field])>0;
+      if((missing||wageLost)&&old[field]!=null&&old[field]!=='')safe[field]=old[field];
+    });
     if(!merged[k])order.push(k);
     merged[k]=safe;
   });
