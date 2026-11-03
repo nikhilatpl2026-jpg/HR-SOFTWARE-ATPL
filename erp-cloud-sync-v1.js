@@ -90,8 +90,9 @@
         // A partial cloud row must not blank already populated local employee fields.
         var safe=Object.assign({},r,map[k]);
         Object.keys(r).forEach(function(field){
-          if((map[k][field]===undefined||map[k][field]===null||map[k][field]==='')&&
-             r[field]!==undefined&&r[field]!==null&&r[field]!=='')safe[field]=r[field];
+          var missing=(map[k][field]===undefined||map[k][field]===null||map[k][field]==='');
+          var wageLost=['basic','hra','gross','new_gross'].indexOf(field)>=0&&Number(map[k][field])===0&&Number(r[field])>0;
+          if((missing||wageLost)&&r[field]!==undefined&&r[field]!==null&&r[field]!=='')safe[field]=r[field];
         });
         map[k]=safe;
         return;
