@@ -187,7 +187,10 @@
       if (!old) return r;
       var safe = Object.assign({}, old, r);
       Object.keys(old).forEach(function(k) {
-        if ((r[k] === '' || r[k] == null) && old[k] !== '' && old[k] != null) safe[k] = old[k];
+        var newVal=r[k],oldVal=old[k];
+        var isMissing=newVal === '' || newVal == null;
+        var lostWage=(k==='basic'||k==='hra'||k==='gross'||k==='new_gross') && Number(newVal)===0 && Number(oldVal)>0;
+        if ((isMissing || lostWage) && oldVal !== '' && oldVal != null) safe[k]=oldVal;
       });
       return safe;
     });
@@ -198,6 +201,12 @@
       valid = order.map(function(k){ return merged[k]; });
       console.warn('[ATPL Employee Master] Partial cloud snapshot; retained local records. Restore/upload complete source separately.');
     }
+    // Preserve the last populated snapshot before any server refresh replaces UI data.
+    // Never send this safety backup to cloud; it is local recovery only.
+    try {
+      var prevPopulated = previous.filter(function(x){return x && x.emp_id && (x.name || x.father || x.pf_no || x.esi_no);});
+      if (prevPopulated.length) localStorage.setItem('ATPL_EM_LAST_POPULATED_BACKUP_V1', JSON.stringify(prevPopulated));
+    } catch (_) {}
     if (window.EM) window.EM.data = valid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
