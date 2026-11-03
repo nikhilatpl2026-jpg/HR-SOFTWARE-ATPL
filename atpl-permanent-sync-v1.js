@@ -138,3 +138,79 @@
     window.ATPLPermanentSync.syncAll(manual);
   };
 })();
+
+
+/* ATPL FILE PANEL VISIBILITY TOGGLE — additive UI only */
+(function () {
+  'use strict';
+  function ready(fn) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, {once:true});
+    else fn();
+  }
+  ready(function () {
+    var toggle = null, panel = null, collapsed = false;
+    function norm(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+    function findPanel() {
+      var nodes = document.querySelectorAll('div, aside, section');
+      for (var i=0; i<nodes.length; i++) {
+        var el=nodes[i], t=norm(el.textContent);
+        if (t.length > 14000 || t.length < 50 || !t.includes('saved files') || !t.includes('sheets')) continue;
+        if (!(t.includes('upload files') || t.includes('files yahan drop karo'))) continue;
+        var parent=el.parentElement, pt=parent && norm(parent.textContent);
+        if (pt && pt.length < 14000 && pt.includes('saved files') && pt.includes('sheets') &&
+            (pt.includes('upload files') || pt.includes('files yahan drop karo'))) continue;
+        var rect=el.getBoundingClientRect();
+        if (rect.width > 120 && rect.width < 440 && rect.height > 180) return el;
+      }
+      return null;
+    }
+    function findHeaderAnchor() {
+      var nodes=document.querySelectorAll('button, a, span, div');
+      for (var i=0;i<nodes.length;i++) {
+        var e=nodes[i];
+        if (e.children.length > 3 || norm(e.textContent) !== 'files & sheets') continue;
+        var r=e.getBoundingClientRect();
+        if (r.top < 145 && r.width > 40 && r.width < 300) return e.closest('button, a') || e;
+      }
+      return null;
+    }
+    function setPanel() {
+      if (!panel || !panel.isConnected) panel=findPanel();
+      if (!panel) return false;
+      panel.style.display=collapsed?'none':'';
+      if (toggle) {
+        toggle.textContent=collapsed?'📁 Show Files':'📁 Hide Files';
+        toggle.setAttribute('aria-expanded',String(!collapsed));
+        toggle.title=collapsed?'Show uploaded and saved files':'Hide uploaded and saved files';
+      }
+      return true;
+    }
+    function mount() {
+      if (!panel || !panel.isConnected) panel=findPanel();
+      if (!panel) return;
+      if (!toggle || !toggle.isConnected) {
+        var anchor=findHeaderAnchor();
+        if (!anchor || !anchor.parentElement) return;
+        toggle=document.createElement('button');
+        toggle.type='button';
+        toggle.id='atpl-files-panel-toggle';
+        toggle.setAttribute('aria-controls','atpl-files-visibility-panel');
+        toggle.style.cssText='margin-left:8px;padding:7px 12px;border:1px solid #bbc9f8;border-radius:9px;background:#eef2ff;color:#3e43be;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap';
+        toggle.addEventListener('click', function () { collapsed=!collapsed;setPanel(); });
+        anchor.insertAdjacentElement('afterend',toggle);
+      }
+      if (!panel.id) panel.id='atpl-files-visibility-panel';
+      if (!panel.dataset.atplFilesToggleReady) {
+        panel.dataset.atplFilesToggleReady='true';
+        collapsed=true; // Keep the list hidden until the user chooses Show Files.
+      }
+      setPanel();
+    }
+    mount();
+    var tries=0;
+    var interval=setInterval(function () {
+      mount();
+      if ((toggle && toggle.isConnected && panel && panel.isConnected) || ++tries >= 30) clearInterval(interval);
+    },500);
+  });
+})();
