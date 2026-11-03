@@ -6979,7 +6979,7 @@ function toggleVcat(catId) {
 
 function updStats() {
   document.getElementById('sF').textContent=FILES.length;
-  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES; var sh=0,rows=0; (list||[]).forEach(function(f){ if(f&&f.wb){ sh+=f.wb.SheetNames?f.wb.SheetNames.length:0; rows+=fastTotalWorkbookRows(f.wb); } });
+  var list = (Array.isArray(window.FILES) && window.FILES.length) ? window.FILES : FILES; var sh=0,rows=0; (list||[]).forEach(function(f){ if(f&&f.wb){ sh+=f.wb.SheetNames?f.wb.SheetNames.length:0; rows+=(typeof safeGetWorkbookRows === 'function' ? safeGetWorkbookRows(f) : (typeof window.fastTotalWorkbookRows === 'function' ? window.fastTotalWorkbookRows(f.wb) : 0)); } });
   document.getElementById('sSh').textContent=sh;document.getElementById('sR').textContent=rows;
   document.getElementById('sCh').textContent=CHANGES;
   updFOTags();
