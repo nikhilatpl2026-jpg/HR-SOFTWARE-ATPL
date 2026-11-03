@@ -160,7 +160,9 @@
   function applyEmployeeRecords(records) {
     if (!Array.isArray(records) || !records.length) return;
     var len = records.length;
-    var fp = len + ':' + (records[0] ? records[0].emp_id : '') + ':' + (records[len - 1] ? records[len - 1].emp_id : '');
+    // Count/first/last IDs miss edits to existing middle records.
+    // Compare the complete server payload to detect unchanged-row-count updates.
+    var fp = JSON.stringify(records);
     if (_lastAppliedEmpFp === fp && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
       return;
     }
@@ -599,28 +601,30 @@
       return true;
     },
 
+    // Do not acknowledge cloud success before the backend confirms the write.
     saveEmployeeMaster: async function(records) {
-      if (!Array.isArray(records)) return { ok: false };
-      try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(records)); } catch (_) {}
-      if (window.EM) window.EM.data = records.slice();
+      if (!Array.isArray(records)) return { ok:false, error:'Employee records required' };
+      var result = await callGoogleBackend('saveEmployeeMaster', { records: records });
+      if (!result || result.ok !== true) return { ok:false, error:(result && result.error) || 'Employee Master cloud save unconfirmed' };
       dispatchSyncTrigger('employee_updated', { count: records.length });
-      refreshEmployeeUI();
-      if (getGasUrl()) await callGoogleBackend('saveEmployeeMaster', { records: records });
-      return { ok: true };
+      await pollSyncState(true);
+      return result;
     },
 
     deleteEmployeeMaster: async function(empId) {
+      var result = await callGoogleBackend('deleteEmployeeMaster', { emp_id: empId });
+      if (!result || result.ok !== true) return { ok:false, error:(result && result.error) || 'Employee delete unconfirmed' };
       dispatchSyncTrigger('employee_deleted', { emp_id: empId });
-      if (getGasUrl()) await callGoogleBackend('deleteEmployeeMaster', { emp_id: empId });
-      return { ok: true };
+      await pollSyncState(true);
+      return result;
     },
 
     upsertEmployeeMaster: async function(empId, record) {
+      var result = await callGoogleBackend('upsertEmployeeMaster', { emp_id: empId, record_json: JSON.stringify(record) });
+      if (!result || result.ok !== true) return { ok:false, error:(result && result.error) || 'Employee update unconfirmed' };
       dispatchSyncTrigger('employee_updated', { emp_id: empId });
-      if (getGasUrl()) {
-        await callGoogleBackend('upsertEmployeeMaster', { emp_id: empId, record_json: JSON.stringify(record) });
-      }
-      return { ok: true };
+      await pollSyncState(true);
+      return result;
     },
 
     fetchAllSalaryFiles: async function() { return window.FILES || []; },
