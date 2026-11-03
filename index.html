@@ -15929,7 +15929,9 @@ window.atplTriggerCrossSync = async function(manual) {
     addJob("User access",function(){return window.ATPLAccountCloudRestoreV1.syncNow(true)});
   }
   if(window.ATPLComplianceDOLV2&&typeof window.ATPLComplianceDOLV2.syncCloud==="function"){
-    addJob("PF/ESIC DOL",function(){return window.ATPLComplianceDOLV2.syncCloud()});
+    // DOL sync requires an explicit type off the PF/ESIC library pages.
+    addJob("PF DOL",function(){return window.ATPLComplianceDOLV2.syncCloud("pf")});
+    addJob("ESIC DOL",function(){return window.ATPLComplianceDOLV2.syncCloud("esic")});
   }
   try {
     var outcomes=await Promise.allSettled(jobs.map(function(j){return Promise.resolve().then(j.execute)}));
