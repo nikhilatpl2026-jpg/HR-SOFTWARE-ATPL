@@ -27,6 +27,20 @@
   function samePayload(a,b){
     return !!(a&&b&&keyOf(a)===keyOf(b)&&stableRecord(a)===stableRecord(b));
   }
+  // A record that only has an employee ID is not a verified Employee Master save.
+  // Avoid replacing the form's complete fields with a partial cloud read-back.
+  function essentialFieldsConfirmed(submitted,received){
+    if(!received||keyOf(received)!==keyOf(submitted))return false;
+    var required=['name','father','dob','doj','pf_no','esi_no','bank_name','account_no','ifsc','dept','basic','hra','gross','new_gross'];
+    return required.every(function(k){
+      var wanted=submitted&&submitted[k],got=received&&received[k];
+      if(wanted==null||String(wanted).trim()==='')return true;
+      if(typeof wanted==='number'&&wanted===0)return true;
+      if(got==null||String(got).trim()==='')return false;
+      if(typeof wanted==='number'&&Number(wanted)>0&&Number(got)===0)return false;
+      return true;
+    });
+  }
   function cloudRecord(r){var o=cleanRecord(r);if(r&&r._cloud_updated_at)o._cloud_updated_at=text(r._cloud_updated_at);if(r&&r._cloud_updated_by)o._cloud_updated_by=text(r._cloud_updated_by);return o}
   function savePending(){try{root.localStorage.setItem(DIRTY,JSON.stringify(dirty))}catch(_){}}
   function markDirty(r){var k=keyOf(r);if(!k)return;dirty[k]=Date.now();savePending()}
@@ -122,7 +136,7 @@
         if(remote&&samePayload(record,remote)){
           var already=cloudRecord(remote);clearDirty(k);if(opts.commitLocal)commitConfirmed(already);return{ok:true,record:already,verified:true,noChange:true}
         }
-        await upsertRaw(record);cloudCache=null;var verifiedRecord=remoteMap(await fetchCloud(true))[k];if(!verifiedRecord)throw new Error('Cloud save was not confirmed by a fresh read');var confirmed=cloudRecord(verifiedRecord);clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);
+        await upsertRaw(record);cloudCache=null;var verifiedRecord=remoteMap(await fetchCloud(true))[k];if(!verifiedRecord)throw new Error('Cloud save was not confirmed by a fresh read');if(!essentialFieldsConfirmed(record,verifiedRecord))throw new Error('Cloud read-back is missing employee details. Original form retained; do not refresh before retry.');var confirmed=cloudRecord(verifiedRecord);clearDirty(k);if(opts.commitLocal)commitConfirmed(confirmed);
         try {
           if (typeof root.BroadcastChannel !== 'undefined') {
             var bc = new root.BroadcastChannel('ATPL_ERP_SHARED_V2');
@@ -169,9 +183,11 @@
     safe.forEach(function(x){
       var v=vm[x.key];
       if(writeErrors[x.key]) results.push({ok:false,error:writeErrors[x.key],record:x.record});
-      else if(v){
+      else if(v && essentialFieldsConfirmed(x.record,v)){
         clearDirty(x.key);
         results.push({ok:true,record:cloudRecord(v),verified:true});
+      } else if(v){
+        results.push({ok:false,error:'Cloud read-back has incomplete Employee Master fields; source row preserved for retry',record:x.record});
       } else {
         results.push({ok:false,error:'Fresh cloud read did not contain saved employee',record:x.record});
       }
