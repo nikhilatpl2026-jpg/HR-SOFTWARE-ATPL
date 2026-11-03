@@ -705,6 +705,9 @@ body {
 
 /* ── LAYOUT ──────────────────────────────── */
 .layout { display: flex; flex: 1; overflow: hidden; }
+/* Files & Sheets: hidden by default; header toggle reveals the existing sidebar. */
+body.files-collapsed .layout > .sidebar { display: none !important; }
+
 
 
 
@@ -8994,7 +8997,7 @@ window.toggleNavMenu = function(forceState) {
 };
 
 window.toggleFilesPanel = function(forceState) {
-  var p = document.getElementById('atplFilePanel');
+  var p = document.querySelector('.layout > .sidebar');
   var btn = document.getElementById('btnToggleFiles');
   if (!p) return;
   if (typeof forceState === 'boolean') {
@@ -9027,12 +9030,8 @@ try {
   } else {
     setTimeout(function() { window.toggleNavMenu(true); }, 50);
   }
-  var filesPref = localStorage.getItem('ATPL_FILES_HIDDEN');
-  if (filesPref === '0') {
-    setTimeout(function() { window.toggleFilesPanel(false); }, 50);
-  } else {
-    setTimeout(function() { window.toggleFilesPanel(true); }, 50);
-  }
+  // Always start with Files hidden. Users can reveal it with Files & Sheets.
+  setTimeout(function() { window.toggleFilesPanel(true); }, 50);
   setTimeout(updateToggleBadges, 100);
 } catch(_) {}
 
