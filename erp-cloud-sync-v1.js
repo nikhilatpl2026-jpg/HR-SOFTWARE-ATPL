@@ -71,12 +71,21 @@
       if(!map[k])order.push(k);map[k]=cloudRecord(r);
     });
     employeeRecords(local).forEach(function(r){
-      var k=keyOf(r);if(!k||wasDeleted(k)||map[k])return;
-      if(!r._cloud_updated_at){
-        order.push(k);
-        map[k]=cloudRecord(r);
-        toUpload.push(r);
+      var k=keyOf(r);if(!k||wasDeleted(k))return;
+      if(map[k]){
+        // A partial cloud row must not blank already populated local employee fields.
+        var safe=Object.assign({},r,map[k]);
+        Object.keys(r).forEach(function(field){
+          if((map[k][field]===undefined||map[k][field]===null||map[k][field]==='')&&
+             r[field]!==undefined&&r[field]!==null&&r[field]!=='')safe[field]=r[field];
+        });
+        map[k]=safe;
+        return;
       }
+      // Keep locally saved employees visible until a confirmed explicit import.
+      order.push(k);
+      map[k]=cloudRecord(r);
+      if(!r._cloud_updated_at)toUpload.push(r);
     });
     // Do not auto-upload orphan local rows on cloud refresh. A partial cloud list,
     // missing old browser records or stale cached rows must never silently mutate
