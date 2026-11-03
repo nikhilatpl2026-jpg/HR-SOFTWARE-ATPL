@@ -15939,11 +15939,16 @@ window.atplTriggerCrossSync = async function(manual) {
     if (window.ATPLComplianceDOLV2 && window.ATPLComplianceDOLV2.syncCloud) {
       jobs.push(window.ATPLComplianceDOLV2.syncCloud());
     }
-    await Promise.allSettled(jobs);
-
+    var outcomes = await Promise.allSettled(jobs);
+    var failed = outcomes.filter(function(x){ return x.status === 'rejected' || (x.status === 'fulfilled' && (x.value === false || (x.value && x.value.ok === false))); });
     var count = (window.FILES && window.FILES.length) || 0;
-    if (btnLbl) btnLbl.textContent = "Sync Complete ✓ (" + count + ")";
-    if (window.showToast) window.showToast("✅ Cross-browser data sync kamyab (" + count + " files)! ");
+    if (failed.length) {
+      if (btnLbl) btnLbl.textContent = "Sync Partial ⚠ (" + failed.length + ")";
+      if (window.showToast) window.showToast("⚠️ " + failed.length + " module sync(s) unconfirmed. Cloud backend/check logs required.");
+    } else {
+      if (btnLbl) btnLbl.textContent = "Sync Finished (" + count + " files)";
+      if (window.showToast) window.showToast("☁️ Sync requests finished. Verify records across browsers.");
+    }
   } catch(e) {
     if (btnLbl) btnLbl.textContent = "Sync Error";
     if (window.showToast) window.showToast("⚠️ Sync error: " + (e.message || e));
