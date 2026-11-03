@@ -15904,58 +15904,58 @@ else AInit();
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
-  var btnLbl = document.getElementById("crossSyncBtnLbl");
-  if (btnLbl) btnLbl.textContent = "Syncing...";
-  if (window.showToast) window.showToast("☁️ Server se data sync ho raha hai...");
-  var jobs = [];
+  var btnLbl=document.getElementById("crossSyncBtnLbl");
+  if(btnLbl) btnLbl.textContent="Syncing...";
+  var jobs=[];
+  function addJob(name,fn){
+    jobs.push({name:name,execute:fn});
+  }
+  if(typeof atplDirectServerSync==="function")addJob("Direct file sync",function(){return atplDirectServerSync(true)});
+  if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles==="function"){
+    addJob("All Files",function(){return window.ATPLCloudSharedStorageV1.forceSyncAllFiles()});
+  }else if(typeof window.atplForceSyncAllFiles==="function"){
+    addJob("All Files",function(){return window.atplForceSyncAllFiles()});
+  }
+  if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.syncHrNow==="function"){
+    addJob("HR Documents",function(){return window.ATPLCloudSharedStorageV1.syncHrNow(true)});
+  }
+  if(window.ATPLDurableEverythingV1&&typeof window.ATPLDurableEverythingV1.sync==="function"){
+    addJob("PF/ESIC durable records",function(){return window.ATPLDurableEverythingV1.sync()});
+  }
+  if(window.ATPLMobileSharedHardFix&&typeof window.ATPLMobileSharedHardFix.pullMaster==="function"){
+    addJob("Employee Master",function(){return window.ATPLMobileSharedHardFix.pullMaster()});
+  }
+  if(window.ATPLAccountCloudRestoreV1&&typeof window.ATPLAccountCloudRestoreV1.syncNow==="function"){
+    addJob("User access",function(){return window.ATPLAccountCloudRestoreV1.syncNow(true)});
+  }
+  if(window.ATPLComplianceDOLV2&&typeof window.ATPLComplianceDOLV2.syncCloud==="function"){
+    addJob("PF/ESIC DOL",function(){return window.ATPLComplianceDOLV2.syncCloud()});
+  }
   try {
-    try {
-      // Preserve the clear cutoff; a new upload only supersedes its own older revision.
-    } catch(_) {}
-
-    if (typeof atplDirectServerSync === "function") {
-      try { await atplDirectServerSync(true); } catch(_) {}
+    var outcomes=await Promise.allSettled(jobs.map(function(j){return Promise.resolve().then(j.execute)}));
+    var failures=[];
+    outcomes.forEach(function(result,i){
+      var reason="";
+      if(result.status==="rejected")reason=String(result.reason&&result.reason.message||result.reason||"request rejected");
+      else if(result.value===false)reason="module returned false (backend not confirmed or prerequisites missing)";
+      else if(result.value&&result.value.ok===false)reason=String(result.value.error||"backend returned ok:false");
+      if(reason)failures.push({module:jobs[i].name,reason:reason.slice(0,240)});
+    });
+    window.ATPLLastManualSyncDiagnostics={checkedAt:new Date().toISOString(),failed:failures,modules:jobs.map(function(x){return x.name})};
+    if(failures.length){
+      var summary=failures.map(function(x){return x.module+": "+x.reason}).join(" | ");
+      console.warn("[ATPL Sync Diagnostic] Failed modules:",failures);
+      if(btnLbl)btnLbl.textContent="Sync Partial ⚠ ("+failures.length+")";
+      if(window.showToast)window.showToast("⚠️ Sync issue: "+summary.slice(0,280));
+    }else{
+      if(btnLbl)btnLbl.textContent="Sync requests finished ✓";
+      if(window.showToast)window.showToast("☁️ Sync requests finished. Verify changed records in another browser.");
     }
-    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles === "function") {
-      try { await window.ATPLCloudSharedStorageV1.forceSyncAllFiles(); } catch(_) {}
-    } else if (typeof window.atplForceSyncAllFiles === "function") {
-      try { await window.atplForceSyncAllFiles(); } catch(_) {}
-    }
-
-    // Explicit Sync Data should include HR documents and PF/ESIC durable records,
-    // not just the All Files workbook list. Existing module guards remain in control.
-    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
-      jobs.push(Promise.resolve().then(function(){return window.ATPLCloudSharedStorageV1.syncHrNow(true);}));
-    }
-    if (window.ATPLDurableEverythingV1 && typeof window.ATPLDurableEverythingV1.sync === 'function') {
-      jobs.push(Promise.resolve().then(function(){return window.ATPLDurableEverythingV1.sync();}));
-    }
-    if (window.ATPLMobileSharedHardFix && window.ATPLMobileSharedHardFix.pullMaster) {
-      jobs.push(window.ATPLMobileSharedHardFix.pullMaster());
-    }
-    if (window.ATPLAccountCloudRestoreV1 && window.ATPLAccountCloudRestoreV1.syncNow) {
-      jobs.push(window.ATPLAccountCloudRestoreV1.syncNow(true));
-    }
-    if (window.ATPLComplianceDOLV2 && window.ATPLComplianceDOLV2.syncCloud) {
-      jobs.push(window.ATPLComplianceDOLV2.syncCloud());
-    }
-    var outcomes = await Promise.allSettled(jobs);
-    var failed = outcomes.filter(function(x){ return x.status === 'rejected' || (x.status === 'fulfilled' && (x.value === false || (x.value && x.value.ok === false))); });
-    var count = (window.FILES && window.FILES.length) || 0;
-    if (failed.length) {
-      if (btnLbl) btnLbl.textContent = "Sync Partial ⚠ (" + failed.length + ")";
-      if (window.showToast) window.showToast("⚠️ " + failed.length + " module sync(s) unconfirmed. Cloud backend/check logs required.");
-    } else {
-      if (btnLbl) btnLbl.textContent = "Sync Finished (" + count + " files)";
-      if (window.showToast) window.showToast("☁️ Sync requests finished. Verify records across browsers.");
-    }
-  } catch(e) {
-    if (btnLbl) btnLbl.textContent = "Sync Error";
-    if (window.showToast) window.showToast("⚠️ Sync error: " + (e.message || e));
-  } finally {
-    setTimeout(function() {
-      if (btnLbl) btnLbl.textContent = "Cross-Browser Sync";
-    }, 4000);
+  }catch(e){
+    if(btnLbl)btnLbl.textContent="Sync Error";
+    if(window.showToast)window.showToast("⚠️ Sync error: "+String(e&&e.message||e));
+  }finally{
+    setTimeout(function(){if(btnLbl)btnLbl.textContent="Cross-Browser Sync"},4000);
   }
 };
 
