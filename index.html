@@ -2002,7 +2002,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 </style>
 <script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
 </head>
-<body>
+<body class="nav-collapsed files-collapsed">
 
 <!-- ══ LOGIN SCREEN (REMOVED) ══ -->
 <div id="loginScreen" style="position:fixed;inset:0;background:linear-gradient(135deg,#0F172A,#1E1B4B);z-index:99999;display:none;align-items:center;justify-content:center;overflow:hidden">
@@ -2194,6 +2194,18 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="logo-name">Arora Textiles <span>AI</span></div>
     <div class="logo-sub">Excel Commander v2 · Hindi · English · Hinglish</div>
   </div>
+  <!-- ERP Panel Toggles -->
+  <div class="header-nav-toggles" style="display:flex;align-items:center;gap:8px;margin-left:20px;">
+    <button id="btnToggleNav" onclick="toggleNavMenu()" class="erp-header-toggle-btn collapsed" title="Navigation Menu dikhao / chhupao (Click to toggle Menu)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      <span>Menu</span>
+    </button>
+    <button id="btnToggleFiles" onclick="toggleFilesPanel()" class="erp-header-toggle-btn collapsed" title="Upload Files &amp; Sheets panel dikhao / chhupao (Click to toggle Files)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+      <span>Files &amp; Sheets</span>
+      <span id="filesHeaderBadge" class="erp-toggle-count-badge">0</span>
+    </button>
+  </div>
   <div class="header-right">
     <button onclick="window.AroraAICommander.open()" id="testBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#4ade80;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Test Feature"><span style="font-size:14px">🧪</span> Test</button>
     <button onclick="atplTriggerCrossSync(true)" id="crossSyncBtn" style="display:flex;align-items:center;gap:7px;padding:7px 16px;background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.45);color:#38bdf8;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;font-family:inherit" title="Doosre browser ya device se data sync karein"><span style="font-size:14px">☁️</span> <span id="crossSyncBtnLbl">Sync Data</span></button>
@@ -2350,7 +2362,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
 <div id="mNavBackdrop" onclick="toggleMobileNav()"></div>
 <!-- VERTICAL NAV inside layout -->
-<div id="vnav" style="width:200px;flex-shrink:0;background:#0F172A;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;z-index:50">
+<div id="vnav" class="nav-hidden" style="width:200px;flex-shrink:0;background:#0F172A;border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;overflow-y:auto;z-index:50">
   <!-- DRAWER MOBILE HEADER -->
   <div class="m-drawer-top-bar">
     <div class="m-drawer-brand">ATPL</div>
@@ -4562,10 +4574,13 @@ async function handleFiles(list) {
 
 function safeGetWorkbookRows(f) {
   if (!f) return 0;
+  if (typeof f.__cachedRowCount === 'number') return f.__cachedRowCount;
   try {
     if (f.wb) {
       if (typeof window.fastTotalWorkbookRows === 'function') {
-        return window.fastTotalWorkbookRows(f.wb);
+        var r = window.fastTotalWorkbookRows(f.wb);
+        if (r > 0) { f.__cachedRowCount = r; return r; }
+        return r;
       }
       if (typeof fastTotalWorkbookRows === 'function') {
         return fastTotalWorkbookRows(f.wb);
@@ -8942,6 +8957,85 @@ function toggleAllVcats() {
   }
 }
 
+
+// ═══════════════════════════════════════════════
+// ERP NAVIGATION & FILES/SHEETS PANEL TOGGLES
+// ═══════════════════════════════════════════════
+var ATPL_NAV_HIDDEN = true;
+var ATPL_FILES_HIDDEN = true;
+
+function updateToggleBadges() {
+  try {
+    var count = (window.FILES && window.FILES.length) || 0;
+    var b = document.getElementById('filesHeaderBadge');
+    if (b) b.textContent = count;
+  } catch(_) {}
+}
+
+window.toggleNavMenu = function(forceState) {
+  var vnav = document.getElementById('vnav');
+  var btn = document.getElementById('btnToggleNav');
+  if (!vnav) return;
+  if (typeof forceState === 'boolean') {
+    ATPL_NAV_HIDDEN = forceState;
+  } else {
+    ATPL_NAV_HIDDEN = !ATPL_NAV_HIDDEN;
+  }
+  if (ATPL_NAV_HIDDEN) {
+    vnav.classList.add('nav-hidden');
+    document.body.classList.add('nav-collapsed');
+    if (btn) { btn.classList.remove('active'); btn.classList.add('collapsed'); }
+  } else {
+    vnav.classList.remove('nav-hidden');
+    document.body.classList.remove('nav-collapsed');
+    if (btn) { btn.classList.add('active'); btn.classList.remove('collapsed'); }
+  }
+  try { localStorage.setItem('ATPL_NAV_HIDDEN', ATPL_NAV_HIDDEN ? '1' : '0'); } catch(_) {}
+};
+
+window.toggleFilesPanel = function(forceState) {
+  var p = document.getElementById('atplFilePanel');
+  var btn = document.getElementById('btnToggleFiles');
+  if (!p) return;
+  if (typeof forceState === 'boolean') {
+    ATPL_FILES_HIDDEN = forceState;
+  } else {
+    ATPL_FILES_HIDDEN = !ATPL_FILES_HIDDEN;
+  }
+  if (ATPL_FILES_HIDDEN) {
+    p.classList.add('sidebar-hidden');
+    document.body.classList.add('files-collapsed');
+    if (btn) { btn.classList.remove('active'); btn.classList.add('collapsed'); }
+  } else {
+    p.classList.remove('sidebar-hidden');
+    document.body.classList.remove('files-collapsed');
+    if (btn) { btn.classList.add('active'); btn.classList.remove('collapsed'); }
+  }
+  try { localStorage.setItem('ATPL_FILES_HIDDEN', ATPL_FILES_HIDDEN ? '1' : '0'); } catch(_) {}
+  updateToggleBadges();
+};
+
+window.toggleMobileNav = function() {
+  window.toggleNavMenu();
+};
+
+// Initialize panel states
+try {
+  var navPref = localStorage.getItem('ATPL_NAV_HIDDEN');
+  if (navPref === '0') {
+    setTimeout(function() { window.toggleNavMenu(false); }, 50);
+  } else {
+    setTimeout(function() { window.toggleNavMenu(true); }, 50);
+  }
+  var filesPref = localStorage.getItem('ATPL_FILES_HIDDEN');
+  if (filesPref === '0') {
+    setTimeout(function() { window.toggleFilesPanel(false); }, 50);
+  } else {
+    setTimeout(function() { window.toggleFilesPanel(true); }, 50);
+  }
+  setTimeout(updateToggleBadges, 100);
+} catch(_) {}
+
 function toggleSidebar() {
   SIDEBAR_COLLAPSED = !SIDEBAR_COLLAPSED;
   var vnav = document.getElementById('vnav');
@@ -9288,13 +9382,30 @@ function emInit() {
 // ── Stats ──
 function emUpdateStats() {
   var total = EM.data.length;
-  var leftCount = EM.data.filter(function(e){ return emIsLeft(e); }).length;
-  var activeCount = total - leftCount;
-  var pf    = EM.data.filter(function(e){return e.pf_no&&e.pf_no!=='NA'&&e.pf_no!=='';}).length;
-  var esi   = EM.data.filter(function(e){return e.esi_no&&e.esi_no!=='NA'&&e.esi_no!=='';}).length;
-  var codes = EM.data.map(function(e){return String(e.emp_id).replace(/^0+/,'');});
-  var dups  = codes.filter(function(c,i){return codes.indexOf(c)!==i;}).length;
-  var depts = new Set(EM.data.map(function(e){return e.dept||''})).size;
+  var leftCount = 0;
+  var activeCount = 0;
+  var pf = 0;
+  var esi = 0;
+  var codeSeen = new Set();
+  var dupCodeSet = new Set();
+  var deptSet = new Set();
+
+  for (var i = 0; i < total; i++) {
+    var e = EM.data[i];
+    if (!e) continue;
+    if (emIsLeft(e)) leftCount++;
+    else activeCount++;
+    if (e.pf_no && e.pf_no !== 'NA' && e.pf_no !== '') pf++;
+    if (e.esi_no && e.esi_no !== 'NA' && e.esi_no !== '') esi++;
+    var c = String(e.emp_id || '').replace(/^0+/, '');
+    if (c) {
+      if (codeSeen.has(c)) dupCodeSet.add(c);
+      else codeSeen.add(c);
+    }
+    if (e.dept) deptSet.add(e.dept);
+  }
+  var dups = dupCodeSet.size;
+  var depts = deptSet.size;
   [
     ['emStatTotal', total],
     ['emStatActive', activeCount],
@@ -9410,8 +9521,21 @@ function emRenderTable() {
   var tableBody = document.getElementById('emTableBody');
 
   // Find duplicates in ALL data
-  var allCodes = EM.data.map(function(e){return String(e.emp_id).replace(/^0+/,'');});
-  var dupCodes = new Set(allCodes.filter(function(c,i){return allCodes.indexOf(c)!==i;}));
+  if (!EM._dupCodes || EM._dupCodesDataRef !== EM.data || EM._dupCodesLen !== EM.data.length) {
+    var seen = new Set();
+    var dupCodes = new Set();
+    for (var k = 0; k < EM.data.length; k++) {
+      var c = String(EM.data[k].emp_id || '').replace(/^0+/, '');
+      if (c) {
+        if (seen.has(c)) dupCodes.add(c);
+        else seen.add(c);
+      }
+    }
+    EM._dupCodes = dupCodes;
+    EM._dupCodesDataRef = EM.data;
+    EM._dupCodesLen = EM.data.length;
+  }
+  var dupCodes = EM._dupCodes;
 
   var tblHtml = '';
   var cardHtml = '';
@@ -15768,14 +15892,14 @@ else AInit();
 <script src="erp-cloud-shared-storage-v1.js?v=20261102-zerofreeze-v1"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261102-zerofreeze-v1"></script>
+<script src="atpl-google-drive-sync.js?v=20261101-nofreeze-v5"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
 <script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261019v12"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
-<script src="erp-enterprise-ui-v1.js?v=20260918-2&cb=20261019v12"></script>
+<script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>

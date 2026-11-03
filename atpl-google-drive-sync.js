@@ -156,8 +156,15 @@
     }
   }
 
+  var _lastAppliedEmpFp = '';
   function applyEmployeeRecords(records) {
     if (!Array.isArray(records) || !records.length) return;
+    var len = records.length;
+    var fp = len + ':' + (records[0] ? records[0].emp_id : '') + ':' + (records[len - 1] ? records[len - 1].emp_id : '');
+    if (_lastAppliedEmpFp === fp && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
+      return;
+    }
+    _lastAppliedEmpFp = fp;
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
     var valid = records.filter(function(r) {
@@ -266,7 +273,13 @@
   }
 
   // ── Poll Sync State (Cross-Browser Upload & Delete Reconciliation) ──
+  var lastPollTimestamp = 0;
   async function pollSyncState(force) {
+    var now = Date.now();
+    if (!force && (now - lastPollTimestamp < 15000)) {
+      return Promise.resolve({ ok: true, throttled: true });
+    }
+    lastPollTimestamp = now;
     if (!isInitialLoaded) {
       isInitialLoaded = true;
       refreshFilesUI();
