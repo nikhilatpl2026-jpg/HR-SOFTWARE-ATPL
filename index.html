@@ -15922,6 +15922,14 @@ window.atplTriggerCrossSync = async function(manual) {
       try { await window.atplForceSyncAllFiles(); } catch(_) {}
     }
 
+    // Explicit Sync Data should include HR documents and PF/ESIC durable records,
+    // not just the All Files workbook list. Existing module guards remain in control.
+    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
+      jobs.push(Promise.resolve().then(function(){return window.ATPLCloudSharedStorageV1.syncHrNow(true);}));
+    }
+    if (window.ATPLDurableEverythingV1 && typeof window.ATPLDurableEverythingV1.sync === 'function') {
+      jobs.push(Promise.resolve().then(function(){return window.ATPLDurableEverythingV1.sync();}));
+    }
     if (window.ATPLMobileSharedHardFix && window.ATPLMobileSharedHardFix.pullMaster) {
       jobs.push(window.ATPLMobileSharedHardFix.pullMaster());
     }
