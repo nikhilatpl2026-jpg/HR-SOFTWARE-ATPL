@@ -1,15 +1,11 @@
 /**
- * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE (V12 - COMPLETE PRO)
- * • All Files Sync (100% Original, Untouched & Working)
- * • Employee Master Sync (Auto-Syncs via ATPL_MASTER_DATA.xlsx in Google Drive)
- * • HR Documents Sync (Auto-Syncs via ATPL_HR_DOCS.xlsx in Google Drive)
- * • PF & ESIC Challans Sync (Auto-Syncs via ATPL_CHALLAN_DATA.xlsx in Google Drive)
- * • Zero Freeze | 12s Safe Timeout | Instant Cross-Browser Reflection
+ * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE (V5 - BULLETPROOF)
+ * Features: 12s Auto-Timeout, Non-blocking Queue, Zero-Freeze Guard, Safe Offline Fallback
  */
 (function(window) {
   'use strict';
 
-  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 
   function getGasUrl() {
     try {
@@ -43,12 +39,13 @@
   var fileMap = new Map();
   var subscribers = {};
 
-  // ── Universal Google Apps Script Transport (Safe 12s Timeout) ──
+  // ── Universal Google Apps Script Transport (Safe Timeout + Non-Blocking) ──
   async function callGoogleBackend(action, params) {
     var endpoint = getGasUrl();
     if (!endpoint) return null;
     var p = Object.assign({ action: action, sender: MY_CLIENT_ID, _ts: Date.now() }, params || {});
 
+    // 12-second hard safety timeout (Prevents infinite hanging)
     var controller = new AbortController();
     var timeoutId = setTimeout(function() { controller.abort(); }, 12000);
 
@@ -65,25 +62,24 @@
       }
     } catch (err) {
       clearTimeout(timeoutId);
+      console.warn('[ATPL Sync] Network notice (' + action + '):', err.message);
     }
     return null;
   }
 
   function updateSyncBadge(status, text) {
-    var count = (Array.isArray(window.FILES) ? window.FILES.filter(function(x){ return x && !String(x.name).startsWith('ATPL_'); }).length : 0);
+    var count = (Array.isArray(window.FILES) ? window.FILES.length : 0);
     var emCount = (window.EM && Array.isArray(window.EM.data) ? window.EM.data.length : 0);
     var msg = text || ('☁️ Drive & Sheets (' + count + ' Files, ' + emCount + ' Emp)');
     if (typeof window.updateRealtimeCloudBadge === 'function') {
       try { window.updateRealtimeCloudBadge(count, status || 'ok', msg); } catch (_) {}
     }
-    var sl = document.getElementById('storageLbl');
-    if (sl) sl.textContent = msg;
   }
 
   function syncFileMap() {
     fileMap.clear();
     (window.FILES || []).forEach(function(f) {
-      if (f && f.name && !String(f.name).startsWith('ATPL_')) fileMap.set(String(f.name).toLowerCase().trim(), f);
+      if (f && f.name) fileMap.set(String(f.name).toLowerCase().trim(), f);
     });
   }
 
@@ -98,23 +94,29 @@
         try { if (typeof window.updStats === 'function') window.updStats(); } catch (_) {}
         try { if (typeof window.renderAllFilesPage === 'function') window.renderAllFilesPage(); } catch (_) {}
         try { if (typeof window.populateNJSelects === 'function') window.populateNJSelects(); } catch (_) {}
+        var sl = document.getElementById('storageLbl');
+        if (sl && window.FILES) sl.textContent = window.FILES.length + ' files saved';
         updateSyncBadge('ok');
         notifySubscribers('salary');
       });
     }, 60);
   }
 
+  var emUiTimer = null;
   function refreshEmployeeUI() {
-    requestAnimationFrame(function() {
-      if (typeof window.aroraRefreshMaster === 'function') {
-        try { window.aroraRefreshMaster(); } catch (_) {}
-      } else {
-        try { if (typeof window.emFilter === 'function') window.emFilter(); } catch (_) {}
-        try { if (typeof window.emUpdateStats === 'function') window.emUpdateStats(); } catch (_) {}
-      }
-      updateSyncBadge('ok');
-      notifySubscribers('employee');
-    });
+    clearTimeout(emUiTimer);
+    emUiTimer = setTimeout(function() {
+      requestAnimationFrame(function() {
+        if (typeof window.aroraRefreshMaster === 'function') {
+          try { window.aroraRefreshMaster(); } catch (_) {}
+        } else {
+          try { if (typeof window.emFilter === 'function') window.emFilter(); } catch (_) {}
+          try { if (typeof window.emUpdateStats === 'function') window.emUpdateStats(); } catch (_) {}
+        }
+        updateSyncBadge('ok');
+        notifySubscribers('employee');
+      });
+    }, 50);
   }
 
   function notifySubscribers(mod) {
@@ -153,163 +155,79 @@
     }
   }
 
-  function isValidExcelBuffer(buf) {
-    if (!buf) return false;
-    var len = buf.byteLength || buf.length || 0;
-    if (len < 250) return false;
-    var bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-    var isZip = bytes[0] === 0x50 && bytes[1] === 0x4B;
-    var isCfb = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
-    return isZip || isCfb;
-  }
-
-  // ── JSON <-> Real Excel Buffer Converters (SheetJS Powered) ──
-  function jsonToExcelB64(records, sheetName) {
-    try {
-      if (!window.XLSX || !Array.isArray(records) || !records.length) return '';
-      var ws = window.XLSX.utils.json_to_sheet(records);
-      var wb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Data');
-      var ab = window.XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      return toB64(ab);
-    } catch (_) {
-      return '';
-    }
-  }
-
-  function excelBufToJson(buf) {
-    try {
-      if (!window.XLSX || !buf) return [];
-      var wb = window.XLSX.read(buf, { type: 'array' });
-      var firstSheet = wb.SheetNames[0];
-      return window.XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { defval: '' });
-    } catch (_) {
-      return [];
-    }
-  }
-
-  // ── 1. EMPLOYEE MASTER RECONCILIATION ──
   var _lastAppliedEmpFp = '';
   function applyEmployeeRecords(records) {
     if (!Array.isArray(records) || !records.length) return;
     var len = records.length;
-    var fp = JSON.stringify(records);
+    var fp = len + ':' + (records[0] ? records[0].emp_id : '') + ':' + (records[len - 1] ? records[len - 1].emp_id : '');
     if (_lastAppliedEmpFp === fp && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
       return;
     }
     _lastAppliedEmpFp = fp;
+
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
-    var valid = records.filter(function(r) {
-      if (!r || !r.emp_id) return false;
+    var valid = [];
+    for (var i = 0; i < len; i++) {
+      var r = records[i];
+      if (!r || !r.emp_id) continue;
       var k = String(r.emp_id).toLowerCase().trim();
-      return !dead[k] && !dead[k.replace(/^0+/, '')];
-    });
+      if (k.indexOf('__atpl_sys__') === 0) continue;
+      if (dead[k] || dead[k.replace(/^0+/, '')]) continue;
+      valid.push(r);
+    }
     if (!valid.length) return;
-
     if (window.EM) window.EM.data = valid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
       Array.prototype.push.apply(window.EMP_MASTER_DATA, valid);
     }
-    try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(valid)); } catch (_) {}
+    try {
+      if (valid.length < 3000) {
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(valid));
+      }
+    } catch (_) {}
     refreshEmployeeUI();
   }
 
-  // ── 2. HR DOCUMENTS RECONCILIATION ──
-  function applyHrDocuments(docs) {
-    if (!Array.isArray(docs) || !docs.length) return;
-    try {
-      docs.forEach(function(d) {
-        if (!d || !d.id) return;
-        if (typeof window.hrDocPut === 'function') window.hrDocPut(d);
-      });
-      if (typeof window.hrDocRender === 'function') window.hrDocRender();
-    } catch (_) {}
-  }
-
-  // ── 3. PF & ESIC COMPLIANCE RECONCILIATION ──
-  function applyComplianceRecords(records) {
-    if (!Array.isArray(records) || !records.length) return;
-    try {
-      var dolObj = {};
-      records.forEach(function(r) {
-        if (r && r.code) dolObj[String(r.code)] = r;
-      });
-      localStorage.setItem('ATPL_COMPLIANCE_DOL_CONFIRMED_V2', JSON.stringify(dolObj));
-      if (typeof window.initStatutoryChallanTab === 'function') window.initStatutoryChallanTab();
-    } catch (_) {}
-  }
-
-  var failedDownloads = {};
-
-  // ── Non-Blocking Download Queue (All Files + Master Data + HR + Challans) ──
+  // ── Safe Background File Download Queue (Freeze-Proof) ──
   async function processDownloadQueue() {
     if (isDownloading || !downloadQueue.length) return;
     isDownloading = true;
-    var anyAdded = false;
     try {
       while (downloadQueue.length > 0) {
         var fileMeta = downloadQueue.shift();
         if (!fileMeta || !fileMeta.name) continue;
         var fileName = fileMeta.name;
-        var fLow = String(fileName).toLowerCase().trim();
-        if (failedDownloads[fLow] && Date.now() - failedDownloads[fLow] < 300000) {
+
+        // Skip known corrupt/bomb file names to prevent freezing
+        if (String(fileName).toLowerCase().includes('attend') && fileMeta.size === 0) {
+          console.warn('[ATPL Sync] Skipping corrupt file:', fileName);
           continue;
         }
+
+        var existing = (window.FILES || []).find(function(f) {
+          return f && String(f.name).toLowerCase().trim() === String(fileName).toLowerCase().trim();
+        });
+        if (existing) continue;
 
         updateSyncBadge('syncing', '⬇️ Syncing ' + fileName + '…');
         try {
           var res = await callGoogleBackend('downloadFile', { fileName: fileName });
           if (res && res.ok && res.fileBase64) {
-            var rawBuf = b64ToBuf(res.fileBase64);
-            if (!isValidExcelBuffer(rawBuf)) {
-              failedDownloads[fLow] = Date.now();
-              continue;
-            }
-
-            // ── A. INTERCEPT SYSTEM EXCEL FILES (Instantly Syncs to other Browser) ──
-            if (fileName === 'ATPL_MASTER_DATA.xlsx' || fLow.includes('master data')) {
-              var emps = excelBufToJson(rawBuf);
-              if (emps.length) {
-                applyEmployeeRecords(emps);
-                console.log('✅ Employee Master synced from Google Drive (' + emps.length + ' records)');
-              }
-              continue;
-            }
-            if (fileName === 'ATPL_HR_DOCS.xlsx') {
-              var docs = excelBufToJson(rawBuf);
-              if (docs.length) {
-                applyHrDocuments(docs);
-                console.log('✅ HR Documents synced from Google Drive');
-              }
-              continue;
-            }
-            if (fileName === 'ATPL_CHALLAN_DATA.xlsx' || fLow.includes('compilance') || fLow.includes('compliance')) {
-              var comp = excelBufToJson(rawBuf);
-              if (comp.length) {
-                applyComplianceRecords(comp);
-                console.log('✅ PF & ESIC Challans synced from Google Drive');
-              }
-            }
-
-            // ── B. REGULAR SALARY EXCEL FILES (100% Original Logic Untouched) ──
-            var existing = (window.FILES || []).find(function(f) {
-              return f && String(f.name).toLowerCase().trim() === fLow;
-            });
-            if (existing) continue;
-
             await new Promise(function(r) { setTimeout(r, 40); });
-
-            var wb = (rawBuf && typeof window.parseWB === 'function') ? window.parseWB(rawBuf) : null;
-            if (!wb) {
-              failedDownloads[fLow] = Date.now();
-              continue;
+            var rawBuf = b64ToBuf(res.fileBase64);
+            var wb = null;
+            try {
+              if (rawBuf && typeof window.parseWB === 'function') {
+                wb = window.parseWB(rawBuf);
+              }
+            } catch (pErr) {
+              console.warn('[ATPL Sync] Parse bypassed to protect UI:', fileName);
             }
-
             var sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : {};
             window.FILES = (window.FILES || []).filter(function(f) {
-              return f && String(f.name).toLowerCase().trim() !== fLow;
+              return f && String(f.name).toLowerCase().trim() !== String(fileName).toLowerCase().trim();
             });
             window.FILES.push({
               id: fileName,
@@ -319,22 +237,16 @@
               buf: rawBuf,
               savedAt: fileMeta.updatedAt || new Date().toISOString()
             });
-            anyAdded = true;
-
             if (typeof window.saveFileToDB === 'function') {
               window.__ATPL_IS_DOWNLOADING_DRIVE = true;
               try { window.saveFileToDB(fileName, rawBuf); } finally { window.__ATPL_IS_DOWNLOADING_DRIVE = false; }
             }
-          } else {
-            failedDownloads[fLow] = Date.now();
+            refreshFilesUI();
           }
         } catch (err) {
-          failedDownloads[fLow] = Date.now();
+          console.warn('[ATPL Sync] Download error:', fileName, err);
         }
         await new Promise(function(r) { setTimeout(r, 40); });
-      }
-      if (anyAdded) {
-        refreshFilesUI();
       }
     } finally {
       isDownloading = false;
@@ -345,11 +257,6 @@
   // ── Poll Sync State ──
   var lastPollTimestamp = 0;
   async function pollSyncState(force) {
-    var now = Date.now();
-    if (!force && (now - lastPollTimestamp < 15000)) {
-      return Promise.resolve({ ok: true, throttled: true });
-    }
-    lastPollTimestamp = now;
     if (!isInitialLoaded) {
       isInitialLoaded = true;
       refreshFilesUI();
@@ -359,6 +266,12 @@
     if (!endpoint || window.__ATPL_IS_UPLOADING) {
       return { ok: true, files: window.FILES || [] };
     }
+
+    var now = Date.now();
+    if (!force && (now - lastPollTimestamp < 15000)) {
+      return Promise.resolve({ ok: true, throttled: true });
+    }
+    lastPollTimestamp = now;
 
     if (isPolling && !force) return Promise.resolve({ ok: true });
     isPolling = true;
@@ -380,7 +293,22 @@
       var tombstones = {};
       try { tombstones = JSON.parse(localStorage.getItem('ATPL_SALARY_TOMBSTONES_V2') || '{}'); } catch (_) {}
 
+      var driveMap = {};
+      driveFiles.forEach(function(df) {
+        if (df && df.name) {
+          var k = String(df.name).toLowerCase().trim();
+          driveMap[k] = df;
+          if (tombstones[k] && df.updatedAt && Date.parse(df.updatedAt) > Date.parse(tombstones[k])) {
+            delete tombstones[k];
+            try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombstones)); } catch (_) {}
+          }
+        }
+      });
+
+      // 1. Delete local files that were tombstoned
       var currentFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
+      var filesChanged = false;
+
       for (var i = currentFiles.length - 1; i >= 0; i--) {
         var cf = currentFiles[i];
         if (!cf || !cf.name) continue;
@@ -388,8 +316,7 @@
         var tombVal = tombstones[cNameLow];
         var tombTime = typeof tombVal === 'string' ? (Date.parse(tombVal) || 0) : (tombVal === true ? Infinity : 0);
         var fileTime = cf.savedAt ? (Date.parse(cf.savedAt) || 0) : 0;
-        var isTomb = tombVal && (tombTime > fileTime);
-        if (isTomb) {
+        if (tombVal && (tombTime > fileTime)) {
           currentFiles.splice(i, 1);
           window.__ATPL_IS_DOWNLOADING_DRIVE = true;
           if (typeof window.deleteFromDB === 'function') {
@@ -404,18 +331,16 @@
         refreshFilesUI();
       }
 
+      // 2. Queue downloads for new files uploaded from other devices
       for (var j = 0; j < driveFiles.length; j++) {
         var df = driveFiles[j];
         if (!df || !df.name) continue;
         var dfNameLow = String(df.name).toLowerCase().trim();
-        if (tombstones[dfNameLow] || (failedDownloads[dfNameLow] && Date.now() - failedDownloads[dfNameLow] < 300000)) continue;
-
-        var isSystemVault = df.name.startsWith('ATPL_') || df.name.includes('MASTER DATA');
+        if (tombstones[dfNameLow]) continue;
         var exists = currentFiles.some(function(f) {
           return f && String(f.name).toLowerCase().trim() === dfNameLow;
         });
-
-        if (!exists || isSystemVault) {
+        if (!exists) {
           var alreadyQueued = downloadQueue.some(function(q) {
             return q && String(q.name).toLowerCase().trim() === dfNameLow;
           });
@@ -462,29 +387,44 @@
       refreshFilesUI();
       return;
     }
+    if (action === 'salary_cleared') {
+      window.FILES = [];
+      refreshFilesUI();
+      return;
+    }
     setTimeout(function() { pollSyncState(true); }, 500);
   }
 
-  // ── UNIFIED CROSS-BROWSER ENGINE ──
+  // ── Safe Background Polling Loop (Trailing Timer, Never Piles Up) ──
+  function scheduleNextPoll() {
+    setTimeout(async function() {
+      if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) {
+        await pollSyncState(false);
+      }
+      scheduleNextPoll();
+    }, 30000); // Har 30 second me ek baar safe poll
+  }
+
   var UnifiedSyncEngine = {
-    version: '2026.11.17-FINAL-DRIVE-PRO-V12',
+    version: '2026.11.16-GOOGLE-DRIVE-SHEETS-CLEAN-V5',
     apiBase: '',
     gasUrl: GAS_URL,
     fileMap: fileMap,
 
     init: function() {
       pollSyncState(true);
-      setInterval(function() {
-        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) {
-          pollSyncState(false);
-        }
-      }, 20000);
+      scheduleNextPoll();
+      if (typeof setInterval === 'function') {
+        setInterval(function() {
+          if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
+        }, 30000);
+      }
 
       window.addEventListener('focus', function() {
-        if (getGasUrl()) pollSyncState(false);
+        if (getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
       });
-      document.addEventListener('visibilitychange', function() {
-        if (!document.hidden && getGasUrl()) pollSyncState(false);
+      window.addEventListener('visibilitychange', function() {
+        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING) pollSyncState(false);
       });
 
       if (typeof window.BroadcastChannel !== 'undefined') {
@@ -499,7 +439,6 @@
       }
     },
 
-    // ── Module 1: Files Upload & Delete (100% UNTOUCHED ORIGINAL) ──
     uploadFile: async function(a, b, c) {
       var mod = 'salary', name = '', rawBuf = null;
       if (a === 'salary' || a === 'hr_doc' || a === 'files') {
@@ -574,219 +513,36 @@
       return true;
     },
 
-    // ── Module 2: Employee Master (Google Drive Excel Upload & Sync) ──
     saveEmployeeMaster: async function(records) {
-      var emps = Array.isArray(records) ? records : ((window.EM && window.EM.data) || window.EMP_MASTER_DATA || []);
-      if (!Array.isArray(emps) || !emps.length) return { ok: false };
-      try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(emps)); } catch (_) {}
-      if (window.EM) window.EM.data = emps.slice();
-      dispatchSyncTrigger('employee_updated', { count: emps.length });
+      if (!Array.isArray(records)) return { ok: false };
+      try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(records)); } catch (_) {}
+      if (window.EM) window.EM.data = records.slice();
+      dispatchSyncTrigger('employee_updated', { count: records.length });
       refreshEmployeeUI();
-
-      if (getGasUrl()) {
-        updateSyncBadge('syncing', '☁️ Saving Master to Drive…');
-        var b64_excel = jsonToExcelB64(emps, 'Employee_Master');
-        if (b64_excel) {
-          await callGoogleBackend('uploadFile', {
-            fileName: 'ATPL_MASTER_DATA.xlsx',
-            fileBase64: b64_excel,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-        }
-        await callGoogleBackend('saveEmployeeMaster', { records: emps });
-        updateSyncBadge('ok');
-      }
+      if (getGasUrl()) await callGoogleBackend('saveEmployeeMaster', { records: records });
       return { ok: true };
     },
-
-    deleteEmployeeMaster: async function(empId) {
-      if (!empId) return false;
-      if (window.EM && Array.isArray(window.EM.data)) {
-        window.EM.data = window.EM.data.filter(function(x){ return String(x.emp_id).toLowerCase().trim() !== String(empId).toLowerCase().trim(); });
-      }
-      dispatchSyncTrigger('employee_deleted', { emp_id: empId });
-      refreshEmployeeUI();
-      return this.saveEmployeeMaster();
+    upsertEmployeeMaster: async function(records) {
+      if (getGasUrl()) await callGoogleBackend('upsertEmployeeMaster', { records: records });
+      return this.saveEmployeeMaster(records);
+    },
+    deleteEmployeeMaster: async function(empCode) {
+      if (getGasUrl()) await callGoogleBackend('deleteEmployeeMaster', { empCode: empCode });
+      return true;
     },
 
-    upsertEmployeeMaster: async function(empId, record) {
-      return this.saveEmployeeMaster();
-    },
-
-    // ── Module 3: HR Documents (Google Drive Excel Upload & Sync) ──
-    saveHrDoc: async function(doc) {
-      if (!doc || !doc.id) return { ok: false };
-      var allDocs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
-      var idx = allDocs.findIndex(function(x){ return String(x.id) === String(doc.id); });
-      if (idx >= 0) allDocs[idx] = doc; else allDocs.push(doc);
-
-      if (getGasUrl()) {
-        updateSyncBadge('syncing', '☁️ Saving HR Docs to Drive…');
-        var b64_hr = jsonToExcelB64(allDocs, 'HR_Documents');
-        if (b64_hr) {
-          await callGoogleBackend('uploadFile', {
-            fileName: 'ATPL_HR_DOCS.xlsx',
-            fileBase64: b64_hr,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-        }
-        updateSyncBadge('ok');
-      }
-      return { ok: true };
-    },
-
-    deleteHrDoc: async function(docId) {
-      if (!docId) return { ok: false };
-      var allDocs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
-      allDocs = allDocs.filter(function(x){ return String(x.id) !== String(docId); });
-
-      if (getGasUrl()) {
-        var b64_hr = jsonToExcelB64(allDocs, 'HR_Documents');
-        if (b64_hr) {
-          await callGoogleBackend('uploadFile', {
-            fileName: 'ATPL_HR_DOCS.xlsx',
-            fileBase64: b64_hr,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-        }
-      }
-      return { ok: true };
-    },
-
-    // ── Module 4: PF & ESIC Compliance (Google Drive Excel Upload & Sync) ──
-    saveCompliance: async function(type, payload) {
-      if (getGasUrl()) {
-        var conf = localStorage.getItem('ATPL_COMPLIANCE_DOL_CONFIRMED_V2') || '{}';
-        var parsed = [];
-        try {
-          var obj = JSON.parse(conf);
-          parsed = Object.values(obj);
-        } catch (_) {}
-
-        if (parsed.length) {
-          var b64_comp = jsonToExcelB64(parsed, 'PF_ESIC_Compliance');
-          if (b64_comp) {
-            await callGoogleBackend('uploadFile', {
-              fileName: 'ATPL_CHALLAN_DATA.xlsx',
-              fileBase64: b64_comp,
-              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            });
-          }
-        }
-      }
-      return { ok: true };
-    },
-
-    // ── MASTER CROSS-BROWSER SYNC (PUSH ALL TO DRIVE + PULL ALL TO BROWSER) ──
-    syncAllModules: async function(force) {
-      updateSyncBadge('syncing', '☁️ Syncing All Modules…');
-
-      // 1. PUSH: 454 Employees -> ATPL_MASTER_DATA.xlsx in Google Drive
-      var emps = (window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0)
-        ? window.EM.data
-        : (function(){ try { return JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3')||'[]'); } catch(_) { return []; } })();
-
-      if (emps && emps.length > 0 && getGasUrl()) {
-        var b64_emp = jsonToExcelB64(emps, 'Employee_Master');
-        if (b64_emp) {
-          await callGoogleBackend('uploadFile', {
-            fileName: 'ATPL_MASTER_DATA.xlsx',
-            fileBase64: b64_emp,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-        }
-      }
-
-      // 2. PUSH: HR Documents -> ATPL_HR_DOCS.xlsx in Google Drive
-      var hrList = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
-      if (hrList && hrList.length > 0 && getGasUrl()) {
-        var b64_hr = jsonToExcelB64(hrList, 'HR_Documents');
-        if (b64_hr) {
-          await callGoogleBackend('uploadFile', {
-            fileName: 'ATPL_HR_DOCS.xlsx',
-            fileBase64: b64_hr,
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-          });
-        }
-      }
-
-      // 3. PUSH: PF & ESIC Compliance -> ATPL_CHALLAN_DATA.xlsx in Google Drive
-      var compConf = localStorage.getItem('ATPL_COMPLIANCE_DOL_CONFIRMED_V2');
-      if (compConf && getGasUrl()) {
-        var compArr = [];
-        try { compArr = Object.values(JSON.parse(compConf)); } catch (_) {}
-        if (compArr.length) {
-          var b64_comp = jsonToExcelB64(compArr, 'PF_ESIC_Compliance');
-          if (b64_comp) {
-            await callGoogleBackend('uploadFile', {
-              fileName: 'ATPL_CHALLAN_DATA.xlsx',
-              fileBase64: b64_comp,
-              mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            });
-          }
-        }
-      }
-
-      // 4. PULL: Google Drive folder se saari files + 3 naye Excel vaults download karein
-      await pollSyncState(true);
-      updateSyncBadge('ok');
-
-      var totalEmps = (window.EM && window.EM.data) ? window.EM.data.length : emps.length;
-      if (window.showToast) {
-        window.showToast('✅ Cross-Browser Sync Complete! (' + totalEmps + ' Employees, HR Docs, PF/ESIC Synced)');
-      }
-    },
-
-    saveSalaryFile: function(name, payload, meta) { return this.uploadFile('salary', Object.assign({ name: name }, payload || {}), meta); },
-    deleteSalaryFile: function(name) { return this.deleteFile('salary', name); },
-    clearAllSalaryFiles: async function() { return true; },
-    fetchAllSalaryFiles: async function() { return window.FILES || []; },
-    fetchAllHrDocs: async function() { return (typeof window.hrDocGetDocs === 'function') ? window.hrDocGetDocs() : []; },
-    fetchAllEmployeeMaster: async function() { return (window.EM && window.EM.data) || []; },
-    reconcileAll: async function(force) { return this.syncAllModules(!!force); },
-    syncNow: async function(force) { return this.syncAllModules(!!force); },
-    getClientId: function() { return MY_CLIENT_ID; }
+    reconcileAll: async function(force) { return pollSyncState(!!force); },
+    syncNow: async function(force) { return pollSyncState(!!force); }
   };
 
-  // ── Auto-Intercept Employee Master / PF / ESIC Changes ──
-  var emSyncDebounce = null;
-  var origSetItem = localStorage.setItem;
-  localStorage.setItem = function(key, val) {
-    origSetItem.apply(this, arguments);
-    if (key === 'AroraTextilesEmployeeMasterV3') {
-      clearTimeout(emSyncDebounce);
-      emSyncDebounce = setTimeout(function() {
-        try {
-          var data = JSON.parse(val);
-          if (Array.isArray(data) && data.length > 0) {
-            UnifiedSyncEngine.saveEmployeeMaster(data);
-          }
-        } catch (_) {}
-      }, 1000);
-    } else if (key === 'ATPL_COMPLIANCE_DOL_CONFIRMED_V2' || key === 'ATPL_CHALLAN_SAVED_RECORDS_V1') {
-      UnifiedSyncEngine.saveCompliance('auto', {});
-    }
-  };
-
-  // Global Handles
   window.ATPLGoogleSync = UnifiedSyncEngine;
   window.ATPLCentralFileSync = UnifiedSyncEngine;
   window.ATPLRealtimeSyncEngine = UnifiedSyncEngine;
   window.UniversalEngine = UnifiedSyncEngine;
-
-  // 🛑 Legacy PF/ESIC module error bypass
-  window.ATPLComplianceDOLV2 = {
-    syncCloud: async function() { return { ok: true, synced: true }; },
-    getRecords: function() { return []; },
-    status: function() { return { ok: true, ready: true }; }
-  };
-
-  // 🛑 Header "Cross-Browser Sync" & Sidebar "Sync Browsers" Button Bridge
-  window.atplTriggerCrossSync = async function() {
-    return UnifiedSyncEngine.syncAllModules(true);
-  };
   window.triggerManualCrossBrowserSync = async function() {
-    return UnifiedSyncEngine.syncAllModules(true);
+    updateSyncBadge('syncing', '☁️ Force syncing…');
+    await pollSyncState(true);
+    if (window.showToast) window.showToast('✅ Google Drive & Sheets sabhi browsers me sync ho gaye!');
   };
 
   if (document.readyState === 'loading') {
@@ -795,6 +551,6 @@
     UnifiedSyncEngine.init();
   }
 
-  window.atplDirectServerSync = function() { return UnifiedSyncEngine.syncAllModules(true); };
-  window.syncAllAtplModules = function() { return UnifiedSyncEngine.syncAllModules(true); };
+  window.atplDirectServerSync = function() { return pollSyncState(true); };
+  window.syncAllAtplModules = function() { return pollSyncState(true); };
 })(typeof window !== 'undefined' ? window : this);
