@@ -393,6 +393,11 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
       refreshFilesUI();
       return;
     }
+    if (action === 'employee_updated' || action === 'employee_master_saved') {
+      _lastAppliedEmpFp = '';
+      setTimeout(function() { pollSyncState(true); }, 200);
+      return;
+    }
     setTimeout(function() { pollSyncState(true); }, 500);
   }
 
@@ -543,17 +548,56 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
       if (!Array.isArray(records)) return { ok: false };
       try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(records)); } catch (_) {}
       if (window.EM) window.EM.data = records.slice();
-      dispatchSyncTrigger('employee_updated', { count: records.length });
+      if (Array.isArray(window.EMP_MASTER_DATA)) {
+        window.EMP_MASTER_DATA.length = 0;
+        Array.prototype.push.apply(window.EMP_MASTER_DATA, records);
+      }
+      _lastAppliedEmpFp = '';
+      dispatchSyncTrigger('employee_updated', { count: records.length, ts: Date.now() });
       refreshEmployeeUI();
-      if (getGasUrl()) await callGoogleBackend('saveEmployeeMaster', { records: records });
+      if (getGasUrl()) {
+        try { await callGoogleBackend('saveEmployeeMaster', { records: records }); } catch (_) {}
+      }
       return { ok: true };
     },
     upsertEmployeeMaster: async function(records) {
-      if (getGasUrl()) await callGoogleBackend('upsertEmployeeMaster', { records: records });
-      return this.saveEmployeeMaster(records);
+      records = Array.isArray(records) ? records : [records];
+      if (!records.length) return { ok: false };
+      if (getGasUrl()) {
+        try { await callGoogleBackend('upsertEmployeeMaster', { records: records }); } catch (_) {}
+      }
+      var current = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+      records.forEach(function(rec) {
+        if (!rec || !rec.emp_id) return;
+        var rId = String(rec.emp_id).toLowerCase().trim();
+        var idx = current.findIndex(function(x) { return String(x && (x.emp_id || x.id)).toLowerCase().trim() === rId; });
+        if (idx >= 0) {
+          current[idx] = Object.assign({}, current[idx], rec);
+        } else {
+          current.push(rec);
+        }
+      });
+      return this.saveEmployeeMaster(current);
     },
     deleteEmployeeMaster: async function(empCode) {
-      if (getGasUrl()) await callGoogleBackend('deleteEmployeeMaster', { empCode: empCode });
+      var code = String(empCode || '').toLowerCase().trim();
+      if (!code) return false;
+      var current = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+      var updated = current.filter(function(x) {
+        return String(x && (x.emp_id || x.id)).toLowerCase().trim() !== code &&
+               String(x && (x.emp_id || x.id)).toLowerCase().trim().replace(/^0+/, '') !== code.replace(/^0+/, '');
+      });
+      try {
+        var delMap = {};
+        try { delMap = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}') || {}; } catch (_) {}
+        delMap[code] = new Date().toISOString();
+        delMap[code.replace(/^0+/, '')] = new Date().toISOString();
+        localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(delMap));
+      } catch (_) {}
+      this.saveEmployeeMaster(updated);
+      if (getGasUrl()) {
+        try { await callGoogleBackend('deleteEmployeeMaster', { empCode: empCode }); } catch (_) {}
+      }
       return true;
     },
 

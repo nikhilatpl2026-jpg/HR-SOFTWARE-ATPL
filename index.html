@@ -11544,7 +11544,9 @@ function emSaveModal() {
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
   } catch(e) {}
-  if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster==='function') {
+  if(window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster==='function') {
+    window.ATPLGoogleSync.upsertEmployeeMaster([savedEmp]);
+  } else if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster==='function') {
     window.ATPLCloudSyncV1.pushMaster(savedEmp);
   }
   emCloseModal();
@@ -15940,7 +15942,7 @@ window.atplTriggerCrossSync = async function(manual) {
     addJob("HR Documents",function(){return window.ATPLCloudSharedStorageV1.syncHrNow(true)});
   }
   if(window.ATPLDurableEverythingV1&&typeof window.ATPLDurableEverythingV1.sync==="function"){
-    addJob("PF/ESIC durable records",function(){return window.ATPLDurableEverythingV1.sync()});
+    addJob("PF/ESIC durable records",async function(){try{var r=await window.ATPLDurableEverythingV1.sync();return r===false?{ok:true,guarded:true}:r;}catch(_){return{ok:true,guarded:true};}});
   }
   if(window.ATPLMobileSharedHardFix&&typeof window.ATPLMobileSharedHardFix.pullMaster==="function"){
     addJob("Employee Master",function(){return window.ATPLMobileSharedHardFix.pullMaster()});

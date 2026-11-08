@@ -1606,13 +1606,15 @@ async function pullCloudIndex(type){
     var verify=(await dbAll()).filter(function(r){return r&&r.type===type});
     for(var j=0;j<verify.length;j++){
       var r=verify[j],present=(r.hash&&remoteHashes[String(r.hash)])||remoteIds[String(r.id)];
-      // Cloud-only rows are a cache. If backend no longer has them, remove them so every login/device converges.
-      if(!present&&r.cloudOnly){
+      // Cloud-only rows are kept safe. ONLY delete if explicitly in user delete tombstones!
+      var tombs = typeof getDeleteTombstones === 'function' ? getDeleteTombstones() : {};
+      var isExplicitlyDeleted = !!((r.id && tombs[String(r.id)]) || (r.hash && tombs[String(r.hash)]));
+      if(!present&&isExplicitlyDeleted&&r.cloudOnly){
         await dbDelete(r.id);
         if(j%12===0)await tick();
         continue
       }
-      if(!present&&r.storage==='cloud-index'&&!r.blob&&!r.opfsPath){
+      if(!present&&isExplicitlyDeleted&&r.storage==='cloud-index'&&!r.blob&&!r.opfsPath){
         await dbDelete(r.id);
         if(j%12===0)await tick();
         continue
