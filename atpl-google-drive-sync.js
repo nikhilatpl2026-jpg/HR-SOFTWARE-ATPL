@@ -331,10 +331,11 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
         refreshFilesUI();
       }
 
-      // 2. Queue downloads for new files uploaded from other devices
+      // 2. Queue downloads for new files uploaded from other devices (Only spreadsheets, ignore json internal files)
       for (var j = 0; j < driveFiles.length; j++) {
         var df = driveFiles[j];
         if (!df || !df.name) continue;
+        if (!String(df.name).match(/\.(xlsx|xls|csv)$/i)) continue;
         var dfNameLow = String(df.name).toLowerCase().trim();
         if (tombstones[dfNameLow]) continue;
         var exists = currentFiles.some(function(f) {
@@ -405,6 +406,25 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
     }, 30000); // Har 30 second me ek baar safe poll
   }
 
+  function setupSSE() {
+    var host = (window.location && window.location.hostname) || '';
+    var isServer = host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host);
+    if (isServer && typeof window.EventSource !== 'undefined') {
+      try {
+        var es = new EventSource('/api/sync/events');
+        es.addEventListener('drive_trigger', function(ev) {
+          try {
+            var p = JSON.parse(ev.data);
+            var action = (p && p.data && p.data.action) || (p && p.action);
+            var details = (p && p.data && p.data.details) || (p && p.details);
+            var sender = (p && p.data && p.data.sender) || (p && p.sender);
+            if (action) onTriggerReceived(action, details, sender);
+          } catch (_) {}
+        });
+      } catch (_) {}
+    }
+  }
+
   var UnifiedSyncEngine = {
     version: '2026.11.16-GOOGLE-DRIVE-SHEETS-CLEAN-V5',
     apiBase: '',
@@ -437,6 +457,7 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
           };
         } catch (_) {}
       }
+      setupSSE();
     },
 
     uploadFile: async function(a, b, c) {
@@ -489,7 +510,12 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
     },
 
     deleteFile: async function(module, idOrName) {
-      var name = String(idOrName || module || '').trim();
+      var name = '';
+      if (idOrName !== undefined && idOrName !== null && idOrName !== '') {
+        name = String(idOrName).trim();
+      } else {
+        name = String(module || '').trim();
+      }
       if (!name) return false;
       var target = name.toLowerCase().trim();
 
