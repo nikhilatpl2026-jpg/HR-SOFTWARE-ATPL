@@ -13,15 +13,11 @@
 
   var STORAGE_KEY_ADVANCES = 'ATPL_AdvanceRecordsV2';
   var STORAGE_KEY_DEDUCTIONS = 'ATPL_AdvanceDeductionsV2';
-  var STORAGE_KEY_TOMBSTONES = 'ATPL_AdvanceTombstonesV2';
-  var CLOUD_FILENAME = 'ATPL_ADVANCE_MANAGEMENT_DATA.json';
   var CHANNEL_NAME = 'ATPL_ERP_TRIGGER_BUS';
-  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 
   var state = {
     advances: [],
     deductions: [],
-    tombstones: {},
     activeTab: 'advances', // 'advances' | 'deductions' | 'ledger'
     searchQuery: '',
     statusFilter: 'ALL', // 'ALL' | 'ACTIVE' | 'PARTIAL' | 'REPAID'
@@ -107,18 +103,6 @@
     } catch (_) {
       state.deductions = [];
     }
-    try {
-      var rawTombs = localStorage.getItem(STORAGE_KEY_TOMBSTONES);
-      if (rawTombs) state.tombstones = JSON.parse(rawTombs) || {};
-    } catch (_) {
-      state.tombstones = {};
-    }
-    // Purge tombstoned advances
-    if (state.tombstones && Object.keys(state.tombstones).length > 0) {
-      state.advances = (state.advances || []).filter(function(a) {
-        return a && a.id && !state.tombstones[a.id];
-      });
-    }
     recalculateAllBalances();
   }
 
@@ -126,7 +110,6 @@
     try {
       localStorage.setItem(STORAGE_KEY_ADVANCES, JSON.stringify(state.advances));
       localStorage.setItem(STORAGE_KEY_DEDUCTIONS, JSON.stringify(state.deductions));
-      localStorage.setItem(STORAGE_KEY_TOMBSTONES, JSON.stringify(state.tombstones));
     } catch (_) {}
   }
 
@@ -154,336 +137,102 @@
   }
 
   // ── 3. CLOUD & REAL-TIME SYNCHRONIZATION ──
-  function getGasUrl() {
+  async function fetchRemoteAdvances() {
     try {
-      var custom = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
-      if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) {
-        return custom.trim();
-      }
-      if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) {
-        return String(window.ATPL_CUSTOM_GAS_URL).trim();
-      }
-      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(String(window.ATPL_GAS_URL).trim())) {
-        return String(window.ATPL_GAS_URL).trim();
+      var res = await fetch('/api/sync/advances', { cache: 'no-store' });
+      if (res.ok) {
+        var data = await res.json();
+        if (data && data.ok && Array.isArray(data.records)) {
+          // Merge remote records with local
+          var map = {};
+          data.records.forEach(function(r) { if (r && r.id) map[r.id] = r; });
+          state.advances.forEach(function(localAdv) {
+            if (!map[localAdv.id]) {
+              map[localAdv.id] = localAdv;
+            } else {
+              // Prefer newer timestamp
+              var localTs = Date.parse(localAdv.updatedAt || localAdv.createdAt || 0) || 0;
+              var remoteTs = Date.parse(map[localAdv.id].updatedAt || map[localAdv.id].createdAt || 0) || 0;
+              if (localTs > remoteTs) map[localAdv.id] = localAdv;
+            }
+          });
+          state.advances = Object.values(map);
+        }
       }
     } catch (_) {}
-    return DEFAULT_GAS_URL;
-  }
 
-  async function callGoogleBackend(action, params) {
-    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.callGoogleBackend === 'function') {
-      try {
-        var syncRes = await window.ATPLGoogleSync.callGoogleBackend(action, params);
-        if (syncRes != null) return syncRes;
-      } catch (_) {}
-    }
-    var endpoint = getGasUrl();
-    if (!endpoint) return null;
-    var p = Object.assign({ action: action, sender: 'adv_client_' + Date.now(), _ts: Date.now() }, params || {});
-    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 12000) : null;
     try {
-      var res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(p),
-        signal: controller ? controller.signal : undefined
-      });
-      if (timeoutId) clearTimeout(timeoutId);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      if (timeoutId) clearTimeout(timeoutId);
-      console.warn('[ATPL Advance Sync] Network notice (' + action + '):', err.message);
-    }
-    return null;
-  }
-
-  var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-
-  function utf8ToB64(str) {
-    if (typeof Buffer !== 'undefined') {
-      try { return Buffer.from(str, 'utf8').toString('base64'); } catch (_) {}
-    }
-    if (typeof btoa !== 'undefined') {
-      try { return btoa(unescape(encodeURIComponent(str))); } catch (_) {}
-    }
-    var utf8Bytes = [];
-    for (var i = 0; i < str.length; i++) {
-      var c = str.charCodeAt(i);
-      if (c < 128) utf8Bytes.push(c);
-      else if (c < 2048) {
-        utf8Bytes.push(192 | (c >> 6), 128 | (c & 63));
-      } else if (c < 65536) {
-        utf8Bytes.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
-      } else {
-        utf8Bytes.push(240 | (c >> 18), 128 | ((c >> 12) & 63), 128 | ((c >> 6) & 63), 128 | (c & 63));
-      }
-    }
-    var res = '';
-    for (var j = 0; j < utf8Bytes.length; j += 3) {
-      var b1 = utf8Bytes[j];
-      var b2 = j + 1 < utf8Bytes.length ? utf8Bytes[j + 1] : NaN;
-      var b3 = j + 2 < utf8Bytes.length ? utf8Bytes[j + 2] : NaN;
-      res += B64_CHARS.charAt(b1 >> 2);
-      res += B64_CHARS.charAt(((b1 & 3) << 4) | (isNaN(b2) ? 0 : (b2 >> 4)));
-      res += isNaN(b2) ? '=' : B64_CHARS.charAt(((b2 & 15) << 2) | (isNaN(b3) ? 0 : (b3 >> 6)));
-      res += isNaN(b3) ? '=' : B64_CHARS.charAt(b3 & 63);
-    }
-    return res;
-  }
-
-  function b64ToUtf8(b64) {
-    if (!b64 || typeof b64 !== 'string') return '';
-    var clean = b64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
-    if (typeof Buffer !== 'undefined') {
-      try { return Buffer.from(clean, 'base64').toString('utf8'); } catch (_) {}
-    }
-    if (typeof atob !== 'undefined') {
-      try { return decodeURIComponent(escape(atob(clean))); } catch (_) {}
-    }
-    var bytes = [];
-    for (var i = 0; i < clean.length; i += 4) {
-      var enc1 = B64_CHARS.indexOf(clean.charAt(i));
-      var enc2 = B64_CHARS.indexOf(clean.charAt(i + 1));
-      var enc3 = clean.charAt(i + 2) === '=' ? -1 : B64_CHARS.indexOf(clean.charAt(i + 2));
-      var enc4 = clean.charAt(i + 3) === '=' ? -1 : B64_CHARS.indexOf(clean.charAt(i + 3));
-      bytes.push((enc1 << 2) | (enc2 >> 4));
-      if (enc3 !== -1) bytes.push(((enc2 & 15) << 4) | (enc3 >> 2));
-      if (enc4 !== -1) bytes.push(((enc3 & 3) << 6) | enc4);
-    }
-    var out = '', k = 0;
-    while (k < bytes.length) {
-      var c1 = bytes[k++];
-      if (c1 < 128) out += String.fromCharCode(c1);
-      else if (c1 > 191 && c1 < 224) {
-        var c2 = bytes[k++];
-        out += String.fromCharCode(((c1 & 31) << 6) | (c2 & 63));
-      } else {
-        var c2b = bytes[k++];
-        var c3b = bytes[k++];
-        out += String.fromCharCode(((c1 & 15) << 12) | ((c2b & 63) << 6) | (c3b & 63));
-      }
-    }
-    return out;
-  }
-
-  function applyCloudData(cloudData) {
-    if (!cloudData || typeof cloudData !== 'object') return false;
-    var remoteAdvances = Array.isArray(cloudData.advances) ? cloudData.advances : [];
-    var remoteDeductions = Array.isArray(cloudData.deductions) ? cloudData.deductions : [];
-    var remoteTombstones = cloudData.tombstones && typeof cloudData.tombstones === 'object' ? cloudData.tombstones : {};
-
-    // 1. Merge tombstones
-    Object.keys(remoteTombstones).forEach(function(k) {
-      if (remoteTombstones[k]) state.tombstones[k] = remoteTombstones[k];
-    });
-
-    // 2. Remove tombstoned advances from local state
-    state.advances = (state.advances || []).filter(function(a) {
-      return a && a.id && !state.tombstones[a.id];
-    });
-
-    // 3. Merge advances
-    var advMap = {};
-    (state.advances || []).forEach(function(a) {
-      if (a && a.id) advMap[a.id] = a;
-    });
-
-    remoteAdvances.forEach(function(ra) {
-      if (!ra || !ra.id || state.tombstones[ra.id]) return;
-      var existing = advMap[ra.id];
-      if (!existing) {
-        advMap[ra.id] = ra;
-      } else {
-        var localTs = Date.parse(existing.updatedAt || existing.createdAt || 0) || 0;
-        var remoteTs = Date.parse(ra.updatedAt || ra.createdAt || 0) || 0;
-        if (remoteTs >= localTs) {
-          advMap[ra.id] = ra;
-        }
-      }
-    });
-
-    state.advances = Object.values(advMap);
-
-    // 4. Merge deductions (idempotent set by deduction ID or composite)
-    var dedMap = {};
-    (state.deductions || []).forEach(function(d) {
-      if (d && d.id) dedMap[d.id] = d;
-    });
-
-    remoteDeductions.forEach(function(rd) {
-      if (!rd || !rd.id) return;
-      if (!dedMap[rd.id]) {
-        dedMap[rd.id] = rd;
-      }
-    });
-
-    state.deductions = Object.values(dedMap);
-    return true;
-  }
-
-  var activePushPromise = null;
-  function pushAuthoritativeToCloud() {
-    if (activePushPromise) return activePushPromise;
-    activePushPromise = (async function() {
-      try {
-        var nowIso = new Date().toISOString();
-        var payload = {
-          version: 2,
-          advances: state.advances || [],
-          deductions: state.deductions || [],
-          tombstones: state.tombstones || {},
-          updatedAt: nowIso
-        };
-        var b64Data = utf8ToB64(JSON.stringify(payload));
-        
-        var res = await callGoogleBackend('uploadFile', {
-          fileName: CLOUD_FILENAME,
-          fileBase64: b64Data,
-          mimeType: 'application/json'
-        });
-
-        var confirmed = !!(res && res.ok);
-
-        // Local node server bridge
-        try {
-          fetch('/api/sync/advances/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: state.advances || [] })
-          }).catch(function() {});
-        } catch (_) {}
-
-        broadcastSync('advance_cloud_synced', { ts: Date.now(), count: (state.advances || []).length });
-        return { ok: confirmed, error: confirmed ? null : 'CLOUD_UNCONFIRMED' };
-      } catch (err) {
-        return { ok: false, error: err.message };
-      } finally {
-        activePushPromise = null;
-      }
-    })();
-    return activePushPromise;
-  }
-
-  var activeFetchPromise = null;
-  var lastCloudFetchTime = 0;
-  function fetchRemoteAdvances(force, isManual) {
-    var now = Date.now();
-    if (!force && (now - lastCloudFetchTime < 10000)) {
-      return Promise.resolve({ ok: true, throttled: true });
-    }
-    if (activeFetchPromise) return activeFetchPromise;
-
-    activeFetchPromise = (async function() {
-      var cloudLoaded = false;
-      try {
-        // 1. Authoritative Cloud Fetch from Google Drive / Sheets
-        var dlRes = await callGoogleBackend('downloadFile', { fileName: CLOUD_FILENAME });
-        if (dlRes && dlRes.ok && dlRes.fileBase64) {
-          try {
-            var jsonStr = b64ToUtf8(dlRes.fileBase64);
-            var cloudData = JSON.parse(jsonStr);
-            if (cloudData && (Array.isArray(cloudData.advances) || Array.isArray(cloudData.deductions))) {
-              applyCloudData(cloudData);
-              cloudLoaded = true;
-              lastCloudFetchTime = Date.now();
-            }
-          } catch (pErr) {
-            console.warn('[ATPL Advance Sync] Parse error:', pErr.message);
-          }
-        }
-
-        // 2. Node server fallback if running
-        try {
-          var res = await fetch('/api/sync/advances', { cache: 'no-store' });
-          if (res && res.ok) {
-            var data = await res.json();
-            if (data && data.ok && Array.isArray(data.records) && data.records.length > 0) {
-              applyCloudData({ advances: data.records, deductions: [] });
-              cloudLoaded = true;
-            }
-          }
-        } catch (_) {}
-
-        try {
-          var resDed = await fetch('/api/sync/advance-deductions', { cache: 'no-store' });
-          if (resDed && resDed.ok) {
-            var dataDed = await resDed.json();
-            if (dataDed && dataDed.ok && Array.isArray(dataDed.records) && dataDed.records.length > 0) {
-              applyCloudData({ advances: [], deductions: dataDed.records });
-            }
-          }
-        } catch (_) {}
-
-        // Keep window.FILES clean of the advance data json if it was loaded by All Files
-        if (Array.isArray(window.FILES)) {
-          var hasAdvInFiles = false;
-          window.FILES = window.FILES.filter(function(f) {
-            if (f && String(f.name).toLowerCase().trim() === CLOUD_FILENAME.toLowerCase()) {
-              hasAdvInFiles = true;
-              return false;
-            }
-            return true;
+      var resDed = await fetch('/api/sync/advance-deductions', { cache: 'no-store' });
+      if (resDed.ok) {
+        var dataDed = await resDed.json();
+        if (dataDed && dataDed.ok && Array.isArray(dataDed.records)) {
+          var dedMap = {};
+          dataDed.records.forEach(function(d) { if (d && d.id) dedMap[d.id] = d; });
+          state.deductions.forEach(function(ld) {
+            if (!dedMap[ld.id]) dedMap[ld.id] = ld;
           });
-          if (hasAdvInFiles && typeof window.renderFiles === 'function') {
-            try { window.renderFiles(); } catch (_) {}
-          }
+          state.deductions = Object.values(dedMap);
         }
-
-        recalculateAllBalances();
-        saveToLocal();
-        renderUI();
-        return { ok: cloudLoaded, manual: !!isManual };
-      } catch (err) {
-        return { ok: false, error: err.message };
-      } finally {
-        activeFetchPromise = null;
       }
-    })();
+    } catch (_) {}
 
-    return activeFetchPromise;
+    recalculateAllBalances();
+    saveToLocal();
+    renderUI();
   }
 
   async function pushAdvanceRemote(record) {
     try {
-      fetch('/api/sync/advance', {
+      await fetch('/api/sync/advance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(record)
-      }).catch(function() {});
+      });
     } catch (_) {}
-
-    var res = await pushAuthoritativeToCloud();
+    try {
+      if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.callGoogleBackend === 'function') {
+        window.ATPLGoogleSync.callGoogleBackend('upsertEmployeeMaster', {
+          empCode: '__ATPL_SYS__ADV__' + record.id,
+          record_json: JSON.stringify(Object.assign({ _atpl_kind: 'advance_record', object_key: record.id }, record))
+        });
+      }
+    } catch (_) {}
     broadcastSync('advance_updated', { id: record.id });
-    return res;
   }
 
   async function deleteAdvanceRemote(id) {
     try {
-      fetch('/api/sync/advance/' + encodeURIComponent(id), {
+      await fetch('/api/sync/advance/' + encodeURIComponent(id), {
         method: 'DELETE'
-      }).catch(function() {});
+      });
     } catch (_) {}
-
-    var res = await pushAuthoritativeToCloud();
+    try {
+      if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.callGoogleBackend === 'function') {
+        window.ATPLGoogleSync.callGoogleBackend('deleteEmployeeMaster', {
+          empCode: '__ATPL_SYS__ADV__' + id
+        });
+      }
+    } catch (_) {}
     broadcastSync('advance_deleted', { id: id });
-    return res;
   }
 
   async function pushDeductionRemote(deduction) {
     try {
-      fetch('/api/sync/advance-deduction', {
+      await fetch('/api/sync/advance-deduction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(deduction)
-      }).catch(function() {});
+      });
     } catch (_) {}
-
-    var res = await pushAuthoritativeToCloud();
+    try {
+      if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.callGoogleBackend === 'function') {
+        window.ATPLGoogleSync.callGoogleBackend('upsertEmployeeMaster', {
+          empCode: '__ATPL_SYS__DED__' + deduction.id,
+          record_json: JSON.stringify(Object.assign({ _atpl_kind: 'advance_deduction', object_key: deduction.id }, deduction))
+        });
+      }
+    } catch (_) {}
     broadcastSync('advance_deduction_saved', { id: deduction.id });
-    return res;
   }
 
   function broadcastSync(action, details) {
@@ -506,7 +255,7 @@
         var bc = new window.BroadcastChannel(CHANNEL_NAME);
         bc.onmessage = function(ev) {
           if (ev && ev.data && ev.data.action && ev.data.action.indexOf('advance') === 0) {
-            fetchRemoteAdvances(false);
+            fetchRemoteAdvances();
           }
         };
       } catch (_) {}
@@ -517,39 +266,20 @@
         try {
           var ev = JSON.parse(e.newValue);
           if (ev && ev.action && ev.action.indexOf('advance') === 0) {
-            fetchRemoteAdvances(false);
+            fetchRemoteAdvances();
           }
         } catch (_) {}
       }
     });
 
-    // Window focus & tab visibility change listener
-    window.addEventListener('focus', function() {
-      fetchRemoteAdvances(false);
-    });
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) {
-        fetchRemoteAdvances(false);
-      }
-    });
-
-    // Safe 25-second background polling timer (never freezes or piles up)
-    if (typeof setInterval === 'function') {
-      setInterval(function() {
-        if (!document.hidden) {
-          fetchRemoteAdvances(false);
-        }
-      }, 25000);
-    }
-
     // Server-Sent Events hook
     if (typeof window.EventSource !== 'undefined') {
       try {
         var evtSrc = new window.EventSource('/api/sync/events');
-        evtSrc.addEventListener('advance_saved', function() { fetchRemoteAdvances(false); });
-        evtSrc.addEventListener('advance_deleted', function() { fetchRemoteAdvances(false); });
-        evtSrc.addEventListener('advance_deduction_saved', function() { fetchRemoteAdvances(false); });
-        evtSrc.addEventListener('advances_updated', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('advance_saved', function() { fetchRemoteAdvances(); });
+        evtSrc.addEventListener('advance_deleted', function() { fetchRemoteAdvances(); });
+        evtSrc.addEventListener('advance_deduction_saved', function() { fetchRemoteAdvances(); });
+        evtSrc.addEventListener('advances_updated', function() { fetchRemoteAdvances(); });
       } catch (_) {}
     }
   }
@@ -595,26 +325,13 @@
       state.advances.unshift(rec);
     }
 
-    // Un-tombstone if re-adding
-    if (state.tombstones && state.tombstones[recordId]) {
-      delete state.tombstones[recordId];
-    }
-
     saveToLocal();
+    pushAdvanceRemote(rec);
     renderUI();
 
-    pushAdvanceRemote(rec).then(function(res) {
-      if (res && res.ok) {
-        if (window.showToast) {
-          window.showToast('✅ Advance of ' + formatINR(amount) + ' for ' + empName + ' (' + rec.empCode + ') recorded & synced to cloud!');
-        }
-      } else {
-        if (window.showToast) {
-          window.showToast('⚠️ Advance of ' + formatINR(amount) + ' saved locally. Cloud sync pending retry.');
-        }
-      }
-    });
-
+    if (window.showToast) {
+      window.showToast('✅ Advance of ' + formatINR(amount) + ' for ' + empName + ' (' + rec.empCode + ') recorded & synced!');
+    }
     return true;
   }
 
@@ -624,26 +341,16 @@
     if (idx < 0) return;
     var deleted = state.advances.splice(idx, 1)[0];
 
-    // Record tombstone
-    state.tombstones[id] = new Date().toISOString();
-
     // Remove associated deductions
     state.deductions = state.deductions.filter(function(d) { return d.advanceId !== id; });
 
     saveToLocal();
+    deleteAdvanceRemote(id);
     renderUI();
 
-    deleteAdvanceRemote(id).then(function(res) {
-      if (res && res.ok) {
-        if (window.showToast) {
-          window.showToast('🗑 Advance record deleted from cloud & all devices.');
-        }
-      } else {
-        if (window.showToast) {
-          window.showToast('⚠️ Advance deleted locally. Cloud sync pending retry.');
-        }
-      }
-    });
+    if (window.showToast) {
+      window.showToast('🗑 Advance record deleted from all devices.');
+    }
   }
 
   // Calculate employee total outstanding balance
@@ -766,11 +473,9 @@
         var outBal = Number(adv.balanceAmount) || 0;
         if (outBal <= 0) continue;
 
-        // Idempotency check: has this advance already been deducted for this specific file or salary month?
-        var cleanFileName = String(fileName).trim().toLowerCase();
+        // Idempotency check: has this advance already been deducted for this specific file?
         var alreadyDeducted = (state.deductions || []).some(function(d) {
-          var dFile = String(d.fileName || '').trim().toLowerCase();
-          return d.advanceId === adv.id && (dFile === cleanFileName || (salaryMonth && d.salaryMonth === salaryMonth && dFile === cleanFileName));
+          return d.advanceId === adv.id && d.fileName === fileName;
         });
         if (alreadyDeducted) {
           continue; // "Never deduct the same advance twice"
@@ -812,6 +517,10 @@
         adv.updatedAt = nowIso;
         if (!Array.isArray(adv.deductions)) adv.deductions = [];
         adv.deductions.push(dedRec);
+
+        // Push deduction to remote & sync
+        pushDeductionRemote(dedRec);
+        pushAdvanceRemote(adv);
       }
     }
 
@@ -819,7 +528,6 @@
       saveToLocal();
       recalculateAllBalances();
       renderUI();
-      pushAuthoritativeToCloud();
       if (window.showToast) {
         window.showToast('💰 Automatically deducted advances for ' + deductionsMade.length + ' employee(s) from ' + fileName);
       }
@@ -947,7 +655,7 @@
     html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);color:#cbd5e1;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">';
     html += '      <span>📥</span> Export CSV';
     html += '    </button>';
-    html += '    <button id="advSyncBtn" onclick="ATPLAdvanceManager.syncNow(true)" style="padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);color:#94a3b8;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer" title="Sync with Cloud">';
+    html += '    <button onclick="ATPLAdvanceManager.syncNow()" style="padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);color:#94a3b8;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer" title="Sync with Cloud">';
     html += '      <span>🔄</span>';
     html += '    </button>';
     html += '  </div>';
@@ -1606,21 +1314,10 @@
     editAdvance: editAdvance,
     confirmDelete: confirmDelete,
     viewStatement: viewStatement,
-    syncNow: async function(manual) {
-      var btn = document.getElementById('advSyncBtn');
-      if (btn) btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>';
-      var res = await fetchRemoteAdvances(true, !!manual);
-      if (btn) btn.innerHTML = '<span>🔄</span>';
-      if (res && res.ok) {
-        if (window.showToast) {
-          window.showToast('✅ Synchronized ' + state.advances.length + ' advances and ' + state.deductions.length + ' deductions from cloud!');
-        }
-      } else {
-        if (window.showToast) {
-          window.showToast('⚠️ Cloud sync could not complete. Displaying latest local records.');
-        }
-      }
-      return res;
+    exportDataCSV: exportDataCSV,
+    syncNow: function() {
+      fetchRemoteAdvances();
+      if (window.showToast) window.showToast('🔄 Synchronized advances and deductions from cloud!');
     },
     triggerDeductionScan: function() {
       var count = processAllSalaryFiles();

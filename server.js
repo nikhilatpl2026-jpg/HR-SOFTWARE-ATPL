@@ -1661,22 +1661,6 @@ app.delete('/api/sync/dol-record/:id', (req, res) => {
 });
 
 // ── Advance Management Dedicated Endpoints ──
-function forwardAdvanceSyncToCloud() {
-  try {
-    const payload = {
-      advances: Object.values(syncAdvances),
-      deductions: Object.values(syncAdvanceDeductions),
-      updatedAt: new Date().toISOString()
-    };
-    const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
-    syncToGoogleAppsScript('uploadFile', {
-      fileName: 'ATPL_ADVANCE_MANAGEMENT_DATA.json',
-      fileBase64: b64,
-      mimeType: 'application/json'
-    });
-  } catch (_) {}
-}
-
 app.get('/api/sync/advances', (req, res) => {
   return res.json({ ok: true, records: Object.values(syncAdvances) });
 });
@@ -1689,7 +1673,6 @@ app.post('/api/sync/advance', (req, res) => {
     incrementVersion();
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advance_saved', record);
-    forwardAdvanceSyncToCloud();
     return res.json({ ok: true, saved: true, id: record.id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1706,7 +1689,6 @@ app.post('/api/sync/advances/bulk', (req, res) => {
     incrementVersion();
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advances_updated', { count: records.length });
-    forwardAdvanceSyncToCloud();
     return res.json({ ok: true, count: records.length });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1720,7 +1702,6 @@ app.delete('/api/sync/advance/:id', (req, res) => {
     incrementVersion();
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advance_deleted', { id: id, deleted_at: new Date().toISOString() });
-    forwardAdvanceSyncToCloud();
     return res.json({ ok: true, deleted: true, id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
@@ -1755,7 +1736,6 @@ app.post('/api/sync/advance-deduction', (req, res) => {
     writeJsonFile('advance_deductions.json', syncAdvanceDeductions);
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advance_deduction_saved', deduction);
-    forwardAdvanceSyncToCloud();
     return res.json({ ok: true, saved: true, id: deduction.id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
