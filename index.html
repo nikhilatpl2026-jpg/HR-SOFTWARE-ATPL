@@ -2404,6 +2404,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
       <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" style="background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
+      <div class="vitem" id="vn-advance" onclick="goPage('advance')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">💳</span>Advance Management <span class="vbadge" id="advBadge" style="background:#10b981;display:none">0</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
 
@@ -2527,8 +2528,13 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             </div>
           </div>
         </div>
-      </div>
     </div>
+
+    <!-- ══ PAGE: ADVANCE MANAGEMENT ══ -->
+    <div class="page" id="page-advance" style="flex-direction:column;overflow-y:auto;padding:24px;background:#0b0f19;color:#e2e8f0;min-height:100%">
+      <div id="advanceModuleContainer"></div>
+    </div>
+
     <!-- ══ PAGE: SMART COMMANDS ══ -->
     <div class="page active" id="page-cmd">
       <!-- File Filter Bar -->
@@ -4568,6 +4574,11 @@ async function handleFiles(list) {
   }
 
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
+  try {
+    if (window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.processAllSalaryFiles === 'function') {
+      window.ATPLAdvanceManager.processAllSalaryFiles();
+    }
+  } catch (_) {}
   if (lbl) lbl.textContent = (window.FILES || FILES).length + ' files saved';
   if (window.showToast) window.showToast('✅ All ' + total + ' files uploaded and synced to all browsers!');
   window.__ATPL_IS_UPLOADING = false;
@@ -4854,6 +4865,9 @@ function renderAllFilesPage(force) {
       html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + safeName + '</div>';
       html += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px">' + numSheets + ' sheets • ' + rows.toLocaleString() + ' rows' + (savedAt?' • '+savedAt:'') + '</div></div>';
       html += '<div style="display:flex;gap:8px;align-items:center">';
+      if (f.__advanceDeductionSummary && f.__advanceDeductionSummary.count > 0) {
+        html += '<button onclick="goPage(\'advance\');if(window.ATPLAdvanceManager){ATPLAdvanceManager.setTab(\'deductions\');ATPLAdvanceManager.setSearch(\'' + safeName + '\');}" style="padding:6px 12px;background:#10b981;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="View Advance Deductions">💳 ' + f.__advanceDeductionSummary.count + ' Advances Deducted</button>';
+      }
       html += '<button onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
       html += '<button onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
       html += '</div></div>';
@@ -6934,7 +6948,7 @@ function goPage(name) {
   // Auto-expand the parent category of active item
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -6947,6 +6961,7 @@ function goPage(name) {
       if(arr) arr.style.transform='rotate(0deg)';
     }
   }
+  if(name==='advance') { if(window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.renderUI==='function') window.ATPLAdvanceManager.renderUI(); }
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
@@ -15902,6 +15917,7 @@ else AInit();
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
+<script src="atpl-advance-management.js"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl=document.getElementById("crossSyncBtnLbl");
@@ -15909,6 +15925,9 @@ window.atplTriggerCrossSync = async function(manual) {
   var jobs=[];
   function addJob(name,fn){
     jobs.push({name:name,execute:fn});
+  }
+  if(window.ATPLAdvanceManager&&typeof window.ATPLAdvanceManager.syncNow==="function"){
+    addJob("Advance Management",function(){return window.ATPLAdvanceManager.syncNow()});
   }
   if(typeof atplDirectServerSync==="function")addJob("Direct file sync",function(){return atplDirectServerSync(true)});
   if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles==="function"){

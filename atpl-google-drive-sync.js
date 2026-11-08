@@ -532,7 +532,8 @@ var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-
     },
 
     reconcileAll: async function(force) { return pollSyncState(!!force); },
-    syncNow: async function(force) { return pollSyncState(!!force); }
+    syncNow: async function(force) { return pollSyncState(!!force); },
+    callGoogleBackend: callGoogleBackend
   };
 
   window.ATPLGoogleSync = UnifiedSyncEngine;

@@ -173,6 +173,8 @@ let syncHrDocs = readJsonFile('hr_docs.json', {});
 let syncHrTombstones = readJsonFile('hr_tombstones.json', {});
 let syncEmployeeMaster = readJsonFile('employee_master.json', []);
 let syncDolRecords = readJsonFile('dol_records.json', {}); // id -> DOL challan
+let syncAdvances = readJsonFile('advances.json', {}); // id -> advance record
+let syncAdvanceDeductions = readJsonFile('advance_deductions.json', {}); // id -> deduction record
 
 // Merge all existing legacy tombstones into central filesDb.tombstones
 if (syncSalaryTombstones && typeof syncSalaryTombstones === 'object') {
@@ -1290,6 +1292,8 @@ app.get('/api/sync/state', (req, res) => {
     hr_docs: Object.values(syncHrDocs),
     hr_tombstones: syncHrTombstones,
     dol_records: Object.values(syncDolRecords),
+    advances: Object.values(syncAdvances),
+    advance_deductions: Object.values(syncAdvanceDeductions),
     files: formattedFiles,
     files_count: allFiles.length,
     tombstones: filesDb.tombstones,
@@ -1651,6 +1655,88 @@ app.delete('/api/sync/dol-record/:id', (req, res) => {
     writeJsonFile('dol_records.json', syncDolRecords);
     broadcastEvent('dol_record_deleted', { id: id, deleted_at: new Date().toISOString() });
     return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Advance Management Dedicated Endpoints ──
+app.get('/api/sync/advances', (req, res) => {
+  return res.json({ ok: true, records: Object.values(syncAdvances) });
+});
+
+app.post('/api/sync/advance', (req, res) => {
+  try {
+    const record = req.body || {};
+    if (!record || !record.id) return res.status(400).json({ ok: false, error: 'Record ID required' });
+    syncAdvances[record.id] = record;
+    incrementVersion();
+    writeJsonFile('advances.json', syncAdvances);
+    broadcastEvent('advance_saved', record);
+    return res.json({ ok: true, saved: true, id: record.id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/sync/advances/bulk', (req, res) => {
+  try {
+    const { records } = req.body || {};
+    if (!Array.isArray(records)) return res.status(400).json({ ok: false, error: 'Records array required' });
+    records.forEach(r => {
+      if (r && r.id) syncAdvances[r.id] = r;
+    });
+    incrementVersion();
+    writeJsonFile('advances.json', syncAdvances);
+    broadcastEvent('advances_updated', { count: records.length });
+    return res.json({ ok: true, count: records.length });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/advance/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    delete syncAdvances[id];
+    incrementVersion();
+    writeJsonFile('advances.json', syncAdvances);
+    broadcastEvent('advance_deleted', { id: id, deleted_at: new Date().toISOString() });
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/sync/advance-deductions', (req, res) => {
+  return res.json({ ok: true, records: Object.values(syncAdvanceDeductions) });
+});
+
+app.post('/api/sync/advance-deduction', (req, res) => {
+  try {
+    const deduction = req.body || {};
+    if (!deduction || !deduction.id) return res.status(400).json({ ok: false, error: 'Deduction ID required' });
+    syncAdvanceDeductions[deduction.id] = deduction;
+    
+    // Also update corresponding advance record if advanceId is provided
+    if (deduction.advanceId && syncAdvances[deduction.advanceId]) {
+      const adv = syncAdvances[deduction.advanceId];
+      if (!Array.isArray(adv.deductions)) adv.deductions = [];
+      const exists = adv.deductions.some(d => d.id === deduction.id || (d.fileName === deduction.fileName && d.deductionId === deduction.id));
+      if (!exists) {
+        adv.deductions.push(deduction);
+        adv.recoveredAmount = Number(adv.recoveredAmount || 0) + Number(deduction.deductedAmount || 0);
+        adv.balanceAmount = Math.max(0, Number(adv.amount || 0) - adv.recoveredAmount);
+        adv.status = adv.balanceAmount <= 0 ? 'REPAID' : (adv.recoveredAmount > 0 ? 'PARTIAL' : 'ACTIVE');
+        adv.updatedAt = new Date().toISOString();
+      }
+    }
+    
+    incrementVersion();
+    writeJsonFile('advance_deductions.json', syncAdvanceDeductions);
+    writeJsonFile('advances.json', syncAdvances);
+    broadcastEvent('advance_deduction_saved', deduction);
+    return res.json({ ok: true, saved: true, id: deduction.id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
