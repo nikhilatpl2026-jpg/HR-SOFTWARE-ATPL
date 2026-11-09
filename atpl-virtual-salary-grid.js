@@ -56,32 +56,31 @@
     var hiddenRowsCount = totalRows - displayedRows;
 
     container.innerHTML = 
-      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;background:#090d16;padding:8px 14px;border-radius:8px 8px 0 0;border:1px solid #334155;border-bottom:none">' +
-        '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:11px;color:#34d399;font-weight:700;display:flex;align-items:center;gap:8px">' +
-          '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#34d399"></span>' +
-          '<span>⚡ ' + displayedRows.toLocaleString() + ' DATA ROWS' + (hiddenRowsCount > 0 ? ' <span style="color:#94a3b8;font-weight:normal">(' + hiddenRowsCount + ' blank rows hidden)</span>' : '') + '</span>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;background:#F8FAFF;padding:10px 16px;border-radius:10px 10px 0 0;border:1px solid #E2E8F0;border-bottom:1px solid #CBD5E1">' +
+        '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#059669;font-weight:700;display:flex;align-items:center;gap:8px">' +
+          '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#059669"></span>' +
+          '<span>⚡ ' + displayedRows.toLocaleString() + ' DATA ROWS' + (hiddenRowsCount > 0 ? ' <span style="color:#64748B;font-weight:normal">(' + hiddenRowsCount + ' blank rows hidden)</span>' : '') + '</span>' +
         '</div>' +
-        '<div style="display:flex;align-items:center;gap:12px">' +
-          '<button id="atplToggleBlankRowsBtn" style="background:' + (hideEmptyRowsState ? '#065f46' : '#1e293b') + ';color:' + (hideEmptyRowsState ? '#a7f3d0' : '#cbd5e1') + ';border:1px solid ' + (hideEmptyRowsState ? '#059669' : '#475569') + ';border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px">' +
-            (hideEmptyRowsState ? '✓ Khali Rows Hidden' : '👁️ Show All Rows (Including Blank)') +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<button id="atplToggleBlankRowsBtn" style="background:' + (hideEmptyRowsState ? '#ECFDF5' : '#F1F5F9') + ';color:' + (hideEmptyRowsState ? '#059669' : '#475569') + ';border:1px solid ' + (hideEmptyRowsState ? '#A7F3D0' : '#CBD5E1') + ';border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px">' +
+            (hideEmptyRowsState ? '✓ Khali Rows Hidden' : '👁️ Show All Rows') +
           '</button>' +
-          '<div style="font-size:11px;color:#cbd5e1;font-weight:600">' +
-            (title ? String(title) : '') +
-          '</div>' +
+          '<button onclick="if(typeof saveInlineEdits===\'function\')saveInlineEdits(VIEWER_FILE_IDX||0,0);else alert(\'Changes saved\')" style="padding:5px 12px;background:#059669;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer">💾 Save Changes</button>' +
+          '<button onclick="if(typeof downloadInlineFile===\'function\')downloadInlineFile(VIEWER_FILE_IDX||0);else if(typeof downloadFile===\'function\')downloadFile(VIEWER_FILE_IDX||0)" style="padding:5px 12px;background:#4F46E5;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer">⬇ Download Excel</button>' +
         '</div>' +
       '</div>' +
-      '<div class="atpl-virtual-viewport" style="height:' + viewportHeight + 'px;overflow:auto;position:relative;border:1px solid #334155;border-radius:0 0 8px 8px;background:#0b0f19">' +
+      '<div class="atpl-virtual-viewport" style="height:' + viewportHeight + 'px;overflow:auto;position:relative;border:1px solid #E2E8F0;border-top:none;border-radius:0 0 10px 10px;background:#FFFFFF">' +
         '<div class="atpl-virtual-spacer" style="height:' + (displayedRows * rowHeight) + 'px;position:relative">' +
           '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:max-content;font-family:system-ui,-apple-system,sans-serif">' +
-            '<thead style="position:sticky;top:0;z-index:30;background:#1e293b;border-bottom:2px solid #475569">' +
+            '<thead style="position:sticky;top:0;z-index:30;background:#0F172A;border-bottom:2px solid #1E293B">' +
               '<tr>' +
-                '<th style="padding:8px 8px;background:#1e293b;color:#94a3b8;position:sticky;left:0;z-index:40;width:48px;min-width:48px;max-width:48px;text-align:center;border-right:1px solid #334155">#</th>' +
+                '<th style="padding:7px 8px;background:#0F172A;color:#94A3B8;position:sticky;left:0;z-index:40;width:48px;min-width:48px;max-width:48px;text-align:center;border-right:1px solid #1E293B;font-size:10px">#</th>' +
                 hdr.map(function(h, ci) {
                   var isSticky = ci === 0 || ci === 1;
                   var leftPos = ci === 0 ? '48px' : ci === 1 ? '138px' : 'auto';
                   var wStyle = ci === 0 ? 'width:90px;min-width:90px;max-width:90px;' : ci === 1 ? 'width:180px;min-width:180px;max-width:240px;' : 'min-width:40px;';
-                  return '<th style="padding:8px 10px;color:#f8fafc;text-align:left;white-space:nowrap;border-right:1px solid #334155;' + wStyle +
-                    (isSticky ? 'position:sticky;left:' + leftPos + ';z-index:40;background:#1e293b;' : '') + '">' +
+                  return '<th style="padding:7px 10px;color:#FFFFFF;font-weight:700;text-align:left;white-space:nowrap;border-right:1px solid #1E293B;font-size:10px;' + wStyle +
+                    (isSticky ? 'position:sticky;left:' + leftPos + ';z-index:40;background:#0F172A;' : '') + '">' +
                     (h || 'Col ' + (ci + 1)) + '</th>';
                 }).join('') +
               '</tr>' +
@@ -119,10 +118,10 @@
         var item = filteredBody[i];
         var row = item.data;
         var isEven = i % 2 === 0;
-        var bg = isEven ? '#0b0f19' : '#111827';
+        var bg = isEven ? '#ffffff' : '#f8faff';
 
-        html += '<tr style="height:' + rowHeight + 'px;background:' + bg + ';border-bottom:1px solid #1f2937">' +
-          '<td style="padding:4px 8px;text-align:center;color:#64748b;font-family:monospace;position:sticky;left:0;background:' + bg + ';z-index:10;border-right:1px solid #334155;width:48px;min-width:48px;max-width:48px">' + item.originalIndex + '</td>';
+        html += '<tr style="height:' + rowHeight + 'px;background:' + bg + ';border-bottom:1px solid #eef2ff">' +
+          '<td style="padding:4px 8px;text-align:center;color:#64748b;font-family:monospace;position:sticky;left:0;background:' + bg + ';z-index:10;border-right:1px solid #e2e8f0;width:48px;min-width:48px;max-width:48px;font-size:10px">' + item.originalIndex + '</td>';
 
         for (var c = 0; c < hdr.length; c++) {
           var val = row[c] !== undefined && row[c] !== null ? row[c] : '';
@@ -132,30 +131,30 @@
           var leftPos = c === 0 ? '48px' : c === 1 ? '138px' : 'auto';
           var wStyle = c === 0 ? 'width:90px;min-width:90px;max-width:90px;' : c === 1 ? 'width:180px;min-width:180px;max-width:240px;' : 'min-width:40px;';
 
-          var textColor = '#e2e8f0';
+          var textColor = '#1e293b';
           var textAlign = 'left';
           var fontWeight = '400';
 
           if (c === 0) {
-            textColor = '#38bdf8';
+            textColor = '#0f172a';
             fontWeight = '700';
-            textAlign = 'center';
+            textAlign = 'left';
           } else if (c === 1) {
-            textColor = '#ffffff';
+            textColor = '#0f172a';
             fontWeight = '600';
           } else if (sVal === '' || sVal === '—' || sVal === '-') {
-            textColor = '#475569';
+            textColor = '#94a3b8';
             textAlign = 'center';
           } else if (/^\d+(\.\d+)?$/.test(sVal)) {
-            textColor = '#34d399';
-            textAlign = 'center';
-            fontWeight = '600';
+            textColor = '#0f172a';
+            textAlign = 'right';
+            fontWeight = '500';
           }
 
-          html += '<td style="padding:4px 10px;white-space:nowrap;border-right:1px solid #1f2937;color:' + textColor + ';text-align:' + textAlign + ';font-weight:' + fontWeight + ';' + wStyle +
-            (isC ? 'background:rgba(239,68,68,0.25);color:#f87171;font-weight:bold;' : '') +
+          html += '<td style="padding:4px 10px;white-space:nowrap;border-right:1px solid #eef2ff;color:' + textColor + ';text-align:' + textAlign + ';font-weight:' + fontWeight + ';' + wStyle +
+            (isC ? 'background:#fef2f2;color:#b91c1c;font-weight:bold;' : '') +
             (isSticky ? 'position:sticky;left:' + leftPos + ';background:' + bg + ';z-index:10;' : '') + '">' +
-            (sVal === '' || sVal === '—' || sVal === '-' ? '<span style="color:#475569">—</span>' : sVal) + '</td>';
+            (sVal === '' || sVal === '—' || sVal === '-' ? '<span style="color:#cbd5e1">—</span>' : sVal) + '</td>';
         }
         html += '</tr>';
       }

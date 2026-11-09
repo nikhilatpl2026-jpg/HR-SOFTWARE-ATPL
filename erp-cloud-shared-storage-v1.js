@@ -1241,10 +1241,10 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
      if(changedHr) refreshHrUi();
 
      // 4. Sync Employee Master
-     if(root.ATPLCloudSyncV1){root.ATPLCloudSyncV1.pullMaster();}
-     else if(Array.isArray(st.employee_master) && st.employee_master.length){
+     var serverEm = Array.isArray(st.employee_master) ? st.employee_master : [];
+     if(serverEm.length){
        var curEm = (root.EM && Array.isArray(root.EM.data)) ? root.EM.data : [];
-       if(!curEm.length){
+       if(!curEm.length || curEm.length < serverEm.length || curEm.length <= 1){
          if(root.EM) root.EM.data = st.employee_master.slice();
          if(Array.isArray(root.EMP_MASTER_DATA)){
            root.EMP_MASTER_DATA.length = 0;
@@ -1364,7 +1364,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
        }catch(_){}
      });
      es.addEventListener('employee_master_updated',function(e){
-       if(root.ATPLCloudSyncV1){root.ATPLCloudSyncV1.pullMaster();return;}
+       if(root.ATPLCloudSyncV1&&typeof root.ATPLCloudSyncV1.pullMaster==='function'){try{root.ATPLCloudSyncV1.pullMaster();}catch(_){}}
        try{
          var item=JSON.parse(e.data);
          var recs=item.data&&item.data.records;

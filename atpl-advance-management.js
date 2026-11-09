@@ -922,82 +922,99 @@
       badge.style.display = activeCount > 0 ? 'inline-block' : 'none';
     }
 
-    var html = '';
+    var html = '<div class="adv-shell" style="padding:18px;min-height:100%;background:#f6f7fb;font-family:system-ui,-apple-system,sans-serif">';
 
-    // Professional Header & Actions
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #1e293b">';
+    // 1. Executive Top Header (Image 1 style)
+    html += '<div style="display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#fff,#fbfbff);border:1px solid #e5e7eb;border-radius:14px;padding:19px 20px;box-shadow:0 1px 3px rgba(15,23,42,.04);margin-bottom:12px">';
     html += '  <div>';
-    html += '    <div style="display:flex;align-items:center;gap:10px">';
-    html += '      <span style="font-size:20px">💳</span>';
-    html += '      <h1 style="font-size:20px;font-weight:750;color:#f8fafc;margin:0;letter-spacing:-0.3px">Advance &amp; Loan Management</h1>';
-    html += '      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:#065f46;color:#a7f3d0;border:1px solid #059669">DRIVE &amp; SHEETS SYNC</span>';
-    html += '    </div>';
-    html += '    <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">';
-    html += '      Arora Textiles ERP · Automated salary deductions, ledger audit, and cloud persistence';
-    html += '    </p>';
+    html += '    <div style="font-size:9px;font-weight:900;letter-spacing:1.3px;color:#7c3aed;margin-bottom:5px;text-transform:uppercase">SALARY PAYROLL / ADVANCE &amp; LOAN AUDIT</div>';
+    html += '    <div style="font-size:21px;font-weight:850;color:#111827;letter-spacing:-.45px">Advance &amp; Loan Management</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Automated salary deductions, ledger audit, and cloud persistence. Saare advance and deduction records real-time sync hote hain.</div>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
-    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="padding:8px 16px;background:#059669;color:#ffffff;border:1px solid #10b981;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">';
-    html += '      <span>➕</span> Record New Advance';
+    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:9px;background:#312e81;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">';
+    html += '      <span>💳</span> Record New Advance';
     html += '    </button>';
-    html += '    <button onclick="ATPLAdvanceManager.triggerDeductionScan()" style="padding:8px 14px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">';
-    html += '      <span>⚡</span> Re-Scan Salary Sheets';
+    html += '    <button onclick="ATPLAdvanceManager.triggerDeductionScan()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
+    html += '      <span>⚡</span> Re-Scan Sheets';
     html += '    </button>';
-    html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="padding:8px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">';
-    html += '      <span>📥</span> Export CSV';
+    html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
+    html += '      <span>⬇</span> Export CSV';
     html += '    </button>';
-    html += '    <button id="advSyncBtn" onclick="ATPLAdvanceManager.syncNow(true)" style="padding:8px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;font-size:12px;cursor:pointer" title="Sync with Cloud">';
-    html += '      <span>🔄 Sync</span>';
+    html += '    <button id="advSyncBtn" onclick="ATPLAdvanceManager.syncNow(true)" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer" title="Sync with Cloud">';
+    html += '      <span>🔄</span> Sync';
     html += '    </button>';
     html += '  </div>';
     html += '</div>';
 
-    // Corporate Summary Cards
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:20px">';
-    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Total Advances Disbursed</div>';
-    html += '    <div style="font-size:22px;font-weight:800;color:#f8fafc;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalDisbursed) + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.advances.length + ' lifetime advances</div>';
+    // 2. Modebar (Image 1 style)
+    html += '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px;padding:10px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px">';
+    html += '  <div style="display:flex;flex-direction:column;gap:2px">';
+    html += '    <b style="font-size:11px;color:#334155">View Mode</b>';
+    html += '    <span style="font-size:9px;color:#94a3b8">Active Advances, Monthly Deductions, aur Employee Balance Ledger ke beech switch karo</span>';
     html += '  </div>';
-    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Recovered From Salary</div>';
-    html += '    <div style="font-size:22px;font-weight:800;color:#34d399;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalRecovered) + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.deductions.length + ' monthly deductions processed</div>';
-    html += '  </div>';
-    html += '  <div style="background:#0f172a;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px 18px">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#f87171;text-transform:uppercase;letter-spacing:0.5px">Current Outstanding</div>';
-    html += '    <div style="font-size:22px;font-weight:800;color:#ef4444;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalOutstanding) + '</div>';
-    html += '    <div style="font-size:11px;color:#fca5a5;margin-top:4px">Pending payroll deduction</div>';
-    html += '  </div>';
-    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Active Borrowers</div>';
-    html += '    <div style="font-size:22px;font-weight:800;color:#38bdf8;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + activeCount + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">Across ' + Object.keys(empMap).length + ' employees with history</div>';
+    html += '  <div style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:9px">';
+    html += '    <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="border:0;background:' + (state.activeTab === 'advances' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'advances' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">₹ Advances Register (' + state.advances.length + ')</button>';
+    html += '    <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="border:0;background:' + (state.activeTab === 'deductions' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'deductions' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">📉 Salary Deductions (' + state.deductions.length + ')</button>';
+    html += '    <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="border:0;background:' + (state.activeTab === 'ledger' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'ledger' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">👥 Employee Ledger (' + Object.keys(empMap).length + ')</button>';
     html += '  </div>';
     html += '</div>';
 
-    // Standard Underline Tabs
-    html += '<div style="display:flex;gap:8px;border-bottom:1px solid #1e293b;margin-bottom:16px">';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'advances' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#10b981' : '#94a3b8') + '">Advances Register (' + state.advances.length + ')</button>';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'deductions' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#10b981' : '#94a3b8') + '">Salary Deduction Audit (' + state.deductions.length + ')</button>';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'ledger' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#10b981' : '#94a3b8') + '">Employee Balance Ledger (' + Object.keys(empMap).length + ')</button>';
+    // 3. Status Filebar with READY badge (Image 1 style)
+    html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;font-size:10px">';
+    html += '  <span style="font-size:18px">💳</span>';
+    html += '  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">';
+    html += '    <b style="color:#334155;font-size:11px">Advance &amp; Salary Deduction Engine Active</b>';
+    html += '    <small style="color:#94a3b8;font-size:9px">Continuous sync enabled · Automated salary sheet advance reconciliation &amp; balance management</small>';
+    html += '  </div>';
+    html += '  <span style="font-size:9px;font-weight:900;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:999px;padding:4px 9px;letter-spacing:0.5px">READY</span>';
     html += '</div>';
 
-    // Filter and Search Toolbar
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">';
-    html += '  <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:240px;max-width:380px">';
-    html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name, remarks..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="width:100%;padding:7px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;outline:none">';
+    // 4. Metric Statistic Cards (Image 1 style)
+    html += '<div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:12px">';
+    html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
+    html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Total Disbursed</span>';
+    html += '    <b style="font-size:20px;font-weight:850;color:#111827">' + formatINR(totalDisbursed) + '</b>';
+    html += '    <small style="font-size:9px;color:#94a3b8">' + state.advances.length + ' lifetime advances</small>';
     html += '  </div>';
+    html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
+    html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Recovered From Salary</span>';
+    html += '    <b style="font-size:20px;font-weight:850;color:#15803d">' + formatINR(totalRecovered) + '</b>';
+    html += '    <small style="font-size:9px;color:#94a3b8">' + state.deductions.length + ' monthly deductions</small>';
+    html += '  </div>';
+    html += '  <div style="background:#fff;border:1px solid #fecaca;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
+    html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#dc2626;font-weight:800">Outstanding Balance</span>';
+    html += '    <b style="font-size:20px;font-weight:850;color:#dc2626">' + formatINR(totalOutstanding) + '</b>';
+    html += '    <small style="font-size:9px;color:#ef4444">pending payroll recovery</small>';
+    html += '  </div>';
+    html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
+    html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Active Borrowers</span>';
+    html += '    <b style="font-size:20px;font-weight:850;color:#312e81">' + activeCount + '</b>';
+    html += '    <small style="font-size:9px;color:#94a3b8">across ' + Object.keys(empMap).length + ' employees with history</small>';
+    html += '  </div>';
+    html += '</div>';
+
+    // 5. Toolbar (Image 1 style)
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:10px 10px 0 0;padding:11px 14px">';
+    html += '  <div style="display:flex;flex-direction:column;gap:2px">';
+    html += '    <b style="font-size:11px;color:#334155">' + (state.activeTab === 'advances' ? 'Advances Register &amp; Active Dues' : state.activeTab === 'deductions' ? 'Salary Deduction Audit' : 'Employee Balance Ledger') + '</b>';
+    html += '    <small style="font-size:9px;color:#94a3b8">Verified records with automated employee master matching</small>';
+    html += '  </div>';
+    html += '  <div style="display:flex;gap:8px;align-items:center">';
+    html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="height:32px;padding:0 12px;background:#fff;border:1px solid #d1d5db;border-radius:7px;color:#111827;font-size:11px;outline:none;min-width:220px">';
     if (state.activeTab === 'advances') {
-      html += '  <div style="display:flex;gap:6px">';
-      ['ALL', 'ACTIVE', 'PARTIAL', 'REPAID'].forEach(function(st) {
-        var isSel = state.statusFilter === st;
-        html += '<button onclick="ATPLAdvanceManager.setStatusFilter(\'' + st + '\')" style="padding:5px 11px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid ' + (isSel ? '#10b981' : '#334155') + ';background:' + (isSel ? 'rgba(16,185,129,0.15)' : '#0f172a') + ';color:' + (isSel ? '#34d399' : '#94a3b8') + '">' + st + '</button>';
-      });
-      html += '  </div>';
+      html += '    <select onchange="ATPLAdvanceManager.setStatusFilter(this.value)" style="height:32px;border:1px solid #d1d5db;border-radius:7px;background:#fff;padding:0 10px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
+      html += '      <option value="ALL"' + (state.statusFilter==='ALL'?' selected':'') + '>All statuses</option>';
+      html += '      <option value="ACTIVE"' + (state.statusFilter==='ACTIVE'?' selected':'') + '>Active dues only</option>';
+      html += '      <option value="PARTIAL"' + (state.statusFilter==='PARTIAL'?' selected':'') + '>Partial repaid</option>';
+      html += '      <option value="REPAID"' + (state.statusFilter==='REPAID'?' selected':'') + '>Fully repaid only</option>';
+      html += '    </select>';
     }
+    html += '  </div>';
     html += '</div>';
 
+    // 6. Table Body Container
+    html += '<div style="background:#fff;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 10px 10px;overflow:hidden;box-shadow:0 1px 3px rgba(15,23,42,.02)">';
     if (state.activeTab === 'advances') {
       html += renderAdvancesTable();
     } else if (state.activeTab === 'deductions') {
@@ -1005,6 +1022,9 @@
     } else if (state.activeTab === 'ledger') {
       html += renderLedgerTable(empMap);
     }
+    html += '</div>';
+
+    html += '</div>'; // End adv-shell
 
     container.innerHTML = html;
   }
@@ -1021,65 +1041,57 @@
     });
 
     if (!filtered.length) {
-      return '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:48px;text-align:center;color:#64748b">' +
-             '  <div style="font-size:40px;margin-bottom:12px">💳</div>' +
-             '  <div style="font-size:16px;font-weight:700;color:#cbd5e1">No Advance Records Found</div>' +
-             '  <div style="font-size:12px;margin-top:6px;color:#94a3b8">Click "+ Record New Advance" above to add an employee advance.</div>' +
+      return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
+             '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">💳</div>' +
+             '  <div style="font-size:14px;font-weight:700;color:#334155">No Advance Records Found</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Click "+ Record New Advance" above to record an employee advance.</div>' +
              '</div>';
     }
 
-    var html = '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.2)">';
-    html += '<div style="overflow-x:auto">';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left">';
+    var html = '<div style="overflow-x:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">';
     html += '  <thead>';
-    html += '    <tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.08);color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">';
-    html += '      <th style="padding:14px 16px">Date</th>';
-    html += '      <th style="padding:14px 16px">Emp Code</th>';
-    html += '      <th style="padding:14px 16px">Employee Name</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Advance (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Recovered (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Outstanding (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Status</th>';
-    html += '      <th style="padding:14px 16px">Remarks</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Actions</th>';
+    html += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.8px;font-weight:800">';
+    html += '      <th style="padding:10px 14px">Date</th>';
+    html += '      <th style="padding:10px 14px">Emp Code</th>';
+    html += '      <th style="padding:10px 14px">Employee Name</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Advance (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Recovered (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Outstanding (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Status</th>';
+    html += '      <th style="padding:10px 14px">Remarks</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Actions</th>';
     html += '    </tr>';
     html += '  </thead>';
     html += '  <tbody>';
 
     filtered.forEach(function(adv) {
-      var statusColor = '#10b981'; // REPAID
-      var statusBg = 'rgba(16,185,129,0.15)';
-      var statusBorder = 'rgba(16,185,129,0.3)';
+      var pillClass = 'background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0';
       if (adv.status === 'ACTIVE') {
-        statusColor = '#f59e0b';
-        statusBg = 'rgba(245,158,11,0.15)';
-        statusBorder = 'rgba(245,158,11,0.3)';
+        pillClass = 'background:#fffbeb;color:#b45309;border:1px solid #fde68a';
       } else if (adv.status === 'PARTIAL') {
-        statusColor = '#38bdf8';
-        statusBg = 'rgba(56,189,248,0.15)';
-        statusBorder = 'rgba(56,189,248,0.3)';
+        pillClass = 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe';
       }
 
-      html += '    <tr style="border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s" onmouseover="this.style.background=\'rgba(255,255,255,0.02)\'" onmouseout="this.style.background=\'\'">';
-      html += '      <td style="padding:14px 16px;color:#cbd5e1;white-space:nowrap">' + esc(adv.advanceDate || '-') + '</td>';
-      html += '      <td style="padding:14px 16px;font-weight:700;color:#38bdf8;font-family:monospace">' + esc(adv.empCode) + '</td>';
-      html += '      <td style="padding:14px 16px;font-weight:600;color:#f8fafc">' + esc(adv.empName) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:700;color:#f8fafc">' + formatINR(adv.amount) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;color:#4ade80">' + formatINR(adv.recoveredAmount) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:800;color:' + (adv.balanceAmount > 0 ? '#ef4444' : '#94a3b8') + '">' + formatINR(adv.balanceAmount) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:center"><span style="padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;background:' + statusBg + ';color:' + statusColor + ';border:1px solid ' + statusBorder + '">' + esc(adv.status) + '</span></td>';
-      html += '      <td style="padding:14px 16px;color:#94a3b8;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(adv.remarks) + '">' + esc(adv.remarks || '-') + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:center;white-space:nowrap">';
-      html += '        <button onclick="ATPLAdvanceManager.viewStatement(\'' + adv.id + '\')" style="padding:5px 9px;border:none;background:rgba(255,255,255,0.06);color:#38bdf8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;margin-right:4px" title="View Statement">👁 Details</button>';
-      html += '        <button onclick="ATPLAdvanceManager.editAdvance(\'' + adv.id + '\')" style="padding:5px 9px;border:none;background:rgba(255,255,255,0.06);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;margin-right:4px" title="Edit Advance">✏️</button>';
-      html += '        <button onclick="ATPLAdvanceManager.confirmDelete(\'' + adv.id + '\')" style="padding:5px 9px;border:none;background:rgba(239,68,68,0.15);color:#ef4444;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600" title="Delete Advance">🗑</button>';
+      html += '    <tr style="border-bottom:1px solid #f3f4f6;transition:background 0.15s" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+      html += '      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;font-size:11px">' + esc(adv.advanceDate || '-') + '</td>';
+      html += '      <td style="padding:10px 14px;font-weight:800;color:#312e81;font-family:monospace;font-size:12px">' + esc(adv.empCode) + '</td>';
+      html += '      <td style="padding:10px 14px;font-weight:700;color:#111827">' + esc(adv.empName) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:750;color:#111827">' + formatINR(adv.amount) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:600;color:#15803d">' + formatINR(adv.recoveredAmount) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#64748b') + '">' + formatINR(adv.balanceAmount) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:0.3px;' + pillClass + '">' + esc(adv.status) + '</span></td>';
+      html += '      <td style="padding:10px 14px;color:#64748b;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(adv.remarks) + '">' + esc(adv.remarks || '—') + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">';
+      html += '        <button onclick="ATPLAdvanceManager.viewStatement(\'' + adv.id + '\')" style="height:26px;padding:0 8px;border:1px solid #d1d5db;background:#fff;color:#475569;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;margin-right:4px" title="View Statement">👁 Details</button>';
+      html += '        <button onclick="ATPLAdvanceManager.editAdvance(\'' + adv.id + '\')" style="height:26px;padding:0 8px;border:1px solid #d1d5db;background:#fff;color:#d97706;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;margin-right:4px" title="Edit Advance">✏️</button>';
+      html += '        <button onclick="ATPLAdvanceManager.confirmDelete(\'' + adv.id + '\')" style="height:26px;padding:0 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700" title="Delete Advance">🗑</button>';
       html += '      </td>';
       html += '    </tr>';
     });
 
     html += '  </tbody>';
     html += '</table>';
-    html += '</div>';
     html += '</div>';
     return html;
   }
@@ -1096,52 +1108,50 @@
     }).reverse();
 
     if (!filtered.length) {
-      return '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:48px;text-align:center;color:#64748b">' +
-             '  <div style="font-size:40px;margin-bottom:12px">📉</div>' +
-             '  <div style="font-size:16px;font-weight:700;color:#cbd5e1">No Salary Deductions Yet</div>' +
-             '  <div style="font-size:12px;margin-top:6px;color:#94a3b8">When salary sheets are uploaded via "All Files", matched employee advance deductions will automatically populate here.</div>' +
+      return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
+             '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">📉</div>' +
+             '  <div style="font-size:14px;font-weight:700;color:#334155">No Salary Deductions Yet</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">When salary sheets are processed, matched employee advance deductions will automatically appear here.</div>' +
              '</div>';
     }
 
-    var html = '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.2)">';
-    html += '<div style="overflow-x:auto">';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left">';
+    var html = '<div style="overflow-x:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">';
     html += '  <thead>';
-    html += '    <tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.08);color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">';
-    html += '      <th style="padding:14px 16px">Deduction Date</th>';
-    html += '      <th style="padding:14px 16px">Salary File / Period</th>';
-    html += '      <th style="padding:14px 16px">Emp Code</th>';
-    html += '      <th style="padding:14px 16px">Employee Name</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Previous Balance</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Monthly Deduction</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Remaining Balance</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Action</th>';
+    html += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.8px;font-weight:800">';
+    html += '      <th style="padding:10px 14px">Deduction Date</th>';
+    html += '      <th style="padding:10px 14px">Salary File / Period</th>';
+    html += '      <th style="padding:10px 14px">Emp Code</th>';
+    html += '      <th style="padding:10px 14px">Employee Name</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Previous Balance</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Monthly Deduction</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Remaining Balance</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Action</th>';
     html += '    </tr>';
     html += '  </thead>';
     html += '  <tbody>';
 
     filtered.forEach(function(d) {
       var dDate = d.date ? d.date.slice(0, 10) : '-';
-      html += '    <tr style="border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s" onmouseover="this.style.background=\'rgba(255,255,255,0.02)\'" onmouseout="this.style.background=\'\'">';
-      html += '      <td style="padding:14px 16px;color:#cbd5e1;white-space:nowrap">' + esc(dDate) + '</td>';
-      html += '      <td style="padding:14px 16px">';
-      html += '        <div style="font-weight:700;color:#f8fafc">' + esc(d.salaryMonth || 'Monthly Salary') + '</div>';
-      html += '        <div style="font-size:11px;color:#64748b">' + esc(d.fileName) + '</div>';
+      html += '    <tr style="border-bottom:1px solid #f3f4f6;transition:background 0.15s" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+      html += '      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;font-size:11px">' + esc(dDate) + '</td>';
+      html += '      <td style="padding:10px 14px">';
+      html += '        <div style="font-weight:700;color:#111827">' + esc(d.salaryMonth || 'Monthly Salary') + '</div>';
+      html += '        <div style="font-size:10px;color:#94a3b8">' + esc(d.fileName) + '</div>';
       html += '      </td>';
-      html += '      <td style="padding:14px 16px;font-weight:700;color:#38bdf8;font-family:monospace">' + esc(d.empCode) + '</td>';
-      html += '      <td style="padding:14px 16px;font-weight:600;color:#f8fafc">' + esc(d.empName) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;color:#94a3b8">' + formatINR(d.previousBalance) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:700;color:#4ade80">-' + formatINR(d.deductedAmount) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:800;color:' + (d.remainingBalance > 0 ? '#ef4444' : '#10b981') + '">' + formatINR(d.remainingBalance) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:center">';
-      html += '        <button onclick="ATPLAdvanceManager.viewStatement(\'' + d.advanceId + '\')" style="padding:5px 9px;border:none;background:rgba(255,255,255,0.06);color:#38bdf8;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">👁 View</button>';
+      html += '      <td style="padding:10px 14px;font-weight:800;color:#312e81;font-family:monospace;font-size:12px">' + esc(d.empCode) + '</td>';
+      html += '      <td style="padding:10px 14px;font-weight:700;color:#111827">' + esc(d.empName) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;color:#64748b">' + formatINR(d.previousBalance) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:700;color:#15803d">-' + formatINR(d.deductedAmount) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (d.remainingBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(d.remainingBalance) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:center">';
+      html += '        <button onclick="ATPLAdvanceManager.viewStatement(\'' + d.advanceId + '\')" style="height:26px;padding:0 9px;border:1px solid #d1d5db;background:#fff;color:#475569;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700">👁 View</button>';
       html += '      </td>';
       html += '    </tr>';
     });
 
     html += '  </tbody>';
     html += '</table>';
-    html += '</div>';
     html += '</div>';
     return html;
   }
@@ -1156,54 +1166,53 @@
     });
 
     if (!list.length) {
-      return '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:48px;text-align:center;color:#64748b">' +
-             '  <div style="font-size:40px;margin-bottom:12px">👥</div>' +
-             '  <div style="font-size:16px;font-weight:700;color:#cbd5e1">No Employee Balance Records</div>' +
+      return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
+             '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">👥</div>' +
+             '  <div style="font-size:14px;font-weight:700;color:#334155">No Employee Balance Records</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Active employee advance balances will be summarized here.</div>' +
              '</div>';
     }
 
-    var html = '<div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.2)">';
-    html += '<div style="overflow-x:auto">';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left">';
+    var html = '<div style="overflow-x:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">';
     html += '  <thead>';
-    html += '    <tr style="background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.08);color:#94a3b8;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">';
-    html += '      <th style="padding:14px 16px">Emp Code</th>';
-    html += '      <th style="padding:14px 16px">Employee Name</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Advance Count</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Total Disbursed (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Total Recovered (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:right">Net Outstanding (₹)</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Balance Status</th>';
-    html += '      <th style="padding:14px 16px;text-align:center">Action</th>';
+    html += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.8px;font-weight:800">';
+    html += '      <th style="padding:10px 14px">Emp Code</th>';
+    html += '      <th style="padding:10px 14px">Employee Name</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Advance Count</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Total Disbursed (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Total Recovered (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Net Outstanding (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Balance Status</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Action</th>';
     html += '    </tr>';
     html += '  </thead>';
     html += '  <tbody>';
 
     list.forEach(function(item) {
       var isPending = item.totalBal > 0;
-      html += '    <tr style="border-bottom:1px solid rgba(255,255,255,0.04);transition:background 0.15s" onmouseover="this.style.background=\'rgba(255,255,255,0.02)\'" onmouseout="this.style.background=\'\'">';
-      html += '      <td style="padding:14px 16px;font-weight:700;color:#38bdf8;font-family:monospace">' + esc(item.code) + '</td>';
-      html += '      <td style="padding:14px 16px;font-weight:600;color:#f8fafc">' + esc(item.name) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:center;color:#94a3b8">' + item.count + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:700;color:#f8fafc">' + formatINR(item.totalAdv) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;color:#4ade80">' + formatINR(item.totalRec) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:right;font-weight:800;color:' + (isPending ? '#ef4444' : '#10b981') + '">' + formatINR(item.totalBal) + '</td>';
-      html += '      <td style="padding:14px 16px;text-align:center">';
+      html += '    <tr style="border-bottom:1px solid #f3f4f6;transition:background 0.15s" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+      html += '      <td style="padding:10px 14px;font-weight:800;color:#312e81;font-family:monospace;font-size:12px">' + esc(item.code) + '</td>';
+      html += '      <td style="padding:10px 14px;font-weight:700;color:#111827">' + esc(item.name) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:center;color:#64748b;font-weight:600">' + item.count + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:750;color:#111827">' + formatINR(item.totalAdv) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:600;color:#15803d">' + formatINR(item.totalRec) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (isPending ? '#dc2626' : '#64748b') + '">' + formatINR(item.totalBal) + '</td>';
+      html += '      <td style="padding:10px 14px;text-align:center">';
       if (isPending) {
-        html += '        <span style="padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;background:rgba(239,68,68,0.15);color:#ef4444;border:1px solid rgba(239,68,68,0.3)">OUTSTANDING</span>';
+        html += '        <span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:850;background:#fef2f2;color:#dc2626;border:1px solid #fecaca">OUTSTANDING</span>';
       } else {
-        html += '        <span style="padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3)">CLEAR</span>';
+        html += '        <span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:850;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0">CLEAR</span>';
       }
       html += '      </td>';
-      html += '      <td style="padding:14px 16px;text-align:center">';
-      html += '        <button onclick="ATPLAdvanceManager.openNewModal(\'' + esc(item.code) + '\')" style="padding:5px 10px;border:none;background:rgba(16,185,129,0.2);color:#34d399;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700">➕ Add Advance</button>';
+      html += '      <td style="padding:10px 14px;text-align:center">';
+      html += '        <button onclick="ATPLAdvanceManager.openNewModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 10px;border:none;background:#312e81;color:#fff;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;box-shadow:0 1px 2px rgba(49,46,129,0.2)">➕ Add Advance</button>';
       html += '      </td>';
       html += '    </tr>';
     });
 
     html += '  </tbody>';
     html += '</table>';
-    html += '</div>';
     html += '</div>';
     return html;
   }
@@ -1224,79 +1233,80 @@
     var today = new Date().toISOString().slice(0, 10);
 
     var content = '';
-    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
-    content += '  <div style="background:#0F172A;border:1px solid rgba(255,255,255,0.12);border-radius:20px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.5);overflow:hidden;animation:fadeIn 0.2s ease">';
+    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.45);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:540px;width:100%;box-shadow:0 20px 40px rgba(15,23,42,0.18);overflow:hidden;animation:fadeIn 0.2s ease">';
     
     // Modal Header
-    content += '    <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#1e1b4b,#0f172a)">';
+    content += '    <div style="padding:18px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
     content += '      <div>';
-    content += '        <h3 style="margin:0;font-size:18px;font-weight:800;color:#f8fafc">Record Employee Advance</h3>';
-    content += '        <div style="font-size:12px;color:#94a3b8;margin-top:2px">Employee code auto-fetches name from Employee Master</div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#7c3aed;text-transform:uppercase">ADVANCE ENTRY AUDIT</div>';
+    content += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">Record Employee Advance</h3>';
+    content += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Employee code auto-fetches name from Employee Master</div>';
     content += '      </div>';
-    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:none;background:rgba(255,255,255,0.06);color:#94a3b8;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">✕</button>';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #e5e7eb;background:#f9fafb;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
     content += '    </div>';
 
     // Modal Form Body
-    content += '    <div style="padding:24px;display:flex;flex-direction:column;gap:16px">';
+    content += '    <div style="padding:22px;display:flex;flex-direction:column;gap:14px;background:#ffffff">';
     
     // Employee Code Input + Autocomplete Suggestion Area
     content += '      <div>';
-    content += '        <label style="display:block;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Employee Code *</label>';
-    content += '        <input type="text" id="advFormCode" placeholder="Enter Employee Code (e.g. 25924)" value="' + esc(prefillCode || '') + '" oninput="ATPLAdvanceManager.onCodeInput(this.value)" autocomplete="off" style="width:100%;padding:11px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.14);border-radius:10px;color:#f8fafc;font-size:14px;font-weight:700;font-family:monospace;outline:none">';
-    content += '        <div id="advCodeSuggestions" style="display:none;position:relative;background:#1e293b;border:1px solid rgba(255,255,255,0.15);border-radius:10px;margin-top:4px;max-height:160px;overflow-y:auto;z-index:100;box-shadow:0 10px 25px rgba(0,0,0,0.4)"></div>';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Employee Code *</label>';
+    content += '        <input type="text" id="advFormCode" placeholder="Enter Employee Code (e.g. 25924)" value="' + esc(prefillCode || '') + '" oninput="ATPLAdvanceManager.onCodeInput(this.value)" autocomplete="off" style="width:100%;padding:10px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:13px;font-weight:700;font-family:monospace;outline:none">';
+    content += '        <div id="advCodeSuggestions" style="display:none;position:relative;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;margin-top:4px;max-height:160px;overflow-y:auto;z-index:100;box-shadow:0 10px 25px rgba(0,0,0,0.1)"></div>';
     content += '      </div>';
 
     // Auto-fetched details box
-    content += '      <div id="advEmpDetailsBox" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center">';
+    content += '      <div id="advEmpDetailsBox" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;display:flex;justify-content:space-between;align-items:center">';
     content += '        <div>';
-    content += '          <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Auto-Fetched Employee</div>';
-    content += '          <div id="advFormEmpName" style="font-size:14px;font-weight:700;color:' + (emp ? '#38bdf8' : '#94a3b8') + '">' + esc(emp ? emp.name : 'Waiting for Employee Code...') + '</div>';
-    content += '          <div id="advFormEmpDept" style="font-size:11px;color:#94a3b8">' + esc(emp ? (emp.dept + (emp.desig ? ' • ' + emp.desig : '')) : '-') + '</div>';
+    content += '          <div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Auto-Fetched Employee</div>';
+    content += '          <div id="advFormEmpName" style="font-size:13px;font-weight:800;color:' + (emp ? '#312e81' : '#64748b') + '">' + esc(emp ? emp.name : 'Waiting for Employee Code...') + '</div>';
+    content += '          <div id="advFormEmpDept" style="font-size:10px;color:#94a3b8">' + esc(emp ? (emp.dept + (emp.desig ? ' • ' + emp.desig : '')) : '-') + '</div>';
     content += '        </div>';
     content += '        <div style="text-align:right">';
-    content += '          <div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Existing Balance</div>';
-    content += '          <div id="advFormExistingBal" style="font-size:15px;font-weight:800;color:' + (outBal > 0 ? '#ef4444' : '#10b981') + '">' + formatINR(outBal) + '</div>';
+    content += '          <div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Existing Balance</div>';
+    content += '          <div id="advFormExistingBal" style="font-size:14px;font-weight:850;color:' + (outBal > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(outBal) + '</div>';
     content += '        </div>';
     content += '      </div>';
 
     // Date & Amount in 2 columns
-    content += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+    content += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     content += '        <div>';
-    content += '          <label style="display:block;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Advance Date *</label>';
-    content += '          <input type="date" id="advFormDate" value="' + today + '" style="width:100%;padding:11px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.14);border-radius:10px;color:#f8fafc;font-size:13px;outline:none">';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Advance Date *</label>';
+    content += '          <input type="date" id="advFormDate" value="' + today + '" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
     content += '        </div>';
     content += '        <div>';
-    content += '          <label style="display:block;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Advance Amount (₹) *</label>';
-    content += '          <input type="number" id="advFormAmount" min="1" placeholder="e.g. 10000" style="width:100%;padding:11px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.14);border-radius:10px;color:#f8fafc;font-size:14px;font-weight:700;outline:none">';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Advance Amount (₹) *</label>';
+    content += '          <input type="number" id="advFormAmount" min="1" placeholder="e.g. 10000" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:13px;font-weight:750;outline:none">';
     content += '        </div>';
     content += '      </div>';
 
     // Quick Amount Buttons
-    content += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
+    content += '      <div style="display:flex;gap:6px;flex-wrap:wrap">';
     [2000, 5000, 10000, 20000, 50000].forEach(function(amt) {
-      content += '      <button type="button" onclick="document.getElementById(\'advFormAmount\').value=' + amt + '" style="padding:4px 10px;background:#1e293b;border:1px solid rgba(255,255,255,0.1);color:#cbd5e1;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">+ ' + formatINR(amt) + '</button>';
+      content += '      <button type="button" onclick="document.getElementById(\'advFormAmount\').value=' + amt + '" style="padding:4px 9px;background:#f3f4f6;border:1px solid #e5e7eb;color:#374151;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">+ ' + formatINR(amt) + '</button>';
     });
     content += '      </div>';
 
     // Monthly Cap (Optional installment)
     content += '      <div>';
-    content += '        <label style="display:block;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Monthly Max Deduction (Optional)</label>';
-    content += '        <div style="font-size:11px;color:#64748b;margin-bottom:6px">Leave 0 to deduct full advance in the upcoming salary. Enter amount for installment recovery.</div>';
-    content += '        <input type="number" id="advFormCap" min="0" placeholder="0 = Deduct Full Outstanding" style="width:100%;padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.14);border-radius:10px;color:#f8fafc;font-size:13px;outline:none">';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px">Monthly Max Deduction (Optional)</label>';
+    content += '        <div style="font-size:10px;color:#94a3b8;margin-bottom:5px">Leave 0 to deduct full advance in the upcoming salary. Enter amount for installment recovery.</div>';
+    content += '        <input type="number" id="advFormCap" min="0" placeholder="0 = Deduct Full Outstanding" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
     content += '      </div>';
 
     // Remarks
     content += '      <div>';
-    content += '        <label style="display:block;font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Remarks / Reason</label>';
-    content += '        <input type="text" id="advFormRemarks" placeholder="e.g. Festival Advance, Medical Need, Urgent Loan" style="width:100%;padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.14);border-radius:10px;color:#f8fafc;font-size:13px;outline:none">';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Remarks / Reason</label>';
+    content += '        <input type="text" id="advFormRemarks" placeholder="e.g. Festival Advance, Medical Need, Urgent Loan" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
     content += '      </div>';
 
     content += '    </div>';
 
     // Modal Footer
-    content += '    <div style="padding:16px 24px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end;gap:10px;background:#0b0f19">';
-    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:10px 18px;background:none;border:1px solid rgba(255,255,255,0.12);color:#94a3b8;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>';
-    content += '      <button onclick="ATPLAdvanceManager.submitForm()" style="padding:10px 22px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(16,185,129,0.3)">Save Advance &amp; Sync</button>';
+    content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc">';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:9px 16px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    content += '      <button onclick="ATPLAdvanceManager.submitForm()" style="padding:9px 20px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">Save Advance &amp; Sync</button>';
     content += '    </div>';
 
     content += '  </div>';
@@ -1452,50 +1462,51 @@
     });
 
     var content = '';
-    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
-    content += '  <div style="background:#0F172A;border:1px solid rgba(255,255,255,0.12);border-radius:20px;max-width:650px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,0.6);overflow:hidden">';
+    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.45);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:650px;width:100%;box-shadow:0 20px 40px rgba(15,23,42,0.18);overflow:hidden;animation:fadeIn 0.2s ease">';
     
     // Header
-    content += '    <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#1e1b4b,#0f172a)">';
+    content += '    <div style="padding:18px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
     content += '      <div>';
-    content += '        <h3 style="margin:0;font-size:18px;font-weight:800;color:#f8fafc">Advance Statement &amp; Deductions</h3>';
-    content += '        <div style="font-size:12px;color:#94a3b8;margin-top:2px">Employee: <strong style="color:#38bdf8">' + esc(adv.empName) + '</strong> (' + esc(adv.empCode) + ')</div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#7c3aed;text-transform:uppercase">TRANSACTION AUDIT STATEMENT</div>';
+    content += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">Advance Statement &amp; Deductions</h3>';
+    content += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Employee: <strong style="color:#312e81">' + esc(adv.empName) + '</strong> (' + esc(adv.empCode) + ')</div>';
     content += '      </div>';
-    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:none;background:rgba(255,255,255,0.06);color:#94a3b8;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">✕</button>';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #e5e7eb;background:#f9fafb;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
     content += '    </div>';
 
     // Summary Card
-    content += '    <div style="padding:20px 24px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
-    content += '      <div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Original Advance</div><div style="font-size:18px;font-weight:800;color:#f8fafc">' + formatINR(adv.amount) + '</div><div style="font-size:11px;color:#94a3b8">' + esc(adv.advanceDate) + '</div></div>';
-    content += '      <div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Total Deducted</div><div style="font-size:18px;font-weight:800;color:#4ade80">' + formatINR(adv.recoveredAmount) + '</div><div style="font-size:11px;color:#94a3b8">' + decList.length + ' monthly deduction(s)</div></div>';
-    content += '      <div><div style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Balance Remaining</div><div style="font-size:18px;font-weight:800;color:' + (adv.balanceAmount > 0 ? '#ef4444' : '#10b981') + '">' + formatINR(adv.balanceAmount) + '</div><div style="font-size:11px;font-weight:700;color:' + (adv.status === 'REPAID' ? '#10b981' : '#f59e0b') + '">' + esc(adv.status) + '</div></div>';
+    content += '    <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">';
+    content += '      <div><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Original Advance</div><div style="font-size:17px;font-weight:850;color:#111827">' + formatINR(adv.amount) + '</div><div style="font-size:10px;color:#94a3b8">' + esc(adv.advanceDate) + '</div></div>';
+    content += '      <div><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Total Deducted</div><div style="font-size:17px;font-weight:850;color:#15803d">' + formatINR(adv.recoveredAmount) + '</div><div style="font-size:10px;color:#94a3b8">' + decList.length + ' monthly deduction(s)</div></div>';
+    content += '      <div><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Balance Remaining</div><div style="font-size:17px;font-weight:850;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</div><div style="font-size:10px;font-weight:800;color:' + (adv.status === 'REPAID' ? '#15803d' : '#b45309') + '">' + esc(adv.status) + '</div></div>';
     content += '    </div>';
 
     // Deductions Table
-    content += '    <div style="padding:20px 24px;max-height:300px;overflow-y:auto">';
-    content += '      <h4 style="margin:0 0 12px;font-size:13px;font-weight:700;color:#cbd5e1;text-transform:uppercase;letter-spacing:0.5px">Salary Deductions History</h4>';
+    content += '    <div style="padding:18px 22px;max-height:300px;overflow-y:auto;background:#ffffff">';
+    content += '      <h4 style="margin:0 0 10px;font-size:11px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:0.6px">Salary Deductions History</h4>';
     
     if (!decList.length) {
-      content += '      <div style="text-align:center;padding:24px;color:#64748b;font-size:12px">No salary deductions have occurred yet for this advance.</div>';
+      content += '      <div style="text-align:center;padding:24px;color:#94a3b8;font-size:11px">No salary deductions have occurred yet for this advance.</div>';
     } else {
-      content += '      <table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left">';
+      content += '      <table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:left">';
       content += '        <thead>';
-      content += '          <tr style="border-bottom:1px solid rgba(255,255,255,0.08);color:#94a3b8">';
-      content += '            <th style="padding:8px">Period / Month</th>';
-      content += '            <th style="padding:8px">File Name</th>';
-      content += '            <th style="padding:8px;text-align:right">Previous Bal</th>';
-      content += '            <th style="padding:8px;text-align:right">Deducted</th>';
-      content += '            <th style="padding:8px;text-align:right">New Bal</th>';
+      content += '          <tr style="border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800">';
+      content += '            <th style="padding:7px 10px">Period / Month</th>';
+      content += '            <th style="padding:7px 10px">File Name</th>';
+      content += '            <th style="padding:7px 10px;text-align:right">Previous Bal</th>';
+      content += '            <th style="padding:7px 10px;text-align:right">Deducted</th>';
+      content += '            <th style="padding:7px 10px;text-align:right">New Bal</th>';
       content += '          </tr>';
       content += '        </thead>';
       content += '        <tbody>';
       decList.forEach(function(d) {
-        content += '        <tr style="border-bottom:1px solid rgba(255,255,255,0.04)">';
-        content += '          <td style="padding:8px;font-weight:700;color:#f8fafc">' + esc(d.salaryMonth) + '</td>';
-        content += '          <td style="padding:8px;color:#94a3b8;font-size:11px">' + esc(d.fileName) + '</td>';
-        content += '          <td style="padding:8px;text-align:right;color:#cbd5e1">' + formatINR(d.previousBalance) + '</td>';
-        content += '          <td style="padding:8px;text-align:right;font-weight:700;color:#4ade80">-' + formatINR(d.deductedAmount) + '</td>';
-        content += '          <td style="padding:8px;text-align:right;font-weight:700;color:' + (d.remainingBalance > 0 ? '#ef4444' : '#10b981') + '">' + formatINR(d.remainingBalance) + '</td>';
+        content += '        <tr style="border-bottom:1px solid #f3f4f6">';
+        content += '          <td style="padding:8px 10px;font-weight:700;color:#111827">' + esc(d.salaryMonth) + '</td>';
+        content += '          <td style="padding:8px 10px;color:#64748b;font-size:10px">' + esc(d.fileName) + '</td>';
+        content += '          <td style="padding:8px 10px;text-align:right;color:#64748b">' + formatINR(d.previousBalance) + '</td>';
+        content += '          <td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">-' + formatINR(d.deductedAmount) + '</td>';
+        content += '          <td style="padding:8px 10px;text-align:right;font-weight:750;color:' + (d.remainingBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(d.remainingBalance) + '</td>';
         content += '        </tr>';
       });
       content += '        </tbody>';
@@ -1504,8 +1515,8 @@
     content += '    </div>';
 
     // Footer
-    content += '    <div style="padding:14px 24px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end;background:#0b0f19">';
-    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 18px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">Close</button>';
+    content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;background:#f8fafc">';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 18px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">Close</button>';
     content += '    </div>';
 
     content += '  </div>';

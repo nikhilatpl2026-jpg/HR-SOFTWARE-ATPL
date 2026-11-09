@@ -49,9 +49,7 @@ function syncLegacyArray(){
 function persistConfirmed(opts){
   var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
   syncLegacyArray();
-  // Only the verified backend may distribute Employee Master snapshots.
-  // Never broadcast an unconfirmed local snapshot into Firebase or another server.
-  if((opts&&opts.skipMirrors)||cloud())return;
+  if(opts&&opts.skipMirrors)return;
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
       var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
