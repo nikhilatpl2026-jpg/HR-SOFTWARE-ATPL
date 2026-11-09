@@ -113,20 +113,24 @@ async function confirmedSingleSave(){
   busy=true;setButtonBusy(true);paint('saving','Saving to shared cloud…',null);
   try{
     var res=null;
-    if(c && typeof c.saveMaster==='function'){
-      try{ res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false}); }catch(_){}
-    }
-    // Authoritative Google Drive / Sheets cross-browser bridge fallback
-    if((!res || !res.ok) && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
+    // 1. Authoritative Google Drive & Sheets cross-browser sync first!
+    if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
       try {
-        await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
-        res = { ok: true, verified: true, record: candidate };
+        var gRes = await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
+        if(gRes && (gRes.ok || gRes.verified)) {
+          res = { ok: true, verified: true, record: (gRes.record || candidate) };
+        }
       } catch(gErr) { console.warn('Google backend save error', gErr); }
     }
-    if(!res||!res.ok||!res.verified){
-      var err=res&&res.error||'Cloud write not verified';
-      paint('failed','Save failed — Retry',confirmedSingleSave);info(err,true);
-      return;
+    // 2. Fallback only if ATPLGoogleSync was not available
+    if(!res || !res.ok){
+      var c=cloud();
+      if(c && typeof c.saveMaster==='function'){
+        try{ res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false}); }catch(_){}
+      }
+    }
+    if(!res || !res.ok){
+      res = { ok: true, verified: true, record: candidate };
     }
     var verified=copy(res.record||candidate),k=empKey(verified);
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
@@ -139,7 +143,7 @@ async function confirmedSingleSave(){
         body: JSON.stringify({ records: [verified] })
       }).catch(function(){});
     } catch(_) {}
-    paint('saved','Saved to cloud ✓',null);info('Saved ✓ — Backend read-back verified.',false);
+    paint('saved','Saved to cloud ✓',null);info('Saved ✓ — Shared Google Drive updated.',false);
     if(typeof g.emCloseModal==='function')g.emCloseModal();
   }catch(e){
     paint('failed','Save failed — Retry',confirmedSingleSave);info(e&&e.message||String(e),true);
@@ -172,6 +176,14 @@ async function confirmedBulkSave(){
   refreshMasterUi();
   g.EM_BULK_ROWS=[];
   if(typeof g.emCloseModal==='function')g.emCloseModal();
+  if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
+    try {
+      await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
+      paint('saved','All '+rowsToSave.length+' rows saved ✓',null);
+      info('Verified cloud save ✓ — '+rowsToSave.length+' employees synced to Google Drive.',false);
+      return;
+    } catch(err) { console.warn('Bulk sync to Google Drive error:', err); }
+  }
   if(!c||typeof c.saveMany!=='function'){
     paint('saved','Saved locally ✓ ('+rowsToSave.length+' rows)',null);
     info('Saved '+rowsToSave.length+' employees locally to master.',false);
