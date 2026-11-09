@@ -287,14 +287,21 @@ function getEmployeeMaster_(p) {
 }
 
 function upsertEmployeeMaster_(p) {
-  var id = String(p.emp_id || "").trim();
-  var rawJson = String(p.record_json || "");
   var rec = {};
-  if (rawJson) {
-    try { rec = JSON.parse(rawJson); } catch (_) {}
+  if (p.record && typeof p.record === "object") {
+    rec = p.record;
+  } else if (Array.isArray(p.records) && p.records.length > 0 && typeof p.records[0] === "object") {
+    rec = p.records[0];
+  } else if (p.record_json && typeof p.record_json === "string") {
+    try { rec = JSON.parse(p.record_json); } catch (_) {}
+  } else if (typeof p.record === "string") {
+    try { rec = JSON.parse(p.record); } catch (_) {}
   }
-  if (!id && rec.emp_id) id = String(rec.emp_id).trim();
+
+  var id = String(p.emp_id || p.empCode || p.code || (rec && (rec.emp_id || rec.empCode || rec.code)) || "").trim();
   if (!id) return { ok: false, error: "emp_id required" };
+  rec.emp_id = id;
+
   // PF/ESIC, HR and durable chunks are not employee rows.
   if (id.indexOf("__ATPL_SYS__") === 0 || rec._atpl_system === true) {
     return upsertSystemRecord_(id, rec);

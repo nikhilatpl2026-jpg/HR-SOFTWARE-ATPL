@@ -359,7 +359,12 @@
       applySystemVaultRecords(sysRows);
     }
 
-    if (Date.now() - lastEmpLocalWriteTime < 20000 || window.__ATPL_IS_SAVING_EMP) {
+    var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    var localCount = localList.length;
+    var remoteCount = empRows.length;
+    var isLocalTruncated = (localCount < 10 && remoteCount >= 10);
+
+    if (!isLocalTruncated && (Date.now() - lastEmpLocalWriteTime < 3500 || window.__ATPL_IS_SAVING_EMP)) {
       return;
     }
     if (!empRows.length) return;
@@ -368,7 +373,7 @@
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
 
     var remoteHash = fastHashStr(JSON.stringify(empRows));
-    if ((_lastAppliedEmpHash === remoteHash || _lastAppliedEmpFp === remoteHash) && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
+    if (!isLocalTruncated && (_lastAppliedEmpHash === remoteHash || _lastAppliedEmpFp === remoteHash) && localCount > 0) {
       return;
     }
     _lastAppliedEmpHash = remoteHash;
@@ -763,18 +768,7 @@
         return await pushEmployeeAndVaultToCloud();
       },
       saveMaster: async function(record) {
-        lastEmpLocalWriteTime = Date.now();
-        if (record && typeof record === 'object' && window.EM && Array.isArray(window.EM.data)) {
-          var id = extractEmpId(record);
-          if (id) {
-            record.emp_id = id;
-            var idx = window.EM.data.findIndex(function(x) { return extractEmpId(x).toLowerCase() === id.toLowerCase(); });
-            if (idx >= 0) window.EM.data[idx] = Object.assign({}, window.EM.data[idx], record);
-            else window.EM.data.push(record);
-          }
-        }
-        await pushEmployeeAndVaultToCloud();
-        return { ok: true, verified: true };
+        return await UnifiedSyncEngine.upsertEmployeeMaster(record);
       },
       saveMany: async function(records) {
         lastEmpLocalWriteTime = Date.now();
@@ -1015,7 +1009,10 @@
       return true;
     },
     saveEmployeeMaster: async function(records) {
-      if (!Array.isArray(records)) return { ok: false };
+      if (!Array.isArray(records)) records = [records];
+      if (records.length === 1 && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 1) {
+        return await this.upsertEmployeeMaster(records);
+      }
       lastEmpLocalWriteTime = Date.now();
       window.__ATPL_INTERNAL_STORAGE_WRITE = true;
       try {
@@ -1024,12 +1021,73 @@
         window.__ATPL_INTERNAL_STORAGE_WRITE = false;
       }
       if (window.EM) window.EM.data = records.slice();
+      if (Array.isArray(window.EMP_MASTER_DATA)) {
+        window.EMP_MASTER_DATA.length = 0;
+        Array.prototype.push.apply(window.EMP_MASTER_DATA, records);
+      }
       refreshEmployeeUI();
       return await pushEmployeeAndVaultToCloud(records);
     },
-    'upsertEmployeeMaster': async function(records) {
-      if (getGasUrl()) { try { await callGoogleBackend('upsertEmployeeMaster', { records: records }); } catch(_) {} }
-      return await this.saveEmployeeMaster(records);
+    'upsertEmployeeMaster': async function(singleOrArray) {
+      var list = Array.isArray(singleOrArray) ? singleOrArray : [singleOrArray];
+      if (!list.length) return { ok: true, count: 0 };
+      lastEmpLocalWriteTime = Date.now();
+
+      // Merge into local in-memory dataset without wiping out existing records!
+      var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+      list.forEach(function(rec) {
+        if (!rec || typeof rec !== 'object') return;
+        var id = extractEmpId(rec);
+        if (!id) return;
+        rec.emp_id = id;
+        var idx = currentList.findIndex(function(x) {
+          return extractEmpId(x).toLowerCase() === id.toLowerCase();
+        });
+        if (idx >= 0) {
+          currentList[idx] = Object.assign({}, currentList[idx], rec);
+        } else {
+          currentList.push(rec);
+        }
+      });
+
+      if (window.EM) window.EM.data = currentList;
+      if (Array.isArray(window.EMP_MASTER_DATA)) {
+        window.EMP_MASTER_DATA.length = 0;
+        Array.prototype.push.apply(window.EMP_MASTER_DATA, currentList);
+      }
+
+      window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+      try {
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(currentList));
+      } catch (_) {} finally {
+        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+      }
+
+      refreshEmployeeUI();
+
+      // Push to Google Sheets via Apps Script upsert with proper fields
+      var lastEmpId = '';
+      if (getGasUrl()) {
+        for (var i = 0; i < list.length; i++) {
+          var item = list[i];
+          if (!item) continue;
+          var empId = extractEmpId(item);
+          lastEmpId = empId;
+          try {
+            await callGoogleBackend('upsertEmployeeMaster', {
+              emp_id: empId,
+              record: item,
+              record_json: JSON.stringify(item),
+              records: [item]
+            });
+          } catch (e) {
+            console.warn('[ATPL Sync] upsert backend error:', e);
+          }
+        }
+      }
+
+      dispatchSyncTrigger('employee_updated', { emp_id: lastEmpId, count: currentList.length });
+      return { ok: true, verified: true, record: list[0], count: currentList.length };
     },
     upsertEmployeeMaster: async function(records) {
       return await this['upsertEmployeeMaster'](records);
