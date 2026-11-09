@@ -1250,10 +1250,10 @@
     content += '    <div style="padding:22px;display:flex;flex-direction:column;gap:14px;background:#ffffff">';
     
     // Employee Code Input + Autocomplete Suggestion Area
-    content += '      <div>';
+    content += '      <div style="position:relative">';
     content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Employee Code *</label>';
     content += '        <input type="text" id="advFormCode" placeholder="Enter Employee Code (e.g. 25924)" value="' + esc(prefillCode || '') + '" oninput="ATPLAdvanceManager.onCodeInput(this.value)" autocomplete="off" style="width:100%;padding:10px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:13px;font-weight:700;font-family:monospace;outline:none">';
-    content += '        <div id="advCodeSuggestions" style="display:none;position:relative;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;margin-top:4px;max-height:160px;overflow-y:auto;z-index:100;box-shadow:0 10px 25px rgba(0,0,0,0.1)"></div>';
+    content += '        <div id="advCodeSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;margin-top:4px;max-height:190px;overflow-y:auto;z-index:200;box-shadow:0 12px 28px rgba(15,23,42,0.18)"></div>';
     content += '      </div>';
 
     // Auto-fetched details box
@@ -1363,9 +1363,9 @@
           var mCode = String(m.emp_id || m.code);
           var mName = String(m.name || '');
           var mDept = String(m.dept || '');
-          sHtml += '<div onclick="ATPLAdvanceManager.selectSuggestion(\'' + esc(mCode) + '\')" style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.06);cursor:pointer;display:flex;justify-content:space-between;align-items:center" onmouseover="this.style.background=\'rgba(255,255,255,0.08)\'" onmouseout="this.style.background=\'\'">';
-          sHtml += '  <div><strong style="color:#38bdf8">' + esc(mCode) + '</strong> - <span style="color:#f8fafc">' + esc(mName) + '</span></div>';
-          sHtml += '  <div style="font-size:10px;color:#94a3b8">' + esc(mDept) + '</div>';
+          sHtml += '<div onclick="ATPLAdvanceManager.selectSuggestion(\'' + esc(mCode) + '\')" style="padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#ffffff;transition:background 0.15s" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#ffffff\'">';
+          sHtml += '  <div style="display:flex;align-items:center;gap:8px"><strong style="color:#312e81;font-size:12.5px;font-family:monospace;letter-spacing:0.3px">' + esc(mCode) + '</strong> <span style="color:#cbd5e1;font-weight:600">—</span> <span style="color:#0f172a;font-weight:750;font-size:12.5px">' + esc(mName) + '</span></div>';
+          sHtml += '  <div style="font-size:10px;font-weight:700;color:#475569;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 8px;border-radius:4px;letter-spacing:0.3px">' + esc(mDept || 'PRODUCTION') + '</div>';
           sHtml += '</div>';
         });
         suggBox.innerHTML = sHtml;
