@@ -33,6 +33,8 @@ test('atpl-google-drive-sync.js syntax and complete Google Drive & Sheets integr
   assert.ok(code.includes("records.length === 1 && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 1"), 'Must prevent 1-record wipe of 400+ master');
   assert.ok(code.includes("currentList[idx] = Object.assign({}, currentList[idx], rec)"), 'Must merge updated fields');
   assert.ok(code.includes("callGoogleBackend('upsertEmployeeMaster'"), 'Must call Google Apps Script upsert');
+  assert.ok(code.includes("pushEmployeeMasterDriveVault"), 'Must push employee master vault to Google Drive');
+  assert.ok(code.includes("syncEmployeeMasterDriveVault"), 'Must sync employee master vault from Google Drive');
 
   // Verify exported globals
   assert.ok(code.includes('window.ATPLGoogleSync = UnifiedSyncEngine;'));
