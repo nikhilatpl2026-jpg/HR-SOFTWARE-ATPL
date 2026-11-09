@@ -117,7 +117,68 @@ function viewBox(){var v=document.getElementById('atplEmployeeView');if(v)return
 function vf(k,v){var type=(k==='basic'||k==='hra'||k==='gross')?'number':'text',extra=X.find(function(x){return x[0]===k}),h='<div class="atplVF"><label>'+esc(L[k]||k)+(k==='emp_id'||k==='name'?' *':'')+'</label>';if(k==='present_address'||k==='permanent_address')h+='<textarea id="atplv_'+k+'">'+esc(v)+'</textarea>';else if(k==='gender')h+='<select id="atplv_'+k+'"><option value="">Select</option><option>MALE</option><option>FEMALE</option><option>OTHER</option></select>';else if(k==='marital_status')h+='<select id="atplv_'+k+'"><option value="">Select</option><option>SINGLE</option><option>MARRIED</option><option>DIVORCED</option><option>WIDOWED</option><option>SEPARATED</option></select>';else if(k==='dob')h+='<input id="atplv_dob" type="text" maxlength="10" inputmode="numeric" placeholder="DD-MM-YYYY" value="'+esc(v)+'">';else if(k==='ifsc')h+='<input id="atplv_ifsc" type="text" maxlength="11" value="'+esc(v)+'">';else h+='<input id="atplv_'+k+'" type="'+(extra&&extra[2]==='tel'?'tel':type)+'" value="'+esc(v)+'">';return h+'</div>'}
 function setupViewValidation(){var dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');bindDateInput(dob);if(ifs){ifs.style.textTransform='uppercase';ifs.oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,11);mark(this,this.value.length===11&&!validIFSC(this.value))}}}
 function showView(i){try{var d=EM.data[i];if(!d)return;var v=viewBox(),h='<div class="atplVGrid">';v.dataset.idx=String(i);VKEYS.forEach(function(k){var z=d[k];if(z===undefined||z===null)z='';h+=vf(k,z)});h+='</div>';document.getElementById('atplVBody').innerHTML=h;VKEYS.forEach(function(k){var el=document.getElementById('atplv_'+k);if(!el)return;var val=(d[k]!==undefined&&d[k]!==null)?String(d[k]):'';if(el.tagName==='SELECT')el.value=val.toUpperCase();else el.value=val});setupViewValidation();v.style.display='flex'}catch(_){}}
-function saveView(){try{var v=document.getElementById('atplEmployeeView'),i=parseInt(v.dataset.idx,10);if(!isFinite(i)||!EM.data[i])return;var emp=document.getElementById('atplv_emp_id'),name=document.getElementById('atplv_name'),dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');if(!emp.value.trim()){alert('Employee Code mandatory hai!');emp.focus();return}if(!name.value.trim()){alert('Employee Name mandatory hai!');name.focus();return}if(dob&&dob.value.trim()){var n=normalizeDate(dob.value.trim());if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)){dob.value=n;mark(dob,false)}else if(!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return}}if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return}var u={};VKEYS.forEach(function(k){var el=document.getElementById('atplv_'+k);if(!el)return;var val=String(el.value||'').trim();if(k==='basic'||k==='hra'||k==='gross'){var num=parseFloat(val.replace(/,/g,''));u[k]=isFinite(num)?num:0}else if(k==='ifsc')u[k]=val.toUpperCase();else u[k]=val});EM.data[i]=Object.assign({},EM.data[i],u);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));if(typeof window.emFilter==='function')window.emFilter();if(typeof window.emUpdateStats==='function')window.emUpdateStats();alert('Employee details saved successfully.');showView(i)}catch(e){alert('Employee details save nahi ho paayi. Please try again.')}}
+function saveView(){
+  try{
+    var v=document.getElementById('atplEmployeeView'),i=parseInt(v.dataset.idx,10);
+    if(!isFinite(i)||!EM.data[i])return;
+    var emp=document.getElementById('atplv_emp_id'),name=document.getElementById('atplv_name'),dob=document.getElementById('atplv_dob'),ifs=document.getElementById('atplv_ifsc');
+    if(!emp.value.trim()){alert('Employee Code mandatory hai!');emp.focus();return}
+    if(!name.value.trim()){alert('Employee Name mandatory hai!');name.focus();return}
+    if(dob&&dob.value.trim()){var n=normalizeDate(dob.value.trim());if(n&&/^\d{2}-\d{2}-\d{4}$/.test(n)&&validDate(n)){dob.value=n;mark(dob,false)}else if(!validDate(dob.value)){mark(dob,true);alert('D.O.B ka format DD-MM-YYYY hona chahiye. Example: 05-09-1998');dob.focus();return}}
+    if(ifs&&ifs.value.trim()&&!validIFSC(ifs.value)){mark(ifs,true);alert('IFSC Code exact 11 characters ka valid format hona chahiye. Example: SBIN0123456');ifs.focus();return}
+    var u={};
+    VKEYS.forEach(function(k){
+      var el=document.getElementById('atplv_'+k);
+      if(!el)return;
+      var val=String(el.value||'').trim();
+      if(k==='basic'||k==='hra'||k==='gross'){
+        var num=parseFloat(val.replace(/,/g,''));
+        u[k]=isFinite(num)?num:0;
+      }else if(k==='ifsc')u[k]=val.toUpperCase();
+      else u[k]=val;
+    });
+    var savedRec = Object.assign({}, EM.data[i], u);
+    EM.data[i] = savedRec;
+    try {
+      localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data));
+    } catch(_){}
+    if (Array.isArray(window.EMP_MASTER_DATA)) {
+      window.EMP_MASTER_DATA = EM.data.slice();
+    }
+    if (Array.isArray(window.allEmployees)) {
+      var aIdx = window.allEmployees.findIndex(function(x){
+        return String(x.emp_id||x.id||x.code) === String(savedRec.emp_id||savedRec.id||savedRec.code);
+      });
+      if (aIdx >= 0) window.allEmployees[aIdx] = Object.assign({}, window.allEmployees[aIdx], savedRec);
+      else window.allEmployees.push(savedRec);
+    }
+    // Instant Google Drive + Google Sheets + Server SSE Cross-Browser Push
+    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster === 'function') {
+      window.ATPLGoogleSync.upsertEmployeeMaster([savedRec]).catch(function(err){ console.warn('Cloud sync error:', err); });
+    }
+    if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
+      try { window.ATPLCloudSyncV1.saveMaster(savedRec); } catch(_){}
+    }
+    try {
+      fetch('/api/sync/employee-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: [savedRec] })
+      }).catch(function(){});
+    } catch(_) {}
+    if (typeof window.dispatchSyncTrigger === 'function') {
+      window.dispatchSyncTrigger({
+        source: 'hr-workplace-saveView',
+        action: 'employee_updated',
+        records: [savedRec]
+      });
+    }
+    if(typeof window.emFilter==='function')window.emFilter();
+    if(typeof window.emUpdateStats==='function')window.emUpdateStats();
+    alert('Employee details saved successfully.');
+    showView(i);
+  }catch(e){alert('Employee details save nahi ho paayi. Please try again.')}
+}
 function hooks(){if(!window.__atplO10&&typeof window.emOpenAdd==='function'){var a=window.emOpenAdd;window.emOpenAdd=function(){var r=a.apply(this,arguments);more();setupValidation();return r};window.__atplO10=1}if(!window.__atplE10&&typeof window.emOpenEdit==='function'){var q=window.emOpenEdit;window.emOpenEdit=function(){var r=q.apply(this,arguments);more();setupValidation();return r};window.__atplE10=1}if(!window.__atplS10&&typeof window.emSaveModal==='function'){var s=window.emSaveModal;window.emSaveModal=function(){if(!validateSingle())return;var idx=typeof EM!=='undefined'?EM.editIdx:-1,code=(document.getElementById('emf_emp_id')||{}).value||'',x={};X.forEach(function(f){var z=document.getElementById('atpl_'+f[0]);x[f[0]]=z?String(z.value||'').trim():''});var r=s.apply(this,arguments);try{var p=idx>=0?idx:EM.data.findIndex(function(v){return String(v.emp_id||'')===String(code)});if(p>=0){Object.assign(EM.data[p],x);localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(EM.data))}}catch(_){ }return r};window.__atplS10=1}if(!window.__atplT10&&typeof window.emSwitchTab==='function'){var t=window.emSwitchTab;window.emSwitchTab=function(tab){var r=t.apply(this,arguments);if(tab==='bulk'){expected();mapper()}return r};window.__atplT10=1}if(typeof window.emViewEmp==='function')window.emViewEmp=function(i){showView(i)}}
 function css(){if(document.getElementById('atplCss10'))return;var s=document.createElement('style');s.id='atplCss10';s.textContent='#atplMapper{margin:0 20px 14px;padding:12px;border:1px solid #6366f1;border-radius:10px;background:#101827}.atplMT{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#fff;font-size:11px}.atplMT span{color:#a5b4fc}.atplMT button{margin-left:auto;background:#334155;color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer}#atplML{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.atplChip{display:flex;align-items:center;gap:4px;background:#172033;border:1px solid #475569;border-radius:7px;padding:5px;color:#e2e8f0;font-size:10px}.atplChip b{background:#4f46e5;border-radius:50%;min-width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center}.atplChip button{border:0;border-radius:4px;background:#334155;color:#fff;cursor:pointer;padding:2px 5px}#atplMore{min-width:100%;padding:12px 16px;background:#0f172a;border-top:1px solid #334155}#atplMoreBtn{padding:8px 14px;border:1px solid #6366f1;border-radius:8px;background:#312e81;color:#fff;font-size:11px;font-weight:800;cursor:pointer}#atplMoreBody{display:none;margin-top:12px;padding:14px;border:1px solid #334155;border-radius:10px;background:#111827}#atplMoreBody.open{display:block}.atplF{margin-bottom:10px}.atplF label{display:block;margin-bottom:5px;font-size:9px;font-weight:800;color:#94a3b8}.atplF input,.atplF textarea,.atplF select{width:100%;box-sizing:border-box;padding:9px;border:1px solid #475569;border-radius:7px;background:#0b1220;color:#fff}.atplF textarea{min-height:70px}.atplPVTitle{font-size:10px;font-weight:800;color:#10b981;margin:6px 0}.atplPVScroll{overflow:auto;max-width:100%;border:1px solid #334155}.atplPVScroll table{border-collapse:collapse;min-width:2300px;width:100%;font-size:9px}.atplPVScroll th,.atplPVScroll td{padding:6px 8px;border-right:1px solid #334155;border-bottom:1px solid #334155;white-space:nowrap}.atplPVScroll th{background:#0f172a;color:#94a3b8}.atplPVScroll td{background:#111827;color:#fff}#atplEmployeeView{position:fixed;inset:0;z-index:100050;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(2,6,23,.78)}.atplVCard{width:min(880px,96vw);max-height:92vh;display:flex;flex-direction:column;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.45)}.atplVHead{display:flex;align-items:center;padding:15px 18px;background:linear-gradient(135deg,#075985,#0ea5e9);color:#fff}.atplVHead>div{display:flex;flex-direction:column}.atplVHead b{font-size:16px}.atplVHead span{font-size:10px;opacity:.9;margin-top:2px}.atplVHead button{margin-left:auto;width:34px;height:34px;border:0;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer}#atplVBody{padding:16px 18px;overflow:auto;background:#fff}.atplVGrid{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px}.atplVF label{display:block;margin-bottom:4px;font-size:9px;font-weight:900;color:#475569;text-transform:uppercase}.atplVF input,.atplVF textarea,.atplVF select{width:100%;box-sizing:border-box;min-height:38px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;color:#0f172a;font-size:12px;outline:none}.atplVF textarea{min-height:68px;resize:vertical}.atplVFoot{padding:10px 18px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end}.atplVFoot button{padding:8px 16px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font-weight:700;cursor:pointer}#atplVSave{background:#0284c7!important;border-color:#0284c7!important;color:#fff!important}@media(max-width:650px){.atplVGrid{grid-template-columns:1fr}}';document.head.appendChild(s)}
 function delegatedView(ev){var el=ev.target&&ev.target.closest?ev.target.closest('[onclick]'):null;if(!el)return;var oc=el.getAttribute('onclick')||'',m=oc.match(/emViewEmp\s*\(\s*(\d+)\s*\)/i);if(!m)return;ev.preventDefault();ev.stopPropagation();if(ev.stopImmediatePropagation)ev.stopImmediatePropagation();showView(parseInt(m[1],10))}

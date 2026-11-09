@@ -102,4 +102,11 @@ test('Employee Master Real-Time Cloud Sync Architecture Verification', async (t)
     assert.strictEqual(bAfterDel.length, 2, 'Browser B must reflect deletion instantly');
     assert.strictEqual(bAfterDel.some(e => e.emp_id === '1002'), false, 'Deleted employee must not exist in Browser B');
   });
+
+  test('5. hr-workplace.js saveView routes to ATPLGoogleSync, /api/sync/employee-master, and dispatchSyncTrigger', () => {
+    const hrWorkplaceCode = fs.readFileSync(path.join(__dirname, '../hr-workplace.js'), 'utf8');
+    assert.ok(hrWorkplaceCode.includes('ATPLGoogleSync.upsertEmployeeMaster'), 'saveView must call ATPLGoogleSync.upsertEmployeeMaster');
+    assert.ok(hrWorkplaceCode.includes('/api/sync/employee-master'), 'saveView must post to /api/sync/employee-master');
+    assert.ok(hrWorkplaceCode.includes('dispatchSyncTrigger'), 'saveView must call dispatchSyncTrigger');
+  });
 });

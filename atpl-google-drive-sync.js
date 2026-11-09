@@ -996,6 +996,10 @@
         return await pushEmployeeAndVaultToCloud();
       },
       saveMaster: async function(record) {
+        if (!record && arguments[1]) record = arguments[1];
+        if (typeof record === 'string' && arguments[1] && typeof arguments[1] === 'object') {
+          record = arguments[1];
+        }
         return await UnifiedSyncEngine.upsertEmployeeMaster(record);
       },
       saveMany: async function(records) {
