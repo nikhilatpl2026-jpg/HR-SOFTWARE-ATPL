@@ -92,8 +92,7 @@
     if (!str) return '0';
     var h = 2166136261;
     var len = str.length;
-    var step = len > 50000 ? Math.floor(len / 25000) : 1;
-    for (var i = 0; i < len; i += step) {
+    for (var i = 0; i < len; i++) {
       h ^= str.charCodeAt(i);
       h = Math.imul(h, 16777619);
     }
@@ -129,7 +128,7 @@
     if (!endpoint) return null;
     var p = Object.assign({ action: action, sender: MY_CLIENT_ID, _ts: Date.now() }, params || {});
     var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 12000) : null;
+    var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 25000) : null;
     try {
       var res = await fetch(endpoint, {
         method: 'POST',
@@ -838,7 +837,7 @@
         await pollSyncState(false);
       }
       scheduleNextPoll();
-    }, 15000);
+    }, 8000);
   }
 
   var UnifiedSyncEngine = {
@@ -857,7 +856,7 @@
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
           pollSyncState(false);
         }
-      }, 15000);
+      }, 8000);
       window.addEventListener('focus', function() {
         if (getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
           pollSyncState(false);

@@ -64,7 +64,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
  function isSystem(r){return !!r&&(r._atpl_system===true||text(r.emp_id).indexOf(SYS)===0)}
  async function fetchRemote(force){await ensureTokenReady();if(!token())return[];if(!force&&remoteRecords.length&&Date.now()-lastPull<10000)return remoteRecords.slice();var d;try{d=await api({action:'getSystemRecords',token:token()},14000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records;lastPull=Date.now();return remoteRecords.slice()}}catch(_){}try{d=await api({action:'getEmployeeMaster',token:token()},22000);if(d&&d.ok&&Array.isArray(d.records)){remoteRecords=d.records.filter(isSystem);lastPull=Date.now();return remoteRecords.slice()}}catch(_){}return remoteRecords.slice()}
  function recordsFor(records,key){var meta=null,chunks={};(records||[]).forEach(function(r){if(r&&r.object_key===key&&r._atpl_kind==='meta')meta=r;else if(r&&r.object_key===key&&r._atpl_kind==='chunk')chunks[Number(r.index)]=String(r.data||'')});return{meta:meta,chunks:chunks}}
- async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Cloud copy is too large for current shared bridge ('+parts.length+' chunks).');var k=safeKey(kind,key),u=user()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});if(kind!=='hr_doc')setBadge('busy','☁ Saving '+text(info&&info.name||kind)+'…');try{await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});remoteRecords=[];lastPull=0;setBadge('ok','🔥 Firebase Live');return true}finally{if(kind==='hr_doc')setBadge('ok','🔥 Firebase Live')}}
+ async function saveObject(kind,key,payload,info){var packed=await encodeObject(payload),parts=[];for(var i=0;i<packed.data.length;i+=CHUNK)parts.push(packed.data.slice(i,i+CHUNK));if(parts.length>MAX_CHUNKS)throw new Error('Cloud copy is too large for current shared bridge ('+parts.length+' chunks).');var k=safeKey(kind,key),u=user()||{},tasks=parts.map(function(part,idx){return function(){return upsert(chunkId(k,idx),{_atpl_kind:'chunk',object_kind:kind,object_key:k,index:idx,data:part})}});if(kind!=='hr_doc')setBadge('busy','☁ Saving '+text(info&&info.name||kind)+'…');try{await pool(tasks,CONCURRENCY);var now=new Date().toISOString();await upsert(metaId(k),{_atpl_kind:'meta',object_kind:kind,object_key:k,key_text:String(key||''),name:text(info&&info.name||key),saved_at:text(info&&info.saved_at||now)||now,uploaded_at:now,uploaded_by:u.id||'',uploaded_name:u.name||'',encoding:packed.encoding,chunks:parts.length,raw_bytes:packed.rawBytes,packed_bytes:packed.packedBytes});remoteRecords=[];lastPull=0;setBadge('ok','🟢 Drive & Sheets');return true}finally{if(kind==='hr_doc')setBadge('ok','🟢 Drive & Sheets')}}
  async function loadObject(records,meta){if(!meta||!meta.object_key)return null;var x=recordsFor(records.filter(function(r){return r._atpl_kind!=='chunk'||String(r.generation||'')===String(meta.generation||'')}),meta.object_key),n=Number(meta.chunks||0),parts=[];for(var i=0;i<n;i++){if(typeof x.chunks[i]!=='string')throw new Error('Incomplete cloud object '+meta.name);parts.push(x.chunks[i])}return decodeObject(meta.encoding,parts.join(''))}
  function trimRows(rows){rows=(rows||[]).map(function(r){r=Array.isArray(r)?r.slice():[];while(r.length&&String(r[r.length-1]==null?'':r[r.length-1]).trim()==='')r.pop();return r});while(rows.length&&(!rows[rows.length-1]||!rows[rows.length-1].some(function(v){return String(v==null?'':v).trim()!==''})))rows.pop();return rows}
  function workbookPayload(name,buf){if(!root.XLSX)throw new Error('Excel engine unavailable');var wb=root.XLSX.read(buf,{type:'array',cellDates:false,cellText:true});return{v:1,name:name,sheets:wb.SheetNames.map(function(sn){var rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});return{name:sn,rows:trimRows(rows)}})}}
@@ -512,7 +512,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
      if(changed>0){
        refreshSalaryUi();
      }
-     setBadge('ok','🔥 Firebase Live ('+remoteList.length+')');
+     setBadge('ok','🟢 Drive & Sheets ('+remoteList.length+')');
      storageLabel(remoteList.length+' files in cloud · Realtime');
    }finally{
      isHandlingFirebaseFiles=false;
@@ -704,7 +704,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
      }
 
      console.log('[ATPL-Storage] Realtime Firebase Firestore listener connected');
-     setBadge('ok','🔥 Firebase Live');
+     setBadge('ok','🟢 Drive & Sheets');
      return true;
    }catch(e){
      console.warn('Firebase listener initialization failed',e);
@@ -744,7 +744,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
      await pullHr(r);
      refreshSalaryUi();
      if(migrated.failed)setBadge('bad','☁ '+migrated.failed+' file(s) pending');
-     else setBadge('ok','🔥 Firebase Live ('+root.FILES.length+')');
+     else setBadge('ok','🟢 Drive & Sheets ('+root.FILES.length+')');
      return migrated.failed===0;
    }).catch(function(e){
      console.warn('Shared storage sync failed',e);
@@ -803,7 +803,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
          uploaded_by:user()?user().id:'admin'
        });
        storageLabel('Saved to Firebase Realtime · '+name);
-       setBadge('ok','🔥 Firebase Live ('+root.FILES.length+')');
+       setBadge('ok','🟢 Drive & Sheets ('+root.FILES.length+')');
        if(typeof root.showToast==='function')root.showToast('🔥 File "'+name+'" cloud aur sabhi devices par live save ho gayi.');
        saveObject('salary_file',name,p,{name:name,saved_at:savedTs}).catch(function(){});
        return true;
@@ -978,7 +978,7 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
      return await saveObject('hr_doc',doc.id,slimDoc,{name:doc.document_name||doc.id,saved_at:savedStamp});
    }catch(e){
      console.warn('HR document cloud save notice:',e&&e.message||e);
-     setBadge('ok','🔥 Firebase Live');
+     setBadge('ok','🟢 Drive & Sheets');
      return false;
    }
  }
@@ -1555,7 +1555,7 @@ async function applySalarySnapshot(records){
   }
 
   function boot(){
-   setBadge('ok','🔥 Firebase Live');
+   setBadge('ok','🟢 Drive & Sheets');
    hookSalary();hookSalaryDelete();hookClearDb();hookHr();hookHrDelete();
    startServerSyncListener();
 

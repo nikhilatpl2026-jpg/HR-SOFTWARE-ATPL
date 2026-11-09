@@ -879,11 +879,10 @@
   }
 
   // ── 6. UI RENDERING ──
-  function renderUI() {
+    function renderUI() {
     var container = document.getElementById('advanceModuleContainer');
     if (!container) return;
 
-    // Calculate totals
     var totalDisbursed = 0;
     var totalRecovered = 0;
     var totalOutstanding = 0;
@@ -925,85 +924,80 @@
 
     var html = '';
 
-    // Header & Actions
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px">';
+    // Professional Header & Actions
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #1e293b">';
     html += '  <div>';
-    html += '    <h1 style="font-size:24px;font-weight:800;color:#f8fafc;margin:0;display:flex;align-items:center;gap:10px">';
-    html += '      <span>💳</span> Advance Management &amp; Salary Deduction Hub';
-    html += '      <span style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:#10b981;color:#fff">LIVE CLOUD</span>';
-    html += '    </h1>';
-    html += '    <p style="margin:4px 0 0;font-size:13px;color:#94a3b8">';
-    html += '      Track employee advances, outstanding balances, and automated salary deductions from monthly sheets.';
+    html += '    <div style="display:flex;align-items:center;gap:10px">';
+    html += '      <span style="font-size:20px">💳</span>';
+    html += '      <h1 style="font-size:20px;font-weight:750;color:#f8fafc;margin:0;letter-spacing:-0.3px">Advance &amp; Loan Management</h1>';
+    html += '      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;background:#065f46;color:#a7f3d0;border:1px solid #059669">DRIVE &amp; SHEETS SYNC</span>';
+    html += '    </div>';
+    html += '    <p style="margin:4px 0 0;font-size:12px;color:#94a3b8">';
+    html += '      Arora Textiles ERP · Automated salary deductions, ledger audit, and cloud persistence';
     html += '    </p>';
     html += '  </div>';
-
-    html += '  <div style="display:flex;gap:10px;flex-wrap:wrap">';
-    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="padding:10px 18px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 14px rgba(16,185,129,0.3)">';
+    html += '  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="padding:8px 16px;background:#059669;color:#ffffff;border:1px solid #10b981;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">';
     html += '      <span>➕</span> Record New Advance';
     html += '    </button>';
-    html += '    <button onclick="ATPLAdvanceManager.triggerDeductionScan()" style="padding:10px 16px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border:none;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 14px rgba(99,102,241,0.25)">';
+    html += '    <button onclick="ATPLAdvanceManager.triggerDeductionScan()" style="padding:8px 14px;background:#1e293b;border:1px solid #334155;color:#e2e8f0;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">';
     html += '      <span>⚡</span> Re-Scan Salary Sheets';
     html += '    </button>';
-    html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);color:#cbd5e1;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px">';
+    html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="padding:8px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;font-weight:600;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px">';
     html += '      <span>📥</span> Export CSV';
     html += '    </button>';
-    html += '    <button id="advSyncBtn" onclick="ATPLAdvanceManager.syncNow(true)" style="padding:10px 14px;background:#1e293b;border:1px solid rgba(255,255,255,0.12);color:#94a3b8;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer" title="Sync with Cloud">';
-    html += '      <span>🔄</span>';
+    html += '    <button id="advSyncBtn" onclick="ATPLAdvanceManager.syncNow(true)" style="padding:8px 12px;background:#1e293b;border:1px solid #334155;color:#94a3b8;border-radius:6px;font-size:12px;cursor:pointer" title="Sync with Cloud">';
+    html += '      <span>🔄 Sync</span>';
     html += '    </button>';
     html += '  </div>';
     html += '</div>';
 
-    // Summary Cards
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:24px">';
-    html += '  <div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,0.25)">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Total Advances Disbursed</div>';
-    html += '    <div style="font-size:24px;font-weight:800;color:#38bdf8">' + formatINR(totalDisbursed) + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.advances.length + ' lifetime entries</div>';
+    // Corporate Summary Cards
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:20px">';
+    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
+    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Total Advances Disbursed</div>';
+    html += '    <div style="font-size:22px;font-weight:800;color:#f8fafc;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalDisbursed) + '</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.advances.length + ' lifetime advances</div>';
     html += '  </div>';
-
-    html += '  <div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,0.25)">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Total Recovered / Deducted</div>';
-    html += '    <div style="font-size:24px;font-weight:800;color:#4ade80">' + formatINR(totalRecovered) + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.deductions.length + ' monthly salary deductions</div>';
+    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
+    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Recovered From Salary</div>';
+    html += '    <div style="font-size:22px;font-weight:800;color:#34d399;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalRecovered) + '</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">' + state.deductions.length + ' monthly deductions processed</div>';
     html += '  </div>';
-
-    html += '  <div style="background:#0F172A;border:1px solid rgba(239,68,68,0.3);border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,0.25)">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#f87171;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Current Outstanding Balance</div>';
-    html += '    <div style="font-size:24px;font-weight:800;color:#ef4444">' + formatINR(totalOutstanding) + '</div>';
-    html += '    <div style="font-size:11px;color:#fca5a5;margin-top:4px">Pending salary deduction</div>';
+    html += '  <div style="background:#0f172a;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px 18px">';
+    html += '    <div style="font-size:11px;font-weight:700;color:#f87171;text-transform:uppercase;letter-spacing:0.5px">Current Outstanding</div>';
+    html += '    <div style="font-size:22px;font-weight:800;color:#ef4444;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + formatINR(totalOutstanding) + '</div>';
+    html += '    <div style="font-size:11px;color:#fca5a5;margin-top:4px">Pending payroll deduction</div>';
     html += '  </div>';
-
-    html += '  <div style="background:#0F172A;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px 20px;box-shadow:0 4px 16px rgba(0,0,0,0.25)">';
-    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Active Advances</div>';
-    html += '    <div style="font-size:24px;font-weight:800;color:#fbbf24">' + activeCount + '</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">Across ' + Object.keys(empMap).length + ' employees</div>';
+    html += '  <div style="background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px 18px">';
+    html += '    <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px">Active Borrowers</div>';
+    html += '    <div style="font-size:22px;font-weight:800;color:#38bdf8;margin-top:6px;font-family:system-ui,-apple-system,sans-serif">' + activeCount + '</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:4px">Across ' + Object.keys(empMap).length + ' employees with history</div>';
     html += '  </div>';
     html += '</div>';
 
-    // Tabs Navigation
-    html += '<div style="display:flex;gap:4px;border-bottom:1px solid rgba(255,255,255,0.1);margin-bottom:18px">';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="padding:10px 18px;border:none;background:none;font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'advances' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#10b981' : '#94a3b8') + '">📑 Advance Entries (' + state.advances.length + ')</button>';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="padding:10px 18px;border:none;background:none;font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'deductions' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#10b981' : '#94a3b8') + '">📉 Salary Deductions Audit (' + state.deductions.length + ')</button>';
-    html += '  <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="padding:10px 18px;border:none;background:none;font-size:13px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'ledger' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#10b981' : '#94a3b8') + '">👥 Employee Balance Ledger (' + Object.keys(empMap).length + ')</button>';
+    // Standard Underline Tabs
+    html += '<div style="display:flex;gap:8px;border-bottom:1px solid #1e293b;margin-bottom:16px">';
+    html += '  <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'advances' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#10b981' : '#94a3b8') + '">Advances Register (' + state.advances.length + ')</button>';
+    html += '  <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'deductions' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#10b981' : '#94a3b8') + '">Salary Deduction Audit (' + state.deductions.length + ')</button>';
+    html += '  <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="padding:8px 16px;border:none;background:none;font-size:12px;font-weight:700;cursor:pointer;border-bottom:2px solid ' + (state.activeTab === 'ledger' ? '#10b981' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#10b981' : '#94a3b8') + '">Employee Balance Ledger (' + Object.keys(empMap).length + ')</button>';
     html += '</div>';
 
     // Filter and Search Toolbar
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">';
-    html += '  <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:240px;max-width:400px">';
-    html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name, remarks..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="width:100%;padding:9px 14px;background:#0F172A;border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#f8fafc;font-size:13px;outline:none">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">';
+    html += '  <div style="display:flex;gap:10px;align-items:center;flex:1;min-width:240px;max-width:380px">';
+    html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name, remarks..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="width:100%;padding:7px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;outline:none">';
     html += '  </div>';
-
     if (state.activeTab === 'advances') {
       html += '  <div style="display:flex;gap:6px">';
       ['ALL', 'ACTIVE', 'PARTIAL', 'REPAID'].forEach(function(st) {
         var isSel = state.statusFilter === st;
-        html += '<button onclick="ATPLAdvanceManager.setStatusFilter(\'' + st + '\')" style="padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ' + (isSel ? '#10b981' : 'rgba(255,255,255,0.08)') + ';background:' + (isSel ? 'rgba(16,185,129,0.15)' : '#0F172A') + ';color:' + (isSel ? '#34d399' : '#94a3b8') + '">' + st + '</button>';
+        html += '<button onclick="ATPLAdvanceManager.setStatusFilter(\'' + st + '\')" style="padding:5px 11px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid ' + (isSel ? '#10b981' : '#334155') + ';background:' + (isSel ? 'rgba(16,185,129,0.15)' : '#0f172a') + ';color:' + (isSel ? '#34d399' : '#94a3b8') + '">' + st + '</button>';
       });
       html += '  </div>';
     }
     html += '</div>';
 
-    // TAB CONTENTS
     if (state.activeTab === 'advances') {
       html += renderAdvancesTable();
     } else if (state.activeTab === 'deductions') {
