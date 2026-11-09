@@ -78,6 +78,7 @@ function handleRequest_(p) {
     else if (action === 'logout') data = logout_(p);
     else if (action === 'getEmployeeMaster') data = getEmployeeMaster_(p);
     else if (action === 'upsertEmployeeMaster') data = upsertEmployeeMaster_(p);
+    else if (action === 'saveEmployeeMaster' || action === 'bulkUpsertEmployeeMaster') data = saveEmployeeMaster_(p);
     else if (action === 'deleteEmployeeMaster') data = deleteEmployeeMaster_(p);
     else if (action === 'purgeGhostRecords') data = purgeGhostRecords_(p);
     else if (action === 'getSystemRecords') data = getSystemRecords_(p);
@@ -426,6 +427,19 @@ function upsertEmployeeMaster_(p) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function saveEmployeeMaster_(p) {
+  var recs = p.records;
+  if (typeof recs === 'string') {
+    try { recs = JSON.parse(recs); } catch (_) {}
+  }
+  if (!Array.isArray(recs)) recs = p.record ? [p.record] : [];
+  if (!recs.length) return { ok: true, count: 0 };
+  for (var i = 0; i < recs.length; i++) {
+    upsertEmployeeMaster_(recs[i]);
+  }
+  return { ok: true, count: recs.length };
 }
 
 function deleteEmployeeMaster_(p) {

@@ -487,6 +487,12 @@ app.post('/api/sync/trigger', (req, res) => {
   const { action, details } = req.body || {};
   incrementVersion();
   broadcastEvent('drive_trigger', { action: action || 'sync', details: details || {}, version: filesDb.version, timestamp: Date.now() });
+  if ((action === 'employee_updated' || action === 'employee_master_updated') && details) {
+    const updated = details.records || (details.record ? [details.record] : null);
+    broadcastEvent('employee_master_updated', { records: syncEmployeeMaster, updated: updated });
+  } else if ((action === 'employee_deleted' || action === 'employee_master_deleted') && details && details.emp_id) {
+    broadcastEvent('employee_master_deleted', { emp_id: details.emp_id, count: syncEmployeeMaster.length });
+  }
   return res.json({ ok: true, version: filesDb.version });
 });
 
@@ -1926,12 +1932,13 @@ app.delete("/api/sync/employee-master/:id", (req, res) => {
     }
     
     syncEmployeeMaster = (syncEmployeeMaster || []).filter(e => {
-      const eid = String(e.emp_id || e.id || "").toUpperCase().trim();
+      const eid = String(e.emp_id || e.id || e.code || e.emp_code || "").toUpperCase().trim();
       return eid !== id && !empTombstones.includes(eid);
     });
     writeJsonFile("employee_master.json", syncEmployeeMaster);
     
     broadcastEvent("employee_master_deleted", { emp_id: id, count: syncEmployeeMaster.length });
+    broadcastEvent('drive_trigger', { action: 'employee_deleted', details: { emp_id: id }, timestamp: Date.now() });
     syncToGoogleAppsScript('deleteEmployeeMaster', { emp_id: id });
     return res.json({ ok: true, deleted: true, emp_id: id, count: syncEmployeeMaster.length });
   } catch (err) {
@@ -1944,22 +1951,43 @@ app.post('/api/sync/employee-master', (req, res) => {
     const records = req.body && Array.isArray(req.body.records) ? req.body.records : (Array.isArray(req.body) ? req.body : null);
     if (!records) return res.status(400).json({ ok: false, error: 'Records array required' });
 
+    let empTombstones = readJsonFile("tombstones_employees.json", []);
+    let tombstonesChanged = false;
+
     const emMap = {};
-    (syncEmployeeMaster || []).forEach(e => { if (e && e.emp_id) emMap[String(e.emp_id).toUpperCase().trim()] = e; });
+    (syncEmployeeMaster || []).forEach(e => {
+      const eid = String((e && (e.emp_id || e.id || e.code || e.emp_code)) || '').toUpperCase().trim();
+      if (eid) emMap[eid] = e;
+    });
+
     records.forEach(r => {
-      if (!r || !r.emp_id) return;
-      const k = String(r.emp_id).toUpperCase().trim();
+      if (!r) return;
+      const k = String(r.emp_id || r.id || r.code || r.emp_code || '').toUpperCase().trim();
+      if (!k) return;
+
+      if (empTombstones.includes(k)) {
+        empTombstones = empTombstones.filter(t => t !== k);
+        tombstonesChanged = true;
+      }
+
       const existing = emMap[k] || {};
       const merged = Object.assign({}, existing);
       Object.keys(r).forEach(p => {
         if (r[p] !== undefined && r[p] !== null && String(r[p]).trim() !== "") merged[p] = r[p];
       });
+      merged.emp_id = k;
       emMap[k] = merged;
     });
+
+    if (tombstonesChanged) {
+      writeJsonFile("tombstones_employees.json", empTombstones);
+    }
+
     syncEmployeeMaster = Object.values(emMap);
     writeJsonFile("employee_master.json", syncEmployeeMaster);
 
-    broadcastEvent('employee_master_updated', { records: syncEmployeeMaster });
+    broadcastEvent('employee_master_updated', { records: syncEmployeeMaster, updated: records });
+    broadcastEvent('drive_trigger', { action: 'employee_updated', details: { records: records, count: syncEmployeeMaster.length }, timestamp: Date.now() });
     syncToGoogleAppsScript('saveEmployeeMaster', { records: records });
     return res.json({ ok: true, saved: true, count: syncEmployeeMaster.length });
   } catch (err) {
