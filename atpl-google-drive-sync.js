@@ -444,6 +444,12 @@
           base[fk] = row[fk];
         }
       });
+      if (!base.account_no && (base.bank_account_no || row.bank_account_no)) base.account_no = base.bank_account_no || row.bank_account_no;
+      if (!base.ifsc && (base.ifsc_code || row.ifsc_code)) base.ifsc = base.ifsc_code || row.ifsc_code;
+      if (!base.dept && (base.department || row.department)) base.dept = base.department || row.department;
+      if (!base.doj && (base.date_of_joining || row.date_of_joining)) base.doj = base.date_of_joining || row.date_of_joining;
+      if (!base.pf_no && (base.uan_no || row.uan_no)) base.pf_no = base.uan_no || row.uan_no;
+      if (!base.esi_no && (base.esic_no || row.esic_no)) base.esi_no = base.esic_no || row.esic_no;
       base.emp_id = rawId;
       valid.push(base);
     }
@@ -677,8 +683,10 @@
     var remoteVaultTs = Date.parse(empVaultFile.updatedAt) || 0;
     var lastVaultTs = parseInt(localStorage.getItem('ATPL_EMP_VAULT_LAST_TS') || '0', 10);
     var currentEmpCount = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.length : 0;
+    var localEmps = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    var localHasBank = localEmps.some(function(e) { return e && (e.bank_name || e.account_no || e.ifsc); });
 
-    if (force || remoteVaultTs > lastVaultTs || currentEmpCount < 50) {
+    if (force || remoteVaultTs > lastVaultTs || currentEmpCount < 50 || !localHasBank) {
       try {
         var vaultRes = await callGoogleBackend('downloadFile', { fileName: 'atpl_employee_master_vault.json' });
         if (vaultRes && vaultRes.ok && vaultRes.fileBase64) {
@@ -787,6 +795,12 @@
             merged[k] = rec[k];
           }
         });
+        if (!merged.account_no && (merged.bank_account_no || rec.bank_account_no)) merged.account_no = merged.bank_account_no || rec.bank_account_no;
+        if (!merged.ifsc && (merged.ifsc_code || rec.ifsc_code)) merged.ifsc = merged.ifsc_code || rec.ifsc_code;
+        if (!merged.dept && (merged.department || rec.department)) merged.dept = merged.department || rec.department;
+        if (!merged.doj && (merged.date_of_joining || rec.date_of_joining)) merged.doj = merged.date_of_joining || rec.date_of_joining;
+        if (!merged.pf_no && (merged.uan_no || rec.uan_no)) merged.pf_no = merged.uan_no || rec.uan_no;
+        if (!merged.esi_no && (merged.esic_no || rec.esic_no)) merged.esi_no = merged.esic_no || rec.esic_no;
         merged.emp_id = id;
         currentList[idx] = merged;
         changed = true;

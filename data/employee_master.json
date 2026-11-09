@@ -14,7 +14,10 @@
     "cat2": "STAFF NAME",
     "basic": 19915,
     "hra": 7745,
-    "gross": 27660
+    "gross": 27660,
+    "bank_name": "BOB BANK",
+    "ifsc": "BARB0BIKANE",
+    "account_no": "01350100007811"
   },
   {
     "emp_id": "00387",
@@ -31,7 +34,10 @@
     "cat2": "STAFF NAME",
     "basic": 24552,
     "hra": 9548,
-    "gross": 34100
+    "gross": 34100,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61063083208"
   },
   {
     "emp_id": "00419",
@@ -48,7 +54,10 @@
     "cat2": "STAFF NAME",
     "basic": 21888,
     "hra": 8512,
-    "gross": 30400
+    "gross": 30400,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61212383385"
   },
   {
     "emp_id": "00439",
@@ -65,7 +74,10 @@
     "cat2": "DYING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61070666440"
   },
   {
     "emp_id": "00530",
@@ -82,7 +94,10 @@
     "cat2": "STAFF NAME",
     "basic": 20880,
     "hra": 8120.000000000001,
-    "gross": 29000
+    "gross": 29000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0003401",
+    "account_no": "33811674907"
   },
   {
     "emp_id": "00531",
@@ -99,7 +114,10 @@
     "cat2": "STAFF NAME",
     "basic": 15290,
     "hra": 5946,
-    "gross": 21236
+    "gross": 21236,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031516",
+    "account_no": "51102104733"
   },
   {
     "emp_id": "00538",
@@ -116,7 +134,10 @@
     "cat2": "STAFF NAME",
     "basic": 35280,
     "hra": 27720,
-    "gross": 63000
+    "gross": 63000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51105719267"
   },
   {
     "emp_id": "00555",
@@ -133,7 +154,10 @@
     "cat2": "DYING",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113799607"
   },
   {
     "emp_id": "10568",
@@ -150,7 +174,10 @@
     "cat2": "CARD NO. 1",
     "basic": 14400,
     "hra": 5600,
-    "gross": 20000
+    "gross": 20000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61230435638"
   },
   {
     "emp_id": "10575",
@@ -167,7 +194,10 @@
     "cat2": "STAFF NAME",
     "basic": 8640,
     "hra": 3360,
-    "gross": 12000
+    "gross": 12000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0015990",
+    "account_no": "34071270879"
   },
   {
     "emp_id": "10582",
@@ -184,7 +214,10 @@
     "cat2": "STAFF NAME",
     "basic": 13392,
     "hra": 5208,
-    "gross": 18600
+    "gross": 18600,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43176995278"
   },
   {
     "emp_id": "10583",
@@ -201,7 +234,10 @@
     "cat2": "STAFF NAME",
     "basic": 20880,
     "hra": 8120.000000000001,
-    "gross": 29000
+    "gross": 29000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0005544",
+    "account_no": "10092702076"
   },
   {
     "emp_id": "10585",
@@ -218,7 +254,10 @@
     "cat2": "BLENDING",
     "basic": 25200,
     "hra": 9800,
-    "gross": 35000
+    "gross": 35000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51071336802"
   },
   {
     "emp_id": "10586",
@@ -235,7 +274,10 @@
     "cat2": "STAFF NAME",
     "basic": 20880,
     "hra": 8120.000000000001,
-    "gross": 29000
+    "gross": 29000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031516",
+    "account_no": "61090599228"
   },
   {
     "emp_id": "10589",
@@ -252,7 +294,10 @@
     "cat2": "DYING",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031315",
+    "account_no": "61219055368"
   },
   {
     "emp_id": "10593",
@@ -269,7 +314,10 @@
     "cat2": "SHORTING",
     "basic": 9720,
     "hra": 3780,
-    "gross": 13500
+    "gross": 13500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61345341354"
   },
   {
     "emp_id": "21498",
@@ -286,7 +334,10 @@
     "cat2": "DYING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113067628"
   },
   {
     "emp_id": "21887",
@@ -303,7 +354,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51071336846"
   },
   {
     "emp_id": "22271",
@@ -320,7 +374,10 @@
     "cat2": "CARD NO.3",
     "basic": 28800,
     "hra": 11200,
-    "gross": 40000
+    "gross": 40000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61232449447"
   },
   {
     "emp_id": "22334",
@@ -337,7 +394,10 @@
     "cat2": "NEW CARD 10",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0007142",
+    "account_no": "31305129167"
   },
   {
     "emp_id": "22337",
@@ -354,7 +414,10 @@
     "cat2": "CARD-11",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0002084",
+    "account_no": "35288676616"
   },
   {
     "emp_id": "22366",
@@ -371,7 +434,9 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "RMGB0000686",
+    "account_no": "83057509694"
   },
   {
     "emp_id": "22373",
@@ -388,7 +453,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "41525224135"
   },
   {
     "emp_id": "25002",
@@ -405,7 +473,10 @@
     "cat2": "KACHI WASHING",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61139936492"
   },
   {
     "emp_id": "25006",
@@ -422,7 +493,10 @@
     "cat2": "STAFF NAME",
     "basic": 11088,
     "hra": 4312,
-    "gross": 15400
+    "gross": 15400,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43176361886"
   },
   {
     "emp_id": "25017",
@@ -439,7 +513,10 @@
     "cat2": "SM PALLEDAR",
     "basic": 22320,
     "hra": 8680,
-    "gross": 31000
+    "gross": 31000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61040596066"
   },
   {
     "emp_id": "25018",
@@ -456,7 +533,10 @@
     "cat2": "CARD NO 8",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61336702528"
   },
   {
     "emp_id": "25020",
@@ -473,7 +553,10 @@
     "cat2": "PACKING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61141072094"
   },
   {
     "emp_id": "25021",
@@ -490,7 +573,10 @@
     "cat2": "PRAKASH TEAM",
     "basic": 25200,
     "hra": 9800,
-    "gross": 35000
+    "gross": 35000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61143075015"
   },
   {
     "emp_id": "25026",
@@ -507,7 +593,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61239475367"
   },
   {
     "emp_id": "25027",
@@ -524,7 +613,10 @@
     "cat2": "FELTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113799958"
   },
   {
     "emp_id": "25028",
@@ -541,7 +633,10 @@
     "cat2": "WASHING",
     "basic": 43200,
     "hra": 16800,
-    "gross": 60000
+    "gross": 60000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61017843041"
   },
   {
     "emp_id": "25029",
@@ -558,7 +653,10 @@
     "cat2": "CARD NO.6",
     "basic": 28800,
     "hra": 11200,
-    "gross": 40000
+    "gross": 40000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51116386529"
   },
   {
     "emp_id": "25032",
@@ -575,7 +673,9 @@
     "cat2": "FELTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "RMGB0000686",
+    "account_no": "83092425225"
   },
   {
     "emp_id": "25036",
@@ -592,7 +692,10 @@
     "cat2": "CARD-11",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61098052359"
   },
   {
     "emp_id": "25038",
@@ -609,7 +712,10 @@
     "cat2": "FELTING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "37107832924"
   },
   {
     "emp_id": "25039",
@@ -626,7 +732,10 @@
     "cat2": "FELTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51071330221"
   },
   {
     "emp_id": "25040",
@@ -643,7 +752,10 @@
     "cat2": "CARD-13 RANJEET",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61337528230"
   },
   {
     "emp_id": "25051",
@@ -660,7 +772,10 @@
     "cat2": "CARD NO.6",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61244641679"
   },
   {
     "emp_id": "25058",
@@ -677,7 +792,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "37979039645"
   },
   {
     "emp_id": "25062",
@@ -694,7 +812,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61336700508"
   },
   {
     "emp_id": "25064",
@@ -711,7 +832,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61232443490"
   },
   {
     "emp_id": "25073",
@@ -728,7 +852,9 @@
     "cat2": "CARD NO.6",
     "basic": 28800,
     "hra": 11200,
-    "gross": 40000
+    "gross": 40000,
+    "ifsc": "KKBK0003723",
+    "account_no": "6012977019"
   },
   {
     "emp_id": "25076",
@@ -745,7 +871,10 @@
     "cat2": "CARD NO.3",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61310443742"
   },
   {
     "emp_id": "25083",
@@ -762,7 +891,10 @@
     "cat2": "CARD NO.6",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38477851979"
   },
   {
     "emp_id": "25088",
@@ -779,7 +911,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38725761982"
   },
   {
     "emp_id": "25097",
@@ -796,7 +931,9 @@
     "cat2": "ETP",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "RMGB0000686",
+    "account_no": "83071115795"
   },
   {
     "emp_id": "25105",
@@ -813,7 +950,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "36230542161"
   },
   {
     "emp_id": "25137",
@@ -830,7 +970,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61210097599"
   },
   {
     "emp_id": "25144",
@@ -847,7 +990,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "41233732387"
   },
   {
     "emp_id": "25149",
@@ -864,7 +1010,10 @@
     "cat2": "CARD NO.6",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38262887149"
   },
   {
     "emp_id": "25150",
@@ -881,7 +1030,10 @@
     "cat2": "FELTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51104859488"
   },
   {
     "emp_id": "25182",
@@ -898,7 +1050,10 @@
     "cat2": "CARD-9",
     "basic": 28800,
     "hra": 11200,
-    "gross": 40000
+    "gross": 40000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61350493900"
   },
   {
     "emp_id": "25189",
@@ -915,7 +1070,10 @@
     "cat2": "STAFF NAME",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51071336529"
   },
   {
     "emp_id": "25191",
@@ -932,7 +1090,10 @@
     "cat2": "FELTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "39115375439"
   },
   {
     "emp_id": "25205",
@@ -949,7 +1110,10 @@
     "cat2": "CARD NO.3",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "40029249219"
   },
   {
     "emp_id": "25247",
@@ -966,7 +1130,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43186362232"
   },
   {
     "emp_id": "25248",
@@ -983,7 +1150,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 18000,
     "hra": 7000,
-    "gross": 25000
+    "gross": 25000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43177203590"
   },
   {
     "emp_id": "25255",
@@ -1000,7 +1170,10 @@
     "cat2": "STAFF NAME",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "UNION BANK",
+    "ifsc": "UBIN0570087",
+    "account_no": "700802010007085"
   },
   {
     "emp_id": "25310",
@@ -1017,7 +1190,10 @@
     "cat2": "NEW CARD 10",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "BOB BANK",
+    "ifsc": "BARB0NATHUS",
+    "account_no": "26570100023631"
   },
   {
     "emp_id": "25361",
@@ -1034,7 +1210,10 @@
     "cat2": "CARD-13 RANJEET",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031929",
+    "account_no": "7665847229"
   },
   {
     "emp_id": "25362",
@@ -1051,7 +1230,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "6375704188"
   },
   {
     "emp_id": "25433",
@@ -1068,7 +1250,10 @@
     "cat2": "STAFF NAME",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031315",
+    "account_no": "6377414507"
   },
   {
     "emp_id": "25447",
@@ -1085,7 +1270,10 @@
     "cat2": "STAFF NAME",
     "basic": 12960,
     "hra": 5040,
-    "gross": 18000
+    "gross": 18000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9598912181"
   },
   {
     "emp_id": "25449",
@@ -1102,7 +1290,10 @@
     "cat2": "STAFF NAME",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "PNB BANK",
+    "ifsc": "PUNB0141310",
+    "account_no": "9664469592"
   },
   {
     "emp_id": "25472",
@@ -1119,7 +1310,10 @@
     "cat2": "STAFF NAME",
     "basic": 13680,
     "hra": 5320,
-    "gross": 19000
+    "gross": 19000,
+    "bank_name": "PNB BANK",
+    "ifsc": "PUNB0005700",
+    "account_no": "8387069846"
   },
   {
     "emp_id": "25492",
@@ -1136,7 +1330,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8529346482"
   },
   {
     "emp_id": "25493",
@@ -1153,7 +1350,10 @@
     "cat2": "STAFF NAME",
     "basic": 13176,
     "hra": 5124,
-    "gross": 18300
+    "gross": 18300,
+    "bank_name": "UNION BANK",
+    "ifsc": "UBIN0571661",
+    "account_no": "8218068388"
   },
   {
     "emp_id": "25498",
@@ -1170,7 +1370,9 @@
     "cat2": "KACHI WASHING",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "ifsc": "AIRP0000001",
+    "account_no": "8852057368"
   },
   {
     "emp_id": "25503",
@@ -1187,7 +1389,10 @@
     "cat2": "CARD-9",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7568665419"
   },
   {
     "emp_id": "25530",
@@ -1204,7 +1409,9 @@
     "cat2": "CARD NO 5",
     "basic": 14760,
     "hra": 5740,
-    "gross": 20500
+    "gross": 20500,
+    "ifsc": "AIRP0000001",
+    "account_no": "8000894738"
   },
   {
     "emp_id": "25547",
@@ -1221,7 +1428,10 @@
     "cat2": "CARD-13 RANJEET",
     "basic": 14400,
     "hra": 5600,
-    "gross": 20000
+    "gross": 20000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9024350682"
   },
   {
     "emp_id": "25559",
@@ -1238,7 +1448,10 @@
     "cat2": "CARD-13 RANJEET",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8947964680"
   },
   {
     "emp_id": "25569",
@@ -1255,7 +1468,10 @@
     "cat2": "KACHI WASHING",
     "basic": 12960,
     "hra": 5040,
-    "gross": 18000
+    "gross": 18000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7023771440"
   },
   {
     "emp_id": "25573",
@@ -1272,7 +1488,10 @@
     "cat2": "STAFF NAME",
     "basic": 9828,
     "hra": 3822,
-    "gross": 13650
+    "gross": 13650,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031167",
+    "account_no": "61072086967"
   },
   {
     "emp_id": "25576",
@@ -1289,7 +1508,10 @@
     "cat2": "PACKING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "6376475917"
   },
   {
     "emp_id": "25577",
@@ -1306,7 +1528,10 @@
     "cat2": "CARD-13 RANJEET",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0018035",
+    "account_no": "8604584663"
   },
   {
     "emp_id": "25613",
@@ -1323,7 +1548,10 @@
     "cat2": "CARD NO.6",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8890413378"
   },
   {
     "emp_id": "25658",
@@ -1340,7 +1568,10 @@
     "cat2": "CARD NO.3",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0008925",
+    "account_no": "9749772212"
   },
   {
     "emp_id": "25670",
@@ -1357,7 +1588,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8000605895"
   },
   {
     "emp_id": "25675",
@@ -1374,7 +1608,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9079285720"
   },
   {
     "emp_id": "25692",
@@ -1391,7 +1628,10 @@
     "cat2": "SHORTING",
     "basic": 9720,
     "hra": 3780,
-    "gross": 13500
+    "gross": 13500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7792093527"
   },
   {
     "emp_id": "25697",
@@ -1408,7 +1648,10 @@
     "cat2": "STAFF NAME",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "6388771422"
   },
   {
     "emp_id": "25701",
@@ -1425,7 +1668,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9116165196"
   },
   {
     "emp_id": "25704",
@@ -1442,7 +1688,10 @@
     "cat2": "CARD NO 5",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61336700473"
   },
   {
     "emp_id": "25713",
@@ -1459,7 +1708,10 @@
     "cat2": "NEW CARD 10",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "BOB BANK",
+    "ifsc": "BARB0BIKANE",
+    "account_no": "9928812274"
   },
   {
     "emp_id": "25715",
@@ -1476,7 +1728,10 @@
     "cat2": "CARD-9",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0011947",
+    "account_no": "36315963152"
   },
   {
     "emp_id": "25719",
@@ -1493,7 +1748,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9125443339"
   },
   {
     "emp_id": "25733",
@@ -1510,7 +1768,10 @@
     "cat2": "SHORTING",
     "basic": 9720,
     "hra": 3780,
-    "gross": 13500
+    "gross": 13500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61048605893"
   },
   {
     "emp_id": "25740",
@@ -1527,7 +1788,10 @@
     "cat2": "STAFF NAME",
     "basic": 12600,
     "hra": 4900,
-    "gross": 17500
+    "gross": 17500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031315",
+    "account_no": "8209935605"
   },
   {
     "emp_id": "25753",
@@ -1544,7 +1808,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61082106983"
   },
   {
     "emp_id": "25754",
@@ -1561,7 +1828,10 @@
     "cat2": "STAFF NAME",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031315",
+    "account_no": "42719977079"
   },
   {
     "emp_id": "25757",
@@ -1578,7 +1848,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "42814656411"
   },
   {
     "emp_id": "25758",
@@ -1595,7 +1868,9 @@
     "cat2": "ETP",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "RMGB0000686",
+    "account_no": "7340442061"
   },
   {
     "emp_id": "25773",
@@ -1612,7 +1887,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113799969"
   },
   {
     "emp_id": "25776",
@@ -1629,7 +1907,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61086364555"
   },
   {
     "emp_id": "25781",
@@ -1646,7 +1927,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "41858969553"
   },
   {
     "emp_id": "25794",
@@ -1663,7 +1947,9 @@
     "cat2": "CARD-11",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "ifsc": "RMGB0000686",
+    "account_no": "83062666787"
   },
   {
     "emp_id": "25810",
@@ -1680,7 +1966,10 @@
     "cat2": "NEW CARD 10",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38309011070"
   },
   {
     "emp_id": "25815",
@@ -1697,7 +1986,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61016979844"
   },
   {
     "emp_id": "25824",
@@ -1714,7 +2006,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113801743"
   },
   {
     "emp_id": "25826",
@@ -1731,7 +2026,10 @@
     "cat2": "CARD NO 5",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "6375066373"
   },
   {
     "emp_id": "25840",
@@ -1748,7 +2046,9 @@
     "cat2": "PACKING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "FINO0000001",
+    "account_no": "7087471081"
   },
   {
     "emp_id": "25843",
@@ -1765,7 +2065,9 @@
     "cat2": "KACHI WASHING",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "ifsc": "RMGB0000686",
+    "account_no": "83050618328"
   },
   {
     "emp_id": "25849",
@@ -1782,7 +2084,10 @@
     "cat2": "SM PALLEDAR",
     "basic": 15840,
     "hra": 6160,
-    "gross": 22000
+    "gross": 22000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "6350676541"
   },
   {
     "emp_id": "25850",
@@ -1799,7 +2104,10 @@
     "cat2": "GOPALARAM",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61336702448"
   },
   {
     "emp_id": "25853",
@@ -1816,7 +2124,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8209472930"
   },
   {
     "emp_id": "25858",
@@ -1833,7 +2144,10 @@
     "cat2": "SHORTING",
     "basic": 9720,
     "hra": 3780,
-    "gross": 13500
+    "gross": 13500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0008955",
+    "account_no": "31804964881"
   },
   {
     "emp_id": "25861",
@@ -1850,7 +2164,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9351725907"
   },
   {
     "emp_id": "25876",
@@ -1867,7 +2184,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8955302729"
   },
   {
     "emp_id": "25882",
@@ -1884,7 +2204,10 @@
     "cat2": "BOOKLAY /CONDENCER",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8440840201"
   },
   {
     "emp_id": "25897",
@@ -1901,7 +2224,10 @@
     "cat2": "CARD NO 5",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8387885945"
   },
   {
     "emp_id": "25903",
@@ -1918,7 +2244,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61341358634"
   },
   {
     "emp_id": "25905",
@@ -1935,7 +2264,10 @@
     "cat2": "NEW CARD 10",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "UNION BANK",
+    "ifsc": "UBIN0570079",
+    "account_no": "8604883504"
   },
   {
     "emp_id": "25910",
@@ -1952,7 +2284,10 @@
     "cat2": "NEW CARD 10",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9116369472"
   },
   {
     "emp_id": "25913",
@@ -1969,7 +2304,10 @@
     "cat2": "CARD-11",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9664364148"
   },
   {
     "emp_id": "25927",
@@ -1986,7 +2324,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61180199412"
   },
   {
     "emp_id": "25932",
@@ -2003,7 +2344,10 @@
     "cat2": "SM PALLEDAR",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61055621747"
   },
   {
     "emp_id": "25934",
@@ -2020,7 +2364,10 @@
     "cat2": "BLENDING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "42494306045"
   },
   {
     "emp_id": "25940",
@@ -2037,7 +2384,10 @@
     "cat2": "KACHI WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0005785",
+    "account_no": "32202370215"
   },
   {
     "emp_id": "25943",
@@ -2054,7 +2404,10 @@
     "cat2": "CARD-11",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38270572126"
   },
   {
     "emp_id": "25946",
@@ -2071,7 +2424,10 @@
     "cat2": "CARD NO.6",
     "basic": 12960,
     "hra": 5040,
-    "gross": 18000
+    "gross": 18000,
+    "bank_name": "PNB BANK",
+    "ifsc": "PUNB0117410",
+    "account_no": "1174100400005902"
   },
   {
     "emp_id": "25947",
@@ -2088,7 +2444,10 @@
     "cat2": "STAFF NAME",
     "basic": 11880,
     "hra": 4620,
-    "gross": 16500
+    "gross": 16500,
+    "bank_name": "UNION BANK",
+    "ifsc": "UBIN0570087",
+    "account_no": "700802010000064"
   },
   {
     "emp_id": "25958",
@@ -2105,7 +2464,10 @@
     "cat2": "GOPALARAM",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9588898028"
   },
   {
     "emp_id": "25961",
@@ -2122,7 +2484,10 @@
     "cat2": "STAFF NAME",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51071328892"
   },
   {
     "emp_id": "25966",
@@ -2139,7 +2504,10 @@
     "cat2": "FELTING",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43250013219"
   },
   {
     "emp_id": "25974",
@@ -2156,7 +2524,10 @@
     "cat2": "CARD NO.7",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61341824391"
   },
   {
     "emp_id": "25982",
@@ -2173,7 +2544,10 @@
     "cat2": "CARD NO.3",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8209545431"
   },
   {
     "emp_id": "25984",
@@ -2190,7 +2564,10 @@
     "cat2": "MAINTANCE EMPLOYEE",
     "basic": 12960,
     "hra": 5040,
-    "gross": 18000
+    "gross": 18000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51104858917"
   },
   {
     "emp_id": "25991",
@@ -2207,7 +2584,10 @@
     "cat2": "STAFF NAME",
     "basic": 51840,
     "hra": 20160,
-    "gross": 72000
+    "gross": 72000,
+    "bank_name": "HDFC BANK",
+    "ifsc": "HDFC0002563",
+    "account_no": "50100494586594"
   },
   {
     "emp_id": "26000",
@@ -2224,7 +2604,10 @@
     "cat2": "KACHI WASHING",
     "basic": 9720,
     "hra": 3780,
-    "gross": 13500
+    "gross": 13500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8003708479"
   },
   {
     "emp_id": "26003",
@@ -2241,7 +2624,10 @@
     "cat2": "CARD NO 5",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8529350464"
   },
   {
     "emp_id": "26005",
@@ -2258,7 +2644,10 @@
     "cat2": "WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9648413694"
   },
   {
     "emp_id": "26007",
@@ -2275,7 +2664,10 @@
     "cat2": "DYING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "9928175437"
   },
   {
     "emp_id": "26011",
@@ -2292,7 +2684,10 @@
     "cat2": "KACHI WASHING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "8935902927"
   },
   {
     "emp_id": "26015",
@@ -2309,7 +2704,10 @@
     "cat2": "GOPALARAM",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61341358601"
   },
   {
     "emp_id": "26019",
@@ -2326,7 +2724,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7427817026"
   },
   {
     "emp_id": "26040",
@@ -2343,7 +2744,10 @@
     "cat2": "STAFF NAME",
     "basic": 21960,
     "hra": 8540,
-    "gross": 30500
+    "gross": 30500,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43460936228"
   },
   {
     "emp_id": "26041",
@@ -2360,7 +2764,10 @@
     "cat2": "CARD NO.3",
     "basic": 12960,
     "hra": 5040,
-    "gross": 18000
+    "gross": 18000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "42443866712"
   },
   {
     "emp_id": "26046",
@@ -2377,7 +2784,10 @@
     "cat2": "PACKING",
     "basic": 39600,
     "hra": 15400,
-    "gross": 55000
+    "gross": 55000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "37080633311"
   },
   {
     "emp_id": "26048",
@@ -2394,7 +2804,10 @@
     "cat2": "CARD NO.7",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "PNB BANK",
+    "ifsc": "PUNB0MBGB06",
+    "account_no": "71000700040416"
   },
   {
     "emp_id": "26054",
@@ -2411,7 +2824,10 @@
     "cat2": "CARD NO.6",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "51113799685"
   },
   {
     "emp_id": "26057",
@@ -2428,7 +2844,10 @@
     "cat2": "STAFF NAME",
     "basic": 10800,
     "hra": 4200,
-    "gross": 15000
+    "gross": 15000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61144401798"
   },
   {
     "emp_id": "26066",
@@ -2445,7 +2864,10 @@
     "cat2": "CARD NO 5",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43164045649"
   },
   {
     "emp_id": "26081",
@@ -6967,7 +7389,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43176344894"
   },
   {
     "emp_id": "22157",
@@ -6984,7 +7409,10 @@
     "cat2": "CARD NO.7",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "39151105559"
   },
   {
     "emp_id": "25854",
@@ -7001,7 +7429,9 @@
     "cat2": "CARD NO.7",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "ifsc": "AIRP0000001",
+    "account_no": "9339114045"
   },
   {
     "emp_id": "26444",
@@ -7120,7 +7550,10 @@
     "cat2": "CARD NO.6",
     "basic": 18000,
     "hra": 7000,
-    "gross": 25000
+    "gross": 25000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61298493104"
   },
   {
     "emp_id": "26245",
@@ -7154,7 +7587,10 @@
     "cat2": "CARD NO 5",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "43344870951"
   },
   {
     "emp_id": "26013",
@@ -7171,7 +7607,10 @@
     "cat2": "CARD-9",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "UNION BANK",
+    "ifsc": "UBIN0570079",
+    "account_no": "700702120002443"
   },
   {
     "emp_id": "26513",
@@ -7239,7 +7678,10 @@
     "cat2": "NEW CARD 10",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7791952816"
   },
   {
     "emp_id": "26181",
@@ -7341,7 +7783,9 @@
     "cat2": "CARD NO-12",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "ifsc": "AIRP0000001",
+    "account_no": "6367228221"
   },
   {
     "emp_id": "26429",
@@ -7392,7 +7836,10 @@
     "cat2": "CARD NO. 1",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "37068456279"
   },
   {
     "emp_id": "26510",
@@ -7528,7 +7975,10 @@
     "cat2": "DYING",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61335941921"
   },
   {
     "emp_id": "22239",
@@ -7545,7 +7995,10 @@
     "cat2": "DYING",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "61017713533"
   },
   {
     "emp_id": "22294",
@@ -7562,7 +8015,10 @@
     "cat2": "BLENDING",
     "basic": 21600,
     "hra": 8400,
-    "gross": 30000
+    "gross": 30000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "38253819032"
   },
   {
     "emp_id": "26363",
@@ -7681,7 +8137,10 @@
     "cat2": "SHORTING",
     "basic": 15120,
     "hra": 5880,
-    "gross": 21000
+    "gross": 21000,
+    "bank_name": "STATE BANK OF INDIA",
+    "ifsc": "SBIN0031725",
+    "account_no": "7792093527"
   },
   {
     "emp_id": "26425",

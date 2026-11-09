@@ -103,10 +103,23 @@ test('Employee Master Real-Time Cloud Sync Architecture Verification', async (t)
     assert.strictEqual(bAfterDel.some(e => e.emp_id === '1002'), false, 'Deleted employee must not exist in Browser B');
   });
 
-  test('5. hr-workplace.js saveView routes to ATPLGoogleSync, /api/sync/employee-master, and dispatchSyncTrigger', () => {
+  await t.test('5. hr-workplace.js saveView routes to ATPLGoogleSync, /api/sync/employee-master, and dispatchSyncTrigger', () => {
     const hrWorkplaceCode = fs.readFileSync(path.join(__dirname, '../hr-workplace.js'), 'utf8');
     assert.ok(hrWorkplaceCode.includes('ATPLGoogleSync.upsertEmployeeMaster'), 'saveView must call ATPLGoogleSync.upsertEmployeeMaster');
     assert.ok(hrWorkplaceCode.includes('/api/sync/employee-master'), 'saveView must post to /api/sync/employee-master');
     assert.ok(hrWorkplaceCode.includes('dispatchSyncTrigger'), 'saveView must call dispatchSyncTrigger');
+  });
+
+  await t.test('6. Employee Master contains enriched bank details and normalizes aliases', () => {
+    const emps = JSON.parse(fs.readFileSync(path.join(__dirname, '../data/employee_master.json'), 'utf8'));
+    const emp00530 = emps.find(e => String(e.emp_id).includes('530'));
+    assert.ok(emp00530, 'Employee 00530 must exist');
+    assert.strictEqual(emp00530.bank_name, 'STATE BANK OF INDIA');
+    assert.strictEqual(emp00530.ifsc, 'SBIN0003401');
+    assert.strictEqual(emp00530.account_no, '33811674907');
+
+    const syncCode = fs.readFileSync(path.join(__dirname, '../atpl-google-drive-sync.js'), 'utf8');
+    assert.ok(syncCode.includes('!localHasBank'), 'Must auto-pull vault if local records lack bank details');
+    assert.ok(syncCode.includes('base.bank_account_no'), 'Must normalize bank_account_no alias');
   });
 });
