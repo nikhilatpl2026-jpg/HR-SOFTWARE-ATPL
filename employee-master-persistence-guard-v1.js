@@ -37,6 +37,12 @@ function hydrate(){
   try{
     if(!g.EM||!Array.isArray(g.EM.data))return false;
     // Support full enterprise employee dataset (11k+ employees) safely
+    if (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || localStorage.getItem(KEY) === '[]') {
+      g.EM.data = [];
+      if (Array.isArray(g.EMP_MASTER_DATA)) g.EMP_MASTER_DATA.length = 0;
+      if (typeof g.emUpdateStats==='function') g.emUpdateStats();
+      return true;
+    }
     var local=read();
     if(!g.EM.data.length&&local.length){
       var deleted={};
@@ -73,13 +79,30 @@ function boot(){
       bc.addEventListener('message',function(ev){
         var msg=ev&&ev.data;
         if(!msg)return;
+        if(msg.type==='employee_master_cleared'){
+          if(g.EM&&Array.isArray(g.EM.data))g.EM.data=[];
+          if(Array.isArray(g.EMP_MASTER_DATA))g.EMP_MASTER_DATA.length=0;
+          persist();
+          if(typeof g.emFilter==='function')g.emFilter();
+          if(typeof g.emUpdateStats==='function')g.emUpdateStats();
+        }
         if(msg.type==='employee_master_deleted'&&msg.emp_id){
           var k=codeOf({emp_id:msg.emp_id});
           if(g.EM&&Array.isArray(g.EM.data))g.EM.data=g.EM.data.filter(function(r){return codeOf(r)!==k});
           persist();
+          if(typeof g.emFilter==='function')g.emFilter();
+          if(typeof g.emUpdateStats==='function')g.emUpdateStats();
+        }
+        if(msg.type==='employee_master_bulk_deleted'&&Array.isArray(msg.deleted_ids)){
+          var delSet={};
+          msg.deleted_ids.forEach(function(id){delSet[codeOf({emp_id:id})]=true;});
+          if(g.EM&&Array.isArray(g.EM.data))g.EM.data=g.EM.data.filter(function(r){return !delSet[codeOf(r)]});
+          persist();
+          if(typeof g.emFilter==='function')g.emFilter();
+          if(typeof g.emUpdateStats==='function')g.emUpdateStats();
         }
         // Trust only the backend for cross-tab snapshots; never restore a stale broadcast.
-        if((msg.type==='employee_master_saved'||msg.type==='master'||msg.type==='employee_master_deleted')&&g.ATPLCloudSyncV1){
+        if((msg.type==='employee_master_saved'||msg.type==='master')&&g.ATPLCloudSyncV1){
           g.ATPLCloudSyncV1.pullMaster();
         }
             });

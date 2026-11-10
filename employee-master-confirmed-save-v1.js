@@ -185,14 +185,49 @@ async function confirmedBulkSave(){
   });
   persistConfirmed({skipMirrors:true});
   try{g.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(g.EM.data));}catch(_){}
+  try{
+    g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+    var dead = JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
+    rowsToSave.forEach(function(r) {
+      var k = String(r && (r.emp_id || r.id) || '').toLowerCase().trim();
+      if (k) {
+        delete dead[k];
+        delete dead[k.replace(/^0+/, '')];
+      }
+    });
+    g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead));
+  } catch(_) {}
   refreshMasterUi();
   g.EM_BULK_ROWS=[];
   if(typeof g.emCloseModal==='function')g.emCloseModal();
+
+  // Always post bulk save to server REST endpoint and SSE relay
+  try {
+    fetch('/api/sync/employee-master', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: rowsToSave, mode: 'upsert' })
+    }).catch(function(){});
+  } catch(_) {}
+
+  if(g.BroadcastChannel){
+    try{
+      var bc=new g.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      bc.postMessage({action:"employee_updated",details:{records:rowsToSave,count:g.EM.data.length}});
+      bc.close();
+    }catch(_){}
+    try{
+      var bc2=new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      bc2.postMessage({type:"employee_master_saved",records:rowsToSave,count:g.EM.data.length});
+      bc2.close();
+    }catch(_){}
+  }
+
   if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
     try {
       await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
       paint('saved','All '+rowsToSave.length+' rows saved ✓',null);
-      info('Verified cloud save ✓ — '+rowsToSave.length+' employees synced to Google Drive.',false);
+      info('Verified cloud save ✓ — '+rowsToSave.length+' employees synced.',false);
       return;
     } catch(err) { console.warn('Bulk sync to Google Drive error:', err); }
   }
@@ -310,11 +345,114 @@ async function confirmedDelete(idx){
     alert("Employee NOT deleted. "+(err&&err.message||err));
   }finally{busy=false}
 }
+async function confirmedDeleteSelected(){
+  var count = g.EM && g.EM.selectedRows ? g.EM.selectedRows.size : 0;
+  if (!count) {
+    alert('Pehle delete karne ke liye employees select karein.');
+    return;
+  }
+  var confirmMsg = 'Kya aap sach mein in ' + count + ' selected employees ko permanently delete karna chahte hain?';
+  if (!confirm(confirmMsg)) return;
+
+  busy = true;
+  setButtonBusy(true);
+  paint("saving", "Deleting " + count + " employees from cloud…", null);
+
+  try {
+    var indices = Array.from(g.EM.selectedRows).sort(function(a, b) { return b - a; });
+    var deletedIds = [];
+    indices.forEach(function(idx) {
+      if (idx >= 0 && idx < g.EM.data.length) {
+        var e = g.EM.data[idx];
+        if (e && e.emp_id) deletedIds.push(e.emp_id);
+        g.EM.data.splice(idx, 1);
+      }
+    });
+
+    var isAllDeleted = (g.EM.data.length === 0);
+
+    // Record tombstones
+    try {
+      var m = {};
+      try { m = JSON.parse(g.localStorage.getItem("ATPL_EmployeeMasterDeletedV1") || "{}"); } catch(_) {}
+      deletedIds.forEach(function(code) {
+        var s = String(code || "").toLowerCase().trim();
+        m[s] = new Date().toISOString();
+        if (s.replace(/^0+/, '')) m[s.replace(/^0+/, '')] = new Date().toISOString();
+      });
+      g.localStorage.setItem("ATPL_EmployeeMasterDeletedV1", JSON.stringify(m));
+      if (isAllDeleted) {
+        g.localStorage.setItem("ATPL_EMP_MASTER_CLEARED_V1", "true");
+      }
+    } catch(_) {}
+
+    if (Array.isArray(g.EMP_MASTER_DATA)) {
+      g.EMP_MASTER_DATA = g.EM.data.slice();
+    }
+    try {
+      g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data));
+    } catch(_) {}
+
+    if (g.EM.selectedRows && typeof g.EM.selectedRows.clear === "function") g.EM.selectedRows.clear();
+    refreshMasterUi();
+
+    if (g.BroadcastChannel) {
+      try {
+        var bc = new g.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+        if (isAllDeleted) {
+          bc.postMessage({ action: "employee_cleared", details: { count: 0 } });
+        } else {
+          bc.postMessage({ action: "employee_bulk_deleted", details: { deleted_ids: deletedIds, count: g.EM.data.length } });
+        }
+        bc.close();
+      } catch(_) {}
+      try {
+        var bc2 = new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
+        if (isAllDeleted) {
+          bc2.postMessage({ type: "employee_master_cleared", count: 0 });
+        } else {
+          bc2.postMessage({ type: "employee_master_bulk_deleted", deleted_ids: deletedIds, count: g.EM.data.length });
+        }
+        bc2.close();
+      } catch(_) {}
+    }
+
+    if (isAllDeleted) {
+      try {
+        fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function(){});
+      } catch(_) {}
+      if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.clearAllEmployees === 'function') {
+        try { await g.ATPLGoogleSync.clearAllEmployees(); } catch(_) {}
+      }
+    } else {
+      try {
+        fetch('/api/sync/employee-master/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: deletedIds })
+        }).catch(function(){});
+      } catch(_) {}
+      if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
+        try { await g.ATPLGoogleSync.bulkDeleteEmployees(deletedIds); } catch(_) {}
+      }
+    }
+
+    paint("saved", "Deleted " + count + " from cloud ✓", null);
+    if (g.showToast) g.showToast('🗑 ' + count + ' employees delete ho gaye.');
+  } catch(err) {
+    paint("failed", "Delete failed", null);
+    alert("Delete error: " + (err && err.message || err));
+  } finally {
+    busy = false;
+    setButtonBusy(false);
+  }
+}
 function install(){
   ensureUi();
   if(typeof g.emSaveModal==='function'&&!g.emSaveModal.__atplConfirmed){confirmedSingleSave.__atplConfirmed=true;confirmedSingleSave.__original=g.emSaveModal;g.emSaveModal=confirmedSingleSave}
   if(typeof g.emSaveBulk==='function'&&!g.emSaveBulk.__atplConfirmed){confirmedBulkSave.__atplConfirmed=true;confirmedBulkSave.__original=g.emSaveBulk;g.emSaveBulk=confirmedBulkSave}
   if(typeof g.emDeleteRow==='function'&&!g.emDeleteRow.__atplConfirmed){confirmedDelete.__atplConfirmed=true;confirmedDelete.__original=g.emDeleteRow;g.emDeleteRow=confirmedDelete}
+  if(typeof g.emDeleteSelected==='function'&&!g.emDeleteSelected.__atplConfirmed){confirmedDeleteSelected.__atplConfirmed=true;confirmedDeleteSelected.__original=g.emDeleteSelected;g.emDeleteSelected=confirmedDeleteSelected}
 }
     if(g.ATPLFirebase && typeof g.ATPLFirebase.subscribeEmployeeMaster === 'function' && !g.__emFbSubscribed){
       g.__emFbSubscribed = true;

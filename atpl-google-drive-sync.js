@@ -387,13 +387,7 @@
     var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
     var localCount = localList.length;
     var remoteCount = empRows.length;
-    var isLocalTruncated = (localCount < 50 && remoteCount >= 50);
-
-    // CRITICAL: Never allow low-count list (< 50) to destroy healthy 400+ employees
-    if (!isForcedVault && remoteCount < 50 && localCount >= 50) {
-      return;
-    }
-
+    // Authoritative cloud sync (allow deletions and valid updates)
     if (!isForcedVault && !isLocalTruncated && (Date.now() - lastEmpLocalWriteTime < 3500 || window.__ATPL_IS_SAVING_EMP)) {
       return;
     }
@@ -706,10 +700,9 @@
   async function pushEmployeeMasterDriveVault(customList) {
     if (!getGasUrl()) return;
     var list = customList;
-    if (!Array.isArray(list) || !list.length) {
+    if (!Array.isArray(list)) {
       list = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
     }
-    if (!list.length) return;
     try {
       var nowIso = new Date().toISOString();
       var payload = {
@@ -725,7 +718,11 @@
         mimeType: 'application/json'
       });
       localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(Date.parse(nowIso)));
-      dispatchSyncTrigger('employee_updated', { count: list.length, ts: Date.now() });
+      if (list.length === 0) {
+        dispatchSyncTrigger('employee_cleared', { count: 0, ts: Date.now() });
+      } else {
+        dispatchSyncTrigger('employee_updated', { count: list.length, ts: Date.now() });
+      }
     } catch (e) {
       console.warn('[ATPL Sync] Error pushing employee vault to Drive:', e);
     }
@@ -774,13 +771,21 @@
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
 
+    try { localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1'); } catch(_) {}
+
     updatedList.forEach(function(rec) {
       if (!rec || typeof rec !== 'object') return;
       var id = extractEmpId(rec);
       if (!id || id.toLowerCase().indexOf('__atpl_sys__') === 0) return;
       var idLow = id.toLowerCase();
       var idClean = idLow.replace(/^0+/, '');
-      if (dead[idLow] || (idClean && dead[idClean])) return; // strictly honor deletion tombstones
+
+      // An explicit add or update un-tombstones the employee
+      if (dead[idLow] || (idClean && dead[idClean])) {
+        delete dead[idLow];
+        if (idClean) delete dead[idClean];
+        try { localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead)); } catch(_) {}
+      }
 
       rec.emp_id = id;
       var idx = currentList.findIndex(function(x) {
@@ -827,6 +832,102 @@
       }
       refreshEmployeeUI();
     }
+  }
+
+  function applyEmployeeClearLocally() {
+    if (window.EM) {
+      window.EM.data = [];
+      window.EM.filtered = [];
+      if (window.EM.selectedRows) window.EM.selectedRows.clear();
+    }
+    if (Array.isArray(window.EMP_MASTER_DATA)) {
+      window.EMP_MASTER_DATA.length = 0;
+    }
+    window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+    try {
+      localStorage.setItem('AroraTextilesEmployeeMasterV3', '[]');
+      localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true');
+      _lastAppliedEmpHash = fastHashStr('[]');
+      _lastAppliedEmpFp = _lastAppliedEmpHash;
+    } catch (_) {} finally {
+      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+    }
+    refreshEmployeeUI();
+  }
+
+  function applyEmployeeBulkDeleteLocally(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    var delSet = new Set(ids.map(function(x){ return String(x || '').toLowerCase().trim(); }).filter(Boolean));
+    var cleanDelSet = new Set(ids.map(function(x){ return String(x || '').toLowerCase().trim().replace(/^0+/, ''); }).filter(Boolean));
+
+    try {
+      var m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
+      delSet.forEach(function(code) { m[code] = new Date().toISOString(); });
+      cleanDelSet.forEach(function(code) { m[code] = new Date().toISOString(); });
+      localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(m));
+    } catch (_) {}
+
+    var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    var initialLen = currentList.length;
+    currentList = currentList.filter(function(x) {
+      var xId = extractEmpId(x).toLowerCase();
+      return !delSet.has(xId) && !cleanDelSet.has(xId.replace(/^0+/, ''));
+    });
+
+    if (currentList.length !== initialLen) {
+      if (window.EM) {
+        window.EM.data = currentList;
+        if (window.EM.selectedRows) window.EM.selectedRows.clear();
+      }
+      if (Array.isArray(window.EMP_MASTER_DATA)) {
+        window.EMP_MASTER_DATA.length = 0;
+        Array.prototype.push.apply(window.EMP_MASTER_DATA, currentList);
+      }
+      window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+      try {
+        var serialized = JSON.stringify(currentList);
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
+        _lastAppliedEmpHash = fastHashStr(serialized);
+        _lastAppliedEmpFp = _lastAppliedEmpHash;
+      } catch (_) {} finally {
+        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+      }
+      refreshEmployeeUI();
+    }
+  }
+
+  function applyAuthoritativeSnapshot(records) {
+    if (!Array.isArray(records)) return;
+    if (records.length === 0) {
+      applyEmployeeClearLocally();
+      return;
+    }
+    var cleaned = records.map(function(r) {
+      var id = extractEmpId(r);
+      var copyRec = Object.assign({}, r);
+      if (id) copyRec.emp_id = id;
+      return copyRec;
+    }).filter(function(r) { return r && r.emp_id; });
+
+    if (window.EM) {
+      window.EM.data = cleaned;
+      if (window.EM.selectedRows) window.EM.selectedRows.clear();
+    }
+    if (Array.isArray(window.EMP_MASTER_DATA)) {
+      window.EMP_MASTER_DATA.length = 0;
+      Array.prototype.push.apply(window.EMP_MASTER_DATA, cleaned);
+    }
+    window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+    try {
+      var serialized = JSON.stringify(cleaned);
+      localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
+      localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+      _lastAppliedEmpHash = fastHashStr(serialized);
+      _lastAppliedEmpFp = _lastAppliedEmpHash;
+    } catch (_) {} finally {
+      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+    }
+    refreshEmployeeUI();
   }
 
   function applyEmployeeDeleteLocally(empId) {
@@ -882,6 +983,17 @@
       refreshFilesUI();
       return;
     }
+    if (action === 'employee_cleared' || action === 'employee_master_cleared') {
+      applyEmployeeClearLocally();
+      return;
+    }
+    if (action === 'employee_bulk_deleted' || action === 'employee_master_bulk_deleted') {
+      var bIds = (details && (details.deleted_ids || details.ids)) || [];
+      if (Array.isArray(bIds) && bIds.length) {
+        applyEmployeeBulkDeleteLocally(bIds);
+      }
+      return;
+    }
     if (action === 'employee_deleted' || action === 'employee_master_deleted') {
       var delEmpId = details && (details.emp_id || details.id);
       if (delEmpId) {
@@ -890,6 +1002,10 @@
       return;
     }
     if (action === 'employee_updated' || action === 'employee_master_updated' || action === 'employee_master_saved') {
+      if (details && details.records && details.records.length === 0) {
+        applyEmployeeClearLocally();
+        return;
+      }
       var updatedList = (details && (details.records || (details.record ? [details.record] : null))) || [];
       if (Array.isArray(updatedList) && updatedList.length > 0) {
         applySingleOrBatchEmployeeUpdate(updatedList);
@@ -1063,8 +1179,16 @@
         es.addEventListener('employee_master_updated', function(ev) {
           try {
             var p = JSON.parse(ev.data);
-            var recs = (p && p.updated) || (p && p.records) || [];
-            onTriggerReceived('employee_updated', { records: recs }, 'sse');
+            if (p && (p.mode === 'replace' || (Array.isArray(p.records) && p.records.length === 0))) {
+              if (p.records && p.records.length === 0) {
+                applyEmployeeClearLocally();
+              } else if (Array.isArray(p.records)) {
+                applyAuthoritativeSnapshot(p.records);
+              }
+            } else {
+              var recs = (p && p.updated) || (p && p.records) || [];
+              onTriggerReceived('employee_updated', { records: recs }, 'sse');
+            }
           } catch (_) {}
         });
         es.addEventListener('employee_master_deleted', function(ev) {
@@ -1072,6 +1196,17 @@
             var p = JSON.parse(ev.data);
             var empId = p && (p.emp_id || p.id);
             if (empId) onTriggerReceived('employee_deleted', { emp_id: empId }, 'sse');
+          } catch (_) {}
+        });
+        es.addEventListener('employee_master_cleared', function(ev) {
+          try {
+            onTriggerReceived('employee_cleared', {}, 'sse');
+          } catch (_) {}
+        });
+        es.addEventListener('employee_master_bulk_deleted', function(ev) {
+          try {
+            var p = JSON.parse(ev.data);
+            onTriggerReceived('employee_bulk_deleted', p, 'sse');
           } catch (_) {}
         });
       } catch (_) {}
@@ -1430,6 +1565,41 @@
         try { callGoogleBackend('deleteEmployeeMaster', { empCode: empCode, emp_id: empCode }).catch(function() {}); } catch (_) {}
       }
       return { ok: true, verified: true };
+    },
+    clearAllEmployees: async function() {
+      applyEmployeeClearLocally();
+      try {
+        if (typeof fetch === 'function') {
+          fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function() {});
+        }
+      } catch (_) {}
+      dispatchSyncTrigger('employee_cleared', { count: 0 });
+      await pushEmployeeMasterDriveVault([]);
+      if (getGasUrl()) {
+        try { callGoogleBackend('deleteEmployeeMaster', { emp_id: 'ALL' }).catch(function() {}); } catch (_) {}
+      }
+      return { ok: true, cleared: true };
+    },
+    bulkDeleteEmployees: async function(ids) {
+      if (!Array.isArray(ids) || !ids.length) return { ok: true, count: 0 };
+      applyEmployeeBulkDeleteLocally(ids);
+      try {
+        if (typeof fetch === 'function') {
+          fetch('/api/sync/employee-master/bulk-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+          }).catch(function() {});
+        }
+      } catch (_) {}
+      dispatchSyncTrigger('employee_bulk_deleted', { deleted_ids: ids, count: (window.EM && window.EM.data && window.EM.data.length) || 0 });
+      await pushEmployeeMasterDriveVault(window.EM && window.EM.data);
+      if (getGasUrl()) {
+        ids.forEach(function(code) {
+          try { callGoogleBackend('deleteEmployeeMaster', { empCode: code, emp_id: code }).catch(function() {}); } catch (_) {}
+        });
+      }
+      return { ok: true, deletedCount: ids.length };
     },
     subscribe: function(mod, cb) {
       if (!subscribers[mod]) subscribers[mod] = [];

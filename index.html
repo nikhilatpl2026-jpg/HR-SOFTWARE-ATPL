@@ -9336,50 +9336,60 @@ function emInit() {
     } catch(_) {}
 
     var saved = null;
+    var rawSaved = '';
     try {
-      var rawSaved = localStorage.getItem('AroraTextilesEmployeeMasterV3');
-      if (rawSaved) {
+      rawSaved = localStorage.getItem('AroraTextilesEmployeeMasterV3');
+    } catch(_) {}
+    var isExplicitlyCleared = (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || rawSaved === '[]');
+    if (rawSaved && !isExplicitlyCleared) {
+      try {
         var parsed = JSON.parse(rawSaved);
         if (Array.isArray(parsed) && parsed.length > 0) saved = parsed;
-      }
-    } catch(_) {}
-
-    // Guard against bloated / corrupted synthetic cache (e.g. 7392 fake rows from previous sync)
-    if (saved && Array.isArray(saved) && saved.length > 600) {
-      console.warn('[ATPL Master] Detected inflated employee cache (' + saved.length + '); resetting to authentic Arora Textiles master records (454 employees)');
-      saved = null;
-      try {
-        localStorage.removeItem('AroraTextilesEmployeeMasterV3');
       } catch(_) {}
     }
-    var authenticList = (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) ? window.EMP_MASTER_DATA : [];
-    if (saved && Array.isArray(saved) && saved.length >= 100) {
-      var curMap = {};
-      saved.forEach(function(e) { if(e && e.emp_id) curMap[String(e.emp_id).toUpperCase().trim()] = e; });
-      authenticList.forEach(function(e) {
-        if(e && e.emp_id) {
-          var k = String(e.emp_id).toUpperCase().trim();
-          if(!curMap[k]) { curMap[k] = e; }
-        }
-      });
-      EM.data = Object.values(curMap);
-    } else if (authenticList.length > 0) {
-      var curMap = {};
-      authenticList.forEach(function(e) { if(e && e.emp_id) curMap[String(e.emp_id).toUpperCase().trim()] = e; });
-      if (saved && Array.isArray(saved)) {
-        saved.forEach(function(e) {
-          if(e && e.emp_id) {
-            var k = String(e.emp_id).toUpperCase().trim();
-            curMap[k] = Object.assign({}, curMap[k] || {}, e);
-          }
-        });
-      }
-      EM.data = Object.values(curMap);
-    } else if (saved && Array.isArray(saved)) {
-      EM.data = saved;
-    } else if (!EM.data || !Array.isArray(EM.data)) {
+
+    if (isExplicitlyCleared) {
       EM.data = [];
+      if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
+    } else {
+      var authenticList = (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) ? window.EMP_MASTER_DATA : [];
+      if (saved && Array.isArray(saved) && saved.length > 0) {
+        EM.data = saved;
+      } else if (authenticList.length > 0) {
+        EM.data = authenticList.slice();
+      } else {
+        EM.data = [];
+      }
     }
+
+    // Single Source of Truth: sync authoritative Employee Master from server
+    try {
+      fetch('/api/sync/employee-master')
+        .then(function(res) { return res.json(); })
+        .then(function(d) {
+          if (d && d.ok && Array.isArray(d.records)) {
+            if (d.records.length === 0 && (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || rawSaved === '[]')) {
+              EM.data = [];
+              if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
+              emFilter();
+              emUpdateStats();
+            } else if (d.records.length > 0) {
+              EM.data = d.records;
+              if (Array.isArray(window.EMP_MASTER_DATA)) {
+                window.EMP_MASTER_DATA.length = 0;
+                Array.prototype.push.apply(window.EMP_MASTER_DATA, d.records);
+              }
+              try {
+                localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(d.records));
+                localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+              } catch(_) {}
+              emFilter();
+              emUpdateStats();
+            }
+          }
+        })
+        .catch(function() {});
+    } catch(_) {}
 
     // Strict tombstone filter: permanently prune deleted employees
     EM.data = EM.data.filter(function(e) {
@@ -9719,20 +9729,20 @@ window.emUpdateBulkUI = function() {
     countSpan.textContent = count;
   }
   if (selectAllCb) {
-    var start = (EM.currentPage - 1) * EM.rowsPerPage;
-    var slice = EM.filtered.slice(start, start + EM.rowsPerPage);
-    var allChecked = slice.length > 0 && slice.every(function(e){ return EM.selectedRows.has(EM.data.indexOf(e)); });
+    var allChecked = EM.filtered.length > 0 && EM.filtered.every(function(e){ return EM.selectedRows.has(EM.data.indexOf(e)); });
     selectAllCb.checked = allChecked;
   }
 };
 
 window.emToggleAll = function(cb) {
-  var start = (EM.currentPage-1)*EM.rowsPerPage;
-  var slice = EM.filtered.slice(start, start+EM.rowsPerPage);
-  slice.forEach(function(e){
-    var idx = EM.data.indexOf(e);
-    if(cb.checked) EM.selectedRows.add(idx); else EM.selectedRows.delete(idx);
-  });
+  if (cb.checked) {
+    EM.filtered.forEach(function(e){
+      var idx = EM.data.indexOf(e);
+      if (idx >= 0) EM.selectedRows.add(idx);
+    });
+  } else {
+    EM.selectedRows.clear();
+  }
   emRenderTable();
   emUpdateBulkUI();
 };
@@ -9815,6 +9825,28 @@ window.emDeleteSelected = function() {
     deletedIds.forEach(function(id) {
       try { window.ATPLCloudSyncV1.deleteMaster(id); } catch(_) {}
     });
+  }
+
+  var isAllDeleted = (EM.data.length === 0);
+  if (isAllDeleted) {
+    try { localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true'); } catch(_) {}
+    try {
+      fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function(){});
+    } catch(_) {}
+    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.clearAllEmployees === 'function') {
+      try { window.ATPLGoogleSync.clearAllEmployees(); } catch(_) {}
+    }
+  } else {
+    try {
+      fetch('/api/sync/employee-master/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: deletedIds })
+      }).catch(function(){});
+    } catch(_) {}
+    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
+      try { window.ATPLGoogleSync.bulkDeleteEmployees(deletedIds); } catch(_) {}
+    }
   }
 
   EM.selectedRows.clear();
