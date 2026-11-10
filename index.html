@@ -9362,37 +9362,50 @@ function emInit() {
       }
     }
 
-    // Single Source of Truth: sync authoritative Employee Master from server
+    // Single Source of Truth: sync authoritative Employee Master from server or static data
+    var applySyncedRecords = function(recs) {
+      if (!Array.isArray(recs)) return;
+      var isCleared = (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || localStorage.getItem('AroraTextilesEmployeeMasterV3') === '[]');
+      if (recs.length === 0 && isCleared) {
+        EM.data = [];
+        if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
+        try {
+          localStorage.setItem('AroraTextilesEmployeeMasterV3', '[]');
+          localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true');
+        } catch(_) {}
+        emFilter();
+        emUpdateStats();
+      } else if (recs.length > 0) {
+        var valid = recs.filter(function(e) {
+          if (!e) return false;
+          var id = String(e.emp_id || '').toLowerCase().trim();
+          return !deletedMap[id] && !deletedMap[id.replace(/^0+/, '')];
+        });
+        EM.data = valid;
+        if (Array.isArray(window.EMP_MASTER_DATA)) {
+          window.EMP_MASTER_DATA.length = 0;
+          Array.prototype.push.apply(window.EMP_MASTER_DATA, valid);
+        }
+        try {
+          localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(valid));
+          localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+        } catch(_) {}
+        emFilter();
+        emUpdateStats();
+      }
+    };
     try {
       fetch('/api/sync/employee-master')
-        .then(function(res) { return res.json(); })
+        .then(function(res) { if (!res.ok) throw new Error('No server'); return res.json(); })
         .then(function(d) {
-          if (d && d.ok && Array.isArray(d.records)) {
-            if (d.records.length === 0) {
-              EM.data = [];
-              if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
-              try {
-                localStorage.setItem('AroraTextilesEmployeeMasterV3', '[]');
-                localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true');
-              } catch(_) {}
-              emFilter();
-              emUpdateStats();
-            } else if (d.records.length > 0) {
-              EM.data = d.records;
-              if (Array.isArray(window.EMP_MASTER_DATA)) {
-                window.EMP_MASTER_DATA.length = 0;
-                Array.prototype.push.apply(window.EMP_MASTER_DATA, d.records);
-              }
-              try {
-                localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(d.records));
-                localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
-              } catch(_) {}
-              emFilter();
-              emUpdateStats();
-            }
-          }
+          if (d && d.ok && Array.isArray(d.records)) applySyncedRecords(d.records);
         })
-        .catch(function() {});
+        .catch(function() {
+          fetch('./data/employee_master.json?_t=' + Date.now())
+            .then(function(res) { return res.json(); })
+            .then(function(recs) { if (Array.isArray(recs)) applySyncedRecords(recs); })
+            .catch(function() {});
+        });
     } catch(_) {}
 
     // Strict tombstone filter: permanently prune deleted employees
@@ -16089,6 +16102,7 @@ else AInit();
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20261109-drive-vault-v3&cb=20261109v3"></script>
+<script src="atpl-employee-master-realtime-engine.js?v=20261110-v3"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
