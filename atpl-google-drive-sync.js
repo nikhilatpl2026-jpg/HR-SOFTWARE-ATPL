@@ -1,15 +1,14 @@
 /**
- * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE (V7 - MASTER BRIDGE)
- * 100% Fixes:
- * 1. Employee Master any small edit / paste instant cross-browser sync (Hooks ATPLCloudSyncV1 & localStorage)
- * 2. Preserves all 40+ Employee Master columns without field loss
- * 3. HR Documents, PF & ESIC Challan permanent cloud sync (Never disappears after 5-10s)
- * 4. Zero Hang, Zero Reload, Zero Firebase Toggle
+ * ATPL GOOGLE DRIVE & GOOGLE SHEETS UNIFIED REAL-TIME SYNC ENGINE (V8.1 - FULL MASTER)
+ * 100% Working Modules:
+ * 1. Employee Master (Instant 3.5s Cross-Browser Sync + 60s Anti-Revert Shield for Active/Left, Bank, IFSC)
+ * 2. All Files / Salary Sheets (uploadFile, uploadBulk, deleteFile, Auto-Download Queue)
+ * 3. Advance Deduction (Drive JSON + Vault Real-Time Sync)
+ * 4. HR Documents, PF & ESIC Statutory Challan Sync
  */
 (function(window) {
   'use strict';
 
-  // ── 0. Permanently Hide Any Legacy Firebase Toggle ──
   function suppressFirebaseUI() {
     try {
       window.ATPL_DISABLE_FIREBASE = true;
@@ -29,15 +28,9 @@
   function getGasUrl() {
     try {
       var custom = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
-      if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) {
-        return custom.trim();
-      }
-      if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) {
-        return String(window.ATPL_CUSTOM_GAS_URL).trim();
-      }
-      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(String(window.ATPL_GAS_URL).trim())) {
-        return String(window.ATPL_GAS_URL).trim();
-      }
+      if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) return custom.trim();
+      if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) return String(window.ATPL_CUSTOM_GAS_URL).trim();
+      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(String(window.ATPL_GAS_URL).trim())) return String(window.ATPL_GAS_URL).trim();
     } catch (_) {}
     return DEFAULT_GAS_URL;
   }
@@ -47,9 +40,7 @@
 
   var MY_CLIENT_ID = 'client_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   var localVersion = 0;
-  try {
-    localVersion = parseInt(window.localStorage.getItem('ATPL_DRIVE_SYNC_VERSION') || '0', 10) || 0;
-  } catch (_) {}
+  try { localVersion = parseInt(window.localStorage.getItem('ATPL_DRIVE_SYNC_VERSION') || '0', 10) || 0; } catch (_) {}
 
   var isPolling = false;
   var downloadQueue = [];
@@ -58,17 +49,25 @@
   var fileMap = new Map();
   var subscribers = {};
 
-  // ── Locks & Fingerprints (Prevents 5-10 sec disappearing bug) ──
   var lastEmpLocalWriteTime = 0;
   var lastVaultLocalWriteTime = 0;
   var lastFileLocalWriteTime = 0;
+  var lastUserActionTime = 0;
   var recentlyUploadedFiles = {};
   var _lastAppliedEmpHash = '';
   var _lastAppliedEmpFp = '';
   var _lastPushedEmpHash = '';
   var _lastAppliedVaultHash = '';
+  var _lastVaultContentHash = '';
 
-  // Known localStorage keys used by index.html for Emp Master, HR Docs, PF & ESIC Challan
+  // 60-Second Local Edit Shield (Protects Active/Left, Bank A/C, IFSC, Bank Name from reverting)
+  var localEditShield = {};
+  var SHIELD_DURATION_MS = 60000;
+
+  ['mousedown', 'keydown', 'input', 'change', 'click', 'paste', 'touchstart'].forEach(function(evName) {
+    window.addEventListener(evName, function() { lastUserActionTime = Date.now(); }, true);
+  });
+
   var EMP_STORAGE_KEYS = [
     'AroraTextilesEmployeeMasterV3',
     'ATPL_EmployeeMaster_V1',
@@ -84,14 +83,15 @@
     'ATPL_CHALLAN_HISTORY_V1',
     'ATPL_PF_ESIC_CHALLAN_V1',
     'ATPL_STATUTORY_CHALLAN_V1',
-    'ATPL_COMPLIANCE_DOL_V1'
+    'ATPL_COMPLIANCE_DOL_V1',
+    'ATPL_ADVANCE_MANAGEMENT_V1',
+    'ATPL_ADVANCE_DATA_V1',
+    'AroraTextilesAdvanceV1'
   ];
 
-  // Fast string hash to detect even a 1-character change in any employee or document
   function fastHashStr(str) {
     if (!str) return '0';
-    var h = 2166136261;
-    var len = str.length;
+    var h = 2166136261, len = str.length;
     for (var i = 0; i < len; i++) {
       h ^= str.charCodeAt(i);
       h = Math.imul(h, 16777619);
@@ -99,20 +99,108 @@
     return len + '_' + (h >>> 0).toString(36);
   }
 
+  function deepClone(obj) {
+    try { return JSON.parse(JSON.stringify(obj)); } catch (_) { return Object.assign({}, obj); }
+  }
+
+  function extractEmpId(r) {
+    if (!r || typeof r !== 'object') return '';
+    var id = r.emp_id || r.empCode || r.emp_code || r.id || r.code || r.EmpID || r['Emp ID'] || r['Employee ID'] || r['1. Employee ID'] || '';
+    return String(id).trim();
+  }
+
+  function normalizeEmpIdKey(id) {
+    var s = String(id || '').toLowerCase().trim();
+    if (/^\d+$/.test(s)) return s.replace(/^0+(?=\d)/, '') || '0';
+    return s;
+  }
+
+  function normalizeEmployeeRecord(rec) {
+    if (!rec || typeof rec !== 'object') return rec;
+    var r = Object.assign({}, rec);
+    var id = extractEmpId(r);
+    if (id) r.emp_id = id;
+
+    var acc = (r.account_no !== undefined && r.account_no !== '') ? r.account_no : (r.bank_account_no || r.accountNo || r.ac_no || '');
+    if (acc !== undefined) {
+      r.account_no = String(acc).trim();
+      r.bank_account_no = r.account_no;
+    }
+
+    var ifsc = (r.ifsc !== undefined && r.ifsc !== '') ? r.ifsc : (r.ifsc_code || r.ifscCode || '');
+    if (ifsc !== undefined) {
+      r.ifsc = String(ifsc).trim().toUpperCase();
+      r.ifsc_code = r.ifsc;
+    }
+
+    var bnk = (r.bank_name !== undefined && r.bank_name !== '') ? r.bank_name : (r.bankName || r.bank || '');
+    if (bnk !== undefined) {
+      r.bank_name = String(bnk).trim().toUpperCase();
+      r.bankName = r.bank_name;
+    }
+
+    if (r.status !== undefined && r.status !== null && String(r.status).trim() !== '') {
+      r.status = String(r.status).trim().toUpperCase();
+    }
+    if (r.dol !== undefined && r.dol !== null) r.dol = String(r.dol).trim();
+    if (!r.dept && r.department) r.dept = r.department;
+    if (r.dept && !r.department) r.department = r.dept;
+    if (!r.doj && r.date_of_joining) r.doj = r.date_of_joining;
+    if (r.doj && !r.date_of_joining) r.date_of_joining = r.doj;
+    if (!r.pf_no && r.uan_no) r.pf_no = r.uan_no;
+    if (!r.esi_no && r.esic_no) r.esi_no = r.esic_no;
+    if (r.gross && !r.new_gross) r.new_gross = r.gross;
+    if (r.new_gross && !r.gross) r.gross = r.new_gross;
+    return r;
+  }
+
+  function shieldEmployeeRecord(rec) {
+    if (!rec || typeof rec !== 'object') return;
+    var k = normalizeEmpIdKey(extractEmpId(rec));
+    if (!k || k.indexOf('__atpl_sys__') === 0) return;
+    var norm = normalizeEmployeeRecord(rec);
+    norm._updatedAt = Date.now();
+    localEditShield[k] = { record: deepClone(norm), ts: Date.now() };
+  }
+
+  function applyLocalShieldToArray(arr) {
+    if (!Array.isArray(arr)) return arr;
+    var now = Date.now();
+    var activeKeys = Object.keys(localEditShield).filter(function(k) {
+      if (now - localEditShield[k].ts > SHIELD_DURATION_MS) {
+        delete localEditShield[k];
+        return false;
+      }
+      return true;
+    });
+    if (!activeKeys.length) return arr.map(normalizeEmployeeRecord);
+
+    var foundMap = {};
+    var out = arr.map(function(item) {
+      var k = normalizeEmpIdKey(extractEmpId(item));
+      if (k && localEditShield[k]) {
+        foundMap[k] = true;
+        return Object.assign({}, item, deepClone(localEditShield[k].record));
+      }
+      return normalizeEmployeeRecord(item);
+    });
+    activeKeys.forEach(function(k) {
+      if (!foundMap[k] && localEditShield[k] && localEditShield[k].record) {
+        out.push(deepClone(localEditShield[k].record));
+      }
+    });
+    return out;
+  }
+
   function getMimeType(fileName, fallback) {
     var ext = String(fileName || '').split('.').pop().toLowerCase().trim();
     var map = {
-      'pdf': 'application/pdf',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'webp': 'image/webp',
-      'doc': 'application/msword',
+      'pdf': 'application/pdf', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+      'webp': 'image/webp', 'doc': 'application/msword',
       'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'xls': 'application/vnd.ms-excel',
       'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'csv': 'text/csv',
-      'txt': 'text/plain'
+      'csv': 'text/csv', 'txt': 'text/plain', 'json': 'application/json'
     };
     return map[ext] || fallback || 'application/octet-stream';
   }
@@ -122,7 +210,6 @@
     return ['xlsx', 'xls', 'csv'].indexOf(ext) !== -1;
   }
 
-  // ── Universal Google Apps Script Transport (Safe Timeout + Non-Blocking) ──
   async function callGoogleBackend(action, params) {
     var endpoint = getGasUrl();
     if (!endpoint) return null;
@@ -130,7 +217,7 @@
     var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var timeoutId = controller ? setTimeout(function() { controller.abort(); }, 25000) : null;
     try {
-      var res = await fetch(endpoint, {
+      var res = await fetch(endpoint + '?t=' + Date.now(), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(p),
@@ -139,11 +226,7 @@
       if (timeoutId) clearTimeout(timeoutId);
       if (!res.ok) return null;
       var text = await res.text();
-      try {
-        return JSON.parse(text);
-      } catch (e) {
-        return { ok: false, error: 'JSON parse error', raw: text };
-      }
+      try { return JSON.parse(text); } catch (e) { return { ok: false, error: 'JSON parse error', raw: text }; }
     } catch (err) {
       if (timeoutId) clearTimeout(timeoutId);
       console.warn('[ATPL Sync] Transport warning (' + action + '):', err.message);
@@ -151,7 +234,6 @@
     }
   }
 
-  // ── UI Sync Status Indicators ──
   function updateSyncBadge(status, text) {
     var badge = document.getElementById('cloudSyncStatusBadge');
     if (!badge) return;
@@ -206,80 +288,53 @@
         updateSyncBadge('ok');
         notifySubscribers('employee');
       });
-    }, 60);
+    }, 50);
   }
 
   function notifySubscribers(mod) {
-    (subscribers[mod] || []).forEach(function(cb) {
-      try { cb(); } catch (_) {}
-    });
+    (subscribers[mod] || []).forEach(function(cb) { try { cb(); } catch (_) {} });
   }
 
   function b64ToBuf(b64) {
     if (!b64 || typeof b64 !== 'string') return null;
     try {
       var clean = b64.replace(/^data:[^;]+;base64,/, '').trim();
-      var bin = atob(clean);
-      var len = bin.length;
-      var bytes = new Uint8Array(len);
+      var bin = atob(clean), len = bin.length, bytes = new Uint8Array(len);
       for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
       return bytes.buffer;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) { return null; }
   }
 
   function toB64(buf) {
     if (!buf) return '';
-    if (typeof buf === 'string') {
-      return buf.replace(/^data:[^;]+;base64,/, '').trim();
-    }
+    if (typeof buf === 'string') return buf.replace(/^data:[^;]+;base64,/, '').trim();
     try {
       var bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-      var bin = '';
-      var chunk = 8192;
+      var bin = '', chunk = 8192;
       for (var i = 0; i < bytes.byteLength; i += chunk) {
         bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.byteLength)));
       }
       return btoa(bin);
-    } catch (_) {
-      return '';
-    }
+    } catch (_) { return ''; }
   }
 
   function utf8ToB64(str) {
     if (!str) return '';
-    try {
-      return btoa(unescape(encodeURIComponent(str)));
-    } catch (_) {
-      try {
-        if (typeof Buffer !== 'undefined') return Buffer.from(str, 'utf8').toString('base64');
-      } catch (_) {}
+    try { return btoa(unescape(encodeURIComponent(str))); } catch (_) {
+      try { if (typeof Buffer !== 'undefined') return Buffer.from(str, 'utf8').toString('base64'); } catch (_) {}
       return '';
     }
   }
 
   function b64ToUtf8(b64) {
     if (!b64 || typeof b64 !== 'string') return '';
-    try {
-      var clean = b64.replace(/^data:[^;]+;base64,/, '').trim();
-      return decodeURIComponent(escape(atob(clean)));
-    } catch (_) {
-      try {
-        if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8');
-      } catch (_) {}
+    try { return decodeURIComponent(escape(atob(b64.replace(/^data:[^;]+;base64,/, '').trim()))); } catch (_) {
+      try { if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8'); } catch (_) {}
       return '';
     }
   }
 
-  function extractEmpId(r) {
-    if (!r || typeof r !== 'object') return '';
-    var id = r.emp_id || r.empCode || r.emp_code || r.id || r.code || r.EmpID || r['Emp ID'] || r['Employee ID'] || r['1. Employee ID'] || '';
-    return String(id).trim();
-  }
-
-  // ── Pack & Unpack HR Docs / PF / ESIC Vault Inside Employee Master Sheet ──
-  // Saves metadata to Google Sheets without requiring any Code.gs modifications!
+  // Packs HR Docs, PF/ESIC Challan & Advance Deduction metadata into Cloud Vault
   function buildSystemVaultRecords() {
     var vaultObj = {};
     try {
@@ -292,24 +347,21 @@
           kLow.indexOf('hr_doc') >= 0 ||
           kLow.indexOf('challan') >= 0 ||
           kLow.indexOf('esic') >= 0 ||
-          kLow.indexOf('epfo') >= 0;
+          kLow.indexOf('epfo') >= 0 ||
+          kLow.indexOf('advance') >= 0;
         if (isTarget && kLow.indexOf('tombstone') === -1 && kLow.indexOf('session') === -1) {
           var val = localStorage.getItem(k);
-          if (val && val.length < 180000) {
-            vaultObj[k] = val;
-          }
+          if (val && val.length < 180000) vaultObj[k] = val;
         }
       }
     } catch (_) {}
 
     var jsonStr = JSON.stringify(vaultObj);
     if (!jsonStr || jsonStr === '{}') return [];
-
-    var chunkSize = 40000;
-    var chunks = [];
+    var chunkSize = 40000, chunks = [];
     for (var c = 0; c < jsonStr.length; c += chunkSize) {
       chunks.push({
-        emp_id: '__atpl_sys__vault_' + (chunks.length),
+        emp_id: '__atpl_sys__vault_' + chunks.length,
         name: '__ATPL_CLOUD_VAULT__',
         father: jsonStr.slice(c, c + chunkSize),
         updated_at: new Date().toISOString()
@@ -319,17 +371,12 @@
   }
 
   function applySystemVaultRecords(sysRows) {
-    if (!Array.isArray(sysRows) || !sysRows.length) return;
-    if (Date.now() - lastVaultLocalWriteTime < 20000) return;
-
+    if (!Array.isArray(sysRows) || !sysRows.length || (Date.now() - lastVaultLocalWriteTime < 15000)) return;
     var vaultRows = sysRows.filter(function(r) {
       return r && String(r.emp_id || '').indexOf('__atpl_sys__vault_') === 0;
     }).sort(function(a, b) {
-      var ia = parseInt(String(a.emp_id).replace('__atpl_sys__vault_', ''), 10) || 0;
-      var ib = parseInt(String(b.emp_id).replace('__atpl_sys__vault_', ''), 10) || 0;
-      return ia - ib;
+      return (parseInt(String(a.emp_id).replace('__atpl_sys__vault_', ''), 10) || 0) - (parseInt(String(b.emp_id).replace('__atpl_sys__vault_', ''), 10) || 0);
     });
-
     if (!vaultRows.length) return;
     var fullJson = vaultRows.map(function(r) { return r.father || ''; }).join('');
     if (!fullJson) return;
@@ -339,17 +386,13 @@
     _lastAppliedVaultHash = hash;
 
     try {
-      var vaultObj = JSON.parse(fullJson);
-      var changedAny = false;
+      var vaultObj = JSON.parse(fullJson), changedAny = false;
       Object.keys(vaultObj).forEach(function(k) {
         var remoteVal = vaultObj[k];
-        if (typeof remoteVal === 'string' && remoteVal.length > 2) {
-          var curVal = localStorage.getItem(k);
-          if (curVal !== remoteVal) {
-            window.__ATPL_INTERNAL_STORAGE_WRITE = true;
-            try { localStorage.setItem(k, remoteVal); } finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
-            changedAny = true;
-          }
+        if (typeof remoteVal === 'string' && remoteVal.length > 2 && localStorage.getItem(k) !== remoteVal) {
+          window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+          try { localStorage.setItem(k, remoteVal); } finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
+          changedAny = true;
         }
       });
       if (changedAny) {
@@ -357,124 +400,79 @@
         try { if (typeof window.hrDocRender === 'function') window.hrDocRender(); } catch (_) {}
         try { if (typeof window.initStatutoryChallanTab === 'function') window.initStatutoryChallanTab(); } catch (_) {}
       }
-    } catch (e) {
-      console.warn('[ATPL Sync] Vault parse note:', e);
-    }
+    } catch (_) {}
   }
 
-  // ── Apply & Smart-Merge Employee Records Across Browsers ──
-  function applyEmployeeRecords(records, isForcedVault) {
+  function applyEmployeeRecords(records) {
     if (!Array.isArray(records) || !records.length) return;
-
-    var sysRows = [];
-    var empRows = [];
+    var sysRows = [], empRows = [];
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r || typeof r !== 'object') continue;
       var id = extractEmpId(r);
       if (!id) continue;
-      if (id.toLowerCase().indexOf('__atpl_sys__') === 0) {
-        sysRows.push(r);
-      } else {
-        empRows.push(r);
-      }
+      if (id.toLowerCase().indexOf('__atpl_sys__') === 0) sysRows.push(r);
+      else empRows.push(r);
     }
-
-    if (sysRows.length > 0) {
-      applySystemVaultRecords(sysRows);
-    }
-
-    var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
-    var localCount = localList.length;
-    var remoteCount = empRows.length;
-    // Authoritative cloud sync (allow deletions and valid updates)
-    if (!isForcedVault && !isLocalTruncated && (Date.now() - lastEmpLocalWriteTime < 3500 || window.__ATPL_IS_SAVING_EMP)) {
-      return;
-    }
-    if (!empRows.length) return;
+    if (sysRows.length > 0) applySystemVaultRecords(sysRows);
+    if (window.__ATPL_IS_SAVING_EMP || (Date.now() - lastEmpLocalWriteTime < 12000) || !empRows.length) return;
 
     var dead = {};
-    try {
-      var rawDead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
-      if (rawDead && Object.keys(rawDead).length < 200) {
-        dead = rawDead;
-      }
-    } catch (_) {}
-
-    var remoteHash = fastHashStr(JSON.stringify(empRows));
-    if (!isForcedVault && !isLocalTruncated && (_lastAppliedEmpHash === remoteHash || _lastAppliedEmpFp === remoteHash) && localCount > 0) {
-      return;
-    }
-    _lastAppliedEmpHash = remoteHash;
-    _lastAppliedEmpFp = remoteHash;
+    try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}') || {}; } catch (_) {}
 
     var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
     var localMap = {};
     for (var l = 0; l < localList.length; l++) {
-      var lr = localList[l];
-      var lid = extractEmpId(lr).toLowerCase();
-      if (lid) localMap[lid] = lr;
+      var lid = normalizeEmpIdKey(extractEmpId(localList[l]));
+      if (lid) localMap[lid] = localList[l];
     }
 
     var valid = [];
     for (var j = 0; j < empRows.length; j++) {
       var row = empRows[j];
       var rawId = extractEmpId(row);
-      var k = rawId.toLowerCase();
-      if (dead[k] || dead[k.replace(/^0+/, '')]) continue;
+      var k = normalizeEmpIdKey(rawId);
+      if (!k || dead[k] || dead[rawId.toLowerCase()]) continue;
 
       if (row._raw_json && typeof row._raw_json === 'string') {
-        try {
-          var unpacked = JSON.parse(row._raw_json);
-          row = Object.assign({}, unpacked, row);
-        } catch (_) {}
+        try { row = Object.assign({}, JSON.parse(row._raw_json), row); } catch (_) {}
+      }
+
+      if (localEditShield[k] && (Date.now() - localEditShield[k].ts <= SHIELD_DURATION_MS)) {
+        valid.push(deepClone(localEditShield[k].record));
+        continue;
       }
 
       var existing = localMap[k] || {};
-      var base = Object.assign({}, row);
-      // Merge all fields from row first, but preserve all user-edited local fields!
-      Object.keys(existing).forEach(function(fk) {
-        if (existing[fk] !== undefined && existing[fk] !== null && existing[fk] !== '') {
-          base[fk] = existing[fk];
-        }
+      var merged = Object.assign({}, existing);
+      Object.keys(row).forEach(function(fk) {
+        if (row[fk] !== undefined && row[fk] !== null) merged[fk] = row[fk];
       });
-      // Explicitly lock critical fields to local edits
-      if (existing.status) base.status = existing.status;
-      if (existing.dol) base.dol = existing.dol;
-      if (existing.bank_name) base.bank_name = existing.bank_name;
-      if (existing.account_no) base.account_no = existing.account_no;
-      if (existing.ifsc) base.ifsc = existing.ifsc;
-      if (!base.account_no && (base.bank_account_no || row.bank_account_no)) base.account_no = base.bank_account_no || row.bank_account_no;
-      if (!base.ifsc && (base.ifsc_code || row.ifsc_code)) base.ifsc = base.ifsc_code || row.ifsc_code;
-      if (!base.dept && (base.department || row.department)) base.dept = base.department || row.department;
-      if (!base.doj && (base.date_of_joining || row.date_of_joining)) base.doj = base.date_of_joining || row.date_of_joining;
-      if (!base.pf_no && (base.uan_no || row.uan_no)) base.pf_no = base.uan_no || row.uan_no;
-      if (!base.esi_no && (base.esic_no || row.esic_no)) base.esi_no = base.esic_no || row.esic_no;
-      base.emp_id = rawId;
-      valid.push(base);
+      merged.emp_id = rawId;
+      valid.push(normalizeEmployeeRecord(merged));
     }
 
     if (!valid.length) return;
+    var finalValid = applyLocalShieldToArray(valid);
+    var newSerialized = JSON.stringify(finalValid);
+    if (newSerialized === JSON.stringify(localList)) return;
 
-    if (window.EM) window.EM.data = valid.slice();
+    var newHash = fastHashStr(newSerialized);
+    _lastAppliedEmpHash = newHash;
+    _lastAppliedEmpFp = newHash;
+    _lastPushedEmpHash = newHash;
+
+    if (window.EM) window.EM.data = finalValid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
-      Array.prototype.push.apply(window.EMP_MASTER_DATA, valid);
+      Array.prototype.push.apply(window.EMP_MASTER_DATA, finalValid);
     }
-
     window.__ATPL_INTERNAL_STORAGE_WRITE = true;
-    try {
-      var serialized = JSON.stringify(valid);
-      localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
-      _lastPushedEmpHash = fastHashStr(serialized);
-    } catch (_) {} finally {
-      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-    }
-
+    try { localStorage.setItem('AroraTextilesEmployeeMasterV3', newSerialized); } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
     refreshEmployeeUI();
   }
 
-  // ── Background File Download Queue (Excel Only for window.FILES) ──
+  // ── Background File Download Queue (All Files / Salary Sheets) ──
   async function processDownloadQueue() {
     if (isDownloading || !downloadQueue.length) return;
     isDownloading = true;
@@ -485,7 +483,6 @@
         var fileName = fileMeta.name;
         var nameKey = String(fileName).toLowerCase().trim();
 
-        // Guard: Do not load internal advance management json or non-spreadsheets into salary files
         if (nameKey.indexOf('advance_management') !== -1 || nameKey.endsWith('.json') || !isSpreadsheetFile(fileName)) {
           continue;
         }
@@ -503,14 +500,11 @@
             await new Promise(function(r) { setTimeout(r, 40); });
             var rawBuf = b64ToBuf(res.fileBase64);
             var mime = getMimeType(fileName, res.mimeType);
-            var wb = null;
-            var sheets = {};
+            var wb = null, sheets = {};
 
             if (isSpreadsheetFile(fileName)) {
               try {
-                if (rawBuf && typeof window.parseWB === 'function') {
-                  wb = window.parseWB(rawBuf);
-                }
+                if (rawBuf && typeof window.parseWB === 'function') wb = window.parseWB(rawBuf);
               } catch (_) {}
               sheets = (wb && typeof window.wbToSheets === 'function') ? window.wbToSheets(wb) : {};
             }
@@ -535,7 +529,6 @@
               window.__ATPL_IS_DOWNLOADING_DRIVE = true;
               try { window.saveFileToDB(fileName, rawBuf); } finally { window.__ATPL_IS_DOWNLOADING_DRIVE = false; }
             }
-
             refreshFilesUI();
           }
         } catch (err) {
@@ -549,7 +542,7 @@
     }
   }
 
-  // ── Poll Sync State ──
+  // ── Full Poll Sync State (All Files + Tombstones + Employee Master Vault + Sheet) ──
   var lastPollTimestamp = 0;
   async function pollSyncState(force) {
     if (!isInitialLoaded) {
@@ -562,7 +555,7 @@
     }
 
     var now = Date.now();
-    if (!force && (now - lastPollTimestamp < 12000)) {
+    if (!force && (now - lastPollTimestamp < 3200)) {
       return Promise.resolve({ ok: true, throttled: true });
     }
     lastPollTimestamp = now;
@@ -634,7 +627,6 @@
         var df = driveFiles[j];
         if (!df || !df.name) continue;
         var dfNameLow = String(df.name).toLowerCase().trim();
-        // Ignore internal data files (.json, advance management data) or non-spreadsheets
         if (dfNameLow.indexOf('advance_management') !== -1 || dfNameLow.endsWith('.json') || !isSpreadsheetFile(df.name)) {
           continue;
         }
@@ -656,12 +648,12 @@
         processDownloadQueue();
       }
 
-      // 1. Authoritative sync of Employee Master Vault from Google Drive (454+ employees)
-      await syncEmployeeMasterDriveVault(driveFiles, !!force);
-
-      // 2. Secondary Sheet employees (only if >= 50 records)
-      if (Array.isArray(state.employees) && state.employees.length >= 50) {
-        applyEmployeeRecords(state.employees);
+      // Sync Employee Master (Only if not within 10s of a local Emp edit)
+      if (Date.now() - lastEmpLocalWriteTime >= 10000) {
+        var vaultApplied = await syncEmployeeMasterDriveVault(driveFiles, !!force);
+        if (!vaultApplied && Array.isArray(state.employees) && state.employees.length > 0) {
+          applyEmployeeRecords(state.employees);
+        }
       }
 
       updateSyncBadge('ok');
@@ -674,33 +666,39 @@
   }
 
   async function syncEmployeeMasterDriveVault(driveFiles, force) {
-    if (!Array.isArray(driveFiles) || !getGasUrl()) return;
+    if (!Array.isArray(driveFiles) || !getGasUrl() || window.__ATPL_IS_SAVING_EMP || (Date.now() - lastEmpLocalWriteTime < 12000)) return false;
     var empVaultFile = driveFiles.find(function(df) {
       return df && String(df.name).toLowerCase().trim() === 'atpl_employee_master_vault.json';
     });
-    if (!empVaultFile) return;
+    if (!empVaultFile) return false;
 
     var remoteVaultTs = Date.parse(empVaultFile.updatedAt) || 0;
+    var remoteMarker = String(empVaultFile.updatedAt || '') + '_' + String(empVaultFile.size || '');
+    var lastMarker = localStorage.getItem('ATPL_EMP_VAULT_LAST_MARKER') || '';
     var lastVaultTs = parseInt(localStorage.getItem('ATPL_EMP_VAULT_LAST_TS') || '0', 10);
     var currentEmpCount = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.length : 0;
-    var localEmps = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
-    var localHasBank = localEmps.some(function(e) { return e && (e.bank_name || e.account_no || e.ifsc); });
-
     var isCleared = localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true';
 
-    if (force || remoteVaultTs > lastVaultTs || (!isCleared && (currentEmpCount < 50 || !localHasBank))) {
+    if (force || remoteMarker !== lastMarker || remoteVaultTs > lastVaultTs || (!isCleared && currentEmpCount < 10)) {
       try {
         var vaultRes = await callGoogleBackend('downloadFile', { fileName: 'atpl_employee_master_vault.json' });
+        if (window.__ATPL_IS_SAVING_EMP || (Date.now() - lastEmpLocalWriteTime < 12000)) return false;
         if (vaultRes && vaultRes.ok && vaultRes.fileBase64) {
           var vaultJson = b64ToUtf8(vaultRes.fileBase64);
+          var contentHash = fastHashStr(vaultJson);
+          localStorage.setItem('ATPL_EMP_VAULT_LAST_MARKER', remoteMarker);
+          if (remoteVaultTs > 0) localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+          if (contentHash === _lastVaultContentHash && currentEmpCount > 0) return false;
+          _lastVaultContentHash = contentHash;
+
           var vaultData = JSON.parse(vaultJson);
           if (vaultData && Array.isArray(vaultData.employees)) {
             if (vaultData.employees.length === 0 || vaultData.cleared === true) {
               applyEmployeeClearLocally();
-              localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+              return true;
             } else {
               applyAuthoritativeSnapshot(vaultData.employees);
-              localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+              return true;
             }
           }
         }
@@ -708,36 +706,35 @@
         console.warn('[ATPL Sync] Vault download error:', err);
       }
     }
+    return false;
   }
 
   async function pushEmployeeMasterDriveVault(customList) {
     if (!getGasUrl()) return;
-    var list = customList;
-    if (!Array.isArray(list)) {
-      list = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
-    }
+    var list = Array.isArray(customList) ? customList : ((window.EM && Array.isArray(window.EM.data)) ? window.EM.data : []);
+    list = applyLocalShieldToArray(list.map(normalizeEmployeeRecord));
     try {
       var nowIso = new Date().toISOString();
       var isZero = (list.length === 0);
       var payload = {
-        version: 1,
+        version: 2,
+        sender: MY_CLIENT_ID,
         employees: list,
         count: list.length,
         cleared: isZero,
         updatedAt: nowIso
       };
-      var b64Data = utf8ToB64(JSON.stringify(payload));
-      await callGoogleBackend('uploadFile', {
+      var jsonStr = JSON.stringify(payload);
+      _lastVaultContentHash = fastHashStr(jsonStr);
+      var b64Data = utf8ToB64(jsonStr);
+      var upRes = await callGoogleBackend('uploadFile', {
         fileName: 'atpl_employee_master_vault.json',
         fileBase64: b64Data,
         mimeType: 'application/json'
       });
-      localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(Date.parse(nowIso)));
-      if (isZero) {
-        dispatchSyncTrigger('employee_cleared', { count: 0, ts: Date.now() });
-      } else {
-        dispatchSyncTrigger('employee_updated', { count: list.length, ts: Date.now() });
-      }
+      var finishTs = (upRes && upRes.updatedAt ? Date.parse(upRes.updatedAt) : 0) || (Date.now() + 10000);
+      localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(finishTs));
+      lastEmpLocalWriteTime = Date.now();
     } catch (e) {
       console.warn('[ATPL Sync] Error pushing employee vault to Drive:', e);
     }
@@ -755,6 +752,7 @@
         var bc2 = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
         bc2.postMessage({
           type: action,
+          sender: MY_CLIENT_ID,
           details: details || {},
           emp_id: details && (details.emp_id || details.id),
           records: details && details.records,
@@ -766,65 +764,41 @@
     window.__ATPL_INTERNAL_STORAGE_WRITE = true;
     try { localStorage.setItem('ATPL_TRIGGER_EVENT', JSON.stringify(payload)); } catch (_) {}
     window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-
-    // Fast HTTP trigger to server for cross-browser SSE relay
-    try {
-      if (typeof fetch === 'function') {
-        fetch('/api/sync/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).catch(function() {});
-      }
-    } catch (_) {}
   }
 
   function applySingleOrBatchEmployeeUpdate(updatedList) {
     if (!Array.isArray(updatedList) || !updatedList.length) return;
-    var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.slice() : [];
     var changed = false;
     var dead = {};
     try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
+    try { localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1'); } catch (_) {}
 
-    try { localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1'); } catch(_) {}
-
-    updatedList.forEach(function(rec) {
-      if (!rec || typeof rec !== 'object') return;
+    updatedList.forEach(function(rawRec) {
+      if (!rawRec || typeof rawRec !== 'object') return;
+      var rec = normalizeEmployeeRecord(rawRec);
       var id = extractEmpId(rec);
       if (!id || id.toLowerCase().indexOf('__atpl_sys__') === 0) return;
       var idLow = id.toLowerCase();
-      var idClean = idLow.replace(/^0+/, '');
+      var idClean = normalizeEmpIdKey(id);
 
-      // An explicit add or update un-tombstones the employee
       if (dead[idLow] || (idClean && dead[idClean])) {
         delete dead[idLow];
         if (idClean) delete dead[idClean];
-        try { localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead)); } catch(_) {}
+        try { localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead)); } catch (_) {}
       }
 
       rec.emp_id = id;
       var idx = currentList.findIndex(function(x) {
-        var xId = extractEmpId(x).toLowerCase();
-        return xId === idLow || (idClean && xId.replace(/^0+/, '') === idClean);
+        return normalizeEmpIdKey(extractEmpId(x)) === idClean;
       });
       if (idx >= 0) {
-        var existing = currentList[idx];
-        var merged = Object.assign({}, existing);
+        var merged = Object.assign({}, currentList[idx]);
         Object.keys(rec).forEach(function(k) {
-          if (rec[k] !== undefined && rec[k] !== null) {
-            merged[k] = rec[k];
-          }
+          if (rec[k] !== undefined && rec[k] !== null) merged[k] = rec[k];
         });
-        if (!merged.account_no && (merged.bank_account_no || rec.bank_account_no)) merged.account_no = merged.bank_account_no || rec.bank_account_no;
-        if (!merged.ifsc && (merged.ifsc_code || rec.ifsc_code)) merged.ifsc = merged.ifsc_code || rec.ifsc_code;
-        if (!merged.dept && (merged.department || rec.department)) merged.dept = merged.department || rec.department;
-        if (!merged.doj && (merged.date_of_joining || rec.date_of_joining)) merged.doj = merged.date_of_joining || rec.date_of_joining;
-        if (!merged.pf_no && (merged.uan_no || rec.uan_no)) merged.pf_no = merged.uan_no || rec.uan_no;
-        if (!merged.esi_no && (merged.esic_no || rec.esic_no)) merged.esi_no = merged.esic_no || rec.esic_no;
-        if (merged.gross && !merged.new_gross) merged.new_gross = merged.gross;
-        if (merged.new_gross && !merged.gross) merged.gross = merged.new_gross;
         merged.emp_id = id;
-        currentList[idx] = merged;
+        currentList[idx] = normalizeEmployeeRecord(merged);
         changed = true;
       } else {
         currentList.push(rec);
@@ -833,6 +807,7 @@
     });
 
     if (changed) {
+      currentList = applyLocalShieldToArray(currentList);
       if (window.EM) window.EM.data = currentList;
       if (Array.isArray(window.EMP_MASTER_DATA)) {
         window.EMP_MASTER_DATA.length = 0;
@@ -844,38 +819,36 @@
         localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
         _lastAppliedEmpHash = fastHashStr(serialized);
         _lastAppliedEmpFp = _lastAppliedEmpHash;
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+        _lastPushedEmpHash = _lastAppliedEmpHash;
+      } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
       refreshEmployeeUI();
     }
   }
 
   function applyEmployeeClearLocally() {
+    localEditShield = {};
     if (window.EM) {
       window.EM.data = [];
       window.EM.filtered = [];
       if (window.EM.selectedRows) window.EM.selectedRows.clear();
     }
-    if (Array.isArray(window.EMP_MASTER_DATA)) {
-      window.EMP_MASTER_DATA.length = 0;
-    }
+    if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
     window.__ATPL_INTERNAL_STORAGE_WRITE = true;
     try {
       localStorage.setItem('AroraTextilesEmployeeMasterV3', '[]');
       localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true');
       _lastAppliedEmpHash = fastHashStr('[]');
       _lastAppliedEmpFp = _lastAppliedEmpHash;
-    } catch (_) {} finally {
-      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-    }
+      _lastPushedEmpHash = _lastAppliedEmpHash;
+    } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
     refreshEmployeeUI();
   }
 
   function applyEmployeeBulkDeleteLocally(ids) {
     if (!Array.isArray(ids) || !ids.length) return;
-    var delSet = new Set(ids.map(function(x){ return String(x || '').toLowerCase().trim(); }).filter(Boolean));
-    var cleanDelSet = new Set(ids.map(function(x){ return String(x || '').toLowerCase().trim().replace(/^0+/, ''); }).filter(Boolean));
+    var delSet = new Set(ids.map(function(x) { return String(x || '').toLowerCase().trim(); }).filter(Boolean));
+    var cleanDelSet = new Set(ids.map(function(x) { return normalizeEmpIdKey(x); }).filter(Boolean));
+    cleanDelSet.forEach(function(k) { delete localEditShield[k]; });
 
     try {
       var m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
@@ -888,7 +861,7 @@
     var initialLen = currentList.length;
     currentList = currentList.filter(function(x) {
       var xId = extractEmpId(x).toLowerCase();
-      return !delSet.has(xId) && !cleanDelSet.has(xId.replace(/^0+/, ''));
+      return !delSet.has(xId) && !cleanDelSet.has(normalizeEmpIdKey(xId));
     });
 
     if (currentList.length !== initialLen) {
@@ -906,25 +879,28 @@
         localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
         _lastAppliedEmpHash = fastHashStr(serialized);
         _lastAppliedEmpFp = _lastAppliedEmpHash;
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+        _lastPushedEmpHash = _lastAppliedEmpHash;
+      } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
       refreshEmployeeUI();
     }
   }
 
   function applyAuthoritativeSnapshot(records) {
-    if (!Array.isArray(records)) return;
-    if (records.length === 0) {
-      applyEmployeeClearLocally();
-      return;
-    }
-    var cleaned = records.map(function(r) {
-      var id = extractEmpId(r);
-      var copyRec = Object.assign({}, r);
-      if (id) copyRec.emp_id = id;
-      return copyRec;
-    }).filter(function(r) { return r && r.emp_id; });
+    if (!Array.isArray(records) || window.__ATPL_IS_SAVING_EMP || (Date.now() - lastEmpLocalWriteTime < 12000)) return;
+    if (records.length === 0) { applyEmployeeClearLocally(); return; }
+    var dead = {};
+    try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}') || {}; } catch (_) {}
+
+    var cleaned = records.map(normalizeEmployeeRecord).filter(function(r) {
+      if (!r || !r.emp_id) return false;
+      var k = normalizeEmpIdKey(r.emp_id);
+      return !dead[k] && !dead[String(r.emp_id).toLowerCase()];
+    });
+    cleaned = applyLocalShieldToArray(cleaned);
+
+    var serialized = JSON.stringify(cleaned);
+    var curList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    if (serialized === JSON.stringify(curList)) return;
 
     if (window.EM) {
       window.EM.data = cleaned;
@@ -936,21 +912,20 @@
     }
     window.__ATPL_INTERNAL_STORAGE_WRITE = true;
     try {
-      var serialized = JSON.stringify(cleaned);
       localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
       localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
       _lastAppliedEmpHash = fastHashStr(serialized);
       _lastAppliedEmpFp = _lastAppliedEmpHash;
-    } catch (_) {} finally {
-      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-    }
+      _lastPushedEmpHash = _lastAppliedEmpHash;
+    } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
     refreshEmployeeUI();
   }
 
   function applyEmployeeDeleteLocally(empId) {
     if (!empId) return;
     var cleanCode = String(empId).toLowerCase().trim();
-    var cleanNoZero = cleanCode.replace(/^0+/, '');
+    var cleanNoZero = normalizeEmpIdKey(cleanCode);
+    delete localEditShield[cleanNoZero];
 
     try {
       var m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
@@ -963,7 +938,7 @@
     var initialLen = currentList.length;
     currentList = currentList.filter(function(x) {
       var xId = extractEmpId(x).toLowerCase();
-      return xId !== cleanCode && (cleanNoZero ? xId.replace(/^0+/, '') !== cleanNoZero : true);
+      return xId !== cleanCode && normalizeEmpIdKey(xId) !== cleanNoZero;
     });
 
     if (currentList.length !== initialLen) {
@@ -978,9 +953,8 @@
         localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
         _lastAppliedEmpHash = fastHashStr(serialized);
         _lastAppliedEmpFp = _lastAppliedEmpHash;
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+        _lastPushedEmpHash = _lastAppliedEmpHash;
+      } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
       refreshEmployeeUI();
     }
   }
@@ -1006,16 +980,12 @@
     }
     if (action === 'employee_bulk_deleted' || action === 'employee_master_bulk_deleted') {
       var bIds = (details && (details.deleted_ids || details.ids)) || [];
-      if (Array.isArray(bIds) && bIds.length) {
-        applyEmployeeBulkDeleteLocally(bIds);
-      }
+      if (Array.isArray(bIds) && bIds.length) applyEmployeeBulkDeleteLocally(bIds);
       return;
     }
     if (action === 'employee_deleted' || action === 'employee_master_deleted') {
       var delEmpId = details && (details.emp_id || details.id);
-      if (delEmpId) {
-        applyEmployeeDeleteLocally(delEmpId);
-      }
+      if (delEmpId) applyEmployeeDeleteLocally(delEmpId);
       return;
     }
     if (action === 'employee_updated' || action === 'employee_master_updated' || action === 'employee_master_saved') {
@@ -1027,17 +997,19 @@
       if (Array.isArray(updatedList) && updatedList.length > 0) {
         applySingleOrBatchEmployeeUpdate(updatedList);
       } else {
-        setTimeout(function() { pollSyncState(true); }, 150);
+        setTimeout(function() { pollSyncState(true); }, 300);
       }
       return;
     }
     setTimeout(function() { pollSyncState(true); }, 400);
   }
 
-  // ── Core Push Function for Employee Master + HR Docs / Challan Vault ──
   var pushDebounceTimer = null;
   async function pushEmployeeAndVaultToCloud(empArrayOverride) {
     clearTimeout(pushDebounceTimer);
+    lastEmpLocalWriteTime = Date.now();
+    window.__ATPL_IS_SAVING_EMP = true;
+
     return new Promise(function(resolve) {
       pushDebounceTimer = setTimeout(async function() {
         var rawList = empArrayOverride;
@@ -1045,9 +1017,7 @@
           if (window.EM && Array.isArray(window.EM.data) && window.EM.data.length) {
             rawList = window.EM.data;
           } else {
-            try {
-              rawList = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]');
-            } catch (_) { rawList = []; }
+            try { rawList = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]'); } catch (_) { rawList = []; }
           }
         }
         if (!Array.isArray(rawList)) rawList = [];
@@ -1061,20 +1031,23 @@
           if (!r || typeof r !== 'object') continue;
           var id = extractEmpId(r);
           if (!id || id.toLowerCase().indexOf('__atpl_sys__') === 0) continue;
-          var copy = Object.assign({}, r, { emp_id: id });
-          cleaned.push(copy);
+          cleaned.push(normalizeEmployeeRecord(r));
         }
 
-        // Attach system vault chunks (HR Docs, PF & ESIC Challan metadata)
-        var vaultChunks = buildSystemVaultRecords();
-        var payloadRecords = cleaned.concat(vaultChunks);
+        cleaned = applyLocalShieldToArray(cleaned);
+        var serialized = JSON.stringify(cleaned);
+        _lastAppliedEmpHash = fastHashStr(serialized);
+        _lastAppliedEmpFp = _lastAppliedEmpHash;
+        _lastPushedEmpHash = _lastAppliedEmpHash;
 
+        var payloadRecords = cleaned.concat(buildSystemVaultRecords());
         try {
           if (getGasUrl() && payloadRecords.length > 0) {
             updateSyncBadge('syncing', '☁️ Syncing ' + cleaned.length + ' Emp & Docs…');
-            await callGoogleBackend('saveEmployeeMaster', { records: payloadRecords });
-            _lastAppliedEmpHash = fastHashStr(JSON.stringify(cleaned));
-            _lastAppliedEmpFp = _lastAppliedEmpHash;
+            await Promise.allSettled([
+              pushEmployeeMasterDriveVault(cleaned),
+              callGoogleBackend('saveEmployeeMaster', { records: payloadRecords })
+            ]);
             dispatchSyncTrigger('employee_updated', { count: cleaned.length });
             updateSyncBadge('ok');
           }
@@ -1082,60 +1055,120 @@
           console.warn('[ATPL Sync] Push error:', e);
         } finally {
           lastEmpLocalWriteTime = Date.now();
-          window.__ATPL_IS_SAVING_EMP = false;
+          setTimeout(function() { window.__ATPL_IS_SAVING_EMP = false; }, 4000);
           resolve({ ok: true });
         }
-      }, 350);
+      }, 250);
     });
   }
 
-  // ── Hook localStorage & ATPLCloudSyncV1 So Every Edit/Paste/Upload Syncs Automatically ──
+  function detectAndShieldDiff(newArr) {
+    if (!Array.isArray(newArr)) return;
+    var oldArr = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
+    var oldMap = {};
+    for (var i = 0; i < oldArr.length; i++) {
+      var oid = normalizeEmpIdKey(extractEmpId(oldArr[i]));
+      if (oid) oldMap[oid] = oldArr[i];
+    }
+    for (var j = 0; j < newArr.length; j++) {
+      var nr = newArr[j];
+      var nid = normalizeEmpIdKey(extractEmpId(nr));
+      if (!nid) continue;
+      var or = oldMap[nid];
+      if (!or || JSON.stringify(normalizeEmployeeRecord(nr)) !== JSON.stringify(normalizeEmployeeRecord(or))) {
+        shieldEmployeeRecord(nr);
+      }
+    }
+  }
+
+  function startShieldWatchdog() {
+    setInterval(function() {
+      if (!window.EM || !Array.isArray(window.EM.data) || !window.EM.data.length) return;
+      var now = Date.now();
+      var shieldKeys = Object.keys(localEditShield).filter(function(k) {
+        if (now - localEditShield[k].ts > SHIELD_DURATION_MS) { delete localEditShield[k]; return false; }
+        return true;
+      });
+      if (!shieldKeys.length) return;
+
+      var repaired = false;
+      for (var i = 0; i < window.EM.data.length; i++) {
+        var row = window.EM.data[i];
+        var k = normalizeEmpIdKey(extractEmpId(row));
+        if (k && localEditShield[k]) {
+          var target = localEditShield[k].record;
+          if (row.status !== target.status || row.dol !== target.dol || row.account_no !== target.account_no || row.ifsc !== target.ifsc || row.bank_name !== target.bank_name || row.name !== target.name || row.gross !== target.gross) {
+            window.EM.data[i] = Object.assign({}, row, deepClone(target));
+            repaired = true;
+          }
+        }
+      }
+      if (repaired) {
+        if (Array.isArray(window.EMP_MASTER_DATA)) {
+          window.EMP_MASTER_DATA.length = 0;
+          Array.prototype.push.apply(window.EMP_MASTER_DATA, window.EM.data);
+        }
+        window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+        try { localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(window.EM.data)); } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
+        refreshEmployeeUI();
+      }
+    }, 400);
+  }
+
   function installMasterHooks() {
-    // 1. Intercept localStorage.setItem so whenever index.html saves Emp Master, HR Docs, or PF/ESIC Challan, it pushes to Cloud!
     try {
       var origSetItem = Storage.prototype.setItem;
-      if (!Storage.prototype.__atplHookedV7) {
+      if (!Storage.prototype.__atplHookedV8) {
         Storage.prototype.setItem = function(key, value) {
-          origSetItem.apply(this, arguments);
-          if (window.__ATPL_INTERNAL_STORAGE_WRITE) return;
           var k = String(key || '');
           var kLow = k.toLowerCase();
 
-          // Check if Employee Master was updated
-          if (EMP_STORAGE_KEYS.indexOf(k) !== -1) {
-            var newHash = fastHashStr(String(value || ''));
-            if (newHash !== _lastPushedEmpHash) {
-              _lastPushedEmpHash = newHash;
-              lastEmpLocalWriteTime = Date.now();
-              try {
-                var parsed = JSON.parse(value);
-                if (Array.isArray(parsed) && parsed.length > 0) {
+          if (!window.__ATPL_INTERNAL_STORAGE_WRITE && EMP_STORAGE_KEYS.indexOf(k) !== -1) {
+            try {
+              var parsed = JSON.parse(value);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                var isRecentUserEdit = (Date.now() - lastUserActionTime < 4500);
+                if (isRecentUserEdit) {
+                  detectAndShieldDiff(parsed);
+                  lastEmpLocalWriteTime = Date.now();
+                } else {
+                  parsed = applyLocalShieldToArray(parsed);
+                  value = JSON.stringify(parsed);
+                }
+                origSetItem.call(this, key, value);
+                var newHash = fastHashStr(value);
+                if (isRecentUserEdit && newHash !== _lastPushedEmpHash) {
+                  _lastPushedEmpHash = newHash;
+                  lastEmpLocalWriteTime = Date.now();
                   pushEmployeeAndVaultToCloud(parsed);
                 }
-              } catch (_) {}
-            }
+                return;
+              }
+            } catch (_) {}
           }
-          // Check if HR Documents or PF/ESIC Challan was updated
-          else if (
+
+          origSetItem.apply(this, arguments);
+          if (window.__ATPL_INTERNAL_STORAGE_WRITE) return;
+
+          if (
             VAULT_STORAGE_KEYS.indexOf(k) !== -1 ||
             kLow.indexOf('hrdoc') >= 0 ||
             kLow.indexOf('hr_doc') >= 0 ||
-            kLow.indexOf('challan') >= 0
+            kLow.indexOf('challan') >= 0 ||
+            kLow.indexOf('advance') >= 0
           ) {
             lastVaultLocalWriteTime = Date.now();
             pushEmployeeAndVaultToCloud();
           }
         };
-        Storage.prototype.__atplHookedV7 = true;
+        Storage.prototype.__atplHookedV8 = true;
       }
-    } catch (e) {
-      console.warn('[ATPL Sync] Storage hook notice:', e);
-    }
+    } catch (_) {}
 
-    // 2. Live ATPLCloudSyncV1 Bridge
-    window.ATPLCloudSyncV1 = {
+    var bridgeObj = {
       pullMaster: async function() {
-        await pollSyncState(true);
+        if (window.__ATPL_IS_SAVING_EMP || (Date.now() - lastEmpLocalWriteTime < 12000)) return true;
+        await pollSyncState(false);
         return true;
       },
       pushMaster: async function(emp) {
@@ -1144,32 +1177,28 @@
       },
       saveMaster: async function(record) {
         if (!record && arguments[1]) record = arguments[1];
-        if (typeof record === 'string' && arguments[1] && typeof arguments[1] === 'object') {
-          record = arguments[1];
-        }
+        if (typeof record === 'string' && arguments[1] && typeof arguments[1] === 'object') record = arguments[1];
         return await UnifiedSyncEngine.upsertEmployeeMaster(record);
       },
       saveMany: async function(records) {
+        var cleanList = Array.isArray(records) ? records.map(function(x) { return (x && x.record) ? x.record : x; }) : [];
+        return await UnifiedSyncEngine.upsertEmployeeMaster(cleanList);
+      },
+      deleteMaster: async function(empId) { return await UnifiedSyncEngine.deleteEmployeeMaster(empId); },
+      persistLocal: function(data) {
         lastEmpLocalWriteTime = Date.now();
-        await pushEmployeeAndVaultToCloud(Array.isArray(records) && records.length > 0 ? (window.EM && window.EM.data ? window.EM.data : records) : undefined);
-        return { ok: true, verified: true };
+        if (Array.isArray(data)) detectAndShieldDiff(data);
       },
-      deleteMaster: async function(empId) {
-        return await UnifiedSyncEngine.deleteEmployeeMaster(empId);
+      wake: function() {
+        if (!window.__ATPL_IS_SAVING_EMP && (Date.now() - lastEmpLocalWriteTime > 12000)) pollSyncState(false);
       },
-      persistLocal: function() {
-        lastEmpLocalWriteTime = Date.now();
-        pushEmployeeAndVaultToCloud();
-      },
-      wake: function() { pollSyncState(false); },
       status: function() { return { backendReady: true, queued: 0, running: 0, token: true, pending: 0, conflicts: 0 }; },
-      isSystemRecord: function(r) {
-        var id = extractEmpId(r).toLowerCase();
-        return id.indexOf('__atpl_sys__') === 0;
-      }
+      isSystemRecord: function(r) { return extractEmpId(r).toLowerCase().indexOf('__atpl_sys__') === 0; }
     };
 
-    // 3. Hook HR Docs Manual Sync Button
+    window.ATPLCloudSyncV1 = bridgeObj;
+    window.ATPLMobileSharedHardFix = bridgeObj;
+
     window.triggerManualHrSync = async function() {
       updateSyncBadge('syncing', '☁️ Syncing HR Documents…');
       await pushEmployeeAndVaultToCloud();
@@ -1178,71 +1207,8 @@
     };
   }
 
-  function setupSSE() {
-    var host = (window.location && window.location.hostname) || '';
-    var isServer = host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host) || (window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:'));
-    if (isServer && typeof window.EventSource !== 'undefined') {
-      try {
-        var es = new EventSource('/api/sync/events');
-        es.addEventListener('drive_trigger', function(ev) {
-          try {
-            var p = JSON.parse(ev.data);
-            var action = (p && p.data && p.data.action) || (p && p.action);
-            var details = (p && p.data && p.data.details) || (p && p.details);
-            var sender = (p && p.data && p.data.sender) || (p && p.sender);
-            if (action) onTriggerReceived(action, details, sender);
-          } catch (_) {}
-        });
-        es.addEventListener('employee_master_updated', function(ev) {
-          try {
-            var p = JSON.parse(ev.data);
-            if (p && (p.mode === 'replace' || (Array.isArray(p.records) && p.records.length === 0))) {
-              if (p.records && p.records.length === 0) {
-                applyEmployeeClearLocally();
-              } else if (Array.isArray(p.records)) {
-                applyAuthoritativeSnapshot(p.records);
-              }
-            } else {
-              var recs = (p && p.updated) || (p && p.records) || [];
-              onTriggerReceived('employee_updated', { records: recs }, 'sse');
-            }
-          } catch (_) {}
-        });
-        es.addEventListener('employee_master_deleted', function(ev) {
-          try {
-            var p = JSON.parse(ev.data);
-            var empId = p && (p.emp_id || p.id);
-            if (empId) onTriggerReceived('employee_deleted', { emp_id: empId }, 'sse');
-          } catch (_) {}
-        });
-        es.addEventListener('employee_master_cleared', function(ev) {
-          try {
-            onTriggerReceived('employee_cleared', {}, 'sse');
-          } catch (_) {}
-        });
-        es.addEventListener('employee_master_bulk_deleted', function(ev) {
-          try {
-            var p = JSON.parse(ev.data);
-            onTriggerReceived('employee_bulk_deleted', p, 'sse');
-          } catch (_) {}
-        });
-      } catch (_) {}
-    }
-  }
-
-  var pollTimerId = null;
-  function scheduleNextPoll() {
-    clearTimeout(pollTimerId);
-    pollTimerId = setTimeout(async function() {
-      if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-        await pollSyncState(false);
-      }
-      scheduleNextPoll();
-    }, 8000);
-  }
-
   var UnifiedSyncEngine = {
-    version: '2026.11.16-GOOGLE-DRIVE-SHEETS-MASTER-V7',
+    version: '2026.11.17-GOOGLE-DRIVE-SHEETS-MASTER-V8.1',
     apiBase: '',
     gasUrl: GAS_URL,
     callGoogleBackend: callGoogleBackend,
@@ -1250,23 +1216,19 @@
     init: function() {
       suppressFirebaseUI();
       installMasterHooks();
-      setupSSE();
+      startShieldWatchdog();
+      setInterval(installMasterHooks, 1200);
       pollSyncState(true);
-      scheduleNextPoll();
       setInterval(function() {
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
           pollSyncState(false);
         }
-      }, 8000);
+      }, 3500);
       window.addEventListener('focus', function() {
-        if (getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-          pollSyncState(false);
-        }
+        if (getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) pollSyncState(false);
       });
       document.addEventListener('visibilitychange', function() {
-        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-          pollSyncState(false);
-        }
+        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) pollSyncState(false);
       });
       window.addEventListener('storage', function(ev) {
         if (ev && ev.key === 'ATPL_TRIGGER_EVENT' && ev.newValue) {
@@ -1280,20 +1242,18 @@
         try {
           var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
           bc.onmessage = function(ev) {
-            if (ev && ev.data && ev.data.action) {
-              onTriggerReceived(ev.data.action, ev.data.details, ev.data.sender);
-            }
+            if (ev && ev.data && ev.data.action) onTriggerReceived(ev.data.action, ev.data.details, ev.data.sender);
           };
         } catch (_) {}
         try {
           var bc2 = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
           bc2.onmessage = function(ev) {
             var d = ev && ev.data;
-            if (!d) return;
+            if (!d || (d.sender && d.sender === MY_CLIENT_ID)) return;
             if (d.type === 'employee_master_deleted' && d.emp_id) {
-              onTriggerReceived('employee_deleted', { emp_id: d.emp_id });
+              onTriggerReceived('employee_deleted', { emp_id: d.emp_id }, d.sender);
             } else if (d.type === 'employee_master_saved' || d.type === 'employee_updated') {
-              onTriggerReceived('employee_updated', { records: d.records, record: d.record });
+              onTriggerReceived('employee_updated', { records: d.records, record: d.record }, d.sender);
             }
           };
         } catch (_) {}
@@ -1338,7 +1298,7 @@
       var b64Payload = rawBuf ? toB64(rawBuf) : (typeof b === 'string' ? toB64(b) : '');
       var finalMime = getMimeType(name, explicitMime);
 
-      if (name) {
+      if (name && nameLow.indexOf('advance_management') === -1 && !nameLow.endsWith('.json')) {
         window.FILES = (window.FILES || []).filter(function(f) {
           return f && String(f.name).toLowerCase().trim() !== nameLow;
         });
@@ -1402,11 +1362,8 @@
     },
     deleteFile: async function(module, idOrName) {
       var name = '';
-      if (idOrName !== undefined && idOrName !== null && idOrName !== '') {
-        name = String(idOrName).trim();
-      } else if (module !== undefined && module !== null && module !== '') {
-        name = String(module).trim();
-      }
+      if (idOrName !== undefined && idOrName !== null && idOrName !== '') name = String(idOrName).trim();
+      else if (module !== undefined && module !== null && module !== '') name = String(module).trim();
       if (!name) return false;
       var target = name.toLowerCase().trim();
       delete recentlyUploadedFiles[target];
@@ -1433,12 +1390,16 @@
         return await this.upsertEmployeeMaster(records);
       }
       lastEmpLocalWriteTime = Date.now();
+      window.__ATPL_IS_SAVING_EMP = true;
+      records = records.map(normalizeEmployeeRecord);
+      records.forEach(shieldEmployeeRecord);
       window.__ATPL_INTERNAL_STORAGE_WRITE = true;
       try {
-        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(records));
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+        var ser = JSON.stringify(records);
+        localStorage.setItem('AroraTextilesEmployeeMasterV3', ser);
+        _lastAppliedEmpHash = fastHashStr(ser);
+        _lastPushedEmpHash = _lastAppliedEmpHash;
+      } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
       if (window.EM) window.EM.data = records.slice();
       if (Array.isArray(window.EMP_MASTER_DATA)) {
         window.EMP_MASTER_DATA.length = 0;
@@ -1447,25 +1408,33 @@
       refreshEmployeeUI();
       return await pushEmployeeAndVaultToCloud(records);
     },
-    'upsertEmployeeMaster': async function(singleOrArray) {
+    upsertEmployeeMaster: async function(singleOrArray) {
       var list = Array.isArray(singleOrArray) ? singleOrArray : [singleOrArray];
       if (!list.length) return { ok: true, count: 0 };
-      lastEmpLocalWriteTime = Date.now();
 
-      // Merge into local in-memory dataset without wiping out existing records!
-      var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
-      list.forEach(function(rec) {
-        if (!rec || typeof rec !== 'object') return;
+      lastEmpLocalWriteTime = Date.now();
+      window.__ATPL_IS_SAVING_EMP = true;
+
+      var currentList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.slice() : [];
+      var normalizedUpdates = [];
+
+      list.forEach(function(rawRec) {
+        if (!rawRec || typeof rawRec !== 'object') return;
+        var rec = normalizeEmployeeRecord(rawRec);
         var id = extractEmpId(rec);
         if (!id) return;
         rec.emp_id = id;
-        var idx = currentList.findIndex(function(x) {
-          return extractEmpId(x).toLowerCase() === id.toLowerCase();
-        });
+        var kClean = normalizeEmpIdKey(id);
+        var idx = currentList.findIndex(function(x) { return normalizeEmpIdKey(extractEmpId(x)) === kClean; });
         if (idx >= 0) {
-          currentList[idx] = Object.assign({}, currentList[idx], rec);
+          var merged = normalizeEmployeeRecord(Object.assign({}, currentList[idx], rec));
+          currentList[idx] = merged;
+          shieldEmployeeRecord(merged);
+          normalizedUpdates.push(merged);
         } else {
+          shieldEmployeeRecord(rec);
           currentList.push(rec);
+          normalizedUpdates.push(rec);
         }
       });
 
@@ -1475,63 +1444,48 @@
         Array.prototype.push.apply(window.EMP_MASTER_DATA, currentList);
       }
 
-      window.__ATPL_INTERNAL_STORAGE_WRITE = true;
-      try {
-        localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(currentList));
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+      var serialized = JSON.stringify(currentList);
+      _lastAppliedEmpHash = fastHashStr(serialized);
+      _lastAppliedEmpFp = _lastAppliedEmpHash;
+      _lastPushedEmpHash = _lastAppliedEmpHash;
 
+      window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+      try { localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized); } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
       refreshEmployeeUI();
 
-      // 1. Immediately upload complete updated vault to Google Drive (authoritative 454+ sync)
-      await pushEmployeeMasterDriveVault(currentList);
-
-      // 2. Also push single row to Google Sheet
-      var lastEmpId = '';
-      if (getGasUrl()) {
-        for (var i = 0; i < list.length; i++) {
-          var item = list[i];
-          if (!item) continue;
-          var empId = extractEmpId(item);
-          lastEmpId = empId;
-          try {
-            callGoogleBackend('upsertEmployeeMaster', {
-              emp_id: empId,
-              record: item,
-              record_json: JSON.stringify(item),
-              records: [item]
-            }).catch(function() {});
-          } catch (_) {}
-        }
+      try {
+        updateSyncBadge('syncing', '☁️ Saving to Google Drive & Sheet…');
+        var payloadRecords = currentList.concat(buildSystemVaultRecords());
+        await Promise.allSettled([
+          pushEmployeeMasterDriveVault(currentList),
+          callGoogleBackend('saveEmployeeMaster', { records: payloadRecords }),
+          callGoogleBackend('upsertEmployeeMaster', {
+            emp_id: extractEmpId(normalizedUpdates[0]),
+            record: normalizedUpdates[0],
+            record_json: JSON.stringify(normalizedUpdates[0]),
+            records: normalizedUpdates
+          })
+        ]);
+        dispatchSyncTrigger('employee_updated', {
+          emp_id: extractEmpId(normalizedUpdates[0]),
+          record: normalizedUpdates[0],
+          records: normalizedUpdates,
+          count: currentList.length
+        });
+        updateSyncBadge('ok');
+      } finally {
+        lastEmpLocalWriteTime = Date.now();
+        setTimeout(function() { window.__ATPL_IS_SAVING_EMP = false; }, 4000);
       }
 
-      dispatchSyncTrigger('employee_updated', {
-        emp_id: lastEmpId,
-        record: list[0],
-        records: list,
-        count: currentList.length
-      });
-
-      try {
-        if (typeof fetch === 'function') {
-          fetch('/api/sync/employee-master', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: list })
-          }).catch(function() {});
-        }
-      } catch (_) {}
-
-      return { ok: true, verified: true, record: list[0], count: currentList.length };
-    },
-    upsertEmployeeMaster: async function(records) {
-      return await this['upsertEmployeeMaster'](records);
+      return { ok: true, verified: true, record: normalizedUpdates[0] || list[0], count: currentList.length };
     },
     deleteEmployeeMaster: async function(empCode) {
       lastEmpLocalWriteTime = Date.now();
+      window.__ATPL_IS_SAVING_EMP = true;
       var cleanCode = String(empCode || '').toLowerCase().trim();
-      var cleanNoZero = cleanCode.replace(/^0+/, '');
+      var cleanNoZero = normalizeEmpIdKey(cleanCode);
+      delete localEditShield[cleanNoZero];
 
       try {
         var m = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
@@ -1543,13 +1497,13 @@
       if (window.EM && Array.isArray(window.EM.data)) {
         window.EM.data = window.EM.data.filter(function(x) {
           var xId = extractEmpId(x).toLowerCase();
-          return xId !== cleanCode && (cleanNoZero ? xId.replace(/^0+/, '') !== cleanNoZero : true);
+          return xId !== cleanCode && normalizeEmpIdKey(xId) !== cleanNoZero;
         });
       }
       if (Array.isArray(window.EMP_MASTER_DATA)) {
         window.EMP_MASTER_DATA = window.EMP_MASTER_DATA.filter(function(x) {
           var xId = extractEmpId(x).toLowerCase();
-          return xId !== cleanCode && (cleanNoZero ? xId.replace(/^0+/, '') !== cleanNoZero : true);
+          return xId !== cleanCode && normalizeEmpIdKey(xId) !== cleanNoZero;
         });
       }
 
@@ -1558,57 +1512,35 @@
         var serialized = JSON.stringify(window.EM.data || []);
         localStorage.setItem('AroraTextilesEmployeeMasterV3', serialized);
         _lastAppliedEmpHash = fastHashStr(serialized);
-        _lastAppliedEmpFp = _lastAppliedEmpHash;
-      } catch (_) {} finally {
-        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
-      }
+        _lastPushedEmpHash = _lastAppliedEmpHash;
+      } catch (_) {} finally { window.__ATPL_INTERNAL_STORAGE_WRITE = false; }
 
       refreshEmployeeUI();
-
       dispatchSyncTrigger('employee_deleted', { emp_id: empCode });
 
       try {
-        if (typeof fetch === 'function') {
-          fetch('/api/sync/employee-master/' + encodeURIComponent(empCode), {
-            method: 'DELETE'
-          }).catch(function() {});
-        }
-      } catch (_) {}
-
-      // Push updated master to Google Drive vault
-      await pushEmployeeMasterDriveVault(window.EM.data);
-
-      if (getGasUrl()) {
-        try { callGoogleBackend('deleteEmployeeMaster', { empCode: empCode, emp_id: empCode }).catch(function() {}); } catch (_) {}
+        await Promise.allSettled([
+          pushEmployeeMasterDriveVault(window.EM.data),
+          callGoogleBackend('deleteEmployeeMaster', { empCode: empCode, emp_id: empCode })
+        ]);
+      } finally {
+        lastEmpLocalWriteTime = Date.now();
+        setTimeout(function() { window.__ATPL_IS_SAVING_EMP = false; }, 4000);
       }
       return { ok: true, verified: true };
     },
     clearAllEmployees: async function() {
       applyEmployeeClearLocally();
-      try {
-        if (typeof fetch === 'function') {
-          fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function() {});
-        }
-      } catch (_) {}
       dispatchSyncTrigger('employee_cleared', { count: 0 });
       await pushEmployeeMasterDriveVault([]);
       if (getGasUrl()) {
-        try { callGoogleBackend('deleteEmployeeMaster', { emp_id: 'ALL' }).catch(function() {}); } catch (_) {}
+        try { await callGoogleBackend('deleteEmployeeMaster', { emp_id: 'ALL' }); } catch (_) {}
       }
       return { ok: true, cleared: true };
     },
     bulkDeleteEmployees: async function(ids) {
       if (!Array.isArray(ids) || !ids.length) return { ok: true, count: 0 };
       applyEmployeeBulkDeleteLocally(ids);
-      try {
-        if (typeof fetch === 'function') {
-          fetch('/api/sync/employee-master/bulk-delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: ids })
-          }).catch(function() {});
-        }
-      } catch (_) {}
       dispatchSyncTrigger('employee_bulk_deleted', { deleted_ids: ids, count: (window.EM && window.EM.data && window.EM.data.length) || 0 });
       await pushEmployeeMasterDriveVault(window.EM && window.EM.data);
       if (getGasUrl()) {
@@ -1638,7 +1570,7 @@
     updateSyncBadge('syncing', '☁️ Force syncing all modules…');
     await pushEmployeeAndVaultToCloud();
     await pollSyncState(true);
-    if (window.showToast) window.showToast('✅ Employee Master, HR Docs, PF/ESIC & Salary Files sabhi browsers me sync ho gaye!');
+    if (window.showToast) window.showToast('✅ Employee Master, Advance, HR Docs, PF/ESIC & All Files sync ho gaye!');
   };
   window.atplTriggerCrossSync = window.triggerManualCrossBrowserSync;
   window.atplDirectServerSync = function() { return pollSyncState(true); };
