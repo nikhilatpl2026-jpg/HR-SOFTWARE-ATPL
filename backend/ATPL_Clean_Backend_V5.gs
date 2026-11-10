@@ -414,6 +414,12 @@ function upsertEmployeeMaster_(p) {
       if (col === 'updated_at') return now;
       if (col === 'emp_id') return rawId;
       var val = p[col];
+      if (col === 'bank_account_no' && (val == null || val === '')) val = p.account_no;
+      if (col === 'ifsc_code' && (val == null || val === '')) val = p.ifsc;
+      if (col === 'department' && (val == null || val === '')) val = p.dept;
+      if (col === 'date_of_joining' && (val == null || val === '')) val = p.doj;
+      if (col === 'uan_no' && (val == null || val === '')) val = p.pf_no;
+      if (col === 'esic_no' && (val == null || val === '')) val = p.esi_no;
       return val == null ? '' : String(val).trim();
     });
 

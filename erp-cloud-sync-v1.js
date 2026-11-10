@@ -86,17 +86,20 @@
     });
     employeeRecords(local).forEach(function(r){
       var k=keyOf(r);if(!k||wasDeleted(k))return;
-      if(map[k]){
-        // A partial cloud row must not blank already populated local employee fields.
-        var safe=Object.assign({},r,map[k]);
+        // Local edits (status, dol, bank, ifsc, wages) take precedence over stale cloud polls!
+        var safe=Object.assign({},map[k],r);
         Object.keys(r).forEach(function(field){
-          var missing=(map[k][field]===undefined||map[k][field]===null||map[k][field]==='');
-          var wageLost=['basic','hra','gross','new_gross'].indexOf(field)>=0&&Number(map[k][field])===0&&Number(r[field])>0;
-          if((missing||wageLost)&&r[field]!==undefined&&r[field]!==null&&r[field]!=='')safe[field]=r[field];
+          if(r[field]!==undefined&&r[field]!==null&&String(r[field]).trim()!==''){
+            safe[field]=r[field];
+          }
         });
+        if(r.status) safe.status = r.status;
+        if(r.dol) safe.dol = r.dol;
+        if(r.account_no) safe.account_no = r.account_no;
+        if(r.ifsc) safe.ifsc = r.ifsc;
+        if(r.bank_name) safe.bank_name = r.bank_name;
         map[k]=safe;
         return;
-      }
       // Keep locally saved employees visible until a confirmed explicit import.
       order.push(k);
       map[k]=cloudRecord(r);

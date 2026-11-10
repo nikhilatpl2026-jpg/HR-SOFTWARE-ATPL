@@ -430,14 +430,20 @@
         } catch (_) {}
       }
 
-      var base = localMap[k] ? Object.assign({}, localMap[k]) : {};
-      Object.keys(row).forEach(function(fk) {
-        if (row[fk] !== undefined && row[fk] !== null && row[fk] !== '') {
-          base[fk] = row[fk];
-        } else if (!(fk in base)) {
-          base[fk] = row[fk];
+      var existing = localMap[k] || {};
+      var base = Object.assign({}, row);
+      // Merge all fields from row first, but preserve all user-edited local fields!
+      Object.keys(existing).forEach(function(fk) {
+        if (existing[fk] !== undefined && existing[fk] !== null && existing[fk] !== '') {
+          base[fk] = existing[fk];
         }
       });
+      // Explicitly lock critical fields to local edits
+      if (existing.status) base.status = existing.status;
+      if (existing.dol) base.dol = existing.dol;
+      if (existing.bank_name) base.bank_name = existing.bank_name;
+      if (existing.account_no) base.account_no = existing.account_no;
+      if (existing.ifsc) base.ifsc = existing.ifsc;
       if (!base.account_no && (base.bank_account_no || row.bank_account_no)) base.account_no = base.bank_account_no || row.bank_account_no;
       if (!base.ifsc && (base.ifsc_code || row.ifsc_code)) base.ifsc = base.ifsc_code || row.ifsc_code;
       if (!base.dept && (base.department || row.department)) base.dept = base.department || row.department;

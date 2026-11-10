@@ -349,11 +349,26 @@ function upsertEmployeeMaster_(p) {
         rowValues.push("Admin");
       } else if (h === "_atpl_deleted") {
         rowValues.push(false);
-      } else if (rec[h] !== undefined && rec[h] !== null && String(rec[h]).trim() !== "") {
+      var rVal = rec[h];
+      if (rVal === undefined || rVal === null || String(rVal).trim() === "") {
+        if (h === "bank_account_no" && rec.account_no) rVal = rec.account_no;
+        else if (h === "ifsc_code" && rec.ifsc) rVal = rec.ifsc;
+        else if (h === "account_no" && rec.bank_account_no) rVal = rec.bank_account_no;
+        else if (h === "ifsc" && rec.ifsc_code) rVal = rec.ifsc_code;
+        else if (h === "department" && rec.dept) rVal = rec.dept;
+        else if (h === "dept" && rec.department) rVal = rec.department;
+        else if (h === "date_of_joining" && rec.doj) rVal = rec.doj;
+        else if (h === "doj" && rec.date_of_joining) rVal = rec.date_of_joining;
+        else if (h === "uan_no" && rec.pf_no) rVal = rec.pf_no;
+        else if (h === "pf_no" && rec.uan_no) rVal = rec.uan_no;
+        else if (h === "esic_no" && rec.esi_no) rVal = rec.esi_no;
+        else if (h === "esi_no" && rec.esic_no) rVal = rec.esic_no;
+      }
+      if (rVal !== undefined && rVal !== null && String(rVal).trim() !== "") {
         if (h === "gross" || h === "basic" || h === "hra" || h === "new_gross") {
-          rowValues.push(parseFloat(String(rec[h]).replace(/,/g, "")) || 0);
+          rowValues.push(parseFloat(String(rVal).replace(/,/g, "")) || 0);
         } else {
-          rowValues.push(rec[h]);
+          rowValues.push(rVal);
         }
       } else if (foundRow > 0 && existingRowValues[j] !== undefined && existingRowValues[j] !== "") {
         // PRESERVE EXISTING DATA

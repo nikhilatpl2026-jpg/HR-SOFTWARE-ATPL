@@ -9790,8 +9790,31 @@ window.emUpdateStatus = function(idx, newStatus) {
   if (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA)) {
     window.EMP_MASTER_DATA = EM.data.slice();
   }
+  // Immediately persist to backend API and Google Drive vault so background 8s probes never revert it!
+  try {
+    fetch('/api/sync/employee-master', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: [e], mode: 'upsert' })
+    }).catch(function(){});
+  } catch(_) {}
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster === 'function') {
+    window.ATPLGoogleSync.upsertEmployeeMaster([e]);
+  }
   if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
-    window.ATPLCloudSyncV1.saveMaster(e.emp_id, e);
+    window.ATPLCloudSyncV1.saveMaster(e, { commitLocal: true });
+  }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
+      bc.postMessage({ action: 'employee_updated', details: { emp_id: e.emp_id, record: e, records: [e], count: EM.data.length } });
+      bc.close();
+    } catch(_) {}
+    try {
+      var bc2 = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
+      bc2.postMessage({ type: 'employee_master_saved', records: [e], record: e, count: EM.data.length });
+      bc2.close();
+    } catch(_) {}
   }
   emUpdateStats();
   emFilter();
