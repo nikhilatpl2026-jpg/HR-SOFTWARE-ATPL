@@ -93,6 +93,10 @@ function handleRequest(action, p) {
     }
 
     // 5. Cross-Device Sync State & Drive Files
+    if (action === "getSyncVersion") {
+      var syncVersion = getSyncVersion_();
+      return { ok: true, version: syncVersion, currentVersion: syncVersion };
+    }
     if (action === "getSyncState") {
       return getSyncState_(p);
     }
