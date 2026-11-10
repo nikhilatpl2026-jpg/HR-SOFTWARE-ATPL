@@ -1231,14 +1231,31 @@
   }
 
   var pollTimerId = null;
+  var versionCheckInProgress = false;
+
+  // Lightweight cross-browser version check; fetch the full snapshot only on change.
+  async function checkCloudVersion() {
+    if (versionCheckInProgress || document.hidden || !getGasUrl() ||
+        window.__ATPL_IS_UPLOADING || window.__ATPL_IS_SAVING_EMP) return;
+    versionCheckInProgress = true;
+    try {
+      var remote = await callGoogleBackend('getSyncVersion');
+      var remoteVersion = Number(remote && (remote.currentVersion || remote.version) || 0);
+      if (remote && remote.ok && remoteVersion > localVersion) {
+        await pollSyncState(true);
+      }
+    } catch (_) {
+    } finally {
+      versionCheckInProgress = false;
+    }
+  }
+
   function scheduleNextPoll() {
     clearTimeout(pollTimerId);
     pollTimerId = setTimeout(async function() {
-      if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-        await pollSyncState(false);
-      }
+      await checkCloudVersion();
       scheduleNextPoll();
-    }, 8000);
+    }, 4000);
   }
 
   var UnifiedSyncEngine = {
@@ -1253,19 +1270,14 @@
       setupSSE();
       pollSyncState(true);
       scheduleNextPoll();
-      setInterval(function() {
-        if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-          pollSyncState(false);
-        }
-      }, 8000);
       window.addEventListener('focus', function() {
         if (getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-          pollSyncState(false);
+          checkCloudVersion();
         }
       });
       document.addEventListener('visibilitychange', function() {
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
-          pollSyncState(false);
+          checkCloudVersion();
         }
       });
       window.addEventListener('storage', function(ev) {
@@ -1422,7 +1434,11 @@
       dispatchSyncTrigger('file_deleted', { name: name });
       if (getGasUrl()) {
         updateSyncBadge('syncing', '🗑️ Deleting ' + name + '…');
-        await callGoogleBackend('deleteFile', { fileName: name });
+        var deleteResult = await callGoogleBackend('deleteFile', { fileName: name });
+        if (deleteResult && deleteResult.ok && deleteResult.version) {
+          localVersion = Math.max(localVersion, Number(deleteResult.version) || 0);
+          try { localStorage.setItem('ATPL_DRIVE_SYNC_VERSION', String(localVersion)); } catch (_) {}
+        }
         updateSyncBadge('ok');
       }
       return true;
