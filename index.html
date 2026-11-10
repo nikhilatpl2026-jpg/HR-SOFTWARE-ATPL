@@ -9368,9 +9368,13 @@ function emInit() {
         .then(function(res) { return res.json(); })
         .then(function(d) {
           if (d && d.ok && Array.isArray(d.records)) {
-            if (d.records.length === 0 && (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || rawSaved === '[]')) {
+            if (d.records.length === 0) {
               EM.data = [];
               if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
+              try {
+                localStorage.setItem('AroraTextilesEmployeeMasterV3', '[]');
+                localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1', 'true');
+              } catch(_) {}
               emFilter();
               emUpdateStats();
             } else if (d.records.length > 0) {
@@ -9849,6 +9853,27 @@ window.emDeleteSelected = function() {
     }
   }
 
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      if (isAllDeleted) {
+        bc.postMessage({ action: "employee_cleared", details: { count: 0 } });
+      } else {
+        bc.postMessage({ action: "employee_bulk_deleted", details: { deleted_ids: deletedIds, count: EM.data.length } });
+      }
+      bc.close();
+    } catch(_) {}
+    try {
+      var bc2 = new window.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      if (isAllDeleted) {
+        bc2.postMessage({ type: "employee_master_cleared", count: 0 });
+      } else {
+        bc2.postMessage({ type: "employee_master_bulk_deleted", deleted_ids: deletedIds, count: EM.data.length });
+      }
+      bc2.close();
+    } catch(_) {}
+  }
+
   EM.selectedRows.clear();
   emUpdateBulkUI();
   emFilter();
@@ -9926,6 +9951,32 @@ function emSaveModal() {
     EM.data.push(newEmp);
     EMP_MASTER_DATA.push(newEmp);
   }
+  try {
+    localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+    localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+  } catch(_) {}
+  try {
+    fetch('/api/sync/employee-master', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: [newEmp], mode: 'upsert' })
+    }).catch(function(){});
+  } catch(_) {}
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster === 'function') {
+    window.ATPLGoogleSync.upsertEmployeeMaster([newEmp]);
+  }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      bc.postMessage({ action: "employee_updated", details: { records: [newEmp], count: EM.data.length } });
+      bc.close();
+    } catch(_) {}
+    try {
+      var bc2 = new window.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      bc2.postMessage({ type: "employee_master_saved", records: [newEmp], count: EM.data.length });
+      bc2.close();
+    } catch(_) {}
+  }
   emCloseModal();
   emFilter();
   emUpdateStats();
@@ -9955,6 +10006,24 @@ function emDeleteRow(idx) {
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
   } catch(err) {}
+  try {
+    fetch('/api/sync/employee-master/' + encodeURIComponent(e.emp_id), { method: 'DELETE' }).catch(function(){});
+  } catch(_) {}
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.deleteEmployeeMaster === 'function') {
+    window.ATPLGoogleSync.deleteEmployeeMaster(e.emp_id);
+  }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      bc.postMessage({ action: "employee_deleted", details: { emp_id: e.emp_id, count: EM.data.length } });
+      bc.close();
+    } catch(_) {}
+    try {
+      var bc2 = new window.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      bc2.postMessage({ type: "employee_master_deleted", emp_id: e.emp_id, count: EM.data.length });
+      bc2.close();
+    } catch(_) {}
+  }
   if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.deleteMaster==='function') {
     window.ATPLCloudSyncV1.deleteMaster(e.emp_id);
   }
@@ -12394,8 +12463,31 @@ function emSaveBulk() {
   try {
     if (window.EM && Array.isArray(window.EM.data)) {
       localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(window.EM.data));
+      localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
     }
   } catch (_) {}
+  try {
+    fetch('/api/sync/employee-master', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: window.EM.data, mode: 'upsert' })
+    }).catch(function(){});
+  } catch(_) {}
+  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.pushEmployeeMasterDriveVault === 'function') {
+    window.ATPLGoogleSync.pushEmployeeMasterDriveVault(window.EM.data);
+  }
+  if (window.BroadcastChannel) {
+    try {
+      var bc = new window.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      bc.postMessage({ action: "employee_updated", details: { records: window.EM.data, count: window.EM.data.length } });
+      bc.close();
+    } catch(_) {}
+    try {
+      var bc2 = new window.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      bc2.postMessage({ type: "employee_master_saved", records: window.EM.data, count: window.EM.data.length });
+      bc2.close();
+    } catch(_) {}
+  }
 
   if (typeof aroraSaveMasterSnapshot === 'function') aroraSaveMasterSnapshot();
   if (typeof aroraRefreshMaster === 'function') aroraRefreshMaster();

@@ -396,13 +396,15 @@ function deleteEmployeeMaster_(p) {
   lock.waitLock(12000);
 
   try {
-    var cleanKey = id.toLowerCase().replace(/^0+/, "");
-    var lr = sheet.getLastRow();
-    var lc = sheet.getLastColumn();
-    var headers = sheet.getRange(1, 1, 1, lc).getValues()[0].map(function(h) { return String(h || "").trim(); });
-    var idColIdx = headers.indexOf("emp_id");
-    if (idColIdx < 0) idColIdx = 0;
-    var delColIdx = headers.indexOf("_atpl_deleted");
+    if (id.toUpperCase() === 'ALL' || id.toUpperCase() === '__ALL__') {
+      if (lr > 1) {
+        sheet.getRange(2, 1, lr - 1, lc).clearContent();
+      }
+      var now = new Date().toISOString();
+      tombSheet.appendRow(["__all_cleared__", "employee", now, "Admin"]);
+      var newVer = bumpSyncVersion_();
+      return { ok: true, deleted: true, all: true, count: 0, version: newVer };
+    }
 
     var deletedCount = 0;
     if (lr > 1) {

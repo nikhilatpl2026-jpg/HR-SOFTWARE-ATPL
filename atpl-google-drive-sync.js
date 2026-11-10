@@ -201,8 +201,8 @@
         var badge = document.getElementById('empMasterBadge');
         var totalBadge = document.getElementById('emTotalBadge');
         var len = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.length : 0;
-        if (badge && len > 0) badge.textContent = String(len);
-        if (totalBadge && len > 0) totalBadge.textContent = len + ' Employees';
+        if (badge) badge.textContent = String(len);
+        if (totalBadge) totalBadge.textContent = len + ' Employees';
         updateSyncBadge('ok');
         notifySubscribers('employee');
       });
@@ -680,15 +680,22 @@
     var localEmps = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
     var localHasBank = localEmps.some(function(e) { return e && (e.bank_name || e.account_no || e.ifsc); });
 
-    if (force || remoteVaultTs > lastVaultTs || currentEmpCount < 50 || !localHasBank) {
+    var isCleared = localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true';
+
+    if (force || remoteVaultTs > lastVaultTs || (!isCleared && (currentEmpCount < 50 || !localHasBank))) {
       try {
         var vaultRes = await callGoogleBackend('downloadFile', { fileName: 'atpl_employee_master_vault.json' });
         if (vaultRes && vaultRes.ok && vaultRes.fileBase64) {
           var vaultJson = b64ToUtf8(vaultRes.fileBase64);
           var vaultData = JSON.parse(vaultJson);
-          if (vaultData && Array.isArray(vaultData.employees) && vaultData.employees.length > 0) {
-            applyEmployeeRecords(vaultData.employees, true);
-            localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+          if (vaultData && Array.isArray(vaultData.employees)) {
+            if (vaultData.employees.length === 0 || vaultData.cleared === true) {
+              applyEmployeeClearLocally();
+              localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+            } else {
+              applyAuthoritativeSnapshot(vaultData.employees);
+              localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
+            }
           }
         }
       } catch (err) {
@@ -705,10 +712,12 @@
     }
     try {
       var nowIso = new Date().toISOString();
+      var isZero = (list.length === 0);
       var payload = {
         version: 1,
         employees: list,
         count: list.length,
+        cleared: isZero,
         updatedAt: nowIso
       };
       var b64Data = utf8ToB64(JSON.stringify(payload));
@@ -718,7 +727,7 @@
         mimeType: 'application/json'
       });
       localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(Date.parse(nowIso)));
-      if (list.length === 0) {
+      if (isZero) {
         dispatchSyncTrigger('employee_cleared', { count: 0, ts: Date.now() });
       } else {
         dispatchSyncTrigger('employee_updated', { count: list.length, ts: Date.now() });
@@ -796,7 +805,7 @@
         var existing = currentList[idx];
         var merged = Object.assign({}, existing);
         Object.keys(rec).forEach(function(k) {
-          if (rec[k] !== undefined && rec[k] !== null && String(rec[k]).trim() !== '') {
+          if (rec[k] !== undefined && rec[k] !== null) {
             merged[k] = rec[k];
           }
         });
@@ -806,6 +815,8 @@
         if (!merged.doj && (merged.date_of_joining || rec.date_of_joining)) merged.doj = merged.date_of_joining || rec.date_of_joining;
         if (!merged.pf_no && (merged.uan_no || rec.uan_no)) merged.pf_no = merged.uan_no || rec.uan_no;
         if (!merged.esi_no && (merged.esic_no || rec.esic_no)) merged.esi_no = merged.esic_no || rec.esic_no;
+        if (merged.gross && !merged.new_gross) merged.new_gross = merged.gross;
+        if (merged.new_gross && !merged.gross) merged.gross = merged.new_gross;
         merged.emp_id = id;
         currentList[idx] = merged;
         changed = true;

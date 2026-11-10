@@ -452,6 +452,13 @@ function deleteEmployeeMaster_(p) {
     var ss = getSpreadsheet_();
     var sh = ss.getSheetByName('EmployeeMaster');
     var n = sh.getLastRow();
+    if (rawId === 'all' || rawId === '__all__') {
+      if (n > 1) {
+        var lc = sh.getLastColumn() || 40;
+        sh.getRange(2, 1, n - 1, lc).clearContent();
+      }
+      return { ok: true, deleted: 'ALL', count: 0 };
+    }
     if (n > 1) {
       var ids = sh.getRange(2, 1, n - 1, 1).getValues();
       for (var i = 0; i < ids.length; i++) {
