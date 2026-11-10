@@ -353,6 +353,7 @@ function upsertEmployeeMaster_(p) {
         rowValues.push("Admin");
       } else if (h === "_atpl_deleted") {
         rowValues.push(false);
+      }
       var rVal = rec[h];
       if (rVal === undefined || rVal === null || String(rVal).trim() === "") {
         if (h === "bank_account_no" && rec.account_no) rVal = rec.account_no;
@@ -415,6 +416,10 @@ function deleteEmployeeMaster_(p) {
   lock.waitLock(12000);
 
   try {
+    var lr = sheet.getLastRow();
+    var lc = sheet.getLastColumn();
+    var cleanKey = id.toLowerCase().replace(/^0+/, "");
+    var idColIdx = 0, delColIdx = -1;
     if (id.toUpperCase() === 'ALL' || id.toUpperCase() === '__ALL__') {
       if (lr > 1) {
         sheet.getRange(2, 1, lr - 1, lc).clearContent();
