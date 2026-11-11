@@ -365,10 +365,13 @@ function upsertEmployeeMaster_(p) {
       var h = headers[j];
       if (h === "_cloud_updated_at") {
         rowValues.push(now);
+        continue;
       } else if (h === "_cloud_updated_by") {
         rowValues.push("Admin");
+        continue;
       } else if (h === "_atpl_deleted") {
         rowValues.push(false);
+        continue;
       }
       var rVal = rec[h];
       if (rVal === undefined || rVal === null || String(rVal).trim() === "") {
