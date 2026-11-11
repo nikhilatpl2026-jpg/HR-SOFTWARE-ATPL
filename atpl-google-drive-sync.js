@@ -1093,20 +1093,56 @@
       return await pushEmployeeAndVaultToCloud(records);
     },
     upsertEmployeeMaster: async function(records) {
-      if (!Array.isArray(records)) return { ok: false, error: 'Employee records must be an array.' };
-      // Use the existing verified cloud-save path exactly once; avoid recursive
-      // self-dispatch and duplicate backend writes.
-      return await this.saveEmployeeMaster(records);
+      if (!Array.isArray(records) || !records.length) return { ok: false, error: 'Employee records must be a non-empty array.' };
+      // Single write authority: merge incoming employee rows into the current
+      // complete master, then use the same Google Sheets push used by All Files.
+      var current = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data.slice() : [];
+      if (!current.length) {
+        try { current = JSON.parse(localStorage.getItem('AroraTextilesEmployeeMasterV3') || '[]'); } catch (_) { current = []; }
+      }
+      if (!Array.isArray(current)) current = [];
+      function empKey(row) {
+        var id = extractEmpId(row);
+        return String(id || '').trim().toLowerCase().replace(/^0+/, '') || String(id || '').trim().toLowerCase();
+      }
+      var merged = current.slice();
+      records.forEach(function(incoming) {
+        if (!incoming || typeof incoming !== 'object') return;
+        var id = extractEmpId(incoming);
+        if (!id) return;
+        var key = empKey(incoming);
+        var at = merged.findIndex(function(row) { return empKey(row) === key; });
+        var clean = Object.assign({}, at >= 0 ? merged[at] : {}, incoming, { emp_id: id });
+        if (at >= 0) merged[at] = clean; else merged.push(clean);
+      });
+      if (!merged.length) return { ok: false, error: 'No valid Employee Code found.' };
+      return await this.saveEmployeeMaster(merged);
     },
     deleteEmployeeMaster: async function(empCode) {
       var cleanEmpId = String(empCode || '').trim();
       if (!cleanEmpId) return { ok: false, error: 'Employee code is required.' };
       lastEmpLocalWriteTime = Date.now();
       var result = await callGoogleBackend('deleteEmployeeMaster', { emp_id: cleanEmpId });
-      if (!result || result.ok !== true) {
+      if (!result || result.ok !== true || result.verified !== true) {
         throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master deletion.');
       }
-      return result;
+      dispatchSyncTrigger('employee_deleted', { emp_id: cleanEmpId });
+      return { ok: true, verified: true, deleted: cleanEmpId, version: result.version || 0 };
+    },
+    bulkDeleteEmployees: async function(ids) {
+      if (!Array.isArray(ids) || !ids.length) return { ok: false, error: 'No Employee Codes supplied.' };
+      var done = [];
+      for (var i = 0; i < ids.length; i++) {
+        var result = await this.deleteEmployeeMaster(ids[i]);
+        if (!result || !result.ok || !result.verified) throw new Error('Delete not verified for Employee Code ' + ids[i]);
+        done.push(result.deleted);
+      }
+      return { ok: true, verified: true, count: done.length, deleted: done };
+    },
+    clearAllEmployees: async function() {
+      var result = await this.deleteEmployeeMaster('ALL');
+      if (!result || !result.ok || !result.verified) throw new Error('Google Sheets did not confirm Employee Master clear.');
+      return { ok: true, verified: true, cleared: true, count: 0, version: result.version || 0 };
     },
     subscribe: function(mod, cb) {
       if (!subscribers[mod]) subscribers[mod] = [];
