@@ -842,37 +842,13 @@
   }
 
   // ── Initialization ──
+  // Employee Master now deliberately delegates persistence and cross-browser
+  // refresh to the same Google Drive/Sheets UnifiedSyncEngine used by All Files.
+  // Do not start the former parallel MQTT/SSE/polling/hydration engine here:
+  // it competed with the shared sync loop and could overwrite its API methods.
+  // Keep the legacy Engine object exposed for compatibility, but it is not
+  // installed as a second writer or a second background sync authority.
   root.ATPLEmployeeMasterRealtimeEngine = Engine;
-  setupServerSSE();
-  setupMqttWebSocket();
-  installHooks();
-
-  // Run initial state hydration
-  if (root.document && root.document.readyState === 'loading') {
-    root.document.addEventListener('DOMContentLoaded', function() {
-      hydrateMasterState();
-      installHooks();
-    }, { once: true });
-  } else {
-    hydrateMasterState();
-    installHooks();
-  }
-
-  // Window focus & visibility change trigger instant check
-  if (root.addEventListener) {
-    root.addEventListener('focus', function() { Engine.checkRemoteUpdates(); });
-    root.document && root.document.addEventListener('visibilitychange', function() {
-      if (!root.document.hidden) Engine.checkRemoteUpdates();
-    });
-  }
-
-  // Adaptive low-overhead background polling every 3.5s
-  setInterval(function() {
-    if (!root.document || !root.document.hidden) {
-      Engine.checkRemoteUpdates();
-    }
-  }, 3500);
-
-  console.log('[ATPL-RealTime] Authoritative Employee Master Real-Time Sync Engine v3.0 ACTIVE.');
+  console.log('[ATPL-RealTime] Legacy parallel Employee Master transport disabled; using UnifiedSyncEngine.');
 
 })(typeof window !== 'undefined' ? window : this);
