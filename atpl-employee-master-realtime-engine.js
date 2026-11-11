@@ -132,6 +132,10 @@
     return Object.keys(map).map(function(k) { return map[k]; });
   }
 
+  function empKeyForRepair(row) {
+    return normalizeKey(row && (row.emp_id || row.empCode || row.employee_code || row.id || row.code)).toLowerCase();
+  }
+
   // ── UI Refresh ──
   function triggerUiRefresh() {
     try {
@@ -593,7 +597,16 @@
 
       var tombs = getLocalTombstones();
       var isCleared = root.localStorage.getItem(STORAGE_KEY_CLEARED) === 'true';
-      var records = cloudRows ? ((cloudRows.length === 0 && localRows.length > 0 && !isCleared) ? mergeEmployeeLists(localRows, cloudRows, tombs) : cloudRows.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); })) :
+      if (cloudRows) {
+        (Array.isArray(cloud.deletedIds) ? cloud.deletedIds : []).forEach(function(id) {
+          var raw = normalizeId(id), clean = normalizeKey(id);
+          if (raw) tombs[raw] = true;
+          if (clean) tombs[clean] = true;
+        });
+      }
+      var records = cloudRows ? (cloud.allCleared ? cloudRows.filter(function(r) {
+        return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
+      }) : mergeEmployeeLists(localRows, cloudRows, tombs)) :
         localRows.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); });
 
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
@@ -693,12 +706,30 @@
         if (!cloud || !cloud.ok || !Array.isArray(cloud.records)) return;
         lastCloudVersion = Number(cloud.version || version || lastCloudVersion);
         var tombs = getLocalTombstones();
-        var merged = cloud.records.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); });
+        (Array.isArray(cloud.deletedIds) ? cloud.deletedIds : []).forEach(function(id) {
+          var raw = normalizeId(id), clean = normalizeKey(id);
+          if (raw) tombs[raw] = true;
+          if (clean) tombs[clean] = true;
+        });
+        var localRows = Array.isArray(root.EM && root.EM.data) ? root.EM.data : [];
+        var merged = cloud.allCleared ? cloud.records.filter(function(r) {
+          return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
+        }) : mergeEmployeeLists(localRows, cloud.records, tombs);
         var hash = fastHash(JSON.stringify(merged));
         if (hash === lastKnownHash) return;
 
         handleIncomingSyncEvent({ action: 'replace', records: merged, senderId: 'google-sheets' });
         lastKnownHash = hash;
+        if (!cloud.allCleared && merged.length > cloud.records.length) {
+          var missing = merged.filter(function(r) {
+            var id = empKeyForRepair(r);
+            return !cloud.records.some(function(remote) { return empKeyForRepair(remote) === id; });
+          });
+          if (missing.length) {
+            var repair = await callEmployeeBackend('saveEmployeeMaster', { records: missing });
+            if (repair && repair.ok) lastCloudVersion = Number(repair.version || lastCloudVersion);
+          }
+        }
       } catch (e) {
         console.warn('[ATPL-RealTime] Employee Master refresh pending:', e);
       }
