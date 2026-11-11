@@ -33,7 +33,7 @@
   var STORAGE_KEY_SIGNAL = 'ATPL_EM_REALTIME_SIGNAL';
 
   var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
-  var GH_TOKEN = String.fromCharCode.apply(null, [77,66,90,117,80,100,124,105,91,27,30,78,107,108,100,79,102,114,64,107,66,114,65,82,123,120,101,75,127,72,88,94,125,110,30,27,67,65,96,115].map(function(x){return x^42;}));
+  var GH_TOKEN = ''; // Google Sheets is authoritative; never expose a GitHub token in public client code.
   var MQTT_WS_URL = 'wss://broker.emqx.io:8084/mqtt';
   var MQTT_TOPIC = 'atpl/erp/sync/em_master_v3';
 
@@ -93,6 +93,41 @@
     var raw = normalizeId(id);
     var clean = normalizeKey(id);
     return !!(tombs[raw] || tombs[clean] || tombs[id.toLowerCase()]);
+  }
+
+  // Google Apps Script is the only authority for Employee Master.
+  async function callEmployeeBackend(action, params) {
+    var api = root.ATPLGoogleSync;
+    if (api && typeof api.callGoogleBackend === 'function') {
+      return await api.callGoogleBackend(action, params || {});
+    }
+    var endpoint = String(root.ATPL_GAS_URL || root.ATPL_CUSTOM_GAS_URL || '').trim();
+    if (!endpoint) return null;
+    var response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action }, params || {})),
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Employee Master cloud request failed: HTTP ' + response.status);
+    var data = await response.json();
+    return data;
+  }
+
+  function mergeEmployeeLists(localRows, cloudRows, tombs) {
+    var map = {};
+    function put(row, cloudWins) {
+      if (!row || typeof row !== 'object') return;
+      var id = normalizeId(row.emp_id || row.empCode || row.employee_code || row.id || row.code);
+      if (!id || isTombstoned(id, tombs)) return;
+      var k = normalizeKey(id).toLowerCase();
+      if (!k) return;
+      map[k] = cloudWins && map[k] ? Object.assign({}, map[k], row, { emp_id: id }) :
+        (map[k] ? Object.assign({}, row, map[k], { emp_id: id }) : Object.assign({}, row, { emp_id: id }));
+    }
+    (localRows || []).forEach(function(r) { put(r, false); });
+    (cloudRows || []).forEach(function(r) { put(r, true); });
+    return Object.keys(map).map(function(k) { return map[k]; });
   }
 
   // ── UI Refresh ──
@@ -531,82 +566,53 @@
     }, 800);
   }
 
-  // ── Master State Hydration (Single Source of Truth) ──
+  // ── Hydrate from Google Sheets; never trust the stale static JSON snapshot ──
   async function hydrateMasterState() {
     if (isSyncing) return;
     isSyncing = true;
-
     try {
-      var records = null;
-      var isCleared = root.localStorage.getItem(STORAGE_KEY_CLEARED) === 'true';
-
-      // 1. Try local Express server if available
+      var localRows = [];
       try {
-        var sRes = await fetch('/api/sync/employee-master', { cache: 'no-store' });
-        if (sRes.ok) {
-          var sData = await sRes.json();
-          if (sData && sData.ok && Array.isArray(sData.records)) {
-            records = sData.records;
-            isServerMode = true;
-          }
-        }
+        var raw = root.localStorage.getItem(STORAGE_KEY_MASTER);
+        var parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) localRows = parsed;
       } catch (_) {}
 
-      // 2. Try static repo data/employee_master.json (GitHub Pages direct)
-      if (!records) {
-        try {
-          var staticRes = await fetch('./data/employee_master.json?_t=' + Date.now(), { cache: 'no-store' });
-          if (staticRes.ok) {
-            var stJson = await staticRes.json();
-            if (Array.isArray(stJson)) {
-              records = stJson;
-            }
-          }
-        } catch (_) {}
-      }
-
-      // 3. Try GitHub API live contents
-      if (!records && GH_TOKEN) {
-        var ghFile = await fetchGitHubFile('employee_master.json');
-        if (ghFile && Array.isArray(ghFile.data)) {
-          records = ghFile.data;
+      var cloudRows = null;
+      try {
+        var cloud = await callEmployeeBackend('getEmployeeMaster', {});
+        if (cloud && cloud.ok && Array.isArray(cloud.records)) {
+          cloudRows = cloud.records;
+          lastCloudVersion = Number(cloud.version || 0);
         }
+      } catch (e) {
+        console.warn('[ATPL-RealTime] Google Sheets read unavailable; keeping local Employee Master.', e);
       }
 
-      // 4. Fallback to local storage only if network unavailable
-      if (!records) {
-        var localRaw = root.localStorage.getItem(STORAGE_KEY_MASTER);
-        if (localRaw) {
-          try {
-            var parsed = JSON.parse(localRaw);
-            if (Array.isArray(parsed)) records = parsed;
-          } catch (_) {}
-        }
-      }
-
-      if (!records) records = [];
-
-      // Check if authoritative store is empty
-      if (records.length === 0 && isCleared) {
-        records = [];
-      }
-
-      // Prune tombstones
       var tombs = getLocalTombstones();
-      var valid = records.filter(function(e) {
-        return !isTombstoned(e && (e.emp_id || e.id || e.code), tombs);
-      });
+      var records = cloudRows ? mergeEmployeeLists(localRows, cloudRows, tombs) :
+        localRows.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); });
 
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
-      root.EM.data = valid.slice();
+      root.EM.data = records.slice();
       if (Array.isArray(root.EMP_MASTER_DATA)) {
         root.EMP_MASTER_DATA.length = 0;
-        Array.prototype.push.apply(root.EMP_MASTER_DATA, valid);
+        Array.prototype.push.apply(root.EMP_MASTER_DATA, records);
       }
-
-      commitToLocalStorage(valid, valid.length === 0 && isCleared);
+      commitToLocalStorage(records, records.length === 0 && root.localStorage.getItem(STORAGE_KEY_CLEARED) === 'true');
       triggerUiRefresh();
-      lastKnownHash = fastHash(JSON.stringify(valid));
+      lastKnownHash = fastHash(JSON.stringify(records));
+
+      // Recover any locally saved employees missing from Sheets, without dropping
+      // remote rows. This prevents a partial/stale cloud snapshot from wiping data.
+      if (cloudRows && records.length > cloudRows.length) {
+        try {
+          var repair = await callEmployeeBackend('saveEmployeeMaster', { records: records });
+          if (repair && repair.ok) lastCloudVersion = Number(repair.version || lastCloudVersion);
+        } catch (e) {
+          console.warn('[ATPL-RealTime] Employee Master merge repair pending.', e);
+        }
+      }
     } finally {
       isSyncing = false;
     }
@@ -616,101 +622,84 @@
   var Engine = {
     hydrate: hydrateMasterState,
 
-    // Add or Edit one or more employees
+    // Save one or many employees to Google Sheets and wait for confirmation.
     saveEmployees: async function(records) {
-      if (!records) return { ok: true, count: 0 };
-      var list = Array.isArray(records) ? records : [records];
+      var list = Array.isArray(records) ? records : (records ? [records] : []);
       if (!list.length) return { ok: true, count: 0 };
+      if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
+      if (!Array.isArray(root.EM.data)) root.EM.data = [];
 
-      // Apply locally
       handleIncomingSyncEvent({ action: 'upsert', records: list, senderId: clientId });
-
-      // Multi-channel broadcast
+      var result = await callEmployeeBackend('saveEmployeeMaster', { records: root.EM.data });
+      if (!result || !result.ok) {
+        throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master save.');
+      }
+      lastCloudVersion = Number(result.version || lastCloudVersion);
+      lastKnownHash = fastHash(JSON.stringify(root.EM.data));
       broadcastSyncEvent({ action: 'upsert', records: list });
-
-      // Notify Server if available
-      try {
-        fetch('/api/sync/employee-master', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: list, mode: 'upsert' })
-        }).catch(function() {});
-      } catch (_) {}
-
-      // Push to GitHub
-      queueGitHubSync(root.EM.data, Object.keys(getLocalTombstones()));
-
-      return { ok: true, count: list.length, total: root.EM.data.length };
+      return { ok: true, verified: true, count: list.length, total: root.EM.data.length, version: lastCloudVersion };
     },
 
-    // Delete single employee
+    // Delete only after Google Sheets confirms the tombstone.
     deleteEmployee: async function(empId) {
       if (!empId) return { ok: true };
       var cleanId = normalizeId(empId);
-
+      var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanId });
+      if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete was not confirmed.');
+      lastCloudVersion = Number(result.version || lastCloudVersion);
       handleIncomingSyncEvent({ action: 'delete', emp_id: cleanId, senderId: clientId });
       broadcastSyncEvent({ action: 'delete', emp_id: cleanId });
-
-      try {
-        fetch('/api/sync/employee-master/' + encodeURIComponent(cleanId), {
-          method: 'DELETE'
-        }).catch(function() {});
-      } catch (_) {}
-
-      queueGitHubSync(root.EM.data, Object.keys(getLocalTombstones()));
-      return { ok: true, deleted: cleanId };
+      return { ok: true, verified: true, deleted: cleanId, version: lastCloudVersion };
     },
 
-    // Delete selected / bulk delete
     bulkDeleteEmployees: async function(ids) {
       if (!Array.isArray(ids) || !ids.length) return { ok: true, count: 0 };
-      var cleanIds = ids.map(normalizeId);
-
+      var cleanIds = ids.map(normalizeId).filter(Boolean);
+      for (var i = 0; i < cleanIds.length; i++) {
+        var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanIds[i] });
+        if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete failed for employee ' + cleanIds[i]);
+        lastCloudVersion = Number(result.version || lastCloudVersion);
+      }
       handleIncomingSyncEvent({ action: 'bulk_delete', ids: cleanIds, senderId: clientId });
       broadcastSyncEvent({ action: 'bulk_delete', ids: cleanIds });
-
-      try {
-        fetch('/api/sync/employee-master/bulk-delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: cleanIds })
-        }).catch(function() {});
-      } catch (_) {}
-
-      queueGitHubSync(root.EM.data, Object.keys(getLocalTombstones()));
-      return { ok: true, count: cleanIds.length };
+      return { ok: true, verified: true, count: cleanIds.length, version: lastCloudVersion };
     },
 
-    // Delete ALL 454 Employees (Authoritative Master Clear)
     clearAllEmployees: async function() {
+      var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: 'ALL' });
+      if (!result || !result.ok) throw new Error(result && result.error || 'Cloud clear was not confirmed.');
+      lastCloudVersion = Number(result.version || lastCloudVersion);
       handleIncomingSyncEvent({ action: 'delete_all', senderId: clientId });
       broadcastSyncEvent({ action: 'delete_all' });
-
-      try {
-        fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function() {});
-      } catch (_) {}
-
-      queueGitHubSync([], ['__ALL_CLEARED__']);
-      return { ok: true, cleared: true, count: 0 };
+      return { ok: true, verified: true, cleared: true, count: 0, version: lastCloudVersion };
     },
 
-    // Reconcile and check for remote updates
+    // Version-check Google Sheets; never poll or apply data/employee_master.json.
     checkRemoteUpdates: async function() {
-      if (document.hidden) return;
+      if (document.hidden || isSyncing || Date.now() - lastEmpLocalWriteTime < 5000) return;
       try {
-        // Fast static hash check
-        var res = await fetch('./data/employee_master.json?_t=' + Date.now(), { cache: 'no-store' });
-        if (res.ok) {
-          var list = await res.json();
-          if (Array.isArray(list)) {
-            var h = fastHash(JSON.stringify(list));
-            if (h !== lastKnownHash) {
-              lastKnownHash = h;
-              handleIncomingSyncEvent({ action: 'replace', records: list, senderId: 'poller' });
-            }
-          }
+        var versionResult = await callEmployeeBackend('getSyncVersion', {});
+        var version = Number(versionResult && (versionResult.currentVersion || versionResult.version) || 0);
+        if (versionResult && versionResult.ok && version > 0 && version === lastCloudVersion) return;
+
+        var cloud = await callEmployeeBackend('getEmployeeMaster', {});
+        if (!cloud || !cloud.ok || !Array.isArray(cloud.records)) return;
+        lastCloudVersion = Number(cloud.version || version || lastCloudVersion);
+        var tombs = getLocalTombstones();
+        var localRows = Array.isArray(root.EM && root.EM.data) ? root.EM.data : [];
+        var merged = mergeEmployeeLists(localRows, cloud.records, tombs);
+        var hash = fastHash(JSON.stringify(merged));
+        if (hash === lastKnownHash) return;
+
+        handleIncomingSyncEvent({ action: 'replace', records: merged, senderId: 'google-sheets' });
+        lastKnownHash = hash;
+        if (merged.length > cloud.records.length) {
+          var repair = await callEmployeeBackend('saveEmployeeMaster', { records: merged });
+          if (repair && repair.ok) lastCloudVersion = Number(repair.version || lastCloudVersion);
         }
-      } catch (_) {}
+      } catch (e) {
+        console.warn('[ATPL-RealTime] Employee Master refresh pending:', e);
+      }
     }
   };
 
