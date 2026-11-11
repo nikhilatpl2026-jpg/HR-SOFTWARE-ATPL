@@ -440,7 +440,7 @@
         var nameKey = String(fileName).toLowerCase().trim();
 
         // Guard: Do not load internal advance management json or non-spreadsheets into salary files
-        if (nameKey.indexOf('advance_management') !== -1 || nameKey.endsWith('.json') || !isSpreadsheetFile(fileName)) {
+        if (nameKey.indexOf('advance_management') !== -1 || nameKey.endsWith('.json')) {
           continue;
         }
         if (nameKey.includes('attend') && fileMeta.size === 0) continue;
@@ -516,7 +516,7 @@
     }
 
     var now = Date.now();
-    if (!force && (now - lastPollTimestamp < 12000)) {
+    if (!force && (now - lastPollTimestamp < 2000)) {
       return Promise.resolve({ ok: true, throttled: true });
     }
     lastPollTimestamp = now;
@@ -558,6 +558,34 @@
       var currentFiles = Array.isArray(window.FILES) ? window.FILES.slice() : [];
       var filesChanged = false;
 
+      // Google Drive is authoritative for All Files. Remove files deleted from
+      // another browser, but protect uploads that are still being committed.
+      var remoteNames = {};
+      driveFiles.forEach(function(df) {
+        if (df && df.name) remoteNames[String(df.name).toLowerCase().trim()] = true;
+      });
+      for (var ri = currentFiles.length - 1; ri >= 0; ri--) {
+        var remoteCheck = currentFiles[ri];
+        if (!remoteCheck || !remoteCheck.name) continue;
+        var remoteKey = String(remoteCheck.name).toLowerCase().trim();
+        var uploadAge = recentlyUploadedFiles[remoteKey] ? (Date.now() - recentlyUploadedFiles[remoteKey]) : Infinity;
+        if (!remoteNames[remoteKey] && uploadAge > 60000) {
+          currentFiles.splice(ri, 1);
+          tombstones[remoteKey] = new Date().toISOString();
+          window.__ATPL_IS_DOWNLOADING_DRIVE = true;
+          try {
+            if (typeof window.deleteFromDB === 'function') window.deleteFromDB(remoteCheck.name);
+          } catch (_) {}
+          window.__ATPL_IS_DOWNLOADING_DRIVE = false;
+          filesChanged = true;
+        }
+      }
+      if (filesChanged) {
+        try { localStorage.setItem('ATPL_SALARY_TOMBSTONES_V2', JSON.stringify(tombstones)); } catch (_) {}
+        window.FILES = currentFiles;
+        refreshFilesUI();
+      }
+
       for (var i = currentFiles.length - 1; i >= 0; i--) {
         var cf = currentFiles[i];
         if (!cf || !cf.name) continue;
@@ -589,7 +617,7 @@
         if (!df || !df.name) continue;
         var dfNameLow = String(df.name).toLowerCase().trim();
         // Ignore internal data files (.json, advance management data) or non-spreadsheets
-        if (dfNameLow.indexOf('advance_management') !== -1 || dfNameLow.endsWith('.json') || !isSpreadsheetFile(df.name)) {
+        if (dfNameLow.indexOf('advance_management') !== -1 || dfNameLow.endsWith('.json')) {
           continue;
         }
         if (tombstones[dfNameLow]) continue;
@@ -837,7 +865,7 @@
         await pollSyncState(false);
       }
       scheduleNextPoll();
-    }, 8000);
+    }, 2500);
   }
 
   var UnifiedSyncEngine = {
@@ -856,7 +884,7 @@
         if (!document.hidden && getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
           pollSyncState(false);
         }
-      }, 8000);
+      }, 2500);
       window.addEventListener('focus', function() {
         if (getGasUrl() && !window.__ATPL_IS_UPLOADING && !window.__ATPL_IS_SAVING_EMP) {
           pollSyncState(false);
