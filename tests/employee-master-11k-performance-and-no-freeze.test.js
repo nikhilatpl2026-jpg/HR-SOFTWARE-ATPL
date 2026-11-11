@@ -92,6 +92,19 @@ test('Employee master 11K dataset performance & zero main-thread freeze', async 
     'employee-master-persistence-guard-v1.js must not wipe cache for 11k employees'
   );
 
+  // 6a. An empty local cache is not proof of a deliberate cloud-wide delete.
+  // Only the explicit clear marker may suppress cloud hydration.
+  assert.strictEqual(
+    guardJs.includes("localStorage.getItem(KEY) === '[]'"),
+    false,
+    'An empty/stale local cache must not be treated as Delete All'
+  );
+  assert.strictEqual(
+    guardJs.includes("localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true'"),
+    true,
+    'Only the explicit clear marker may represent a deliberate Delete All'
+  );
+
   // 7. Verify index.html uses v4/v5 cache busting tags
   assert.strictEqual(
     indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v4') || indexHtml.includes('atpl-google-drive-sync.js?v=20261101-nofreeze-v5'),
