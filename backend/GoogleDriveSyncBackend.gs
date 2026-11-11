@@ -17,10 +17,10 @@ var EM_FIELD_KEYS = [
   "present_address", "present_district", "present_state",
   "permanent_address", "permanent_district", "permanent_state",
   "father_dob", "mother_name", "mother_dob",
-  "nominee_name", "nominee_dob",
+  "nominee_name", "nominee_relation", "nominee_dob",
   "son_name", "son_dob", "daughter_name", "daughter_dob",
   "bank_name", "account_no", "ifsc", "branch_address",
-  "doj", "dept", "desig", "cat1", "skill", "pf_no", "esi_no",
+  "doj", "dol", "status", "dept", "desig", "cat1", "cat2", "skill", "pf_no", "esi_no",
   "gross", "basic", "hra", "new_gross"
 ];
 
@@ -141,10 +141,22 @@ function ensureEmployeeMasterSheet_() {
   if (!sheet) {
     sheet = ss.insertSheet("EmployeeMaster");
   }
-  var headers = EM_FIELD_KEYS.concat(["_cloud_updated_at", "_cloud_updated_by", "_atpl_deleted"]);
+  var requiredHeaders = EM_FIELD_KEYS.concat(["_cloud_updated_at", "_cloud_updated_by", "_atpl_deleted"]);
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
     sheet.setFrozenRows(1);
+  } else {
+    // Safe in-place schema migration: append newly supported Employee Master fields
+    // without moving, clearing, or rewriting existing columns/employee data.
+    var lastCol = Math.max(1, sheet.getLastColumn());
+    var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+      .map(function(h) { return String(h || "").trim(); });
+    var missingHeaders = requiredHeaders.filter(function(h) {
+      return existingHeaders.indexOf(h) === -1;
+    });
+    if (missingHeaders.length) {
+      sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+    }
   }
   return sheet;
 }
@@ -285,6 +297,10 @@ function getEmployeeMaster_(p) {
     ok: true,
     records: out,
     count: out.length,
+    // Cloud tombstones let stale browsers merge missing local rows safely without
+    // resurrecting employees deleted from another browser.
+    deletedIds: Object.keys(dead).filter(function(k) { return k !== "__all_cleared__"; }),
+    allCleared: !!dead["__all_cleared__"],
     version: ver,
     timestamp: new Date().toISOString()
   };
@@ -471,12 +487,8 @@ function saveEmployeeMaster_(p) {
   if (typeof records === "string") {
     try { records = JSON.parse(records); } catch (_) {}
   }
-  if (!Array.isArray(records)) {
-    return { ok: false, error: "records must be an array" };
-  }
-  if (records.length === 0) {
-    return { ok: true, count: 0, version: getSyncVersion_() };
-  }
+  if (!Array.isArray(records)) return { ok: false, error: "records must be an array" };
+  if (records.length === 0) return { ok: true, count: 0, version: getSyncVersion_() };
 
   var sheet = ensureEmployeeMasterSheet_();
   var dead = getTombstoneSet_();
@@ -484,74 +496,91 @@ function saveEmployeeMaster_(p) {
   lock.waitLock(20000);
 
   try {
-    var headers = EM_FIELD_KEYS.concat(["_cloud_updated_at", "_cloud_updated_by", "_atpl_deleted"]);
+    // Read the actual sheet header order. This remains correct after safe schema
+    // migrations append new fields to an existing EmployeeMaster tab.
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+      .map(function(h) { return String(h || "").trim(); });
+    var colMap = {};
+    headers.forEach(function(h, i) { colMap[h] = i; });
+
     var lr = sheet.getLastRow();
     var existingMap = {};
-
     if (lr > 1) {
-      var currentData = sheet.getRange(2, 1, lr - 1, headers.length).getValues();
+      var currentData = sheet.getRange(2, 1, lr - 1, lastCol).getValues();
+      var idIndex = colMap["emp_id"] !== undefined ? colMap["emp_id"] : 0;
       for (var e = 0; e < currentData.length; e++) {
-        var eid = String(currentData[e][0] || "").trim().toLowerCase();
-        if (eid) {
-          existingMap[eid] = { row: e + 2, vals: currentData[e] };
-          var cz = eid.replace(/^0+/, "");
-          if (cz && !existingMap[cz]) existingMap[cz] = { row: e + 2, vals: currentData[e] };
-        }
+        var eid = String(currentData[e][idIndex] || "").trim().toLowerCase();
+        if (!eid) continue;
+        var entry = { row: e + 2, vals: currentData[e] };
+        existingMap[eid] = entry;
+        var cz = eid.replace(/^0+/, "");
+        if (cz && !existingMap[cz]) existingMap[cz] = entry;
       }
     }
 
     var now = new Date().toISOString();
     var rowsToAppend = [];
+    var rowsUpdated = 0;
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
-      if (!rec) continue;
-      var rawId = String(rec.emp_id || "").trim();
-      if (!rawId) continue;
+      if (!rec || typeof rec !== "object") continue;
+      var rawId = String(rec.emp_id || rec.empCode || rec.code || "").trim();
+      if (!rawId || rawId.indexOf("__ATPL_SYS__") === 0) continue;
       var cleanKey = rawId.toLowerCase().replace(/^0+/, "");
-      if (dead[rawId.toLowerCase()] || dead[cleanKey]) {
-        continue; // Block permanently deleted employee from resurrecting
-      }
+      if (dead[rawId.toLowerCase()] || dead[cleanKey]) continue;
 
-      var rowValues = [];
       var existing = existingMap[rawId.toLowerCase()] || existingMap[cleanKey];
+      var rowValues = headers.map(function(h, idx) {
+        if (h === "_cloud_updated_at") return now;
+        if (h === "_cloud_updated_by") return "Admin";
+        if (h === "_atpl_deleted") return false;
 
-      for (var f = 0; f < EM_FIELD_KEYS.length; f++) {
-        var k = EM_FIELD_KEYS[f];
-        var val = rec[k];
-        if (val !== undefined && val !== null && String(val).trim() !== "") {
-          if (k === "gross" || k === "basic" || k === "hra" || k === "new_gross") {
-            rowValues.push(parseFloat(String(val).replace(/,/g, "")) || 0);
-          } else {
-            rowValues.push(String(val).trim());
-          }
-        } else if (existing && existing.vals[f] !== undefined && existing.vals[f] !== "") {
-          // Preserve existing cell value
-          rowValues.push(existing.vals[f]);
-        } else {
-          rowValues.push(k === "gross" || k === "basic" || k === "hra" || k === "new_gross" ? 0 : "");
+        var val = rec[h];
+        if (val === undefined || val === null || String(val).trim() === "") {
+          var aliases = {
+            bank_account_no: "account_no", ifsc_code: "ifsc",
+            account_no: "bank_account_no", ifsc: "ifsc_code",
+            department: "dept", dept: "department",
+            date_of_joining: "doj", doj: "date_of_joining",
+            date_of_leaving: "dol", dol: "date_of_leaving",
+            uan_no: "pf_no", pf_no: "uan_no",
+            esic_no: "esi_no", esi_no: "esic_no"
+          };
+          if (aliases[h] && rec[aliases[h]] !== undefined && rec[aliases[h]] !== null &&
+              String(rec[aliases[h]]).trim() !== "") val = rec[aliases[h]];
         }
-      }
 
-      rowValues.push(now);
-      rowValues.push("Admin");
-      rowValues.push(false);
+        if (val !== undefined && val !== null && String(val).trim() !== "") {
+          if (h === "gross" || h === "basic" || h === "hra" || h === "new_gross") {
+            return parseFloat(String(val).replace(/,/g, "")) || 0;
+          }
+          return val;
+        }
+        // Preserve existing values for partial Excel imports; fields explicitly
+        // supplied as non-empty (including status LEFT/ACTIVE) always replace.
+        if (existing && existing.vals[idx] !== undefined && existing.vals[idx] !== "") {
+          return existing.vals[idx];
+        }
+        return (h === "gross" || h === "basic" || h === "hra" || h === "new_gross") ? 0 : "";
+      });
 
       if (existing) {
         sheet.getRange(existing.row, 1, 1, rowValues.length).setValues([rowValues]);
+        rowsUpdated++;
       } else {
         rowsToAppend.push(rowValues);
       }
     }
 
-    if (rowsToAppend.length > 0) {
+    if (rowsToAppend.length) {
       sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
     }
-
     var newVer = bumpSyncVersion_();
     return {
       ok: true,
-      count: records.length,
+      count: rowsUpdated + rowsToAppend.length,
       version: newVer,
       verified: true
     };
