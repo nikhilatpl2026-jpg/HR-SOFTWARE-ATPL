@@ -156,6 +156,8 @@ function ensureEmployeeMasterSheet_() {
     });
     if (missingHeaders.length) {
       sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+      // Force every browser to fetch the migrated schema on its next version check.
+      bumpSyncVersion_();
     }
   }
   return sheet;
