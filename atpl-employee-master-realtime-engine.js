@@ -45,6 +45,8 @@
   var isServerMode = false;
   var localVersion = 1;
   var lastKnownHash = '';
+  var lastCloudVersion = 0;
+  var lastLocalMutationTime = 0;
   var isSyncing = false;
   var ghWriteDebounceTimer = null;
   var cachedGhSha = { master: '', tombstones: '' };
@@ -590,7 +592,8 @@
       }
 
       var tombs = getLocalTombstones();
-      var records = cloudRows ? mergeEmployeeLists(localRows, cloudRows, tombs) :
+      var isCleared = root.localStorage.getItem(STORAGE_KEY_CLEARED) === 'true';
+      var records = cloudRows ? ((cloudRows.length === 0 && localRows.length > 0 && !isCleared) ? mergeEmployeeLists(localRows, cloudRows, tombs) : cloudRows.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); })) :
         localRows.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); });
 
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
@@ -625,6 +628,7 @@
     // Save one or many employees to Google Sheets and wait for confirmation.
     saveEmployees: async function(records) {
       var list = Array.isArray(records) ? records : (records ? [records] : []);
+      lastLocalMutationTime = Date.now();
       if (!list.length) return { ok: true, count: 0 };
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
       if (!Array.isArray(root.EM.data)) root.EM.data = [];
@@ -644,6 +648,7 @@
     deleteEmployee: async function(empId) {
       if (!empId) return { ok: true };
       var cleanId = normalizeId(empId);
+      lastLocalMutationTime = Date.now();
       var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanId });
       if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete was not confirmed.');
       lastCloudVersion = Number(result.version || lastCloudVersion);
@@ -655,6 +660,7 @@
     bulkDeleteEmployees: async function(ids) {
       if (!Array.isArray(ids) || !ids.length) return { ok: true, count: 0 };
       var cleanIds = ids.map(normalizeId).filter(Boolean);
+      lastLocalMutationTime = Date.now();
       for (var i = 0; i < cleanIds.length; i++) {
         var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanIds[i] });
         if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete failed for employee ' + cleanIds[i]);
@@ -666,6 +672,7 @@
     },
 
     clearAllEmployees: async function() {
+      lastLocalMutationTime = Date.now();
       var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: 'ALL' });
       if (!result || !result.ok) throw new Error(result && result.error || 'Cloud clear was not confirmed.');
       lastCloudVersion = Number(result.version || lastCloudVersion);
@@ -676,7 +683,7 @@
 
     // Version-check Google Sheets; never poll or apply data/employee_master.json.
     checkRemoteUpdates: async function() {
-      if (document.hidden || isSyncing || Date.now() - lastEmpLocalWriteTime < 5000) return;
+      if (document.hidden || isSyncing || Date.now() - lastLocalMutationTime < 5000) return;
       try {
         var versionResult = await callEmployeeBackend('getSyncVersion', {});
         var version = Number(versionResult && (versionResult.currentVersion || versionResult.version) || 0);
@@ -686,17 +693,12 @@
         if (!cloud || !cloud.ok || !Array.isArray(cloud.records)) return;
         lastCloudVersion = Number(cloud.version || version || lastCloudVersion);
         var tombs = getLocalTombstones();
-        var localRows = Array.isArray(root.EM && root.EM.data) ? root.EM.data : [];
-        var merged = mergeEmployeeLists(localRows, cloud.records, tombs);
+        var merged = cloud.records.filter(function(r) { return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs); });
         var hash = fastHash(JSON.stringify(merged));
         if (hash === lastKnownHash) return;
 
         handleIncomingSyncEvent({ action: 'replace', records: merged, senderId: 'google-sheets' });
         lastKnownHash = hash;
-        if (merged.length > cloud.records.length) {
-          var repair = await callEmployeeBackend('saveEmployeeMaster', { records: merged });
-          if (repair && repair.ok) lastCloudVersion = Number(repair.version || lastCloudVersion);
-        }
       } catch (e) {
         console.warn('[ATPL-RealTime] Employee Master refresh pending:', e);
       }
