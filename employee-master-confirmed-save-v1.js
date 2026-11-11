@@ -169,110 +169,42 @@ async function confirmedBulkSave(){
     alert('Valid Employee Master rows nahi mile. Please check pasted Excel data.');return;
   }
   if(!g.EM||!Array.isArray(g.EM.data))return;
-  var c=cloud();
-  var rowsToSave=g.EM_BULK_ROWS.slice();
-  rowsToSave.forEach(function(emp){
-    var k=empKey(emp),ix=g.EM.data.findIndex(function(y){return empKey(y)===k || String(y.emp_id)===String(emp.emp_id)});
-    if(ix>=0){
-      var merged=Object.assign({},g.EM.data[ix]);
-      Object.keys(emp).forEach(function(f){var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;});
-      g.EM.data[ix]=merged;
-    } else {
-      g.EM.data.push(copy(emp));
-    }
-  });
-  persistConfirmed({skipMirrors:true});
-  try{g.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(g.EM.data));}catch(_){}
+
+  var rowsToSave=g.EM_BULK_ROWS.map(copy);
+  busy=true;setButtonBusy(true);paint('saving','Verifying bulk import in Google Sheets…',null);
   try{
-    g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
-    var dead = JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}');
-    rowsToSave.forEach(function(r) {
-      var k = String(r && (r.emp_id || r.id) || '').toLowerCase().trim();
-      if (k) {
-        delete dead[k];
-        delete dead[k.replace(/^0+/, '')];
-      }
-    });
-    g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead));
-  } catch(_) {}
-  refreshMasterUi();
-  g.EM_BULK_ROWS=[];
-  if(typeof g.emCloseModal==='function')g.emCloseModal();
-
-  // Always post bulk save to server REST endpoint and SSE relay
-  try {
-    fetch('/api/sync/employee-master', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: rowsToSave, mode: 'upsert' })
-    }).catch(function(){});
-  } catch(_) {}
-
-  if(g.BroadcastChannel){
-    try{
-      var bc=new g.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
-      bc.postMessage({action:"employee_updated",details:{records:rowsToSave,count:g.EM.data.length}});
-      bc.close();
-    }catch(_){}
-    try{
-      var bc2=new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
-      bc2.postMessage({type:"employee_master_saved",records:rowsToSave,count:g.EM.data.length});
-      bc2.close();
-    }catch(_){}
-  }
-
-  if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
-    try {
-      await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
-      paint('saved','All '+rowsToSave.length+' rows saved ✓',null);
-      info('Verified cloud save ✓ — '+rowsToSave.length+' employees synced.',false);
-      return;
-    } catch(err) { console.warn('Bulk sync to Google Drive error:', err); }
-  }
-  if(!c||typeof c.saveMany!=='function'){
-    paint('saved','Saved locally ✓ ('+rowsToSave.length+' rows)',null);
-    info('Saved '+rowsToSave.length+' employees locally to master.',false);
-    return;
-  }
-  var items=rowsToSave.map(function(emp){
-    var k=empKey(emp),old=g.EM.data.find(function(y){return empKey(y)===k})||null;
-    // PRESERVE EXISTING DATA: do not overwrite account, IFSC or bank fields with blank paste cells.
-    var merged=Object.assign({},old||{});
-    Object.keys(emp).forEach(function(f){
-      var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;
-    });
-    return{record:merged,baseRecord:old?copy(old):null};
-  });
-  busy=true;setButtonBusy(true);paint('saving','Verifying bulk save in cloud…',null);
-  try{
-    var res=await c.saveMany(items),resultRows=res&&Array.isArray(res.results)?res.results:[];
-    var confirmed=resultRows.filter(function(x){return x.ok&&x.verified&&x.record});
-    confirmed.forEach(function(x){
-      var k=empKey(x.record),i=g.EM.data.findIndex(function(y){return empKey(y)===k});
-      if(i>=0)g.EM.data[i]=copy(x.record);else g.EM.data.push(copy(x.record));
-    });
-    if(confirmed.length){
-      persistConfirmed({skipMirrors:true});refreshMasterUi();
-      try {
-        fetch('/api/sync/employee-master', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ records: confirmed.map(function(x){ return x.record; }) })
-        }).catch(function(){});
-      } catch(_) {}
+    if(!g.ATPLGoogleSync || typeof g.ATPLGoogleSync.upsertEmployeeMaster!=='function'){
+      throw new Error('Google Sheets Employee Master sync engine is not available. Import was not marked as saved.');
     }
-    var done={};confirmed.forEach(function(x){done[empKey(x.record)]=true});
-    g.EM_BULK_ROWS=rowsToSave.filter(function(x){return !done[empKey(x)]});
-    if(!g.EM_BULK_ROWS.length){
-      paint('saved','All '+confirmed.length+' rows saved ✓',null);
-      info('Verified cloud save ✓ — '+confirmed.length+' employees.',false);
-      if(typeof g.emCloseModal==='function')g.emCloseModal();
-    }else{
-      paint('failed','Bulk save incomplete — Retry',confirmedBulkSave);
-      info(confirmed.length+' saved; '+g.EM_BULK_ROWS.length+' pending. Retry after checking errors.',true);
+    var result=await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
+    if(!result || !result.ok || !result.verified){
+      throw new Error(result && result.error || 'Google Sheets did not confirm the complete bulk import.');
     }
-  }catch(e){paint('failed','Bulk save failed — Retry',confirmedBulkSave);info(e&&e.message||String(e),true)}
-  finally{busy=false;setButtonBusy(false)}
+
+    // The realtime engine has already merged and saved the complete dataset.
+    // Clear local deletion markers only after the cloud confirms the import.
+    try{
+      g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+      var dead=JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1')||'{}');
+      rowsToSave.forEach(function(r){
+        var id=String(r&&(r.emp_id||r.id)||'').toLowerCase().trim();
+        if(id){delete dead[id];delete dead[id.replace(/^0+/, '')];}
+      });
+      g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1',JSON.stringify(dead));
+      g.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(g.EM.data));
+    }catch(_){}
+    syncLegacyArray();
+    refreshMasterUi();
+    g.EM_BULK_ROWS=[];
+    if(typeof g.emCloseModal==='function')g.emCloseModal();
+    paint('saved','Cloud verified: '+rowsToSave.length+' imported ✓',null);
+    info('Google Sheets confirmed '+rowsToSave.length+' employee rows. All browsers will refresh automatically.',false);
+  }catch(e){
+    paint('failed','Bulk import failed — Retry',confirmedBulkSave);
+    info('Cloud save not confirmed. '+(e&&e.message||String(e)),true);
+  }finally{
+    busy=false;setButtonBusy(false);
+  }
 }
 async function confirmedDelete(idx){
   var e=g.EM.data[idx];if(!e)return;
