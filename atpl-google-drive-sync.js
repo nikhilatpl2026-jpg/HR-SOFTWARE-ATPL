@@ -1092,18 +1092,21 @@
       refreshEmployeeUI();
       return await pushEmployeeAndVaultToCloud(records);
     },
-    'upsertEmployeeMaster': async function(records) {
-      if (getGasUrl()) { try { await callGoogleBackend('upsertEmployeeMaster', { records: records }); } catch(_) {} }
+    upsertEmployeeMaster: async function(records) {
+      if (!Array.isArray(records)) return { ok: false, error: 'Employee records must be an array.' };
+      // Use the existing verified cloud-save path exactly once; avoid recursive
+      // self-dispatch and duplicate backend writes.
       return await this.saveEmployeeMaster(records);
     },
-    upsertEmployeeMaster: async function(records) {
-      return await this['upsertEmployeeMaster'](records);
-    },
     deleteEmployeeMaster: async function(empCode) {
+      var cleanEmpId = String(empCode || '').trim();
+      if (!cleanEmpId) return { ok: false, error: 'Employee code is required.' };
       lastEmpLocalWriteTime = Date.now();
-      if (getGasUrl()) await callGoogleBackend('deleteEmployeeMaster', { empCode: empCode });
-      await pushEmployeeAndVaultToCloud();
-      return true;
+      var result = await callGoogleBackend('deleteEmployeeMaster', { emp_id: cleanEmpId });
+      if (!result || result.ok !== true) {
+        throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master deletion.');
+      }
+      return result;
     },
     subscribe: function(mod, cb) {
       if (!subscribers[mod]) subscribers[mod] = [];
