@@ -729,22 +729,27 @@
         var vaultChunks = buildSystemVaultRecords();
         var payloadRecords = cleaned.concat(vaultChunks);
 
+        var syncError = null, syncResult = null;
         try {
-          if (getGasUrl() && payloadRecords.length > 0) {
+          if (!getGasUrl()) throw new Error('Google Sheets backend URL is not configured.');
+          if (payloadRecords.length > 0) {
             updateSyncBadge('syncing', '☁️ Syncing ' + cleaned.length + ' Emp & Docs…');
-            await callGoogleBackend('saveEmployeeMaster', { records: payloadRecords });
+            syncResult = await callGoogleBackend('saveEmployeeMaster', { records: cleaned });
+            if (!syncResult || !syncResult.ok) throw new Error(syncResult && syncResult.error || 'Google Sheets did not confirm Employee Master save.');
             _lastAppliedEmpHash = fastHashStr(JSON.stringify(cleaned));
             _lastAppliedEmpFp = _lastAppliedEmpHash;
             dispatchSyncTrigger('employee_updated', { count: cleaned.length });
             updateSyncBadge('ok');
           }
         } catch (e) {
+          syncError = e;
           console.warn('[ATPL Sync] Push error:', e);
         } finally {
           lastEmpLocalWriteTime = Date.now();
           window.__ATPL_IS_SAVING_EMP = false;
-          resolve({ ok: true });
         }
+        resolve(syncError ? { ok: false, error: syncError.message || String(syncError) } :
+          { ok: true, verified: true, version: syncResult && syncResult.version || 0 });
       }, 350);
     });
   }
@@ -812,21 +817,24 @@
             else window.EM.data.push(record);
           }
         }
-        await pushEmployeeAndVaultToCloud();
-        return { ok: true, verified: true };
+        var saved = await pushEmployeeAndVaultToCloud();
+        if (!saved || !saved.ok) throw new Error(saved && saved.error || 'Employee Master cloud save failed.');
+        return { ok: true, verified: true, version: saved.version || 0 };
       },
       saveMany: async function(records) {
         lastEmpLocalWriteTime = Date.now();
-        await pushEmployeeAndVaultToCloud(Array.isArray(records) && records.length > 0 ? (window.EM && window.EM.data ? window.EM.data : records) : undefined);
-        return { ok: true, verified: true };
+        var saved = await pushEmployeeAndVaultToCloud(Array.isArray(records) && records.length > 0 ? (window.EM && window.EM.data ? window.EM.data : records) : undefined);
+        if (!saved || !saved.ok) throw new Error(saved && saved.error || 'Employee Master bulk cloud save failed.');
+        return { ok: true, verified: true, version: saved.version || 0 };
       },
       deleteMaster: async function(empId) {
         lastEmpLocalWriteTime = Date.now();
-        if (empId && getGasUrl()) {
-          await callGoogleBackend('deleteEmployeeMaster', { empCode: String(empId) });
-        }
-        await pushEmployeeAndVaultToCloud();
-        return { ok: true, verified: true };
+        if (!empId || !getGasUrl()) throw new Error('Employee code or Google Sheets backend is missing.');
+        var deleted = await callGoogleBackend('deleteEmployeeMaster', { emp_id: String(empId) });
+        if (!deleted || !deleted.ok) throw new Error(deleted && deleted.error || 'Google Sheets did not confirm employee deletion.');
+        var saved = await pushEmployeeAndVaultToCloud();
+        if (!saved || !saved.ok) throw new Error(saved && saved.error || 'Post-delete cloud verification failed.');
+        return { ok: true, verified: true, version: deleted.version || saved.version || 0 };
       },
       persistLocal: function() {
         lastEmpLocalWriteTime = Date.now();
