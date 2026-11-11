@@ -736,6 +736,11 @@
             updateSyncBadge('syncing', '☁️ Syncing ' + cleaned.length + ' Emp & Docs…');
             syncResult = await callGoogleBackend('saveEmployeeMaster', { records: cleaned });
             if (!syncResult || !syncResult.ok) throw new Error(syncResult && syncResult.error || 'Google Sheets did not confirm Employee Master save.');
+            // Keep HR document / PF / ESIC vault chunks in SystemRecords, not EmployeeMaster rows.
+            for (var vi = 0; vi < vaultChunks.length; vi++) {
+              var vaultResult = await callGoogleBackend('upsertEmployeeMaster', { record: vaultChunks[vi] });
+              if (!vaultResult || !vaultResult.ok) throw new Error(vaultResult && vaultResult.error || 'System vault cloud save failed.');
+            }
             _lastAppliedEmpHash = fastHashStr(JSON.stringify(cleaned));
             _lastAppliedEmpFp = _lastAppliedEmpHash;
             dispatchSyncTrigger('employee_updated', { count: cleaned.length });
