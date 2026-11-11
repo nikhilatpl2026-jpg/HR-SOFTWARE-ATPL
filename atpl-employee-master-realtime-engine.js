@@ -154,6 +154,8 @@
 
   // ── State Persistence to LocalStorage ──
   function commitToLocalStorage(records, cleared) {
+    var previousInternalWrite = root.__ATPL_INTERNAL_STORAGE_WRITE;
+    root.__ATPL_INTERNAL_STORAGE_WRITE = true;
     try {
       if (cleared) {
         root.localStorage.setItem(STORAGE_KEY_MASTER, '[]');
@@ -163,7 +165,10 @@
         root.localStorage.removeItem(STORAGE_KEY_CLEARED);
       }
       root.localStorage.setItem(STORAGE_KEY_VERSION, String(localVersion));
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      root.__ATPL_INTERNAL_STORAGE_WRITE = previousInternalWrite || false;
+    }
   }
 
   // ── Native BroadcastChannel for 0ms In-Browser Tab Sync ──
