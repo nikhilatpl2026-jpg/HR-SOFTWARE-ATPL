@@ -283,14 +283,15 @@ async function confirmedDelete(idx){
   paint("saving","Deleting from cloud…",null);
   try{
     var res=null;
-    if(c && typeof c.deleteMaster==="function"){
-      try{ res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}); }catch(_){}
+    // Use the Employee Master realtime engine first so cloud deletion, local
+    // tombstone, UI update and cross-browser notification stay one operation.
+    if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function'){
+      try { res = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id); }
+      catch(err) { res = { ok:false, error:err && err.message || String(err) }; }
     }
-    if((!res || !res.ok) && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function'){
-      try {
-        await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id);
-        res = { ok: true, verified: true };
-      } catch(_) {}
+    if((!res || !res.ok || !res.verified) && c && typeof c.deleteMaster==="function"){
+      try { res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}); }
+      catch(err) { res={ok:false,error:err && err.message || String(err)}; }
     }
     if(!res||!res.ok||!res.verified){
       var reason=res&&res.error||"Cloud deletion was not verified";
@@ -345,104 +346,70 @@ async function confirmedDelete(idx){
 }
 async function confirmedDeleteSelected(){
   var count = g.EM && g.EM.selectedRows ? g.EM.selectedRows.size : 0;
-  if (!count) {
-    alert('Pehle delete karne ke liye employees select karein.');
-    return;
-  }
-  var confirmMsg = 'Kya aap sach mein in ' + count + ' selected employees ko permanently delete karna chahte hain?';
-  if (!confirm(confirmMsg)) return;
+  if (!count) { alert('Pehle delete karne ke liye employees select karein.'); return; }
+  if (!confirm('Kya aap sach mein in ' + count + ' selected employees ko permanently delete karna chahte hain?')) return;
+  if (!g.EM || !Array.isArray(g.EM.data)) return;
 
-  busy = true;
-  setButtonBusy(true);
-  paint("saving", "Deleting " + count + " employees from cloud…", null);
+  var indices = Array.from(g.EM.selectedRows).sort(function(a,b){return a-b;});
+  var deletedIds = indices.map(function(idx) {
+    var row = g.EM.data[idx];
+    return row && row.emp_id ? String(row.emp_id) : '';
+  }).filter(Boolean);
+  if (!deletedIds.length) { alert('Selected employees ke valid Employee Codes nahi mile.'); return; }
 
+  busy = true; setButtonBusy(true);
+  paint('saving', 'Confirming ' + deletedIds.length + ' cloud deletions…', null);
   try {
-    var indices = Array.from(g.EM.selectedRows).sort(function(a, b) { return b - a; });
-    var deletedIds = [];
-    indices.forEach(function(idx) {
-      if (idx >= 0 && idx < g.EM.data.length) {
-        var e = g.EM.data[idx];
-        if (e && e.emp_id) deletedIds.push(e.emp_id);
-        g.EM.data.splice(idx, 1);
-      }
-    });
+    var isAllDeleted = deletedIds.length >= g.EM.data.length;
+    var result = null;
 
-    var isAllDeleted = (g.EM.data.length === 0);
-
-    // Record tombstones
-    try {
-      var m = {};
-      try { m = JSON.parse(g.localStorage.getItem("ATPL_EmployeeMasterDeletedV1") || "{}"); } catch(_) {}
-      deletedIds.forEach(function(code) {
-        var s = String(code || "").toLowerCase().trim();
-        m[s] = new Date().toISOString();
-        if (s.replace(/^0+/, '')) m[s.replace(/^0+/, '')] = new Date().toISOString();
-      });
-      g.localStorage.setItem("ATPL_EmployeeMasterDeletedV1", JSON.stringify(m));
-      if (isAllDeleted) {
-        g.localStorage.setItem("ATPL_EMP_MASTER_CLEARED_V1", "true");
-      }
-    } catch(_) {}
-
-    if (Array.isArray(g.EMP_MASTER_DATA)) {
-      g.EMP_MASTER_DATA = g.EM.data.slice();
-    }
-    try {
-      g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data));
-    } catch(_) {}
-
-    if (g.EM.selectedRows && typeof g.EM.selectedRows.clear === "function") g.EM.selectedRows.clear();
-    refreshMasterUi();
-
-    if (g.BroadcastChannel) {
-      try {
-        var bc = new g.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
-        if (isAllDeleted) {
-          bc.postMessage({ action: "employee_cleared", details: { count: 0 } });
-        } else {
-          bc.postMessage({ action: "employee_bulk_deleted", details: { deleted_ids: deletedIds, count: g.EM.data.length } });
-        }
-        bc.close();
-      } catch(_) {}
-      try {
-        var bc2 = new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
-        if (isAllDeleted) {
-          bc2.postMessage({ type: "employee_master_cleared", count: 0 });
-        } else {
-          bc2.postMessage({ type: "employee_master_bulk_deleted", deleted_ids: deletedIds, count: g.EM.data.length });
-        }
-        bc2.close();
-      } catch(_) {}
-    }
-
-    if (isAllDeleted) {
-      try {
-        fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function(){});
-      } catch(_) {}
-      if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.clearAllEmployees === 'function') {
-        try { await g.ATPLGoogleSync.clearAllEmployees(); } catch(_) {}
+    // Cloud must confirm first. Never remove rows locally and then silently
+    // claim success when the shared Google Sheets delete failed.
+    if (isAllDeleted && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.clearAllEmployees === 'function') {
+      result = await g.ATPLGoogleSync.clearAllEmployees();
+    } else if (!isAllDeleted && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
+      result = await g.ATPLGoogleSync.bulkDeleteEmployees(deletedIds);
+    } else if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function') {
+      for (var i=0;i<deletedIds.length;i++) {
+        result = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedIds[i]);
+        if (!result || !result.ok || !result.verified) throw new Error(result && result.error || 'Cloud delete not verified for ' + deletedIds[i]);
       }
     } else {
-      try {
-        fetch('/api/sync/employee-master/bulk-delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: deletedIds })
-        }).catch(function(){});
-      } catch(_) {}
-      if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
-        try { await g.ATPLGoogleSync.bulkDeleteEmployees(deletedIds); } catch(_) {}
-      }
+      throw new Error('Google Sheets Employee Master delete service is unavailable.');
+    }
+    if (!result || !result.ok || !result.verified) {
+      throw new Error(result && result.error || 'Google Sheets did not confirm bulk deletion.');
     }
 
-    paint("saved", "Deleted " + count + " from cloud ✓", null);
-    if (g.showToast) g.showToast('🗑 ' + count + ' employees delete ho gaye.');
+    // Engine normally applies this locally; enforce the final view and tombstones
+    // for compatibility with older engine builds.
+    var now = new Date().toISOString(), dead = {};
+    try { dead = JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
+    deletedIds.forEach(function(code) {
+      var raw = String(code).toLowerCase().trim();
+      dead[raw] = now;
+      dead[raw.replace(/^0+/, '')] = now;
+    });
+    g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead));
+    var deletedSet = {};
+    deletedIds.forEach(function(code) { deletedSet[empKey({emp_id:code})] = true; });
+    g.EM.data = g.EM.data.filter(function(row) { return !deletedSet[empKey(row)]; });
+    if (Array.isArray(g.EMP_MASTER_DATA)) {
+      g.EMP_MASTER_DATA.length = 0;
+      Array.prototype.push.apply(g.EMP_MASTER_DATA, g.EM.data);
+    }
+    if (isAllDeleted || !g.EM.data.length) g.localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1','true');
+    else g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
+    g.localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(g.EM.data));
+    if (g.EM.selectedRows && typeof g.EM.selectedRows.clear === 'function') g.EM.selectedRows.clear();
+    refreshMasterUi();
+    paint('saved', 'Cloud confirmed: deleted ' + deletedIds.length + ' employees ✓', null);
+    if (g.showToast) g.showToast('🗑 ' + deletedIds.length + ' employees delete ho gaye.');
   } catch(err) {
-    paint("failed", "Delete failed", null);
-    alert("Delete error: " + (err && err.message || err));
+    paint('failed', 'Delete failed — Retry', null);
+    alert('Employees cloud se delete nahi hue. ' + (err && err.message || err));
   } finally {
-    busy = false;
-    setButtonBusy(false);
+    busy = false; setButtonBusy(false);
   }
 }
 function install(){
