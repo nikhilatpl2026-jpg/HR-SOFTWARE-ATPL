@@ -47,9 +47,14 @@ function syncLegacyArray(){
   try{if(Array.isArray(g.EMP_MASTER_DATA)&&g.EM&&Array.isArray(g.EM.data)){g.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(g.EMP_MASTER_DATA,g.EM.data)}}catch(_){}
 }
 function persistConfirmed(opts){
-  var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
+  opts=opts||{};
+  // Cloud is written exactly once by ATPLGoogleSync before this local UI commit.
+  // Never invoke the legacy cloud mirror again after a confirmed save/delete.
+  if(!opts.skipCloudPersist){
+    var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
+  }
   syncLegacyArray();
-  if(opts&&opts.skipMirrors)return;
+  if(opts.skipMirrors)return;
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
       var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
@@ -109,31 +114,19 @@ async function confirmedSingleSave(){
   var edit=Number(g.EM.editIdx);
   var original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null;
   var candidate=Object.assign({},original||{},entered);
-  var c=cloud();
-  busy=true;setButtonBusy(true);paint('saving','Saving to shared cloud…',null);
+  busy=true;setButtonBusy(true);paint('saving','Saving to Google Sheets…',null);
   try{
-    var res=null;
-    // 1. Authoritative Google Drive & Sheets cross-browser sync first!
-    if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
-      try {
-        var gRes = await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
-        if(gRes && (gRes.ok || gRes.verified)) {
-          res = { ok: true, verified: true, record: (gRes.record || candidate) };
-        }
-      } catch(gErr) { console.warn('Google backend save error', gErr); }
+    if(!g.ATPLGoogleSync || typeof g.ATPLGoogleSync.upsertEmployeeMaster !== 'function'){
+      throw new Error('Shared Google Sheets sync is unavailable. Employee was not marked as saved.');
     }
-    // 2. Fallback only if ATPLGoogleSync was not available
-    if(!res || !res.ok){
-      var c=cloud();
-      if(c && typeof c.saveMaster==='function'){
-        try{ res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false}); }catch(_){}
-      }
+    var res=await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
+    if(!res || !res.ok || !res.verified){
+      throw new Error((res && res.error) || 'Google Sheets did not verify Employee Master save.');
     }
-    if(!res || !res.ok){ throw new Error((res && res.error) || 'Cloud save not confirmed'); }
     var verified=copy(res.record||candidate),k=empKey(verified);
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
     if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
-    persistConfirmed({skipMirrors:true});refreshMasterUi();
+    persistConfirmed({skipMirrors:true,skipCloudPersist:true});refreshMasterUi();
     try {
       fetch('/api/sync/employee-master', {
         method: 'POST',
@@ -218,12 +211,7 @@ async function confirmedDelete(idx){
     // Use the Employee Master realtime engine first so cloud deletion, local
     // tombstone, UI update and cross-browser notification stay one operation.
     if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function'){
-      try { res = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id); }
-      catch(err) { res = { ok:false, error:err && err.message || String(err) }; }
-    }
-    if((!res || !res.ok || !res.verified) && c && typeof c.deleteMaster==="function"){
-      try { res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}); }
-      catch(err) { res={ok:false,error:err && err.message || String(err)}; }
+      res = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id);
     }
     if(!res||!res.ok||!res.verified){
       var reason=res&&res.error||"Cloud deletion was not verified";
