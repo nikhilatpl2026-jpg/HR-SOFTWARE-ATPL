@@ -525,6 +525,17 @@
     isPolling = true;
 
     try {
+      // Cheap version check first: avoid scanning Drive + Employee Master on
+      // every heartbeat. Fetch the full shared state only when cloud changed.
+      if (!force) {
+        var versionState = await callGoogleBackend('getSyncVersion');
+        var serverVersion = Number(versionState && (versionState.currentVersion || versionState.version) || 0);
+        if (versionState && versionState.ok && serverVersion > 0 && serverVersion === localVersion) {
+          updateSyncBadge('ok');
+          return { ok: true, unchanged: true, version: localVersion, files: window.FILES || [] };
+        }
+      }
+
       var state = await callGoogleBackend('getSyncState');
       if (!state || !state.ok) {
         updateSyncBadge('ok');
