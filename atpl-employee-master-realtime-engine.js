@@ -98,22 +98,37 @@
   }
 
   // Google Apps Script is the only authority for Employee Master.
+  // Route Employee Master traffic through the shared broker first: it handles
+  // Apps Script redirects, authentication, retries and response parsing.
+  // cacheMs: 0 is deliberate so a browser never reads a stale employee snapshot.
   async function callEmployeeBackend(action, params) {
+    var payload = Object.assign({ action: action }, params || {});
+    if (root.ATPLCloudAPI && typeof root.ATPLCloudAPI.request === 'function') {
+      try {
+        return await root.ATPLCloudAPI.request(payload, {
+          source: 'employee-master-realtime',
+          timeout: 25000,
+          attempts: 1,
+          cacheMs: 0
+        });
+      } catch (brokerError) {
+        console.warn('[ATPL-RealTime] Broker request failed; trying direct GAS transport:', brokerError);
+      }
+    }
     var api = root.ATPLGoogleSync;
     if (api && typeof api.callGoogleBackend === 'function') {
       return await api.callGoogleBackend(action, params || {});
     }
     var endpoint = String(root.ATPL_GAS_URL || root.ATPL_CUSTOM_GAS_URL || '').trim();
-    if (!endpoint) return null;
+    if (!endpoint) throw new Error('Employee Master Google Apps Script URL is not configured.');
     var response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(Object.assign({ action: action }, params || {})),
+      body: JSON.stringify(payload),
       cache: 'no-store'
     });
     if (!response.ok) throw new Error('Employee Master cloud request failed: HTTP ' + response.status);
-    var data = await response.json();
-    return data;
+    return await response.json();
   }
 
   function mergeEmployeeLists(localRows, cloudRows, tombs) {
