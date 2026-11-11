@@ -338,79 +338,75 @@
   }
 
   // ── Apply & Smart-Merge Employee Records Across Browsers ──
-  function applyEmployeeRecords(records) {
-    if (!Array.isArray(records) || !records.length) return;
+  function applyEmployeeRecords(records, remoteDeletedIds, remoteAllCleared) {
+    if (!Array.isArray(records)) return;
 
     var sysRows = [];
     var empRows = [];
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r || typeof r !== 'object') continue;
+    records.forEach(function(r) {
+      if (!r || typeof r !== 'object') return;
       var id = extractEmpId(r);
-      if (!id) continue;
-      if (id.toLowerCase().indexOf('__atpl_sys__') === 0) {
-        sysRows.push(r);
-      } else {
-        empRows.push(r);
+      if (!id) return;
+      if (id.toLowerCase().indexOf('__atpl_sys__') === 0) sysRows.push(r);
+      else empRows.push(r);
+    });
+    if (sysRows.length) applySystemVaultRecords(sysRows);
+
+    // Do not overwrite an in-progress local edit/import. It will be pushed first.
+    if (Date.now() - lastEmpLocalWriteTime < 20000 || window.__ATPL_IS_SAVING_EMP) return;
+
+    var localDead = {};
+    try { localDead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
+    var remoteDead = {};
+    (Array.isArray(remoteDeletedIds) ? remoteDeletedIds : []).forEach(function(id) {
+      var raw = String(id || '').trim().toLowerCase();
+      if (raw) {
+        remoteDead[raw] = true;
+        remoteDead[raw.replace(/^0+/, '')] = true;
       }
+    });
+    function deleted(id) {
+      var raw = String(id || '').trim().toLowerCase();
+      var clean = raw.replace(/^0+/, '');
+      return !!(localDead[raw] || localDead[clean] || remoteDead[raw] || remoteDead[clean]);
     }
-
-    if (sysRows.length > 0) {
-      applySystemVaultRecords(sysRows);
-    }
-
-    if (Date.now() - lastEmpLocalWriteTime < 20000 || window.__ATPL_IS_SAVING_EMP) {
-      return;
-    }
-    if (!empRows.length) return;
-
-    var dead = {};
-    try { dead = JSON.parse(localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
-
-    var remoteHash = fastHashStr(JSON.stringify(empRows));
-    if ((_lastAppliedEmpHash === remoteHash || _lastAppliedEmpFp === remoteHash) && window.EM && Array.isArray(window.EM.data) && window.EM.data.length > 0) {
-      return;
-    }
-    _lastAppliedEmpHash = remoteHash;
-    _lastAppliedEmpFp = remoteHash;
 
     var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
-    var localMap = {};
-    for (var l = 0; l < localList.length; l++) {
-      var lr = localList[l];
-      var lid = extractEmpId(lr).toLowerCase();
-      if (lid) localMap[lid] = lr;
-    }
+    var mergedById = {};
 
-    var valid = [];
-    for (var j = 0; j < empRows.length; j++) {
-      var row = empRows[j];
-      var rawId = extractEmpId(row);
-      var k = rawId.toLowerCase();
-      if (dead[k] || dead[k.replace(/^0+/, '')]) continue;
-
-      if (row._raw_json && typeof row._raw_json === 'string') {
-        try {
-          var unpacked = JSON.parse(row._raw_json);
-          row = Object.assign({}, unpacked, row);
-        } catch (_) {}
-      }
-
-      var base = localMap[k] ? Object.assign({}, localMap[k]) : {};
-      Object.keys(row).forEach(function(fk) {
-        if (row[fk] !== undefined && row[fk] !== null && row[fk] !== '') {
-          base[fk] = row[fk];
-        } else if (!(fk in base)) {
-          base[fk] = row[fk];
-        }
+    // Recover local-only records that never reached Sheets, but never restore a
+    // record carrying a cloud tombstone. A cloud-wide clear is always authoritative.
+    if (!remoteAllCleared) {
+      localList.forEach(function(localRow) {
+        var id = extractEmpId(localRow);
+        var key = id.toLowerCase();
+        if (key && !deleted(id)) mergedById[key] = Object.assign({}, localRow, { emp_id: id });
       });
-      base.emp_id = rawId;
-      valid.push(base);
     }
 
-    if (!valid.length) return;
+    empRows.forEach(function(sourceRow) {
+      var row = sourceRow;
+      if (row._raw_json && typeof row._raw_json === 'string') {
+        try { row = Object.assign({}, JSON.parse(row._raw_json), row); } catch (_) {}
+      }
+      var id = extractEmpId(row);
+      var key = id.toLowerCase();
+      if (!key || deleted(id)) return;
 
-    if (window.EM) window.EM.data = valid.slice();
+      // The cloud row wins for every field, including intentional blank values
+      // and status changes such as LEFT -> ACTIVE.
+      mergedById[key] = Object.assign({}, mergedById[key] || {}, row, { emp_id: id });
+    });
+
+    var valid = Object.keys(mergedById).map(function(k) { return mergedById[k]; });
+    var remoteHash = fastHashStr(JSON.stringify(valid));
+    if (_lastAppliedEmpHash === remoteHash && window.EM &&
+        Array.isArray(window.EM.data) && window.EM.data.length === valid.length) return;
+
+    _lastAppliedEmpHash = remoteHash;
+    _lastAppliedEmpFp = remoteHash;
+    if (!window.EM) window.EM = { data: [], filtered: [], selectedRows: new Set() };
+    window.EM.data = valid.slice();
     if (Array.isArray(window.EMP_MASTER_DATA)) {
       window.EMP_MASTER_DATA.length = 0;
       Array.prototype.push.apply(window.EMP_MASTER_DATA, valid);
@@ -424,8 +420,25 @@
     } catch (_) {} finally {
       window.__ATPL_INTERNAL_STORAGE_WRITE = false;
     }
-
     refreshEmployeeUI();
+
+    // Repair a partial cloud master from surviving local-only rows. Backend
+    // tombstones prevent a deleted employee from being recreated by this repair.
+    if (!remoteAllCleared && valid.length > empRows.length) {
+      var repairRows = valid.filter(function(r) {
+        var id = extractEmpId(r);
+        return !empRows.some(function(remote) {
+          return extractEmpId(remote).toLowerCase() === id.toLowerCase();
+        });
+      });
+      if (repairRows.length) {
+        callGoogleBackend('saveEmployeeMaster', { records: repairRows }).then(function(result) {
+          if (!result || !result.ok) console.warn('[ATPL Sync] Employee Master repair pending:', result && result.error);
+        }).catch(function(err) {
+          console.warn('[ATPL Sync] Employee Master repair pending:', err);
+        });
+      }
+    }
   }
 
   // ── Background File Download Queue (Excel Only for window.FILES) ──
@@ -649,8 +662,8 @@
         processDownloadQueue();
       }
 
-      if (Array.isArray(state.employees) && state.employees.length > 0) {
-        applyEmployeeRecords(state.employees);
+      if (Array.isArray(state.employees)) {
+        applyEmployeeRecords(state.employees, state.employeeDeletedIds, state.employeeMasterAllCleared);
       }
 
       updateSyncBadge('ok');
