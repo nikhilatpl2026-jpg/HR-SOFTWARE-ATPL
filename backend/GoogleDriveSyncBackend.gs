@@ -265,11 +265,24 @@ function getEmployeeMaster_(p) {
         continue;
       }
 
+      // Support both the current column-based schema and the older
+      // emp_id + record_json schema without discarding fields stored in JSON.
       var emp = {};
+      if (colMap["record_json"] !== undefined) {
+        var storedJson = row[colMap["record_json"]];
+        if (storedJson) {
+          try {
+            var parsedRecord = typeof storedJson === "string" ? JSON.parse(storedJson) : storedJson;
+            if (parsedRecord && typeof parsedRecord === "object" && !Array.isArray(parsedRecord)) {
+              emp = parsedRecord;
+            }
+          } catch (_) {}
+        }
+      }
       for (var f = 0; f < EM_FIELD_KEYS.length; f++) {
         var k = EM_FIELD_KEYS[f];
         var idx = colMap[k];
-        if (idx !== undefined && row[idx] !== undefined) {
+        if (idx !== undefined && row[idx] !== undefined && row[idx] !== "") {
           var val = row[idx];
           if (k === "gross" || k === "basic" || k === "hra" || k === "new_gross") {
             var num = parseFloat(String(val).replace(/,/g, ""));
@@ -277,10 +290,11 @@ function getEmployeeMaster_(p) {
           } else {
             emp[k] = val !== null && val !== undefined ? String(val).trim() : "";
           }
-        } else {
+        } else if (emp[k] === undefined || emp[k] === null) {
           emp[k] = (k === "gross" || k === "basic" || k === "hra" || k === "new_gross") ? 0 : "";
         }
       }
+      emp.emp_id = empId;
 
       // Preserve timestamps
       if (colMap["_cloud_updated_at"] !== undefined) {
@@ -375,7 +389,7 @@ function upsertEmployeeMaster_(p) {
         rowValues.push(false);
         continue;
       }
-      var rVal = rec[h];
+      var rVal = h === "record_json" ? JSON.stringify(rec) : rec[h];
       if (rVal === undefined || rVal === null || String(rVal).trim() === "") {
         if (h === "bank_account_no" && rec.account_no) rVal = rec.account_no;
         else if (h === "ifsc_code" && rec.ifsc) rVal = rec.ifsc;
@@ -538,11 +552,12 @@ function saveEmployeeMaster_(p) {
 
       var existing = existingMap[rawId.toLowerCase()] || existingMap[cleanKey];
       var rowValues = headers.map(function(h, idx) {
+        if (h === "record_json") return JSON.stringify(rec);
         if (h === "_cloud_updated_at") return now;
         if (h === "_cloud_updated_by") return "Admin";
         if (h === "_atpl_deleted") return false;
 
-        var val = rec[h];
+        var val = h === "record_json" ? JSON.stringify(rec) : rec[h];
         if (val === undefined || val === null || String(val).trim() === "") {
           var aliases = {
             bank_account_no: "account_no", ifsc_code: "ifsc",
