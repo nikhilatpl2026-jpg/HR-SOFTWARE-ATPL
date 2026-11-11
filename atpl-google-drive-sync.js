@@ -1123,7 +1123,7 @@
       if (!cleanEmpId) return { ok: false, error: 'Employee code is required.' };
       lastEmpLocalWriteTime = Date.now();
       var result = await callGoogleBackend('deleteEmployeeMaster', { emp_id: cleanEmpId });
-      if (!result || result.ok !== true || result.verified !== true) {
+      if (!result || result.ok !== true) {
         throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master deletion.');
       }
       dispatchSyncTrigger('employee_deleted', { emp_id: cleanEmpId });
