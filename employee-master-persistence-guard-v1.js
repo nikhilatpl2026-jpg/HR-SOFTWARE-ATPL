@@ -37,7 +37,7 @@ function hydrate(){
   try{
     if(!g.EM||!Array.isArray(g.EM.data))return false;
     // Support full enterprise employee dataset (11k+ employees) safely
-    if (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || localStorage.getItem(KEY) === '[]') {
+    if (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true') {
       g.EM.data = [];
       if (Array.isArray(g.EMP_MASTER_DATA)) g.EMP_MASTER_DATA.length = 0;
       if (typeof g.emUpdateStats==='function') g.emUpdateStats();
