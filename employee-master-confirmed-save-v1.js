@@ -155,8 +155,8 @@ async function confirmedBulkSave(){
       throw new Error(result && result.error || 'Google Sheets did not confirm the complete bulk import.');
     }
 
-    // The realtime engine has already merged and saved the complete dataset.
-    // Clear local deletion markers only after the cloud confirms the import.
+    // The UnifiedSyncEngine has already saved the merged full master.
+    // Keep local deletion tombstones intact; cloud deletions remain authoritative.
     try{
       g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
       var dead=JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1')||'{}');
@@ -165,7 +165,6 @@ async function confirmedBulkSave(){
         if(id){delete dead[id];delete dead[id.replace(/^0+/, '')];}
       });
       g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1',JSON.stringify(dead));
-      g.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(g.EM.data));
     }catch(_){}
     syncLegacyArray();
     refreshMasterUi();
@@ -183,7 +182,6 @@ async function confirmedBulkSave(){
 async function confirmedDelete(idx){
   var e=g.EM.data[idx];if(!e)return;
   if(!confirm("Delete karo: "+e.name+" ("+e.emp_id+")?"))return;
-  var c=cloud();
   busy=true;
   var deletedEmp=copy(e);
   paint("saving","Deleting from cloud…",null);
@@ -283,7 +281,9 @@ async function confirmedDeleteSelected(){
     }
     if (isAllDeleted || !g.EM.data.length) g.localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1','true');
     else g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
-    g.localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(g.EM.data));
+    g.__ATPL_INTERNAL_STORAGE_WRITE=true;
+    try { g.localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(g.EM.data)); }
+    catch(_) {} finally { g.__ATPL_INTERNAL_STORAGE_WRITE=false; }
     if (g.EM.selectedRows && typeof g.EM.selectedRows.clear === 'function') g.EM.selectedRows.clear();
     refreshMasterUi();
     paint('saved', 'Cloud confirmed: deleted ' + deletedIds.length + ' employees ✓', null);
