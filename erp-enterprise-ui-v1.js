@@ -18,6 +18,7 @@ var PAGE_NAMES={
   dolverify:'Employee / DOL Verifier',
   ff:'Employee / F&F Settlement',
   empmaster:'Employee / Employee Master',
+  servicehistory:'Employee / Service History',
   hrdocs:'Employee / HR Documents',
   esic:'Tools / ESIC DOL Filler',
   esictodol:'Compliance / ESIC → DOL',
@@ -138,6 +139,14 @@ function cleanNav(){
 }
 function boot(){
   addCss();installHeader();patchGoPage();cleanNav();
+  if(!g.__ATPL_SERVICE_HISTORY_LOADER_V1__){
+    g.__ATPL_SERVICE_HISTORY_LOADER_V1__=true;
+    var sh=document.createElement('script');
+    sh.src='service-history-v1.js?v=20261111-1';
+    sh.async=true;
+    sh.onerror=function(){console.error('[ATPL Service History] Module failed to load.');};
+    (document.head||document.documentElement).appendChild(sh);
+  }
   setTimeout(function(){installHeader();patchGoPage();cleanNav();setCrumb(activeName())},700);
   setTimeout(function(){patchGoPage();cleanNav()},2200);
 }
