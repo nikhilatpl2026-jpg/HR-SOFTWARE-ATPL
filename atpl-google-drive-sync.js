@@ -749,6 +749,9 @@
             updateSyncBadge('syncing', '☁️ Syncing ' + cleaned.length + ' Emp & Docs…');
             syncResult = await callGoogleBackend('saveEmployeeMaster', { records: cleaned });
             if (!syncResult || !syncResult.ok) throw new Error(syncResult && syncResult.error || 'Google Sheets did not confirm Employee Master save.');
+            if (Number(syncResult.count) !== cleaned.length) {
+              throw new Error('Google Sheets confirmed ' + Number(syncResult.count || 0) + ' of ' + cleaned.length + ' employee rows. Save is not marked complete.');
+            }
             // Keep HR document / PF / ESIC vault chunks in SystemRecords, not EmployeeMaster rows.
             for (var vi = 0; vi < vaultChunks.length; vi++) {
               var vaultResult = await callGoogleBackend('upsertEmployeeMaster', { record: vaultChunks[vi] });
