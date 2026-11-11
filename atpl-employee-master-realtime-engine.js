@@ -764,35 +764,37 @@
   function installHooks() {
     // 1. Hook Single Save Modal
     var origSaveModal = root.emSaveModal;
-    root.emSaveModal = async function() {
-      if (origSaveModal) {
-        try { await origSaveModal.apply(this, arguments); } catch (_) {}
-      }
-      var candidate = null;
-      if (typeof root.fieldsToEmployee === 'function') {
-        candidate = root.fieldsToEmployee();
-      }
-      if (candidate && candidate.emp_id) {
-        Engine.saveEmployees([candidate]);
-      } else if (root.EM && Array.isArray(root.EM.data)) {
-        Engine.saveEmployees(root.EM.data);
-      }
-    };
-    root.emSaveModal.__atplRealtime = true;
+    if (typeof origSaveModal === 'function' && !origSaveModal.__atplRealtime) {
+      var wrappedSaveModal = async function() {
+        var originalResult = await origSaveModal.apply(this, arguments);
+        var candidate = null;
+        if (typeof root.fieldsToEmployee === 'function') candidate = root.fieldsToEmployee();
+        if (candidate && candidate.emp_id) {
+          await Engine.saveEmployees([candidate]);
+        } else if (root.EM && Array.isArray(root.EM.data)) {
+          await Engine.saveEmployees(root.EM.data);
+        }
+        return originalResult;
+      };
+      wrappedSaveModal.__atplRealtime = true;
+      root.emSaveModal = wrappedSaveModal;
+    }
 
     // 2. Hook Bulk Save (Excel import & bulk paste)
     var origSaveBulk = root.emSaveBulk;
-    root.emSaveBulk = async function() {
-      if (origSaveBulk) {
-        try { await origSaveBulk.apply(this, arguments); } catch (_) {}
-      }
-      if (Array.isArray(root.EM_BULK_ROWS) && root.EM_BULK_ROWS.length) {
-        Engine.saveEmployees(root.EM_BULK_ROWS.slice());
-      } else if (root.EM && Array.isArray(root.EM.data)) {
-        Engine.saveEmployees(root.EM.data);
-      }
-    };
-    root.emSaveBulk.__atplRealtime = true;
+    if (typeof origSaveBulk === 'function' && !origSaveBulk.__atplRealtime) {
+      var wrappedSaveBulk = async function() {
+        var originalResult = await origSaveBulk.apply(this, arguments);
+        if (Array.isArray(root.EM_BULK_ROWS) && root.EM_BULK_ROWS.length) {
+          await Engine.saveEmployees(root.EM_BULK_ROWS.slice());
+        } else if (root.EM && Array.isArray(root.EM.data)) {
+          await Engine.saveEmployees(root.EM.data);
+        }
+        return originalResult;
+      };
+      wrappedSaveBulk.__atplRealtime = true;
+      root.emSaveBulk = wrappedSaveBulk;
+    }
 
     // 3. Hook Delete Row
     var origDeleteRow = root.emDeleteRow;
