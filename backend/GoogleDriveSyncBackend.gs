@@ -694,7 +694,9 @@ function getSyncState_(p) {
     changed: true,
     currentVersion: ver,
     files: list,
-    employees: emRes.records || []
+    employees: emRes.records || [],
+    employeeDeletedIds: emRes.deletedIds || [],
+    employeeMasterAllCleared: !!emRes.allCleared
   };
 }
 
