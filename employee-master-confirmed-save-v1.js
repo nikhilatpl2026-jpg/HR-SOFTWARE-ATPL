@@ -129,9 +129,7 @@ async function confirmedSingleSave(){
         try{ res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false}); }catch(_){}
       }
     }
-    if(!res || !res.ok){
-      res = { ok: true, verified: true, record: candidate };
-    }
+    if(!res || !res.ok){ throw new Error((res && res.error) || 'Cloud save not confirmed'); }
     var verified=copy(res.record||candidate),k=empKey(verified);
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
     if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
