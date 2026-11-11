@@ -656,6 +656,10 @@
       if (!result || !result.ok) {
         throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master save.');
       }
+      if (typeof result.count === 'number' && result.count < root.EM.data.length) {
+        throw new Error('Google Sheets saved only ' + result.count + ' of ' + root.EM.data.length +
+          ' employees. Some records may be blocked by cloud deletion history; sync was not marked complete.');
+      }
       lastCloudVersion = Number(result.version || lastCloudVersion);
       lastKnownHash = fastHash(JSON.stringify(root.EM.data));
       broadcastSyncEvent({ action: 'upsert', records: list });
