@@ -323,7 +323,7 @@ function getEmployeeMaster_(p) {
 }
 
 function upsertEmployeeMaster_(p) {
-  var rec = {};
+  var rec = Object.assign({}, p, (p.record && typeof p.record === 'object') ? p.record : {});
   if (p.record && typeof p.record === "object") {
     rec = p.record;
   } else if (Array.isArray(p.records) && p.records.length > 0 && typeof p.records[0] === "object") {
