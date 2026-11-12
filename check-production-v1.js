@@ -97,7 +97,6 @@ function render(){
  var cards=s.cards.slice().sort(function(a,b){return a.card.localeCompare(b.card)});
  q('cpCard').innerHTML='<option value="ALL">All Cards</option>'+cards.map(function(c){return'<option value="'+esc(c.card)+'">'+esc(c.card)+'</option>'}).join('');
  q('cpCard').value=S.card;q('cpFileName').textContent=S.file;
- q('cpRates').innerHTML='';
  q('cpCards').innerHTML=cards.length?table(['Card (from machine code)','Employees','Machines','Total Quantity','Production Value'],cards.map(function(c){return'<tr><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:800">'+esc(c.card)+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+Object.keys(c.employees).length+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+Object.keys(c.machines).length+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+fmt(c.qty)+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:800">₹'+fmt(c.value)+'</td></tr>'}).join('')):'<div style="padding:24px;color:#64748b;text-align:center">No workbook loaded yet.</div>';
  var search=(S.search||'').toLowerCase();
  var filtered=S.rows.filter(function(r){return(S.card==='ALL'||r.card===S.card)&&(!search||[r.code,r.name,r.machine,r.card].join(' ').toLowerCase().indexOf(search)>=0)});
@@ -108,7 +107,6 @@ function bind(){
  q('cpFile').onchange=function(){var f=this.files&&this.files[0];if(!f)return;if(typeof XLSX==='undefined'){alert('Excel reader is not loaded.');return}var rd=new FileReader();rd.onload=function(e){try{var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});var result=parse(wb);S.rows=result.rows;S.file=f.name;S.month=(f.name.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[-_ ]?\d{2,4}/i)||[])[0]||'';S.loaded=true;S.card='ALL';S.search='';var machines={};S.rows.forEach(function(r){machines[r.machine]=1});Object.keys(machines).forEach(function(m){if(S.rates[m]==null)S.rates[m]=0});render();var msg='Loaded '+S.rows.length+' employee-machine rows from '+result.sheetCount+' card sheets. Card allocation follows actual machine/location code.';if(result.warnings.length)msg+=' Warnings: '+result.warnings.join(' | ');q('cpStatus').textContent=msg;if(!S.rows.length)alert('No compatible daily quantity rows found. Check the uploaded workbook headers.')}catch(err){console.error(err);alert('Could not read workbook: '+err.message)}};rd.readAsArrayBuffer(f)};
  q('cpCard').onchange=function(){S.card=this.value;render()};
  q('cpSearch').oninput=function(){S.search=this.value;render()};
- q('cpRates').onchange=function(e){var t=e.target;if(t&&t.classList.contains('cpRateInput')){S.rates[t.getAttribute('data-machine')]=n(t.value);render()}};
  q('cpExport').onclick=exportXlsx;
 }
 function exportXlsx(){
