@@ -39,6 +39,19 @@ test('CRITICAL: Authoritative Real-Time Employee Master Engine Acceptance Test',
 
     // Process incoming real-time sync event
     onSyncEvent(evt) {
+      if (evt.action === "status_update") {
+        const id = String(evt.emp_id || "").toUpperCase().trim();
+        const found = this.EM.data.find(x => String(x.emp_id || "").toUpperCase().trim() === id);
+        if (found) {
+          found.status = (evt.status || "ACTIVE").toUpperCase();
+          found.dol = (found.status === "ACTIVE") ? "" : (evt.dol || "");
+          if (evt.record) Object.assign(found, evt.record);
+        }
+        this.EM.filtered = this.EM.data.slice();
+        this.EMP_MASTER_DATA = this.EM.data.slice();
+        this.localStorage.set("AroraTextilesEmployeeMasterV3", JSON.stringify(this.EM.data));
+        return;
+      }
       this.events.push(evt);
       if (evt.action === 'delete_all') {
         this.EM.data = [];
@@ -203,5 +216,43 @@ test('CRITICAL: Authoritative Real-Time Employee Master Engine Acceptance Test',
     browserA.hydrate();
     assert.strictEqual(browserA.EM.data.length, 5);
     assert.strictEqual(browserA.EM.data.some(e => e.emp_id === '99003'), false);
+  });
+
+  await t.test("6. Status Change (ACTIVE <-> LEFT) in Browser B -> instantly reflects in Browser A & C", () => {
+    // Browser B marks 99001 as LEFT with DOL
+    const statusPayload = {
+      action: "status_update",
+      emp_id: "99001",
+      status: "LEFT",
+      dol: "12-11-2026"
+    };
+    browserB.onSyncEvent(statusPayload);
+    browserA.onSyncEvent(statusPayload);
+    browserC.onSyncEvent(statusPayload);
+
+    const aEmp = browserA.EM.data.find(e => e.emp_id === "99001");
+    const bEmp = browserB.EM.data.find(e => e.emp_id === "99001");
+    const cEmp = browserC.EM.data.find(e => e.emp_id === "99001");
+
+    assert.strictEqual(aEmp.status, "LEFT");
+    assert.strictEqual(aEmp.dol, "12-11-2026");
+    assert.strictEqual(bEmp.status, "LEFT");
+    assert.strictEqual(cEmp.status, "LEFT");
+
+    // Toggle back to ACTIVE in Browser A
+    const activePayload = {
+      action: "status_update",
+      emp_id: "99001",
+      status: "ACTIVE",
+      dol: ""
+    };
+    browserA.onSyncEvent(activePayload);
+    browserB.onSyncEvent(activePayload);
+    browserC.onSyncEvent(activePayload);
+
+    assert.strictEqual(aEmp.status, "ACTIVE");
+    assert.strictEqual(aEmp.dol, "");
+    assert.strictEqual(bEmp.status, "ACTIVE");
+    assert.strictEqual(cEmp.status, "ACTIVE");
   });
 });

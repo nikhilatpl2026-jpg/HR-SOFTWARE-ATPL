@@ -9817,6 +9817,9 @@ window.emUpdateStatus = function(idx, newStatus) {
   if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
     window.ATPLCloudSyncV1.saveMaster(e, { commitLocal: true });
   }
+  if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.updateEmployeeStatus === 'function') {
+    window.ATPLEmployeeMasterRealtimeEngine.updateEmployeeStatus(e.emp_id, newStatus, e.dol, e);
+  }
   if (window.BroadcastChannel) {
     try {
       var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
@@ -16102,7 +16105,7 @@ else AInit();
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20261109-drive-vault-v3&cb=20261109v3"></script>
-<script src="atpl-employee-master-realtime-engine.js?v=20261110-v3"></script>
+<script src="atpl-employee-master-realtime-engine.js?v=20261112-v9"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
