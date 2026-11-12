@@ -923,3 +923,19 @@
   }
   setTimeout(boot, 600);
 })(window);
+/* Check Production add-on loader — isolated; leaves attendance audit logic unchanged. */
+(function(g){
+  if(!g || g.__ATPL_CHECK_PRODUCTION_LOADER__) return;
+  g.__ATPL_CHECK_PRODUCTION_LOADER__ = true;
+  function load(){
+    if(g.__ATPL_CHECK_PRODUCTION_V1__) return;
+    if(document.querySelector('script[data-atpl-check-production]')) return;
+    var s=document.createElement('script');
+    s.src='check-production-v1.js';
+    s.async=true;
+    s.setAttribute('data-atpl-check-production','1');
+    s.onerror=function(){console.error('ATPL Check Production module failed to load.');};
+    (document.head||document.documentElement).appendChild(s);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',load,{once:true});else load();
+})(window);
