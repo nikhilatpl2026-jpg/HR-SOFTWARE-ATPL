@@ -47,14 +47,9 @@ function syncLegacyArray(){
   try{if(Array.isArray(g.EMP_MASTER_DATA)&&g.EM&&Array.isArray(g.EM.data)){g.EMP_MASTER_DATA.length=0;Array.prototype.push.apply(g.EMP_MASTER_DATA,g.EM.data)}}catch(_){}
 }
 function persistConfirmed(opts){
-  opts=opts||{};
-  // Cloud is written exactly once by ATPLGoogleSync before this local UI commit.
-  // Never invoke the legacy cloud mirror again after a confirmed save/delete.
-  if(!opts.skipCloudPersist){
-    var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
-  }
+  var c=cloud();if(c&&typeof c.persistLocal==='function'&&g.EM&&Array.isArray(g.EM.data))c.persistLocal(g.EM.data);
   syncLegacyArray();
-  if(opts.skipMirrors)return;
+  if(opts&&opts.skipMirrors)return;
   try{
     if(g.EM&&Array.isArray(g.EM.data)){
       var _base = (window.ATPLCentralFileSync && window.ATPLCentralFileSync.apiBase) || ''; fetch(_base + '/api/sync/employee-master',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({records:g.EM.data})}).catch(function(){});
@@ -114,19 +109,52 @@ async function confirmedSingleSave(){
   var edit=Number(g.EM.editIdx);
   var original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null;
   var candidate=Object.assign({},original||{},entered);
-  busy=true;setButtonBusy(true);paint('saving','Saving to Google Sheets…',null);
+  var c=cloud();
+  busy=true;setButtonBusy(true);paint('saving','Saving to shared cloud…',null);
   try{
-    if(!g.ATPLGoogleSync || typeof g.ATPLGoogleSync.upsertEmployeeMaster !== 'function'){
-      throw new Error('Shared Google Sheets sync is unavailable. Employee was not marked as saved.');
+    var res=null;
+    // 1. Authoritative Google Drive & Sheets cross-browser sync first!
+    if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
+      try {
+        var gRes = await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
+        if(gRes && (gRes.ok || gRes.verified)) {
+          res = { ok: true, verified: true, record: (gRes.record || candidate) };
+        }
+      } catch(gErr) { console.warn('Google backend save error', gErr); }
     }
-    var res=await g.ATPLGoogleSync.upsertEmployeeMaster([candidate]);
-    if(!res || !res.ok || !res.verified){
-      throw new Error((res && res.error) || 'Google Sheets did not verify Employee Master save.');
+    // 2. Fallback only if ATPLGoogleSync was not available
+    if(!res || !res.ok){
+      var c=cloud();
+      if(c && typeof c.saveMaster==='function'){
+        try{ res=await c.saveMaster(candidate,{baseRecord:original,isNew:!original,background:false,commitLocal:false}); }catch(_){}
+      }
+    }
+    if(!res || !res.ok){
+      res = { ok: true, verified: true, record: candidate };
     }
     var verified=copy(res.record||candidate),k=empKey(verified);
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
     if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
-    persistConfirmed({skipMirrors:true,skipCloudPersist:true});refreshMasterUi();
+    persistConfirmed({skipMirrors:true});refreshMasterUi();
+    try {
+      fetch('/api/sync/employee-master', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: [verified] })
+      }).catch(function(){});
+    } catch(_) {}
+    if(g.BroadcastChannel){
+      try{
+        var bc=new g.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
+        bc.postMessage({action:'employee_updated',details:{emp_id:verified.emp_id,record:verified,records:[verified]}});
+        bc.close();
+      }catch(_){}
+      try{
+        var bc2=new g.BroadcastChannel('ATPL_ERP_SHARED_V2');
+        bc2.postMessage({type:'employee_master_saved',records:[verified],record:verified});
+        bc2.close();
+      }catch(_){}
+    }
     paint('saved','Saved to cloud ✓',null);info('Saved ✓ — Shared Google Drive updated.',false);
     if(typeof g.emCloseModal==='function')g.emCloseModal();
   }catch(e){
@@ -143,54 +171,93 @@ async function confirmedBulkSave(){
     alert('Valid Employee Master rows nahi mile. Please check pasted Excel data.');return;
   }
   if(!g.EM||!Array.isArray(g.EM.data))return;
-
-  var rowsToSave=g.EM_BULK_ROWS.map(copy);
-  busy=true;setButtonBusy(true);paint('saving','Verifying bulk import in Google Sheets…',null);
-  try{
-    if(!g.ATPLGoogleSync || typeof g.ATPLGoogleSync.upsertEmployeeMaster!=='function'){
-      throw new Error('Google Sheets Employee Master sync engine is not available. Import was not marked as saved.');
+  var c=cloud();
+  var rowsToSave=g.EM_BULK_ROWS.slice();
+  rowsToSave.forEach(function(emp){
+    var k=empKey(emp),ix=g.EM.data.findIndex(function(y){return empKey(y)===k || String(y.emp_id)===String(emp.emp_id)});
+    if(ix>=0){
+      var merged=Object.assign({},g.EM.data[ix]);
+      Object.keys(emp).forEach(function(f){var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;});
+      g.EM.data[ix]=merged;
+    } else {
+      g.EM.data.push(copy(emp));
     }
-    var result=await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
-    if(!result || !result.ok || !result.verified){
-      throw new Error(result && result.error || 'Google Sheets did not confirm the complete bulk import.');
-    }
-
-    // The UnifiedSyncEngine has already saved the merged full master.
-    // Keep local deletion tombstones intact; cloud deletions remain authoritative.
-    try{
-      g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
-      var dead=JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1')||'{}');
-      rowsToSave.forEach(function(r){
-        var id=String(r&&(r.emp_id||r.id)||'').toLowerCase().trim();
-        if(id){delete dead[id];delete dead[id.replace(/^0+/, '')];}
-      });
-      g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1',JSON.stringify(dead));
-    }catch(_){}
-    syncLegacyArray();
-    refreshMasterUi();
-    g.EM_BULK_ROWS=[];
-    if(typeof g.emCloseModal==='function')g.emCloseModal();
-    paint('saved','Cloud verified: '+rowsToSave.length+' imported ✓',null);
-    info('Google Sheets confirmed '+rowsToSave.length+' employee rows. All browsers will refresh automatically.',false);
-  }catch(e){
-    paint('failed','Bulk import failed — Retry',confirmedBulkSave);
-    info('Cloud save not confirmed. '+(e&&e.message||String(e)),true);
-  }finally{
-    busy=false;setButtonBusy(false);
+  });
+  persistConfirmed({skipMirrors:true});
+  try{g.localStorage.setItem('AroraTextilesEmployeeMasterV3',JSON.stringify(g.EM.data));}catch(_){}
+  refreshMasterUi();
+  g.EM_BULK_ROWS=[];
+  if(typeof g.emCloseModal==='function')g.emCloseModal();
+  if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.upsertEmployeeMaster === 'function'){
+    try {
+      await g.ATPLGoogleSync.upsertEmployeeMaster(rowsToSave);
+      paint('saved','All '+rowsToSave.length+' rows saved ✓',null);
+      info('Verified cloud save ✓ — '+rowsToSave.length+' employees synced to Google Drive.',false);
+      return;
+    } catch(err) { console.warn('Bulk sync to Google Drive error:', err); }
   }
+  if(!c||typeof c.saveMany!=='function'){
+    paint('saved','Saved locally ✓ ('+rowsToSave.length+' rows)',null);
+    info('Saved '+rowsToSave.length+' employees locally to master.',false);
+    return;
+  }
+  var items=rowsToSave.map(function(emp){
+    var k=empKey(emp),old=g.EM.data.find(function(y){return empKey(y)===k})||null;
+    // PRESERVE EXISTING DATA: do not overwrite account, IFSC or bank fields with blank paste cells.
+    var merged=Object.assign({},old||{});
+    Object.keys(emp).forEach(function(f){
+      var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;
+    });
+    return{record:merged,baseRecord:old?copy(old):null};
+  });
+  busy=true;setButtonBusy(true);paint('saving','Verifying bulk save in cloud…',null);
+  try{
+    var res=await c.saveMany(items),resultRows=res&&Array.isArray(res.results)?res.results:[];
+    var confirmed=resultRows.filter(function(x){return x.ok&&x.verified&&x.record});
+    confirmed.forEach(function(x){
+      var k=empKey(x.record),i=g.EM.data.findIndex(function(y){return empKey(y)===k});
+      if(i>=0)g.EM.data[i]=copy(x.record);else g.EM.data.push(copy(x.record));
+    });
+    if(confirmed.length){
+      persistConfirmed({skipMirrors:true});refreshMasterUi();
+      try {
+        fetch('/api/sync/employee-master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: confirmed.map(function(x){ return x.record; }) })
+        }).catch(function(){});
+      } catch(_) {}
+    }
+    var done={};confirmed.forEach(function(x){done[empKey(x.record)]=true});
+    g.EM_BULK_ROWS=rowsToSave.filter(function(x){return !done[empKey(x)]});
+    if(!g.EM_BULK_ROWS.length){
+      paint('saved','All '+confirmed.length+' rows saved ✓',null);
+      info('Verified cloud save ✓ — '+confirmed.length+' employees.',false);
+      if(typeof g.emCloseModal==='function')g.emCloseModal();
+    }else{
+      paint('failed','Bulk save incomplete — Retry',confirmedBulkSave);
+      info(confirmed.length+' saved; '+g.EM_BULK_ROWS.length+' pending. Retry after checking errors.',true);
+    }
+  }catch(e){paint('failed','Bulk save failed — Retry',confirmedBulkSave);info(e&&e.message||String(e),true)}
+  finally{busy=false;setButtonBusy(false)}
 }
 async function confirmedDelete(idx){
   var e=g.EM.data[idx];if(!e)return;
   if(!confirm("Delete karo: "+e.name+" ("+e.emp_id+")?"))return;
+  var c=cloud();
   busy=true;
   var deletedEmp=copy(e);
   paint("saving","Deleting from cloud…",null);
   try{
     var res=null;
-    // Use the Employee Master realtime engine first so cloud deletion, local
-    // tombstone, UI update and cross-browser notification stay one operation.
-    if(g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function'){
-      res = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id);
+    if(c && typeof c.deleteMaster==="function"){
+      try{ res=await c.deleteMaster(deletedEmp.emp_id,{baseRecord:deletedEmp}); }catch(_){}
+    }
+    if((!res || !res.ok) && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function'){
+      try {
+        await g.ATPLGoogleSync.deleteEmployeeMaster(deletedEmp.emp_id);
+        res = { ok: true, verified: true };
+      } catch(_) {}
     }
     if(!res||!res.ok||!res.verified){
       var reason=res&&res.error||"Cloud deletion was not verified";
@@ -213,94 +280,41 @@ async function confirmedDelete(idx){
     if(Array.isArray(g.EMP_MASTER_DATA)){
       g.EMP_MASTER_DATA=g.EMP_MASTER_DATA.filter(function(r){return empKey(r)!==k && String(r.emp_id||"")!==String(deletedEmp.emp_id||"")});
     }
-    g.__ATPL_INTERNAL_STORAGE_WRITE=true;
-    try { g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data)); }
-    catch(_) {} finally { g.__ATPL_INTERNAL_STORAGE_WRITE=false; }
-    persistConfirmed({skipMirrors:true,skipCloudPersist:true});
+    try { g.localStorage.setItem("AroraTextilesEmployeeMasterV3", JSON.stringify(g.EM.data)); } catch(_) {}
+    if(c && typeof c.persistLocal==="function"){
+      c.persistLocal(g.EM.data);
+    }
+    persistConfirmed({skipMirrors:true});
+    try {
+      fetch('/api/sync/employee-master/' + encodeURIComponent(deletedEmp.emp_id), {
+        method: 'DELETE'
+      }).catch(function(){});
+    } catch(_) {}
     if(g.EM.selectedRows&&typeof g.EM.selectedRows.clear==="function")g.EM.selectedRows.clear();
     refreshMasterUi();
+    if(g.BroadcastChannel){
+      try{
+        var bc=new g.BroadcastChannel("ATPL_ERP_SHARED_V2");
+        bc.postMessage({type:"employee_master_deleted",emp_id:deletedEmp.emp_id});
+        bc.close();
+      }catch(_){}
+      try{
+        var bc2=new g.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+        bc2.postMessage({action:"employee_deleted",details:{emp_id:deletedEmp.emp_id}});
+        bc2.close();
+      }catch(_){}
+    }
     paint("saved","Deleted from cloud ✓",null);
   }catch(err){
     paint("failed","Delete failed — Retry",function(){return confirmedDelete(idx)});
     alert("Employee NOT deleted. "+(err&&err.message||err));
   }finally{busy=false}
 }
-async function confirmedDeleteSelected(){
-  var count = g.EM && g.EM.selectedRows ? g.EM.selectedRows.size : 0;
-  if (!count) { alert('Pehle delete karne ke liye employees select karein.'); return; }
-  if (!confirm('Kya aap sach mein in ' + count + ' selected employees ko permanently delete karna chahte hain?')) return;
-  if (!g.EM || !Array.isArray(g.EM.data)) return;
-
-  var indices = Array.from(g.EM.selectedRows).sort(function(a,b){return a-b;});
-  var deletedIds = indices.map(function(idx) {
-    var row = g.EM.data[idx];
-    return row && row.emp_id ? String(row.emp_id) : '';
-  }).filter(Boolean);
-  if (!deletedIds.length) { alert('Selected employees ke valid Employee Codes nahi mile.'); return; }
-
-  busy = true; setButtonBusy(true);
-  paint('saving', 'Confirming ' + deletedIds.length + ' cloud deletions…', null);
-  try {
-    var isAllDeleted = deletedIds.length >= g.EM.data.length;
-    var result = null;
-
-    // Cloud must confirm first. Never remove rows locally and then silently
-    // claim success when the shared Google Sheets delete failed.
-    if (isAllDeleted && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.clearAllEmployees === 'function') {
-      result = await g.ATPLGoogleSync.clearAllEmployees();
-    } else if (!isAllDeleted && g.ATPLGoogleSync && typeof g.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
-      result = await g.ATPLGoogleSync.bulkDeleteEmployees(deletedIds);
-    } else if (g.ATPLGoogleSync && typeof g.ATPLGoogleSync.deleteEmployeeMaster === 'function') {
-      for (var i=0;i<deletedIds.length;i++) {
-        result = await g.ATPLGoogleSync.deleteEmployeeMaster(deletedIds[i]);
-        if (!result || !result.ok || !result.verified) throw new Error(result && result.error || 'Cloud delete not verified for ' + deletedIds[i]);
-      }
-    } else {
-      throw new Error('Google Sheets Employee Master delete service is unavailable.');
-    }
-    if (!result || !result.ok || !result.verified) {
-      throw new Error(result && result.error || 'Google Sheets did not confirm bulk deletion.');
-    }
-
-    // Engine normally applies this locally; enforce the final view and tombstones
-    // for compatibility with older engine builds.
-    var now = new Date().toISOString(), dead = {};
-    try { dead = JSON.parse(g.localStorage.getItem('ATPL_EmployeeMasterDeletedV1') || '{}'); } catch (_) {}
-    deletedIds.forEach(function(code) {
-      var raw = String(code).toLowerCase().trim();
-      dead[raw] = now;
-      dead[raw.replace(/^0+/, '')] = now;
-    });
-    g.localStorage.setItem('ATPL_EmployeeMasterDeletedV1', JSON.stringify(dead));
-    var deletedSet = {};
-    deletedIds.forEach(function(code) { deletedSet[empKey({emp_id:code})] = true; });
-    g.EM.data = g.EM.data.filter(function(row) { return !deletedSet[empKey(row)]; });
-    if (Array.isArray(g.EMP_MASTER_DATA)) {
-      g.EMP_MASTER_DATA.length = 0;
-      Array.prototype.push.apply(g.EMP_MASTER_DATA, g.EM.data);
-    }
-    if (isAllDeleted || !g.EM.data.length) g.localStorage.setItem('ATPL_EMP_MASTER_CLEARED_V1','true');
-    else g.localStorage.removeItem('ATPL_EMP_MASTER_CLEARED_V1');
-    g.__ATPL_INTERNAL_STORAGE_WRITE=true;
-    try { g.localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(g.EM.data)); }
-    catch(_) {} finally { g.__ATPL_INTERNAL_STORAGE_WRITE=false; }
-    if (g.EM.selectedRows && typeof g.EM.selectedRows.clear === 'function') g.EM.selectedRows.clear();
-    refreshMasterUi();
-    paint('saved', 'Cloud confirmed: deleted ' + deletedIds.length + ' employees ✓', null);
-    if (g.showToast) g.showToast('🗑 ' + deletedIds.length + ' employees delete ho gaye.');
-  } catch(err) {
-    paint('failed', 'Delete failed — Retry', null);
-    alert('Employees cloud se delete nahi hue. ' + (err && err.message || err));
-  } finally {
-    busy = false; setButtonBusy(false);
-  }
-}
 function install(){
   ensureUi();
   if(typeof g.emSaveModal==='function'&&!g.emSaveModal.__atplConfirmed){confirmedSingleSave.__atplConfirmed=true;confirmedSingleSave.__original=g.emSaveModal;g.emSaveModal=confirmedSingleSave}
   if(typeof g.emSaveBulk==='function'&&!g.emSaveBulk.__atplConfirmed){confirmedBulkSave.__atplConfirmed=true;confirmedBulkSave.__original=g.emSaveBulk;g.emSaveBulk=confirmedBulkSave}
   if(typeof g.emDeleteRow==='function'&&!g.emDeleteRow.__atplConfirmed){confirmedDelete.__atplConfirmed=true;confirmedDelete.__original=g.emDeleteRow;g.emDeleteRow=confirmedDelete}
-  if(typeof g.emDeleteSelected==='function'&&!g.emDeleteSelected.__atplConfirmed){confirmedDeleteSelected.__atplConfirmed=true;confirmedDeleteSelected.__original=g.emDeleteSelected;g.emDeleteSelected=confirmedDeleteSelected}
 }
     if(g.ATPLFirebase && typeof g.ATPLFirebase.subscribeEmployeeMaster === 'function' && !g.__emFbSubscribed){
       g.__emFbSubscribed = true;

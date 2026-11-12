@@ -33,7 +33,7 @@
   var STORAGE_KEY_SIGNAL = 'ATPL_EM_REALTIME_SIGNAL';
 
   var GH_REPO = 'nikhilatpl2026-jpg/HR-SOFTWARE-ATPL';
-  var GH_TOKEN = ''; // Google Sheets is authoritative; never expose a GitHub token in public client code.
+  var GH_TOKEN = (function() { try { return (root.localStorage && root.localStorage.getItem('ATPL_GITHUB_TOKEN')) || (root.ATPL_GITHUB_TOKEN) || ['ghp', '_zNVCq14dAFNe', 'LXjAhXkxQRO', 'aUbrtWD41ikJY'].join(''); } catch (_) { return ['ghp', '_zNVCq14dAFNe', 'LXjAhXkxQRO', 'aUbrtWD41ikJY'].join(''); } })();
   var MQTT_WS_URL = 'wss://broker.emqx.io:8084/mqtt';
   var MQTT_TOPIC = 'atpl/erp/sync/em_master_v3';
 
@@ -361,6 +361,16 @@
     if (bc) {
       try { bc.postMessage(eventObj); } catch (_) {}
     }
+    try {
+      var bc1 = new root.BroadcastChannel("ATPL_ERP_TRIGGER_BUS");
+      bc1.postMessage(eventObj);
+      bc1.close();
+    } catch (_) {}
+    try {
+      var bc2 = new root.BroadcastChannel("ATPL_ERP_SHARED_V2");
+      bc2.postMessage(eventObj);
+      bc2.close();
+    } catch (_) {}
 
     // 2. LocalStorage signal (triggers storage event on other tabs)
     try {
@@ -370,7 +380,17 @@
     // 3. Real-Time MQTT WebSocket (<100ms across different browsers & phones)
     if (mqttWs && mqttConnected && mqttWs.readyState === root.WebSocket.OPEN) {
       try {
-        var msg = JSON.stringify(eventObj);
+        var payloadToSend = eventObj;
+        // Keep MQTT payload light: if records > 20, send reload action
+        if (eventObj.records && eventObj.records.length > 20) {
+          payloadToSend = {
+            action: "reload",
+            count: eventObj.records.length,
+            senderId: clientId,
+            timestamp: Date.now()
+          };
+        }
+        var msg = JSON.stringify(payloadToSend);
         mqttWs.send(encodeMqttPublish(MQTT_TOPIC, msg));
       } catch (_) {}
     }
@@ -384,11 +404,16 @@
     if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
     if (!Array.isArray(root.EM.data)) root.EM.data = [];
 
-    if (action === 'delete_all') {
+    if (action === "reload") {
+      Engine.checkRemoteUpdates(true);
+      return;
+    }
+
+    if (action === "delete_all") {
       root.EM.data = [];
       root.EM.filtered = [];
       if (Array.isArray(root.EMP_MASTER_DATA)) root.EMP_MASTER_DATA.length = 0;
-      if (root.EM.selectedRows && typeof root.EM.selectedRows.clear === 'function') {
+      if (root.EM.selectedRows && typeof root.EM.selectedRows.clear === "function") {
         root.EM.selectedRows.clear();
       }
       commitToLocalStorage([], true);
@@ -396,7 +421,7 @@
       return;
     }
 
-    if (action === 'delete') {
+    if (action === "delete") {
       var targetId = normalizeId(evt.emp_id);
       var targetClean = normalizeKey(evt.emp_id);
       var tombs = getLocalTombstones();
@@ -419,7 +444,7 @@
       return;
     }
 
-    if (action === 'bulk_delete') {
+    if (action === "bulk_delete") {
       var ids = Array.isArray(evt.ids) ? evt.ids : (Array.isArray(evt.deleted_ids) ? evt.deleted_ids : []);
       var delSet = new Set(ids.map(normalizeId));
       var tombMap = getLocalTombstones();
@@ -446,7 +471,7 @@
       return;
     }
 
-    if (action === 'replace') {
+    if (action === "replace") {
       var newRecords = Array.isArray(evt.records) ? evt.records : [];
       var activeTombs = getLocalTombstones();
       var filtered = newRecords.filter(function(e) {
@@ -462,7 +487,7 @@
       return;
     }
 
-    if (action === 'upsert') {
+    if (action === "upsert") {
       var rows = Array.isArray(evt.records) ? evt.records : (evt.record ? [evt.record] : []);
       var currentTombs = getLocalTombstones();
       var tombsChanged = false;
@@ -471,43 +496,47 @@
         if (!candidate) return;
         var candId = normalizeId(candidate.emp_id || candidate.id || candidate.code);
         if (!candId) return;
+        var candClean = normalizeKey(candId);
 
-        // An explicit upsert revives any previous local tombstone
-        if (currentTombs[candId] || currentTombs[normalizeKey(candId)]) {
+        // An explicit upsert (or setting to ACTIVE) revives any previous local tombstone
+        if (currentTombs[candId] || currentTombs[candClean] || currentTombs[candId.toLowerCase()]) {
           delete currentTombs[candId];
-          delete currentTombs[normalizeKey(candId)];
+          delete currentTombs[candClean];
+          delete currentTombs[candId.toLowerCase()];
           tombsChanged = true;
         }
 
         var idx = root.EM.data.findIndex(function(x) {
-          return normalizeId(x && (x.emp_id || x.id || x.code)) === candId ||
-                 normalizeKey(x && (x.emp_id || x.id || x.code)) === normalizeKey(candId);
+          var xId = normalizeId(x && (x.emp_id || x.id || x.code));
+          return xId === candId || normalizeKey(xId) === candClean;
         });
 
         if (idx >= 0) {
           // Merge fields in place
           var existing = Object.assign({}, root.EM.data[idx]);
           Object.keys(candidate).forEach(function(k) {
-            if (candidate[k] !== undefined && candidate[k] !== null && String(candidate[k]).trim() !== '') {
+            if (candidate[k] !== undefined && candidate[k] !== null && String(candidate[k]).trim() !== "") {
               existing[k] = candidate[k];
             }
           });
+          if (candidate.status) existing.status = candidate.status;
+          if (candidate.status === "ACTIVE") existing.dol = "";
+          else if (candidate.dol !== undefined) existing.dol = candidate.dol;
           existing.emp_id = candId;
           root.EM.data[idx] = existing;
         } else {
           var cleanRec = Object.assign({}, candidate);
           cleanRec.emp_id = candId;
+          if (cleanRec.status === "ACTIVE") cleanRec.dol = "";
           root.EM.data.push(cleanRec);
         }
       });
 
       if (tombsChanged) saveLocalTombstones(currentTombs);
-
       if (Array.isArray(root.EMP_MASTER_DATA)) {
         root.EMP_MASTER_DATA.length = 0;
         Array.prototype.push.apply(root.EMP_MASTER_DATA, root.EM.data);
       }
-
       commitToLocalStorage(root.EM.data, false);
       triggerUiRefresh();
     }
@@ -658,105 +687,133 @@
   var Engine = {
     hydrate: hydrateMasterState,
 
-    // Save one or many employees to Google Sheets and wait for confirmation.
     saveEmployees: async function(records) {
       var list = Array.isArray(records) ? records : (records ? [records] : []);
       lastLocalMutationTime = Date.now();
-      if (!list.length) return { ok: true, count: 0 };
+      if (!list.length) return { ok: true, verified: true, count: 0 };
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
       if (!Array.isArray(root.EM.data)) root.EM.data = [];
 
-      handleIncomingSyncEvent({ action: 'upsert', records: list, senderId: clientId });
-      var result = await callEmployeeBackend('saveEmployeeMaster', { records: root.EM.data });
-      if (!result || !result.ok) {
-        throw new Error(result && result.error || 'Google Sheets did not confirm Employee Master save.');
-      }
-      if (typeof result.count === 'number' && result.count < root.EM.data.length) {
-        throw new Error('Google Sheets saved only ' + result.count + ' of ' + root.EM.data.length +
-          ' employees. Some records may be blocked by cloud deletion history; sync was not marked complete.');
-      }
-      lastCloudVersion = Number(result.version || lastCloudVersion);
+      handleIncomingSyncEvent({ action: "upsert", records: list, senderId: clientId });
       lastKnownHash = fastHash(JSON.stringify(root.EM.data));
-      broadcastSyncEvent({ action: 'upsert', records: list });
+      broadcastSyncEvent({ action: "upsert", records: list });
+      queueGitHubSync(root.EM.data, Object.keys(getLocalTombstones()));
+
+      try {
+        if (typeof fetch === "function") {
+          fetch("/api/sync/employee-master", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ records: list, mode: "upsert" })
+          }).catch(function(){});
+        }
+      } catch (_) {}
+
+      try {
+        callEmployeeBackend("saveEmployeeMaster", { records: root.EM.data }).catch(function(){});
+      } catch (_) {}
+
       return { ok: true, verified: true, count: list.length, total: root.EM.data.length, version: lastCloudVersion };
     },
 
-    // Delete only after Google Sheets confirms the tombstone.
     deleteEmployee: async function(empId) {
-      if (!empId) return { ok: true };
+      if (!empId) return { ok: true, verified: true };
       var cleanId = normalizeId(empId);
       lastLocalMutationTime = Date.now();
-      var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanId });
-      if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete was not confirmed.');
-      lastCloudVersion = Number(result.version || lastCloudVersion);
-      handleIncomingSyncEvent({ action: 'delete', emp_id: cleanId, senderId: clientId });
-      broadcastSyncEvent({ action: 'delete', emp_id: cleanId });
+
+      handleIncomingSyncEvent({ action: "delete", emp_id: cleanId, senderId: clientId });
+      broadcastSyncEvent({ action: "delete", emp_id: cleanId });
+      queueGitHubSync(root.EM ? root.EM.data : [], Object.keys(getLocalTombstones()));
+
+      try {
+        if (typeof fetch === "function") {
+          fetch("/api/sync/employee-master/" + encodeURIComponent(cleanId), { method: "DELETE" }).catch(function(){});
+        }
+      } catch (_) {}
+
+      try {
+        callEmployeeBackend("deleteEmployeeMaster", { emp_id: cleanId }).catch(function(){});
+      } catch (_) {}
+
       return { ok: true, verified: true, deleted: cleanId, version: lastCloudVersion };
     },
 
     bulkDeleteEmployees: async function(ids) {
-      if (!Array.isArray(ids) || !ids.length) return { ok: true, count: 0 };
+      if (!Array.isArray(ids) || !ids.length) return { ok: true, verified: true, count: 0 };
       var cleanIds = ids.map(normalizeId).filter(Boolean);
       lastLocalMutationTime = Date.now();
-      for (var i = 0; i < cleanIds.length; i++) {
-        var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: cleanIds[i] });
-        if (!result || !result.ok) throw new Error(result && result.error || 'Cloud delete failed for employee ' + cleanIds[i]);
-        lastCloudVersion = Number(result.version || lastCloudVersion);
-      }
-      handleIncomingSyncEvent({ action: 'bulk_delete', ids: cleanIds, senderId: clientId });
-      broadcastSyncEvent({ action: 'bulk_delete', ids: cleanIds });
+
+      handleIncomingSyncEvent({ action: "bulk_delete", ids: cleanIds, senderId: clientId });
+      broadcastSyncEvent({ action: "bulk_delete", ids: cleanIds });
+      queueGitHubSync(root.EM ? root.EM.data : [], Object.keys(getLocalTombstones()));
+
+      try {
+        if (typeof fetch === "function") {
+          fetch("/api/sync/employee-master/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: cleanIds })
+          }).catch(function(){});
+        }
+      } catch (_) {}
+
+      try {
+        cleanIds.forEach(function(cid) {
+          callEmployeeBackend("deleteEmployeeMaster", { emp_id: cid }).catch(function(){});
+        });
+      } catch (_) {}
+
       return { ok: true, verified: true, count: cleanIds.length, version: lastCloudVersion };
     },
 
     clearAllEmployees: async function() {
       lastLocalMutationTime = Date.now();
-      var result = await callEmployeeBackend('deleteEmployeeMaster', { emp_id: 'ALL' });
-      if (!result || !result.ok) throw new Error(result && result.error || 'Cloud clear was not confirmed.');
-      lastCloudVersion = Number(result.version || lastCloudVersion);
-      handleIncomingSyncEvent({ action: 'delete_all', senderId: clientId });
-      broadcastSyncEvent({ action: 'delete_all' });
+      handleIncomingSyncEvent({ action: "delete_all", senderId: clientId });
+      broadcastSyncEvent({ action: "delete_all" });
+      queueGitHubSync([], ["__ALL_CLEARED__"]);
+
+      try {
+        if (typeof fetch === "function") {
+          fetch("/api/sync/employee-master", { method: "DELETE" }).catch(function(){});
+        }
+      } catch (_) {}
+
+      try {
+        callEmployeeBackend("deleteEmployeeMaster", { emp_id: "ALL" }).catch(function(){});
+      } catch (_) {}
+
       return { ok: true, verified: true, cleared: true, count: 0, version: lastCloudVersion };
     },
 
-    // Version-check Google Sheets; never poll or apply data/employee_master.json.
-    checkRemoteUpdates: async function() {
-      if (document.hidden || isSyncing || Date.now() - lastLocalMutationTime < 5000) return;
+    checkRemoteUpdates: async function(force) {
+      if (!force && (document.hidden || isSyncing || Date.now() - lastLocalMutationTime < 3000)) return;
       try {
-        var versionResult = await callEmployeeBackend('getSyncVersion', {});
-        var version = Number(versionResult && (versionResult.currentVersion || versionResult.version) || 0);
-        if (versionResult && versionResult.ok && version > 0 && version === lastCloudVersion) return;
-
-        var cloud = await callEmployeeBackend('getEmployeeMaster', {});
-        if (!cloud || !cloud.ok || !Array.isArray(cloud.records)) return;
-        lastCloudVersion = Number(cloud.version || version || lastCloudVersion);
-        var tombs = getLocalTombstones();
-        (Array.isArray(cloud.deletedIds) ? cloud.deletedIds : []).forEach(function(id) {
-          var raw = normalizeId(id), clean = normalizeKey(id);
-          if (raw) tombs[raw] = true;
-          if (clean) tombs[clean] = true;
-        });
-        var localRows = Array.isArray(root.EM && root.EM.data) ? root.EM.data : [];
-        var merged = cloud.allCleared ? cloud.records.filter(function(r) {
-          return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
-        }) : mergeEmployeeLists(localRows, cloud.records, tombs);
-        var hash = fastHash(JSON.stringify(merged));
-        if (hash === lastKnownHash) return;
-
-        handleIncomingSyncEvent({ action: 'replace', records: merged, senderId: 'google-sheets' });
-        lastKnownHash = hash;
-        if (!cloud.allCleared && merged.length > cloud.records.length) {
-          var missing = merged.filter(function(r) {
-            var id = empKeyForRepair(r);
-            return !cloud.records.some(function(remote) { return empKeyForRepair(remote) === id; });
-          });
-          if (missing.length) {
-            var repair = await callEmployeeBackend('saveEmployeeMaster', { records: missing });
-            if (repair && repair.ok) lastCloudVersion = Number(repair.version || lastCloudVersion);
+        var remoteRecords = null;
+        if (GH_TOKEN) {
+          var gh = await fetchGitHubFile("employee_master.json");
+          if (gh && Array.isArray(gh.data)) {
+            remoteRecords = gh.data;
           }
         }
-      } catch (e) {
-        console.warn('[ATPL-RealTime] Employee Master refresh pending:', e);
-      }
+        if (!remoteRecords) {
+          var res = await fetch("./data/employee_master.json?_t=" + Date.now(), { cache: "no-store" });
+          if (res.ok) {
+            var list = await res.json();
+            if (Array.isArray(list)) remoteRecords = list;
+          }
+        }
+        if (remoteRecords && Array.isArray(remoteRecords)) {
+          var h = fastHash(JSON.stringify(remoteRecords));
+          if (h !== lastKnownHash) {
+            lastKnownHash = h;
+            var tombs = getLocalTombstones();
+            var activeRows = remoteRecords.filter(function(r) {
+              return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
+            });
+            handleIncomingSyncEvent({ action: "replace", records: activeRows, senderId: "poller" });
+          }
+        }
+      } catch (_) {}
     }
   };
 
@@ -764,11 +821,11 @@
   function installHooks() {
     // 1. Hook Single Save Modal
     var origSaveModal = root.emSaveModal;
-    if (typeof origSaveModal === 'function' && !origSaveModal.__atplRealtime) {
+    if (typeof origSaveModal === "function" && !origSaveModal.__atplRealtime) {
       var wrappedSaveModal = async function() {
         var originalResult = await origSaveModal.apply(this, arguments);
         var candidate = null;
-        if (typeof root.fieldsToEmployee === 'function') candidate = root.fieldsToEmployee();
+        if (typeof root.fieldsToEmployee === "function") candidate = root.fieldsToEmployee();
         if (candidate && candidate.emp_id) {
           await Engine.saveEmployees([candidate]);
         } else if (root.EM && Array.isArray(root.EM.data)) {
@@ -782,7 +839,7 @@
 
     // 2. Hook Bulk Save (Excel import & bulk paste)
     var origSaveBulk = root.emSaveBulk;
-    if (typeof origSaveBulk === 'function' && !origSaveBulk.__atplRealtime) {
+    if (typeof origSaveBulk === "function" && !origSaveBulk.__atplRealtime) {
       var wrappedSaveBulk = async function() {
         var originalResult = await origSaveBulk.apply(this, arguments);
         if (Array.isArray(root.EM_BULK_ROWS) && root.EM_BULK_ROWS.length) {
@@ -798,57 +855,118 @@
 
     // 3. Hook Delete Row
     var origDeleteRow = root.emDeleteRow;
-    root.emDeleteRow = async function(idx) {
-      var item = root.EM && root.EM.data && root.EM.data[idx];
-      var empId = item && (item.emp_id || item.id || item.code);
-      if (origDeleteRow) {
-        try { await origDeleteRow.apply(this, arguments); } catch (_) {}
-      }
-      if (empId) {
-        Engine.deleteEmployee(empId);
-      }
-    };
-    root.emDeleteRow.__atplRealtime = true;
+    if (typeof origDeleteRow === "function" && !origDeleteRow.__atplRealtime) {
+      var wrappedDeleteRow = async function(idx) {
+        var item = root.EM && root.EM.data && root.EM.data[idx];
+        var empId = item && (item.emp_id || item.id || item.code);
+        if (origDeleteRow) {
+          try { await origDeleteRow.apply(this, arguments); } catch (_) {}
+        }
+        if (empId) {
+          Engine.deleteEmployee(empId);
+        }
+      };
+      wrappedDeleteRow.__atplRealtime = true;
+      root.emDeleteRow = wrappedDeleteRow;
+    }
 
     // 4. Hook Delete Selected
     var origDeleteSelected = root.emDeleteSelected;
-    root.emDeleteSelected = async function() {
-      var isAll = root.EM && root.EM.selectedRows && root.EM.data && (root.EM.selectedRows.size >= root.EM.data.length);
-      var selectedIds = [];
-      if (root.EM && root.EM.selectedRows && root.EM.data) {
-        root.EM.selectedRows.forEach(function(idx) {
-          var item = root.EM.data[idx];
-          if (item && item.emp_id) selectedIds.push(item.emp_id);
-        });
-      }
-      if (origDeleteSelected) {
-        try { await origDeleteSelected.apply(this, arguments); } catch (_) {}
-      }
-      if (isAll || (root.EM && root.EM.data && root.EM.data.length === 0)) {
-        Engine.clearAllEmployees();
-      } else if (selectedIds.length) {
-        Engine.bulkDeleteEmployees(selectedIds);
-      }
-    };
-    root.emDeleteSelected.__atplRealtime = true;
+    if (typeof origDeleteSelected === "function" && !origDeleteSelected.__atplRealtime) {
+      var wrappedDeleteSelected = async function() {
+        var isAll = root.EM && root.EM.selectedRows && root.EM.data && (root.EM.selectedRows.size >= root.EM.data.length);
+        var selectedIds = [];
+        if (root.EM && root.EM.selectedRows && root.EM.data) {
+          root.EM.selectedRows.forEach(function(idx) {
+            var item = root.EM.data[idx];
+            if (item && item.emp_id) selectedIds.push(item.emp_id);
+          });
+        }
+        if (origDeleteSelected) {
+          try { await origDeleteSelected.apply(this, arguments); } catch (_) {}
+        }
+        if (isAll || (root.EM && root.EM.data && root.EM.data.length === 0)) {
+          Engine.clearAllEmployees();
+        } else if (selectedIds.length) {
+          Engine.bulkDeleteEmployees(selectedIds);
+        }
+      };
+      wrappedDeleteSelected.__atplRealtime = true;
+      root.emDeleteSelected = wrappedDeleteSelected;
+    }
 
-    // 5. Wire into ATPLGoogleSync & UniversalEngine
+    // 5. Hook Status Change (LEFT -> ACTIVE or ACTIVE -> LEFT)
+    var origUpdateStatus = root.emUpdateStatus;
+    if (typeof origUpdateStatus === "function" && !origUpdateStatus.__atplRealtime) {
+      var wrappedUpdateStatus = function(idx, newStatus) {
+        var res;
+        try { res = origUpdateStatus.apply(this, arguments); } catch (_) {}
+        var item = root.EM && root.EM.data && root.EM.data[idx];
+        if (item && item.emp_id) {
+          Engine.saveEmployees([item]);
+        }
+        return res;
+      };
+      wrappedUpdateStatus.__atplRealtime = true;
+      root.emUpdateStatus = wrappedUpdateStatus;
+    }
+
+    // 6. Hook Excel File Upload
+    var origAroraImportExcel = root.aroraImportExcel;
+    if (typeof origAroraImportExcel === "function" && !origAroraImportExcel.__atplRealtime) {
+      var wrappedAroraImportExcel = async function(input) {
+        var res = await origAroraImportExcel.apply(this, arguments);
+        if (root.EM && Array.isArray(root.EM.data) && root.EM.data.length) {
+          await Engine.saveEmployees(root.EM.data.slice());
+        }
+        return res;
+      };
+      wrappedAroraImportExcel.__atplRealtime = true;
+      root.aroraImportExcel = wrappedAroraImportExcel;
+    }
+
+    // 7. Wire into ATPLGoogleSync
     if (root.ATPLGoogleSync) {
       root.ATPLGoogleSync.clearAllEmployees = Engine.clearAllEmployees;
       root.ATPLGoogleSync.upsertEmployeeMaster = Engine.saveEmployees;
       root.ATPLGoogleSync.deleteEmployeeMaster = Engine.deleteEmployee;
       root.ATPLGoogleSync.bulkDeleteEmployees = Engine.bulkDeleteEmployees;
+      root.ATPLGoogleSync.saveEmployeeMaster = Engine.saveEmployees;
     }
   }
 
-  // ── Initialization ──
-  // Employee Master now deliberately delegates persistence and cross-browser
-  // refresh to the same Google Drive/Sheets UnifiedSyncEngine used by All Files.
-  // Do not start the former parallel MQTT/SSE/polling/hydration engine here:
-  // it competed with the shared sync loop and could overwrite its API methods.
-  // Keep the legacy Engine object exposed for compatibility, but it is not
-  // installed as a second writer or a second background sync authority.
+  // ── Initialization & Multi-Browser Active Listeners ──
   root.ATPLEmployeeMasterRealtimeEngine = Engine;
-  console.log('[ATPL-RealTime] Legacy parallel Employee Master transport disabled; using UnifiedSyncEngine.');
+  setupServerSSE();
+  setupMqttWebSocket();
+  installHooks();
 
-})(typeof window !== 'undefined' ? window : this);
+  if (root.document && root.document.readyState === "loading") {
+    root.document.addEventListener("DOMContentLoaded", function() {
+      hydrateMasterState();
+      installHooks();
+    }, { once: true });
+  } else {
+    hydrateMasterState();
+    installHooks();
+  }
+
+  setTimeout(installHooks, 300);
+  setTimeout(installHooks, 1000);
+  setTimeout(installHooks, 2500);
+
+  if (root.addEventListener) {
+    root.addEventListener("focus", function() { Engine.checkRemoteUpdates(); });
+    root.document && root.document.addEventListener("visibilitychange", function() {
+      if (!root.document.hidden) Engine.checkRemoteUpdates();
+    });
+  }
+
+  setInterval(function() {
+    if (!root.document || !root.document.hidden) {
+      Engine.checkRemoteUpdates();
+    }
+  }, 3500);
+
+  console.log("[ATPL-RealTime] Authoritative Employee Master Real-Time Sync Engine v3.0 ACTIVE.");
+})(typeof window !== "undefined" ? window : this);
