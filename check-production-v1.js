@@ -17,7 +17,7 @@ function cardOf(m){var x=machine(m).match(/^C(\d+)/);return x?'CARD '+String(Num
 function headers(ws,range){
  var last=Math.min(range.e.r,range.s.r+10);
  for(var r=range.s.r;r<=last;r++){
-  var h={row:r,code:-1,name:-1,loc:-1,rate:-1,days:[]};
+  var h={row:r,code:-1,name:-1,loc:-1,rate:-1,salary:-1,amount:-1,days:[]};
   for(var c=range.s.c;c<=range.e.c;c++){
    var v=ws[XLSX.utils.encode_cell({r:r,c:c})],x=norm(v&&v.v);
    if(h.code<0&&/^(code|emp code|employee code|staff code|worker code|token)$/.test(x))h.code=c;
@@ -38,7 +38,9 @@ function parse(wb){
   var rg=XLSX.utils.decode_range(ws['!ref']),h=headers(ws,rg);
   if(!h){warnings.push(sn+': employee/location/day columns not identified');return}
   sheetCount++;
-  for(var r=h.row+1;r<=rg.e.r;r++){
+  var lastRow=h.row;
+  Object.keys(ws).forEach(function(addr){if(addr.charAt(0)==='!')return;var cell;try{cell=XLSX.utils.decode_cell(addr)}catch(e){return}if(cell.c<=h.loc&&cell.r>lastRow){var v=ws[addr]&&ws[addr].v;if(v!==null&&v!==undefined&&String(v).trim()!=='')lastRow=cell.r}});
+  for(var r=h.row+1;r<=lastRow;r++){
    var code=String((ws[XLSX.utils.encode_cell({r:r,c:h.code})]||{}).v||'').trim();
    var name=String((ws[XLSX.utils.encode_cell({r:r,c:h.name})]||{}).v||'').trim();
    var raw=(ws[XLSX.utils.encode_cell({r:r,c:h.loc})]||{}).v;
@@ -48,15 +50,17 @@ function parse(wb){
    h.days.forEach(function(d){var v=(ws[XLSX.utils.encode_cell({r:r,c:d.col})]||{}).v;var val=n(v);if(v!==null&&v!==undefined&&String(v).trim()!==''){daily[d.day]=val;qty+=val}});
    if(!mc&&!qty)continue;
    var card=cardOf(mc),rate=h.rate>=0?n((ws[XLSX.utils.encode_cell({r:r,c:h.rate})]||{}).v):0;
-   var sig=[sn,code.toUpperCase(),name.toUpperCase(),mc,JSON.stringify(daily),rate].join('|');
+   var salary=h.salary>=0?n((ws[XLSX.utils.encode_cell({r:r,c:h.salary})]||{}).v):0;
+   var amount=h.amount>=0?n((ws[XLSX.utils.encode_cell({r:r,c:h.amount})]||{}).v):0;
+   var sig=[sn,code.toUpperCase(),name.toUpperCase(),mc,JSON.stringify(daily),rate,salary,amount].join('|');
    if(dupes[sig])continue;dupes[sig]=1;
-   rows.push({code:code,name:name,machine:mc,card:card,sheet:sn,row:r+1,daily:daily,qty:Math.round(qty*1000)/1000,sourceRate:rate});
+   rows.push({code:code,name:name,machine:mc,card:card,sheet:sn,row:r+1,daily:daily,qty:Math.round(qty*1000)/1000,sourceRate:rate,sourceSalary:salary,sourceAmount:amount});
   }
  });
  return{rows:rows,warnings:warnings,sheetCount:sheetCount};
 }
 function recalc(){
- S.rows.forEach(function(r){var key=r.machine||'UNASSIGNED';r.rate=r.sourceRate>0?r.sourceRate:n(S.rates[key]);r.value=Math.round(r.qty*r.rate*100)/100});
+ S.rows.forEach(function(r){var key=r.machine||'UNASSIGNED';r.rate=r.sourceRate>0?r.sourceRate:r.sourceSalary>0?r.sourceSalary/30:0;r.value=r.sourceAmount>0?r.sourceAmount:Math.round(r.qty*r.rate*100)/100});
 }
 function summary(){
  var emp={},cards={},machines={},qty=0,value=0;
@@ -80,7 +84,7 @@ function page(){
  '<div id="cpStatus" style="margin:12px 0;padding:11px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px;color:#1e40af;font-size:12px">Upload your monthly workbook to calculate card-wise and machine-wise quantities. Rate can be entered per machine below.</div>'+
  '<div id="cpKpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0"></div>'+
  '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><select id="cpCard" style="padding:9px;border:1px solid #cbd5e1;border-radius:8px"><option value="ALL">All Cards</option></select><input id="cpSearch" placeholder="Search employee code / name / machine" style="min-width:240px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;flex:1"><span id="cpFileName" style="font-size:11px;color:#64748b;align-self:center"></span></div>'+
- '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin:12px 0"><div style="font-weight:850;margin-bottom:9px">Machine-wise Rate Setup</div><div style="font-size:11px;color:#64748b;margin-bottom:10px">Rate is taken from an explicit Rate column if present; otherwise enter the production rate for each machine. Monthly salary is never treated as a production rate.</div><div id="cpRates" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px"></div></div>'+
+ '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin:12px 0"><div style="font-weight:850;margin-bottom:6px">Excel Rate & Amount — Auto Read</div><div style="font-size:11px;color:#64748b">Monthly salary/rate and calculated Total are read directly from the uploaded workbook. No manual rate entry required.</div></div>'+
  '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden"><div style="padding:13px 15px;border-bottom:1px solid #e2e8f0;font-weight:850">Card-wise Production Summary</div><div id="cpCards" style="overflow:auto"></div></div>'+
  '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-top:12px"><div style="padding:13px 15px;border-bottom:1px solid #e2e8f0;font-weight:850">Employee & Machine Details</div><div id="cpRows" style="overflow:auto"></div></div></div>';
  bind();render();
@@ -93,7 +97,7 @@ function render(){
  var cards=s.cards.slice().sort(function(a,b){return a.card.localeCompare(b.card)});
  q('cpCard').innerHTML='<option value="ALL">All Cards</option>'+cards.map(function(c){return'<option value="'+esc(c.card)+'">'+esc(c.card)+'</option>'}).join('');
  q('cpCard').value=S.card;q('cpFileName').textContent=S.file;
- q('cpRates').innerHTML=s.machines.map(function(m){var k=m.machine||'UNASSIGNED';var rate=S.rates[k]||0;return'<label style="font-size:11px;color:#475569;border:1px solid #e2e8f0;border-radius:8px;padding:8px;display:flex;align-items:center;justify-content:space-between;gap:8px"><b>'+esc(k||'Unassigned')+'</b><input class="cpRateInput" data-machine="'+esc(k)+'" type="number" min="0" step="0.01" value="'+esc(rate)+'" placeholder="Rate" style="width:90px;padding:6px;border:1px solid #cbd5e1;border-radius:6px"></label>'}).join('')||'<span style="font-size:11px;color:#94a3b8">Upload a workbook to configure machine rates.</span>';
+ q('cpRates').innerHTML='';
  q('cpCards').innerHTML=cards.length?table(['Card (from machine code)','Employees','Machines','Total Quantity','Production Value'],cards.map(function(c){return'<tr><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:800">'+esc(c.card)+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+Object.keys(c.employees).length+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+Object.keys(c.machines).length+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9">'+fmt(c.qty)+'</td><td style="padding:10px;border-bottom:1px solid #f1f5f9;font-weight:800">₹'+fmt(c.value)+'</td></tr>'}).join('')):'<div style="padding:24px;color:#64748b;text-align:center">No workbook loaded yet.</div>';
  var search=(S.search||'').toLowerCase();
  var filtered=S.rows.filter(function(r){return(S.card==='ALL'||r.card===S.card)&&(!search||[r.code,r.name,r.machine,r.card].join(' ').toLowerCase().indexOf(search)>=0)});
@@ -111,8 +115,8 @@ function exportXlsx(){
  if(!S.rows.length){alert('Upload workbook first.');return}if(typeof XLSX==='undefined'){alert('Excel export library unavailable.');return}
  var s=summary(),wb=XLSX.utils.book_new();
  var cardRows=[['Card','Employees','Machines','Total Quantity','Production Value']];s.cards.forEach(function(c){cardRows.push([c.card,Object.keys(c.employees).length,Object.keys(c.machines).length,c.qty,c.value])});
- var detail=[['Employee Code','Employee Name','Source Sheet','Source Row','Machine Code','Allocated Card','Total Quantity','Rate','Production Value']];
- S.rows.forEach(function(r){detail.push([r.code,r.name,r.sheet,r.row,r.machine,r.card,r.qty,r.rate,r.value])});
+ var detail=[['Employee Code','Employee Name','Source Sheet','Source Row','Machine Code','Allocated Card','Total Quantity','Excel Salary / Rate','Excel Total / Production Value']];
+ S.rows.forEach(function(r){detail.push([r.code,r.name,r.sheet,r.row,r.machine,r.card,r.qty,r.sourceSalary||r.rate,r.value])});
  var daily=[['Employee Code','Employee Name','Machine Code','Allocated Card','Day','Quantity']];S.rows.forEach(function(r){Object.keys(r.daily).forEach(function(d){daily.push([r.code,r.name,r.machine,r.card,Number(d),r.daily[d]])})});
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cardRows),'Card Summary');
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(detail),'Employee Machine');
