@@ -9354,7 +9354,26 @@ function emInit() {
     } else {
       var authenticList = (Array.isArray(window.EMP_MASTER_DATA) && window.EMP_MASTER_DATA.length > 0) ? window.EMP_MASTER_DATA : [];
       if (saved && Array.isArray(saved) && saved.length > 0) {
-        EM.data = saved;
+        var authMap = {};
+        authenticList.forEach(function(a) {
+          var k = String(a.emp_id || '').toUpperCase().trim().replace(/^0+/, '');
+          if (k) authMap[k] = a;
+        });
+        EM.data = saved.map(function(s) {
+          var sk = String(s.emp_id || '').toUpperCase().trim().replace(/^0+/, '');
+          var a = authMap[sk];
+          if (!a) return s;
+          var healed = Object.assign({}, a);
+          Object.keys(s).forEach(function(key) {
+            if (s[key] !== undefined && s[key] !== null && String(s[key]).trim() !== '' && s[key] !== 0) {
+              healed[key] = s[key];
+            }
+          });
+          if (s.status) healed.status = s.status;
+          if (s.status === 'ACTIVE') healed.dol = '';
+          else if (s.dol !== undefined) healed.dol = s.dol;
+          return healed;
+        });
       } else if (authenticList.length > 0) {
         EM.data = authenticList.slice();
       } else {
@@ -16105,7 +16124,7 @@ else AInit();
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20261109-drive-vault-v3&cb=20261109v3"></script>
-<script src="atpl-employee-master-realtime-engine.js?v=20261112-v9"></script>
+<script src="atpl-employee-master-realtime-engine.js?v=20261112-v11"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>

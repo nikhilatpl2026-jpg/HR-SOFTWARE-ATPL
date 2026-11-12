@@ -153,8 +153,24 @@
       if (!id || isTombstoned(id, tombs)) return;
       var k = normalizeKey(id).toLowerCase();
       if (!k) return;
-      map[k] = cloudWins && map[k] ? Object.assign({}, map[k], row, { emp_id: id }) :
-        (map[k] ? Object.assign({}, row, map[k], { emp_id: id }) : Object.assign({}, row, { emp_id: id }));
+      if (!map[k]) {
+        map[k] = Object.assign({}, row, { emp_id: id });
+        return;
+      }
+      var base = cloudWins ? map[k] : row;
+      var overlay = cloudWins ? row : map[k];
+      var merged = Object.assign({}, base);
+      Object.keys(overlay).forEach(function(prop) {
+        var ovVal = overlay[prop];
+        if (ovVal !== undefined && ovVal !== null && String(ovVal).trim() !== '' && ovVal !== 0) {
+          merged[prop] = ovVal;
+        }
+      });
+      if (overlay.status) merged.status = overlay.status;
+      if (overlay.status === 'ACTIVE') merged.dol = '';
+      else if (overlay.dol !== undefined) merged.dol = overlay.dol;
+      merged.emp_id = id;
+      map[k] = merged;
     }
     (localRows || []).forEach(function(r) { put(r, false); });
     (cloudRows || []).forEach(function(r) { put(r, true); });
