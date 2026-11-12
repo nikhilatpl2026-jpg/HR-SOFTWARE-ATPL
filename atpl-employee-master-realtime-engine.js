@@ -26,7 +26,7 @@
   'use strict';
 
   if (!root) return;
-  root.__ATPL_EM_REALTIME_ENGINE_LOADED__ = '3.2.0';
+  root.__ATPL_EM_REALTIME_ENGINE_LOADED__ = '3.3.0';
 
   var STORAGE_KEY_MASTER = 'AroraTextilesEmployeeMasterV3';
   var STORAGE_KEY_TOMBSTONES = 'ATPL_EmployeeMasterDeletedV1';
@@ -64,6 +64,7 @@
   var lastKnownCommitSha = '';
   var lastCloudVersion = 0;
   var lastLocalMutationTime = 0;
+  var localModifications = {};
   var isSyncing = false;
   var ghWriteDebounceTimer = null;
   var cachedGhSha = { master: '', tombstones: '' };
@@ -584,14 +585,51 @@
       return;
     }
 
-    // ── 5. REPLACE MASTER ──
+    // ── 5. REPLACE MASTER (With Mutation Immunity Protection) ──
     if (action === 'replace') {
       var newRecords = Array.isArray(evt.records) ? evt.records : [];
       var activeTombs = getLocalTombstones();
+      var now = Date.now();
       var filtered = newRecords.filter(function(e) {
-        return !isTombstoned(e && (e.emp_id || e.id || e.code), activeTombs);
+        var eid = normalizeId(e && (e.emp_id || e.id || e.code));
+        if (isTombstoned(eid, activeTombs)) return false;
+        var mod = localModifications[eid] || localModifications[normalizeKey(eid)];
+        if (mod && mod.deleted && (now - mod.timestamp < 120000)) {
+          return false;
+        }
+        return true;
       });
-
+      // Apply pending local modifications so stale remote files can NEVER revert user changes!
+      filtered.forEach(function(rec) {
+        var eid = normalizeId(rec && (rec.emp_id || rec.id || rec.code));
+        var mod = localModifications[eid] || localModifications[normalizeKey(eid)];
+        if (mod && !mod.deleted && (now - mod.timestamp < 120000)) {
+          if (mod.status) {
+            rec.status = mod.status;
+            rec.dol = (mod.status === 'ACTIVE') ? '' : (mod.dol || rec.dol || '');
+          }
+          if (mod.record) {
+            Object.keys(mod.record).forEach(function(k) {
+              if (mod.record[k] !== undefined && mod.record[k] !== null && String(mod.record[k]).trim() !== '') {
+                rec[k] = mod.record[k];
+              }
+            });
+          }
+        }
+      });
+      // Also preserve any newly added local employee not yet in the replacement list
+      Object.keys(localModifications).forEach(function(k) {
+        var mod = localModifications[k];
+        if (mod && !mod.deleted && mod.record && (now - mod.timestamp < 120000)) {
+          var exists = filtered.some(function(x) {
+            var xid = normalizeId(x && (x.emp_id || x.id || x.code));
+            return xid === k || normalizeKey(xid) === normalizeKey(k);
+          });
+          if (!exists) {
+            filtered.push(Object.assign({}, mod.record));
+          }
+        }
+      });
       root.EM.data = filtered.slice();
       if (Array.isArray(root.EMP_MASTER_DATA)) {
         root.EMP_MASTER_DATA.length = 0;
@@ -601,7 +639,6 @@
       triggerUiRefresh();
       return;
     }
-
     // ── 6. UPSERT / EDIT / IMPORT ──
     if (action === 'upsert') {
       var rows = Array.isArray(evt.records) ? evt.records : (evt.record ? [evt.record] : []);
@@ -660,10 +697,11 @@
   }
 
   // ── GitHub API Direct Persistence Engine ──
-  async function fetchGitHubFile(filename) {
+  async function fetchGitHubFile(filename, refSha) {
     if (!GH_TOKEN) return null;
     try {
-      var url = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/' + filename + '?ref=main&_t=' + Date.now();
+      var refParam = refSha ? ('&ref=' + encodeURIComponent(refSha)) : '&ref=main';
+      var url = 'https://api.github.com/repos/' + GH_REPO + '/contents/data/' + filename + '?_t=' + Date.now() + refParam;
       var res = await fetch(url, {
         cache: 'no-store',
         headers: {
@@ -718,6 +756,9 @@
         if (out && out.content && out.content.sha) {
           if (filename === 'employee_master.json') cachedGhSha.master = out.content.sha;
           if (filename === 'tombstones_employees.json') cachedGhSha.tombstones = out.content.sha;
+        }
+        if (out && out.commit && out.commit.sha) {
+          lastKnownCommitSha = out.commit.sha;
         }
         return true;
       }
@@ -874,6 +915,19 @@
     saveEmployees: async function(records) {
       var list = Array.isArray(records) ? records : (records ? [records] : []);
       lastLocalMutationTime = Date.now();
+      list.forEach(function(rec) {
+        if (!rec) return;
+        var cid = normalizeId(rec.emp_id || rec.id || rec.code);
+        if (!cid) return;
+        var ck = normalizeKey(cid);
+        var modEntry = {
+          timestamp: Date.now(),
+          deleted: false,
+          record: Object.assign({}, rec, { emp_id: cid })
+        };
+        localModifications[cid] = modEntry;
+        if (ck) localModifications[ck] = modEntry;
+      });
       if (!list.length) return { ok: true, verified: true, count: 0 };
 
       if (!root.EM) root.EM = { data: [], filtered: [], selectedRows: new Set() };
@@ -904,7 +958,11 @@
     deleteEmployee: async function(empId) {
       if (!empId) return { ok: true, verified: true };
       var cleanId = normalizeId(empId);
+      var ck = normalizeKey(cleanId);
       lastLocalMutationTime = Date.now();
+      var modEntry = { timestamp: Date.now(), deleted: true };
+      localModifications[cleanId] = modEntry;
+      if (ck) localModifications[ck] = modEntry;
 
       handleIncomingSyncEvent({ action: 'delete', emp_id: cleanId, senderId: clientId });
       broadcastSyncEvent({ action: 'delete', emp_id: cleanId });
@@ -927,6 +985,12 @@
       if (!Array.isArray(ids) || !ids.length) return { ok: true, verified: true, count: 0 };
       var cleanIds = ids.map(normalizeId).filter(Boolean);
       lastLocalMutationTime = Date.now();
+      cleanIds.forEach(function(cid) {
+        var ck = normalizeKey(cid);
+        var modEntry = { timestamp: Date.now(), deleted: true };
+        localModifications[cid] = modEntry;
+        if (ck) localModifications[ck] = modEntry;
+      });
 
       handleIncomingSyncEvent({ action: 'bulk_delete', ids: cleanIds, senderId: clientId });
       broadcastSyncEvent({ action: 'bulk_delete', ids: cleanIds });
@@ -971,7 +1035,7 @@
     },
 
     checkRemoteUpdates: async function(force) {
-      if (!force && (document.hidden || isSyncing || Date.now() - lastLocalMutationTime < 2500)) return;
+      if (!force && (document.hidden || isSyncing || Date.now() - lastLocalMutationTime < 4000)) return;
       try {
         // 1. Fast commit SHA check via GitHub API
         if (GH_TOKEN) {
@@ -992,43 +1056,45 @@
               } else if (curSha !== lastKnownCommitSha) {
                 lastKnownCommitSha = curSha;
                 console.log('[ATPL-RealTime] Detected new remote commit on GitHub:', curSha);
-                var rawUrl = 'https://raw.githubusercontent.com/' + GH_REPO + '/main/data/employee_master.json?_t=' + Date.now();
-                var rawRes = await fetch(rawUrl, { cache: 'no-store' });
-                if (rawRes.ok) {
-                  var freshList = await rawRes.json();
-                  if (Array.isArray(freshList)) {
-                    var tombs = getLocalTombstones();
-                    var activeRows = freshList.filter(function(r) {
-                      return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
-                    });
-                    handleIncomingSyncEvent({ action: 'replace', records: activeRows, senderId: 'gh_poller' });
-                    return;
-                  }
+                // Fetch fresh commit directly with ref=curSha (bypasses 5-minute CDN cache)
+                var remoteFile = await fetchGitHubFile('employee_master.json', curSha);
+                var freshList = remoteFile && remoteFile.data;
+                if (!freshList) {
+                  var rawUrl = 'https://raw.githubusercontent.com/' + GH_REPO + '/' + curSha + '/data/employee_master.json?_t=' + Date.now();
+                  var rawRes = await fetch(rawUrl, { cache: 'no-store' });
+                  if (rawRes.ok) freshList = await rawRes.json();
+                }
+                if (Array.isArray(freshList)) {
+                  var tombs = getLocalTombstones();
+                  var activeRows = freshList.filter(function(r) {
+                    return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs);
+                  });
+                  handleIncomingSyncEvent({ action: 'replace', records: activeRows, senderId: 'gh_poller' });
+                  return;
                 }
               }
             }
           }
         }
-
-        // 2. Fallback static file check
-        var fallbackRes = await fetch('./data/employee_master.json?_t=' + Date.now(), { cache: 'no-store' });
-        if (fallbackRes.ok) {
-          var list = await fallbackRes.json();
-          if (Array.isArray(list)) {
-            var h = fastHash(JSON.stringify(list));
-            if (h !== lastKnownHash) {
-              lastKnownHash = h;
+        // 2. Fallback static file check - ONLY on cold-start if local storage is completely empty!
+        // Never poll static file to overwrite live workforce on GitHub Pages!
+        if (!GH_TOKEN && (!root.EM || !Array.isArray(root.EM.data) || root.EM.data.length === 0)) {
+          var fallbackRes = await fetch('./data/employee_master.json?_t=' + Date.now(), { cache: 'no-store' });
+          if (fallbackRes.ok) {
+            var list = await fallbackRes.json();
+            if (Array.isArray(list) && list.length > 0) {
               var tombs2 = getLocalTombstones();
               var active = list.filter(function(r) {
                 return !isTombstoned(r && (r.emp_id || r.id || r.code), tombs2);
               });
-              handleIncomingSyncEvent({ action: 'replace', records: active, senderId: 'static_poller' });
+              handleIncomingSyncEvent({ action: 'replace', records: active, senderId: 'static_seed' });
             }
           }
         }
       } catch (_) {}
     }
   };
+
 
   // ── Global Hooks Integration ──
   function installHooks() {
@@ -1183,5 +1249,5 @@
     }
   }, 2500);
 
-  console.log('[ATPL-RealTime] Authoritative Employee Master Real-Time Sync Engine v3.2 ACTIVE.');
+  console.log('[ATPL-RealTime] Authoritative Employee Master Real-Time Sync Engine v3.3 ACTIVE (Anti-Revert Immunity & Instant Cross-Browser Mesh).');
 })(typeof window !== 'undefined' ? window : this);

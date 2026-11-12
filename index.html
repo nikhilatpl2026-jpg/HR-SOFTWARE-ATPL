@@ -9895,6 +9895,9 @@ window.emDeleteSelected = function() {
     try {
       fetch('/api/sync/employee-master', { method: 'DELETE' }).catch(function(){});
     } catch(_) {}
+    if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.clearAllEmployees === 'function') {
+      try { window.ATPLEmployeeMasterRealtimeEngine.clearAllEmployees(); } catch(_) {}
+    }
     if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.clearAllEmployees === 'function') {
       try { window.ATPLGoogleSync.clearAllEmployees(); } catch(_) {}
     }
@@ -9906,6 +9909,9 @@ window.emDeleteSelected = function() {
         body: JSON.stringify({ ids: deletedIds })
       }).catch(function(){});
     } catch(_) {}
+    if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.bulkDeleteEmployees === 'function') {
+      try { window.ATPLEmployeeMasterRealtimeEngine.bulkDeleteEmployees(deletedIds); } catch(_) {}
+    }
     if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.bulkDeleteEmployees === 'function') {
       try { window.ATPLGoogleSync.bulkDeleteEmployees(deletedIds); } catch(_) {}
     }
@@ -10067,6 +10073,9 @@ function emDeleteRow(idx) {
   try {
     fetch('/api/sync/employee-master/' + encodeURIComponent(e.emp_id), { method: 'DELETE' }).catch(function(){});
   } catch(_) {}
+  if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.deleteEmployee === 'function') {
+    window.ATPLEmployeeMasterRealtimeEngine.deleteEmployee(e.emp_id);
+  }
   if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.deleteEmployeeMaster === 'function') {
     window.ATPLGoogleSync.deleteEmployeeMaster(e.emp_id);
   }
@@ -11728,6 +11737,9 @@ function emSaveModal() {
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
   } catch(e) {}
+  if(window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.saveEmployees === 'function') {
+    window.ATPLEmployeeMasterRealtimeEngine.saveEmployees([savedEmp]);
+  }
   if(window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster==='function') {
     window.ATPLGoogleSync.upsertEmployeeMaster([savedEmp]);
   } else if(window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.pushMaster==='function') {
@@ -12531,6 +12543,9 @@ function emSaveBulk() {
       body: JSON.stringify({ records: window.EM.data, mode: 'upsert' })
     }).catch(function(){});
   } catch(_) {}
+  if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.saveEmployees === 'function') {
+    window.ATPLEmployeeMasterRealtimeEngine.saveEmployees(window.EM.data);
+  }
   if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.pushEmployeeMasterDriveVault === 'function') {
     window.ATPLGoogleSync.pushEmployeeMasterDriveVault(window.EM.data);
   }
@@ -16124,7 +16139,7 @@ else AInit();
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
 <script src="employee-master-confirmed-save-v1.js?v=20261109-drive-vault-v3&cb=20261109v3"></script>
-<script src="atpl-employee-master-realtime-engine.js?v=20261112-v11"></script>
+<script src="atpl-employee-master-realtime-engine.js?v=20261112-v13"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>

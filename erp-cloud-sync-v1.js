@@ -78,7 +78,6 @@
     }finally{syncing=false}
   }
   function mergeCloud(local,cloud){
-    // Exact authoritative cloud snapshot, while auto-migrating brand-new local records that have never been uploaded yet.
     var map={},order=[],toUpload=[];
     employeeRecords(cloud).forEach(function(r){
       var k=keyOf(r);if(!k||wasDeleted(k))return;
@@ -86,6 +85,10 @@
     });
     employeeRecords(local).forEach(function(r){
       var k=keyOf(r);if(!k||wasDeleted(k))return;
+      if(!map[k]){
+        order.push(k);
+        map[k]=cloudRecord(r);
+      } else {
         // Local edits (status, dol, bank, ifsc, wages) take precedence over stale cloud polls!
         var safe=Object.assign({},map[k],r);
         Object.keys(r).forEach(function(field){
@@ -94,24 +97,15 @@
           }
         });
         if(r.status) safe.status = r.status;
-        if(r.dol) safe.dol = r.dol;
+        if(r.status === 'ACTIVE') safe.dol = '';
+        else if(r.dol) safe.dol = r.dol;
         if(r.account_no) safe.account_no = r.account_no;
         if(r.ifsc) safe.ifsc = r.ifsc;
         if(r.bank_name) safe.bank_name = r.bank_name;
         map[k]=safe;
-        return;
-      // Keep locally saved employees visible until a confirmed explicit import.
-      order.push(k);
-      map[k]=cloudRecord(r);
-      if(!r._cloud_updated_at)toUpload.push(r);
+      }
     });
-    // Do not auto-upload orphan local rows on cloud refresh. A partial cloud list,
-    // missing old browser records or stale cached rows must never silently mutate
-    // the shared employee database. Explicit verified Save/Import is the write path.
-    if(toUpload.length){
-      console.warn('[ATPL Employee Master] '+toUpload.length+' local-only records retained; explicit verified cloud import required.');
-    }
-    return order.map(function(k){return map[k]})
+    return order.map(function(k){return map[k]});
   }
   function serialize(k,fn){
     var prev=chains[k]||Promise.resolve(),next=prev.catch(function(){}).then(fn),tracked;
