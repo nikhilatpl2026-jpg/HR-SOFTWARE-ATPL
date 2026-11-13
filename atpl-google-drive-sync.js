@@ -673,6 +673,11 @@
         applyEmployeeRecords(state.employees);
       }
 
+      // 3. Notify HR Docs + PF/ESIC Drive Vault watcher (zero extra polling)
+      if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.onDriveFilesMeta === 'function') {
+        try { window.ATPLDriveHrDolSync.onDriveFilesMeta(driveFiles); } catch (_) {}
+      }
+
       updateSyncBadge('ok');
       return { ok: true, version: localVersion, files: window.FILES || [] };
     } catch (err) {
@@ -1055,8 +1060,11 @@
     // 3. Hook HR Docs Manual Sync Button
     window.triggerManualHrSync = async function() {
       updateSyncBadge('syncing', '☁️ Syncing HR Documents…');
-      await pushEmployeeAndVaultToCloud();
-      await pollSyncState(true);
+      if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.syncHrDocs === 'function') {
+        await window.ATPLDriveHrDolSync.syncHrDocs(true);
+      }
+      await pollSyncState(false);
+      updateSyncBadge('ok');
       if (window.showToast) window.showToast('✅ HR Documents sabhi browsers me sync ho gaye!');
     };
   }
@@ -1164,6 +1172,9 @@
       }
     },
     uploadFile: async function(a, b, c) {
+      if (a === 'hr_doc' && b && typeof b === 'object' && window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.saveHrDoc === 'function') {
+        return await window.ATPLDriveHrDolSync.saveHrDoc(b);
+      }
       var mod = 'salary', name = '', rawBuf = null, explicitMime = '';
       if (a === 'salary' || a === 'hr_doc' || a === 'files' || a === 'challan' || a === 'pf' || a === 'esic') {
         mod = a;
@@ -1265,6 +1276,9 @@
       return { ok: true, count: list.length };
     },
     deleteFile: async function(module, idOrName) {
+      if (module === 'hr_doc' && idOrName && window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.deleteHrDoc === 'function') {
+        return await window.ATPLDriveHrDolSync.deleteHrDoc(idOrName);
+      }
       var name = '';
       if (idOrName !== undefined && idOrName !== null && idOrName !== '') {
         name = String(idOrName).trim();
@@ -1446,6 +1460,18 @@
         try { callGoogleBackend('deleteEmployeeMaster', { empCode: empCode, emp_id: empCode }).catch(function() {}); } catch (_) {}
       }
       return { ok: true, verified: true };
+    },
+    saveHrDoc: async function(docObj) {
+      if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.saveHrDoc === 'function') {
+        return await window.ATPLDriveHrDolSync.saveHrDoc(docObj);
+      }
+      return { ok: true };
+    },
+    deleteHrDoc: async function(id, docName) {
+      if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.deleteHrDoc === 'function') {
+        return await window.ATPLDriveHrDolSync.deleteHrDoc(id, docName);
+      }
+      return { ok: true };
     },
     subscribe: function(mod, cb) {
       if (!subscribers[mod]) subscribers[mod] = [];

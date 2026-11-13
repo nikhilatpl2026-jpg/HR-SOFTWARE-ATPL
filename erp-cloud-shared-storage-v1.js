@@ -542,8 +542,8 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
        var fbHrT=await root.ATPLFirebase.fetchAllHrTombstones();
        var mergedHr=getLocalHrTombstones(),hrTouched=false;
        (fbHrT||[]).forEach(function(t){
-         if(!t||!t.id)return;
-         var hk=String(t.id).toLowerCase(),hv=t.deleted_at||new Date().toISOString();
+         if(!t||!t.id||!t.deleted_at||!dateMs(t.deleted_at))return;
+         var hk=String(t.id).toLowerCase(),hv=t.deleted_at;
          if(!mergedHr[hk]||dateMs(hv)>dateMs(mergedHr[hk])){mergedHr[hk]=hv;hrTouched=true}
        });
        if(hrTouched){try{root.localStorage.setItem(HR_TOMB_KEY,JSON.stringify(mergedHr))}catch(_){}}
@@ -604,9 +604,9 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
     var local=await hrRows(),changed=0;
     var tombMap={};
     tombstonesList.forEach(function(t){
-      if(t&&t.id){
+      if(t&&t.id&&t.deleted_at&&dateMs(t.deleted_at)){
         var k=String(t.id).toLowerCase();
-        tombMap[k]=t.deleted_at||new Date().toISOString();
+        tombMap[k]=t.deleted_at;
       }
     });
     for(var j=0;j<local.length;j++){
@@ -896,6 +896,9 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
  async function cloudDeleteHr(id,docName){
    if(!id)return false;
    saveLocalHrTombstone(id);
+   if(root.ATPLDriveHrDolSync&&typeof root.ATPLDriveHrDolSync.deleteHrDoc==='function'){
+     try{await root.ATPLDriveHrDolSync.deleteHrDoc(id,docName);refreshHrUi();return true}catch(_){}
+   }
    await deleteHrDocFromDb(id);
    var ref=typeof root.hrDocGetDocs==='function'?root.hrDocGetDocs():null;
    if(Array.isArray(ref)){
@@ -927,6 +930,9 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
 
  var hrSyncFlight=null,hrSyncAt=0;
  async function syncSharedHr(force){
+   if(root.ATPLDriveHrDolSync&&typeof root.ATPLDriveHrDolSync.syncHrDocs==='function'){
+     try{var dr=await root.ATPLDriveHrDolSync.syncHrDocs(!!force);refreshHrUi();return !!(dr&&dr.ok)}catch(_){}
+   }
    if(!root.__atplFirebaseQuotaExhausted&&root.ATPLFirebase&&typeof root.ATPLFirebase.fetchAllHrDocs==='function'){
      try{
        var fbT=typeof root.ATPLFirebase.fetchAllHrTombstones==='function'?await root.ATPLFirebase.fetchAllHrTombstones():[];
@@ -963,6 +969,9 @@ var sharedSalaryAuthority = true; // Zero-Hang: Never chunk Excel files into 600
  }
 
  async function cloudSaveHr(doc){
+   if(root.ATPLDriveHrDolSync&&typeof root.ATPLDriveHrDolSync.saveHrDoc==='function'){
+     try{var sr=await root.ATPLDriveHrDolSync.saveHrDoc(doc);return !!(sr&&sr.ok)}catch(_){}
+   }
    try{
      if(root.location&&(root.location.hostname==='localhost'||root.location.hostname==='127.0.0.1'||/\.run\.app$/i.test(root.location.hostname))){
        fetch('/api/sync/hr-doc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(doc)}).catch(function(){});

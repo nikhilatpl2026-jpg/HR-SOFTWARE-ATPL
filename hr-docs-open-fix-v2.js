@@ -8,7 +8,7 @@ window.__ATPL_HRDOC_OPEN_FIX_V2__=1;
 var USERS='ATPL_UserAccess_V1', SESS='ATPL_UserSession_V5';
 function json(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function currentUser(){
-  var sess=json(sessionStorage.getItem(SESS)||'null',null);
+  var sess=json(sessionStorage.getItem(SESS)||localStorage.getItem(SESS)||'null',null);
   if(!sess||!sess.id)return null;
   var us=json(localStorage.getItem(USERS)||'[]',[]);
   var id=String(sess.id).toLowerCase();
@@ -55,7 +55,18 @@ function actionBar(f,index,total){
   var h=document.createElement('div');
   h.style.cssText='display:flex;align-items:center;gap:10px;width:100%;padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:2';
   var nm=document.createElement('div');nm.style.cssText='font-size:11px;font-weight:800;color:#0f172a;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1';nm.textContent=(total>1?(index+1)+'/'+total+' · ':'')+(f.name||'Attachment');h.appendChild(nm);
-  var b=document.createElement('button');b.type='button';b.textContent='↗ Open Original';b.style.cssText='border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:700;cursor:pointer;color:#0f172a';b.onclick=function(){try{var src=normalizeDataUrl(f.data, extOf(f), mimeOf(f));var w=window.open();if(w){w.opener=null;w.location=src}else{var a=document.createElement('a');a.href=src;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}}catch(e){alert('File open nahi ho saki: '+(e.message||e))}};h.appendChild(b);
+  function toBlobUrl(src, fallbackMime){
+    try{
+      if(!src||src.indexOf('data:')!==0)return src;
+      var comma=src.indexOf(',');if(comma<0)return src;
+      var meta=src.slice(5,comma),b64=src.slice(comma+1);
+      var mime=(meta.split(';')[0]||fallbackMime||'application/octet-stream');
+      var bin=atob(b64),arr=new Uint8Array(bin.length);
+      for(var i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([arr],{type:mime}));
+    }catch(_){return src;}
+  }
+  var b=document.createElement('button');b.type='button';b.textContent='↗ Open Original';b.style.cssText='border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:700;cursor:pointer;color:#0f172a';b.onclick=function(){try{var src=normalizeDataUrl(f.data, extOf(f), mimeOf(f)),openUrl=toBlobUrl(src,mimeOf(f));var w=window.open(openUrl,'_blank','noopener');if(!w){var a=document.createElement('a');a.href=openUrl;a.download=f.name||'Document';a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove()}}catch(e){alert('File open nahi ho saki: '+(e.message||e))}};h.appendChild(b);
   return h;
 }
 async function renderOne(f,index,total){
@@ -86,8 +97,32 @@ async function openFixed(id){
   if(!d){alert('Document record nahi mila. HR Documents page refresh karke try karo.');return}
   if(!canView(d)){alert('Is document ka access aapko assigned nahi hai.');return}
   var fs=filesFor(d);
-  if(!fs.length){alert('Is HR document ke saath attachment saved nahi hai.');return}
   var box=document.getElementById('hrFilePreview'),body=document.getElementById('hrPreviewBody'),title=document.getElementById('hrPreviewTitle');
+  if(!fs.length&&(d.has_attachment||d.drive_attachment_file)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
+    if(box&&body){
+      if(title)title.textContent=d.file_name||d.document_name||'Document Preview';
+      body.innerHTML='<div style="padding:30px;text-align:center">⏳ Downloading attachment from Google Drive…</div>';
+      box.style.display='flex';
+    }
+    try{
+      var hydrated=await window.ATPLDriveHrDolSync.ensureHrAttachment(d);
+      if(hydrated){
+        d=hydrated;
+        fs=filesFor(d);
+        if(typeof window.hrDocRender==='function')window.hrDocRender();
+      }
+    }catch(de){
+      console.warn('[HR Preview] Drive attachment fetch failed:',de);
+    }
+  }
+  if(!fs.length){
+    if(box&&body&&box.style.display==='flex'){
+      body.innerHTML='<div style="padding:35px;text-align:center;color:#b91c1c">⚠️ Attachment abhi available nahi hai. Sync HR Documents karke dubara try karo.</div>';
+    }else{
+      alert('Is HR document ke saath attachment saved nahi hai.');
+    }
+    return;
+  }
   if(!box||!body){alert('Document preview window load nahi hui. Ctrl+F5 karke try karo.');return}
   if(title)title.textContent=fs.length>1?'Attachments — '+(d.document_name||'HR Document'):(fs[0].name||d.document_name||'Document Preview');
   body.innerHTML='<div style="padding:30px;text-align:center">⏳ Opening attachment…</div>';box.style.display='flex';
@@ -99,8 +134,13 @@ openFixed.__atplOpenFixV2=true;
 function install(){
   if(typeof window.hrDocGetDocs!=='function'){setTimeout(install,100);return}
   window.hrDocOpenFile=openFixed;
-  window.hrDocOpenRaw=function(id){
-    var d=docs().find(function(x){return String(x&&x.id)===String(id)});if(!d||!canView(d))return;var f=filesFor(d)[0];if(!f)return;var a=document.createElement('a');a.href=f.data;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();
+  window.hrDocOpenRaw=async function(id){
+    var d=docs().find(function(x){return String(x&&x.id)===String(id)});if(!d||!canView(d))return;
+    var f=filesFor(d)[0];
+    if(!f&&(d.has_attachment||d.drive_attachment_file)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
+      try{d=await window.ATPLDriveHrDolSync.ensureHrAttachment(d)||d;f=filesFor(d)[0];}catch(_){}
+    }
+    if(!f)return;var a=document.createElement('a');a.href=f.data;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();
   };
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();

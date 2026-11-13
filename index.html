@@ -12966,7 +12966,7 @@ function hrDocToggleWindow(){
     ev.preventDefault();
     var id=document.getElementById('hrDocId').value||('HRD-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)),old=DOCS.find(function(x){return x.id===id;})||{},f=document.getElementById('hrDocFile').files[0];
     var finish=function(file){
-      var d={id:id,employee_code:old.employee_code||'',employee_name:old.employee_name||'',doc_type:document.getElementById('hrDocType').value,document_name:document.getElementById('hrDocName').value.trim(),holder:(document.getElementById('hrDocHolder')||{}).value||'',reference_no:(document.getElementById('hrDocRefNo')||{}).value||'',certificate_no:(document.getElementById('hrDocCertNo')||{}).value||'',issuing_authority:(document.getElementById('hrDocAuthority')||{}).value||'',location:(document.getElementById('hrDocLocation')||{}).value||'',validity_period:(document.getElementById('hrDocValidity')||{}).value||'',issue_date:document.getElementById('hrDocIssueDate').value,last_renewal_date:(document.getElementById('hrDocLastRenewalDate')||{}).value||'',retraining_date:document.getElementById('hrDocRetrainDate').value,expiry_date:document.getElementById('hrDocExpiryDate').value,alert_days:Number(document.getElementById('hrDocAlertDays').value),remarks:document.getElementById('hrDocRemarks').value.trim(),file_name:file?file.name:(old.file_name||''),file_type:file?file.type:(old.file_type||''),file_data:file?file.data:(old.file_data||null),updated_at:new Date().toISOString()};
+      var d={id:id,employee_code:old.employee_code||'',employee_name:old.employee_name||'',doc_type:document.getElementById('hrDocType').value,document_name:document.getElementById('hrDocName').value.trim(),holder:(document.getElementById('hrDocHolder')||{}).value||'',reference_no:(document.getElementById('hrDocRefNo')||{}).value||'',certificate_no:(document.getElementById('hrDocCertNo')||{}).value||'',issuing_authority:(document.getElementById('hrDocAuthority')||{}).value||'',location:(document.getElementById('hrDocLocation')||{}).value||'',validity_period:(document.getElementById('hrDocValidity')||{}).value||'',issue_date:document.getElementById('hrDocIssueDate').value,last_renewal_date:(document.getElementById('hrDocLastRenewalDate')||{}).value||'',retraining_date:document.getElementById('hrDocRetrainDate').value,expiry_date:document.getElementById('hrDocExpiryDate').value,alert_days:Number(document.getElementById('hrDocAlertDays').value),remarks:document.getElementById('hrDocRemarks').value.trim(),file_name:file?file.name:(old.file_name||''),file_type:file?file.type:(old.file_type||''),file_data:file?file.data:(old.file_data||null),file_data_list:file?[{name:file.name,type:file.type,data:file.data}]:(old.file_data_list||null),has_attachment:!!(file||old.file_data||(old.file_data_list&&old.file_data_list.length)||old.has_attachment||old.drive_attachment_file),drive_attachment_file:file?'':(old.drive_attachment_file||''),attachment_updated_at:file?new Date().toISOString():(old.attachment_updated_at||''),attachment_names:file?[file.name]:(old.attachment_names||null),assigned_user_id:old.assigned_user_id||'',assigned_user_name:old.assigned_user_name||'',visibility:old.visibility||'all',created_by:old.created_by||'',created_by_name:old.created_by_name||'',updated_at:new Date().toISOString()};
       if(!d.document_name){alert('Document / Training Name required hai.');return;}
       window.hrDocPut(d,function(){
         var i=DOCS.findIndex(function(x){return x.id===id;});
@@ -13021,10 +13021,10 @@ function hrDocToggleWindow(){
       showToast('🗑 Document delete ho gaya.');
     });
   }
-  async function openFile(id){var d=DOCS.find(function(x){return x.id===id;});if(!d||!d.file_data)return;var box=document.getElementById('hrFilePreview'),body=document.getElementById('hrPreviewBody'),title=document.getElementById('hrPreviewTitle');if(!box||!body)return;title.textContent=d.file_name||d.document_name||'Document Preview';body.innerHTML='<div style="padding:30px">⏳ Opening…</div>';box.style.display='flex';var ext=(d.file_name||'').split('.').pop().toLowerCase();try{if(ext==='pdf'){body.innerHTML='<iframe src="'+d.file_data+'"></iframe>';}else if(['jpg','jpeg','png','webp','gif','bmp'].indexOf(ext)>=0){body.innerHTML='<img src="'+d.file_data+'">';}else if(ext==='txt'){var txt=await (await fetch(d.file_data)).text();body.innerHTML='<pre>'+esc(txt)+'</pre>';}else if(ext==='xlsx'||ext==='xls'){var ab=await (await fetch(d.file_data)).arrayBuffer(),wb=XLSX.read(ab,{type:'array'}),html='';wb.SheetNames.forEach(function(sn){html+='<h3 style="margin:10px 0">'+esc(sn)+'</h3>'+XLSX.utils.sheet_to_html(wb.Sheets[sn]);});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:15px">'+html+'</div>';}else if(ext==='docx'){if(typeof mammoth==='undefined')throw new Error('DOCX preview engine unavailable');var ab=await (await fetch(d.file_data)).arrayBuffer(),r=await mammoth.convertToHtml({arrayBuffer:ab});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:30px;line-height:1.6">'+r.value+'</div>';}else{body.innerHTML='<div style="padding:30px;text-align:center">Is file type ka in-browser preview available nahi hai.</div>';}}catch(e){body.innerHTML='<div style="padding:30px;color:#b91c1c">⚠️ Preview error: '+esc(e.message||e)+'</div>';}}
+  async function openFile(id){var d=DOCS.find(function(x){return x.id===id;});if(!d)return;if(!d.file_data&&(d.has_attachment||d.drive_attachment_file)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){try{d=await window.ATPLDriveHrDolSync.ensureHrAttachment(d)||d;}catch(_){}}if(!d.file_data)return;var box=document.getElementById('hrFilePreview'),body=document.getElementById('hrPreviewBody'),title=document.getElementById('hrPreviewTitle');if(!box||!body)return;title.textContent=d.file_name||d.document_name||'Document Preview';body.innerHTML='<div style="padding:30px">⏳ Opening…</div>';box.style.display='flex';var ext=(d.file_name||'').split('.').pop().toLowerCase();try{if(ext==='pdf'){body.innerHTML='<iframe src="'+d.file_data+'"></iframe>';}else if(['jpg','jpeg','png','webp','gif','bmp'].indexOf(ext)>=0){body.innerHTML='<img src="'+d.file_data+'">';}else if(ext==='txt'){var txt=await (await fetch(d.file_data)).text();body.innerHTML='<pre>'+esc(txt)+'</pre>';}else if(ext==='xlsx'||ext==='xls'){var ab=await (await fetch(d.file_data)).arrayBuffer(),wb=XLSX.read(ab,{type:'array'}),html='';wb.SheetNames.forEach(function(sn){html+='<h3 style="margin:10px 0">'+esc(sn)+'</h3>'+XLSX.utils.sheet_to_html(wb.Sheets[sn]);});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:15px">'+html+'</div>';}else if(ext==='docx'){if(typeof mammoth==='undefined')throw new Error('DOCX preview engine unavailable');var ab=await (await fetch(d.file_data)).arrayBuffer(),r=await mammoth.convertToHtml({arrayBuffer:ab});body.innerHTML='<div style="background:#fff;width:100%;height:100%;overflow:auto;padding:30px;line-height:1.6">'+r.value+'</div>';}else{body.innerHTML='<div style="padding:30px;text-align:center">Is file type ka in-browser preview available nahi hai.</div>';}}catch(e){body.innerHTML='<div style="padding:30px;color:#b91c1c">⚠️ Preview error: '+esc(e.message||e)+'</div>';}}
   function openRaw(id){var d=DOCS.find(function(x){return x.id===id;});if(!d||!d.file_data)return;var a=document.createElement('a');a.href=d.file_data;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();}
   function closePreview(){var b=document.getElementById('hrFilePreview');if(b)b.style.display='none';var body=document.getElementById('hrPreviewBody');if(body)body.innerHTML='';}
-  window.hrDocOpenForm=openForm;window.hrDocCloseForm=closeForm;window.hrDocSave=save;window.hrDocEdit=edit;window.hrDocDelete=remove;window.hrDocOpenFile=openFile;window.hrDocOpenRaw=openRaw;window.hrDocClosePreview=closePreview;window.hrDocRender=render;window.hrDocCheckAlerts=checkAlerts;window.hrDocRequestNotify=requestNotify;window.hrDocAddType=addType;window.hrDocAutoReadFile=autoReadFile;window.hrDocShowAlerts=showAlerts;window.hrDocGetDocs=function(){return DOCS;};window.hrDocPut=put;window.hrDocStatus=status;window.dateText=dateText;
+  window.hrDocOpenForm=openForm;window.hrDocCloseForm=closeForm;window.hrDocSave=save;window.hrDocEdit=edit;window.hrDocDelete=remove;window.hrDocOpenFile=openFile;window.hrDocOpenRaw=openRaw;window.hrDocClosePreview=closePreview;window.hrDocRender=render;window.hrDocCheckAlerts=checkAlerts;window.hrDocRequestNotify=requestNotify;window.hrDocAddType=addType;window.hrDocAutoReadFile=autoReadFile;window.hrDocShowAlerts=showAlerts;window.hrDocGetDocs=function(){return DOCS;};window.hrDocReplaceDocs=function(next){DOCS=Array.isArray(next)?next.slice():[];};window.hrDocPut=put;window.hrDocStatus=status;window.dateText=dateText;
   document.addEventListener('DOMContentLoaded',function(){refreshTypeOptions('HR Policy');var f=document.getElementById('hrDocTypeFilter');if(f)getTypes().forEach(function(x){var o=document.createElement('option');o.value=x;o.textContent=x;f.appendChild(o);});load(function(){render();notifyStatus();setTimeout(function(){checkAlerts(false);},700);});var m=document.getElementById('hrDocModal');if(m)m.addEventListener('click',function(e){if(e.target===m)closeForm();});});
   var oldGoPage=window.goPage;window.goPage=function(name){if(typeof oldGoPage==='function')oldGoPage(name);if(name==='hrdocs'){fillList();render();updateBadge();}};
   setInterval(function(){if(DOCS.length)checkAlerts(false);},3600000);
@@ -14064,8 +14064,8 @@ var escF=window.esc||function(v){return String(v==null?'':v).replace(/[&<>"']/g,
 var dateText=window.dateText||function(v){if(!v)return '—';var d=new Date(v+'T00:00:00');return isNaN(d.getTime())?escF(v):String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();};
 function getDocs(){return window.hrDocGetDocs?window.hrDocGetDocs():[]}
 function putDoc(d,done){if(window.hrDocPut)window.hrDocPut(d,done);else if(done)done()}
-function hasFiles(d){return !!((d.file_data_list&&d.file_data_list.length)||d.file_data)}
-function fileList(d){return d.file_data_list&&d.file_data_list.length?d.file_data_list:(d.file_data?[{name:d.file_name||'Attachment',data:d.file_data,type:d.file_type||''}]:[])}
+function hasFiles(d){return !!((d.file_data_list&&d.file_data_list.length)||d.file_data||d.has_attachment||d.drive_attachment_file)}
+function fileList(d){if(d.file_data_list&&d.file_data_list.length)return d.file_data_list;if(d.file_data)return [{name:d.file_name||'Attachment',data:d.file_data,type:d.file_type||''}];if((d.has_attachment||d.drive_attachment_file)&&d.file_name){return String(d.file_name).split(' + ').map(function(n){return {name:n,type:d.file_type||'',remote:true};});}return []}
 function readData(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res({name:f.name,type:f.type||'application/octet-stream',data:r.result})};r.onerror=rej;r.readAsDataURL(f)})}
 window.hrDocAttachFiles=async function(id,input){
   var files=Array.from((input&&input.files)||[]);if(!files.length)return;
@@ -14074,7 +14074,7 @@ window.hrDocAttachFiles=async function(id,input){
   try{
     if(typeof window.showToast==='function')window.showToast('📎 Attachment save ho raha hai…');
     var list=[];for(var i=0;i<files.length;i++)list.push(await readData(files[i]));
-    d.file_data_list=list;d.file_data=list[0].data;d.file_name=list.map(function(x){return x.name}).join(' + ');d.file_type=list[0].type;d.updated_at=new Date().toISOString();
+    d.file_data_list=list;d.file_data=list[0].data;d.file_name=list.map(function(x){return x.name}).join(' + ');d.file_type=list[0].type;d.has_attachment=true;d.drive_attachment_file='';d.attachment_names=list.map(function(x){return x.name});d.attachment_updated_at=new Date().toISOString();d.updated_at=d.attachment_updated_at;
     putDoc(d,function(){docs[idx]=d;window.hrDocRender();if(typeof window.showToast==='function')window.showToast('✅ '+list.length+' attachment'+(list.length>1?'s':'')+' save ho gaye.');});
   }catch(e){alert('Attachment save nahi ho saki.\n\n'+(e.message||e));}
 };
@@ -14106,8 +14106,8 @@ function patchSave(){
  var save=function(e){
   e.preventDefault();var id=Q('hrDocId').value||('HRD-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)),docs=getDocs(),old=docs.find(function(x){return String(x.id)===String(id)})||{},input=Q('hrDocFile'),selected=Array.from(input?.files||[]);
   Promise.all(selected.map(readData)).then(function(files){
-    var existing=fileList(old),use=files.length?files:existing;
-    var d={id:id,employee_code:old.employee_code||'',employee_name:old.employee_name||'',doc_type:Q('hrDocType').value,document_name:Q('hrDocName').value.trim(),holder:Q('hrDocHolder').value||'',reference_no:Q('hrDocRefNo').value||'',certificate_no:Q('hrDocCertNo').value||'',issuing_authority:Q('hrDocAuthority').value||'',location:Q('hrDocLocation').value||'',validity_period:Q('hrDocValidity').value||'',issue_date:Q('hrDocIssueDate').value,last_renewal_date:Q('hrDocLastRenewalDate')?.value||'',retraining_date:Q('hrDocRetrainDate').value,expiry_date:Q('hrDocExpiryDate').value,alert_days:Number(Q('hrDocAlertDays').value),remarks:Q('hrDocRemarks').value.trim(),file_name:use.length?use.map(function(x){return x.name}).join(' + '):'',file_type:use.length?use[0].type:'',file_data:use.length?use[0].data:null,file_data_list:use.length?use:null,updated_at:new Date().toISOString()};
+    var existing=fileList(old),use=files.length?files:existing,hasInlineUse=use.some(function(x){return !!(x&&x.data);});
+    var d={id:id,employee_code:old.employee_code||'',employee_name:old.employee_name||'',doc_type:Q('hrDocType').value,document_name:Q('hrDocName').value.trim(),holder:Q('hrDocHolder').value||'',reference_no:Q('hrDocRefNo').value||'',certificate_no:Q('hrDocCertNo').value||'',issuing_authority:Q('hrDocAuthority').value||'',location:Q('hrDocLocation').value||'',validity_period:Q('hrDocValidity').value||'',issue_date:Q('hrDocIssueDate').value,last_renewal_date:Q('hrDocLastRenewalDate')?.value||'',retraining_date:Q('hrDocRetrainDate').value,expiry_date:Q('hrDocExpiryDate').value,alert_days:Number(Q('hrDocAlertDays').value),remarks:Q('hrDocRemarks').value.trim(),file_name:use.length?use.map(function(x){return x.name}).join(' + '):'',file_type:use.length?use[0].type:'',file_data:hasInlineUse?(use[0].data||null):null,file_data_list:hasInlineUse?use:null,has_attachment:!!(files.length||hasInlineUse||old.has_attachment||old.drive_attachment_file),drive_attachment_file:files.length?'':(old.drive_attachment_file||''),attachment_updated_at:files.length?new Date().toISOString():(old.attachment_updated_at||''),updated_at:new Date().toISOString()};
     if(!d.document_name){alert('Document / Training Name required hai.');return}
     putDoc(d,function(){
       var idx=docs.findIndex(function(x){return String(x.id)===String(id)});
@@ -14513,8 +14513,10 @@ window.syncAllAtplModules = async function(isInteractive) {
       }
     }
 
-    // 2. Sync HR Documents from Cloud
-    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+    // 2. Sync HR Documents from Cloud (Google Drive + Sheet primary)
+    if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.syncHrDocs === 'function') {
+      try { await window.ATPLDriveHrDolSync.syncHrDocs(true); } catch(_) {}
+    } else if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
       try {
         var hrDocs = await window.ATPLFirebase.fetchAllHrDocs();
         if (Array.isArray(hrDocs) && typeof window.hrDocSetDocs === 'function') {
@@ -16140,8 +16142,8 @@ else AInit();
 <script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261019v12"></script>
 <script src="hr-workplace.js?v=20261109-live-sync-v2&cb=20261109v3"></script>
-<script src="hr-docs-activity-v1.js?v=20260919-stability1&cb=20261019v12"></script>
-<script src="hr-docs-open-fix-v2.js?v=20260912-1&cb=20261019v12"></script>
+<script src="hr-docs-activity-v1.js?v=20261113-drive-v1&cb=20261113v15"></script>
+<script src="hr-docs-open-fix-v2.js?v=20261113-drive-v1&cb=20261113v15"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>
 <!-- Legacy permanent-sync replaced by Google Drive Sync -->
 <!-- AI Commander & Smart Chat Assistant -->
@@ -16150,16 +16152,17 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-cloud-sync-v1.js?v=20261113-em-fix-v1"></script>
-<script src="atpl-firebase-bundle.js?v=20261102-zerofreeze-v1"></script>
+<script src="atpl-firebase-bundle.js?v=20261113-drive-v1"></script>
 <script src="atpl-github-cloud-sync-v1.js?v=20261029-v2"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20261102-zerofreeze-v1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20261113-drive-v1"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261113-em-fix-v1"></script>
+<script src="atpl-google-drive-sync.js?v=20261113-drive-v1"></script>
+<script src="atpl-drive-hr-dol-sync-v1.js?v=20261113-drive-v1"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
-<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261019v12"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261113v15-drive"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
@@ -16186,7 +16189,9 @@ window.atplTriggerCrossSync = async function(manual) {
   }else if(typeof window.atplForceSyncAllFiles==="function"){
     addJob("All Files",function(){return window.atplForceSyncAllFiles()});
   }
-  if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.syncHrNow==="function"){
+  if(window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.syncHrDocs==="function"){
+    addJob("HR Documents",function(){return window.ATPLDriveHrDolSync.syncHrDocs(true)});
+  }else if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.syncHrNow==="function"){
     addJob("HR Documents",function(){return window.ATPLCloudSharedStorageV1.syncHrNow(true)});
   }
   if(window.ATPLDurableEverythingV1&&typeof window.ATPLDurableEverythingV1.sync==="function"){
@@ -16494,9 +16499,12 @@ window.triggerManualHrSync = async function() {
   var btn = document.getElementById('btnSyncHrDocs');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Syncing...'; }
   try {
-    if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
-      await window.ATPLCloudSharedStorageV1.syncHrNow(true);
-    }
+    if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.syncHrDocs === 'function') {
+      await window.ATPLDriveHrDolSync.syncHrDocs(true);
+    } else {
+      if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.syncHrNow === 'function') {
+        await window.ATPLCloudSharedStorageV1.syncHrNow(true);
+      }
     if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
       var fbDocs = await window.ATPLFirebase.fetchAllHrDocs();
       if (window.ATPLCloudSharedStorageV1 && typeof window.ATPLCloudSharedStorageV1.handleFirebaseHrUpdate === 'function') {
@@ -16514,6 +16522,7 @@ window.triggerManualHrSync = async function() {
     }
     if (window.ATPLFirebase && typeof window.ATPLFirebase.subscribeHrTombstones === 'function') {
       try { window.__hrTombsSub = window.ATPLFirebase.subscribeHrTombstones(function(){}); } catch(_) {}
+    }
     }
     if (typeof window.hrDocRender === 'function') window.hrDocRender();
     var docs = typeof window.hrDocGetDocs === 'function' ? window.hrDocGetDocs() : [];
@@ -16557,8 +16566,10 @@ window.triggerManualCrossBrowserSync = async function() {
       }
     }
 
-    // 2. Sync HR Documents from Cloud
-    if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
+    // 2. Sync HR Documents from Cloud (Google Drive + Sheet primary)
+    if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.syncHrDocs === 'function') {
+      try { await window.ATPLDriveHrDolSync.syncHrDocs(true); } catch(_) {}
+    } else if (window.ATPLFirebase && typeof window.ATPLFirebase.fetchAllHrDocs === 'function') {
       try {
         var hrDocs = await window.ATPLFirebase.fetchAllHrDocs();
         if (Array.isArray(hrDocs) && typeof window.hrDocSetDocs === 'function') {

@@ -6,19 +6,29 @@
   var saveHrDocFb = async function(docObj) {
     if (!docObj) return true;
     docObj = Object.assign({}, docObj, { updated_at:String(docObj.updated_at||new Date().toISOString()) });
-    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.uploadFile === 'function') {
-      try { await window.ATPLGoogleSync.uploadFile('hr_doc', docObj); } catch(_) {}
+    if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.saveHrDoc === 'function') {
+      try { await window.ATPLDriveHrDolSync.saveHrDoc(docObj); } catch(_) {}
     }
     return true;
   };
-  var deleteHrDocFb = async function(id) {
-    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.deleteFile === 'function') {
-      try { await window.ATPLGoogleSync.deleteFile('hr_doc', id); } catch(_) {}
+  var deleteHrDocFb = async function(id, docName) {
+    if (window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.deleteHrDoc === 'function') {
+      try { await window.ATPLDriveHrDolSync.deleteHrDoc(id, docName); } catch(_) {}
     }
     return true;
   };
   var fetchAllHrDocsFb = async function() {
     return (typeof window.hrDocGetDocs === 'function') ? window.hrDocGetDocs() : [];
+  };
+  var fetchAllHrTombstonesFb = async function() {
+    var tombs = {};
+    try { tombs = JSON.parse(localStorage.getItem('ATPL_HR_TOMBSTONES_V2') || '{}') || {}; } catch(_) {}
+    return Object.keys(tombs).filter(function(k) {
+      var ts = typeof tombs[k] === 'string' ? Date.parse(tombs[k]) : Number(tombs[k] || 0);
+      return isFinite(ts) && ts > 0;
+    }).map(function(k) {
+      return { id: k, deleted_at: typeof tombs[k] === 'string' ? tombs[k] : new Date(Number(tombs[k])).toISOString() };
+    });
   };
   var subscribeHrDocsFb = function() { return noop; };
   var subscribeHrTombstonesFb = function() { return noop; };
@@ -85,7 +95,7 @@
       deleteHrDoc:deleteHrDocFb,
       decodeHrPayload:decodeHrDocFb,
       fetchAllHrDocs:fetchAllHrDocsFb,
-      fetchAllHrTombstones:fetchAllHrDocsFb,
+      fetchAllHrTombstones:fetchAllHrTombstonesFb,
       subscribeHrDocs:subscribeHrDocsFb,
       subscribeHrTombstones:subscribeHrTombstonesFb,
       safeHrKey:hrKey,

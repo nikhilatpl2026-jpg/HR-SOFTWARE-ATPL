@@ -1,5 +1,5 @@
 // ATPL Service Worker - Cache Busting Auto-Update
-const CACHE_NAME = 'atpl-cache-v20261113-v14';
+const CACHE_NAME = 'atpl-cache-v20261113-v15';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
