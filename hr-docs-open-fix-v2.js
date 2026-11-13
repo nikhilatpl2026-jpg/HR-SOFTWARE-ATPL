@@ -98,7 +98,7 @@ async function openFixed(id){
   if(!canView(d)){alert('Is document ka access aapko assigned nahi hai.');return}
   var fs=filesFor(d);
   var box=document.getElementById('hrFilePreview'),body=document.getElementById('hrPreviewBody'),title=document.getElementById('hrPreviewTitle');
-  if(!fs.length&&(d.has_attachment||d.drive_attachment_file)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
+  if(!fs.length&&(d.has_attachment||d.drive_attachment_file||d.file_name)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
     if(box&&body){
       if(title)title.textContent=d.file_name||d.document_name||'Document Preview';
       body.innerHTML='<div style="padding:30px;text-align:center">⏳ Downloading attachment from Google Drive…</div>';
@@ -137,7 +137,7 @@ function install(){
   window.hrDocOpenRaw=async function(id){
     var d=docs().find(function(x){return String(x&&x.id)===String(id)});if(!d||!canView(d))return;
     var f=filesFor(d)[0];
-    if(!f&&(d.has_attachment||d.drive_attachment_file)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
+    if(!f&&(d.has_attachment||d.drive_attachment_file||d.file_name)&&window.ATPLDriveHrDolSync&&typeof window.ATPLDriveHrDolSync.ensureHrAttachment==='function'){
       try{d=await window.ATPLDriveHrDolSync.ensureHrAttachment(d)||d;f=filesFor(d)[0];}catch(_){}
     }
     if(!f)return;var a=document.createElement('a');a.href=f.data;a.target='_blank';a.rel='noopener';document.body.appendChild(a);a.click();a.remove();

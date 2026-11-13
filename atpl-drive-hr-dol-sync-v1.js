@@ -423,7 +423,21 @@
       var winner = dTs >= oldTs ? d : old;
       var donor = dTs >= oldTs ? old : d;
       var merged = Object.assign({}, donor, winner);
-      // Preserve local attachment bytes ONLY if winner is metadata-only and attachment wasn't replaced
+      // Preserve attachment metadata & local attachment bytes safely across clients
+      if (!winner.file_name && donor.file_name && !winner._attachment_removed) {
+        merged.file_name = donor.file_name;
+        merged.file_type = winner.file_type || donor.file_type || '';
+      }
+      if (!winner.has_attachment && donor.has_attachment && !winner._attachment_removed) {
+        merged.has_attachment = true;
+      }
+      if (!winner.drive_attachment_file && donor.drive_attachment_file && !winner._attachment_removed) {
+        merged.drive_attachment_file = donor.drive_attachment_file;
+      }
+      if ((!Array.isArray(winner.attachment_names) || !winner.attachment_names.length) && Array.isArray(donor.attachment_names) && donor.attachment_names.length && !winner._attachment_removed) {
+        merged.attachment_names = donor.attachment_names;
+        merged.attachment_count = donor.attachment_count || donor.attachment_names.length;
+      }
       if (!hrHasInlineAttachment(winner) && hrHasInlineAttachment(donor)) {
         var sameAtt = (!winner.file_name || winner.file_name === donor.file_name) &&
                       (!winner.attachment_updated_at || winner.attachment_updated_at === donor.attachment_updated_at || !donor.attachment_updated_at);
@@ -435,7 +449,7 @@
           delete merged.file_data_list;
         }
       }
-      if (!merged.drive_attachment_file && (hrHasInlineAttachment(merged) || merged.has_attachment)) {
+      if (!merged.drive_attachment_file && (hrHasInlineAttachment(merged) || merged.has_attachment || merged.file_name)) {
         merged.drive_attachment_file = hrAttFileName(merged.id);
         merged.has_attachment = true;
       }
@@ -757,7 +771,8 @@
           var r = remoteById[dk];
           var dTs = dateMs(d.updated_at || d.created_at);
           var rTs = r ? dateMs(r.updated_at || r.created_at) : 0;
-          if (!r || dTs > rTs || pend[dk]) {
+          var attNeedsBackfill = hrHasInlineAttachment(d) && (!r || !r.has_attachment || !r.drive_attachment_file || !r.file_name);
+          if (!r || dTs > rTs || pend[dk] || attNeedsBackfill) {
             needVaultPush = true;
             docsToUpload.push(d);
           }
@@ -1177,7 +1192,75 @@
         }
       }
     }
+    // Fallback lookup against live Drive manifest in case driveFileName varied on legacy record
+    try {
+      var st = await callGas('getSyncState', {}, 20000);
+      var stFiles = (st && (st.files || st.driveFiles));
+      if (st && st.ok && Array.isArray(stFiles)) {
+        var hashPref = String(rec.hash || rec.fileHash || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 16);
+        var idPref = String(rec.id || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        var matched = stFiles.find(function(f) {
+          if (!f || !f.name) return false;
+          var n = String(f.name).toLowerCase();
+          if (n.indexOf('atpl_dol_orig_' + type + '_') !== 0) return false;
+          return (hashPref && n.indexOf(hashPref) >= 0) || (idPref && n.indexOf(idPref) >= 0);
+        });
+        if (matched && matched.name && candidates.indexOf(matched.name) < 0) {
+          var dl2 = await downloadJsonFromDrive(matched.name);
+          if (dl2 && dl2.found && dl2.data && dl2.data.base64) {
+            var bytes2 = b64ToUint8Array(dl2.data.base64);
+            if (bytes2 && bytes2.byteLength) {
+              return new Blob([bytes2], { type: dl2.data.mime || rec.mime || 'application/pdf' });
+            }
+          }
+        }
+      }
+    } catch (_) {}
     return null;
+  }
+
+  async function uploadDolOriginalOnly(rec, blobOrBuf) {
+    if (!rec || !rec.type || !rec.id || !blobOrBuf) return { ok: false };
+    var type = String(rec.type).toLowerCase();
+    var origName = rec.driveFileName || dolOrigFileName(type, rec);
+    return await queueWrite(type, async function() {
+      try {
+        var b64 = await blobOrBufToBase64(blobOrBuf);
+        if (!b64) return { ok: false };
+        await uploadJsonToDrive(origName, {
+          v: 1,
+          type: type,
+          id: rec.id,
+          hash: rec.hash || '',
+          name: rec.name || 'Challan',
+          mime: rec.mime || 'application/pdf',
+          size: Number(rec.size || blobOrBuf.size || blobOrBuf.byteLength || 0),
+          period: rec.period || '',
+          updatedAt: new Date().toISOString(),
+          base64: b64
+        });
+        var vFile = dolVaultFileName(type);
+        var dl = await downloadJsonFromDrive(vFile);
+        var remoteVault = (dl.data && typeof dl.data === 'object') ? dl.data : { version: 1, type: type, records: [], tombstones: {} };
+        var patched = dolStripLocalBlobs(Object.assign({}, rec, {
+          driveFileName: origName,
+          hasOriginalFile: true,
+          updatedAt: rec.updatedAt || new Date().toISOString()
+        }));
+        var merged = dolMergeRecords(remoteVault.records || [], [patched], remoteVault.tombstones || {});
+        await uploadJsonToDrive(vFile, {
+          version: 1,
+          type: type,
+          updatedAt: new Date().toISOString(),
+          records: merged,
+          tombstones: remoteVault.tombstones || {}
+        });
+        mirrorDolMetaToSheet(type, patched).catch(function() {});
+        return { ok: true, driveFileName: origName };
+      } catch (e) {
+        return { ok: false, error: e && e.message || String(e) };
+      }
+    });
   }
 
   async function listDolRecords(type, localRows) {
@@ -1355,6 +1438,7 @@
     updateDolRecord: updateDolRecord,
     deleteDolRecord: deleteDolRecord,
     downloadDolOriginalBlob: downloadDolOriginalBlob,
+    uploadDolOriginalOnly: uploadDolOriginalOnly,
     listDolRecords: listDolRecords,
     dolIsTombstoned: dolIsTombstoned,
     onDriveFilesMeta: onDriveFilesMeta,

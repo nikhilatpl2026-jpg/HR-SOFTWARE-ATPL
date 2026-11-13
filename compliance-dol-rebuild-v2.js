@@ -517,14 +517,16 @@ async function recordBlob(type,rec,progress){
       rec=Object.assign({},rec,recovered.record,{sharedAuthoritative:true,sharedSource:'historical'});
     }
   }
+  var drv=driveDolApi();
   if(blob){
-    if(rec.sharedAuthoritative&&rec.sharedSource!=='dedicated'){
+    if(drv&&typeof drv.uploadDolOriginalOnly==='function'&&!rec.hasOriginalFile){
+      drv.uploadDolOriginalOnly(rec,blob).catch(function(){});
+    }else if(rec.sharedAuthoritative&&rec.sharedSource!=='dedicated'&&!drv){
       if(progress)progress(4);
       try{await promoteHistoricalOriginal(type,rec,blob)}catch(e){console.warn('Open/Download promotion deferred',e)}
     }
     return blob
   }
-  var drv=driveDolApi();
   if(drv&&typeof drv.downloadDolOriginalBlob==='function'){
     try{
       if(progress)progress(15);
@@ -543,9 +545,10 @@ async function recordBlob(type,rec,progress){
       return blob;
     }
   }
-  if(v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||rec.sharedSource==='dedicated')){
+  var allowLegacyV4=(cloudMode[type]==='v4'||cloudMode[type]==='supabase'||(!drv&&v&&typeof v.supported==='function'&&v.supported()===true));
+  if(allowLegacyV4&&v&&typeof v.fileBlob==='function'&&(rec.hasOriginalFile||rec.sharedSource==='dedicated')){
     try{blob=await bounded(v.fileBlob(rec,progress),45000,'Original challan download')}catch(e){
-      if(!/not found|unavailable|missing/i.test(String(e&&e.message||e||'')))throw e;
+      if(!/not found|unavailable|missing|unknown action|DOL_V4_UNAVAILABLE/i.test(String(e&&e.message||e||'')))throw e;
       blob=null
     }
     if(blob){
@@ -1261,6 +1264,10 @@ async function refresh(type){
         r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';
         r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile);
         if(!r.driveFileName&&old.driveFileName)r.driveFileName=old.driveFileName;
+        if(Array.isArray(old.ids)&&old.ids.length&&(!Array.isArray(r.ids)||old.ids.length>r.ids.length)){
+          r.ids=Array.from(new Set([].concat(r.ids||[],old.ids)));
+          if(r.ids.length)r.parseStatus='ready';
+        }
         if(old.period&&(!r.period||Date.parse(old.updatedAt||'')>Date.parse(r.updatedAt||''))){r.period=old.period;r.periodSource=old.periodSource||r.periodSource}
       }
       r.sharedAuthoritative=true;
@@ -1288,6 +1295,20 @@ async function refresh(type){
     }
     var promotable=rows.filter(function(r){return r.sharedSource==='historical'&&!r.hasOriginalFile&&!isAnyDeleteTombstoned(type,r)});
     if(promotable.length&&!(vaultApi()&&vaultApi().authority==='supabase')&&!driveDolApi())setTimeout(function(){repairHistoricalOriginals(type,false)},350);
+    if(pack.mode==='drive-sheets'&&drv&&typeof drv.uploadDolOriginalOnly==='function'){
+      var needDriveOrig=rows.filter(function(r){return (!r.hasOriginalFile||!r.driveFileName)&&!isAnyDeleteTombstoned(type,r)});
+      if(needDriveOrig.length){
+        setTimeout(async function(){
+          for(var oi=0;oi<needDriveOrig.length;oi++){
+            try{
+              var cand=needDriveOrig[oi],lb=await getStoredBlob(cand);
+              if(!lb){var recov=await findRecoverableLocalOriginal(type,cand);if(recov&&recov.blob)lb=recov.blob;}
+              if(lb){await drv.uploadDolOriginalOnly(cand,lb);await tick();}
+            }catch(_){}
+          }
+        },700);
+      }
+    }
     if(String(pack.mode||'').indexOf('v4')===0&&resurrected.length){
       setTimeout(async function(){
         var v=vaultApi(),api=durableApi();
@@ -1409,7 +1430,7 @@ function renderFiles(type){
       var match = yearRows.find(function(r){return String(r.period)===pKey});
       if(match){
         completeCount++;
-        var indexed=(match.ids||[]).length>0&&match.parseStatus!=='error', meta=indexed?((match.ids||[]).length+' IDs indexed'):'Indexed';
+        var indexed=(match.ids||[]).length>0&&match.parseStatus!=='error', meta=indexed?((match.ids||[]).length+' IDs indexed'):'⚠ Needs indexing';
         return '<div class="cd2-month-card complete" data-cd2-card-open="'+esc(match.id)+'" title="Click to view '+mName+' '+targetYear+' challan">'+
           '<div class="cd2-m-left">'+
             '<div class="cd2-m-num">'+mShort[idx]+'</div>'+
@@ -1766,7 +1787,7 @@ function syncCloudIndexes(type){
 
 async function upload(type,fileList){
   var files=Array.isArray(fileList)?fileList.slice():Array.from(fileList||[]);if(!files.length){setStatus(type,'No file selected',true);return}
-  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent='☁ Shared backend · local viewer cache';
+  await requestPersistentStorage();var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();
   if(!cloudLoginReady()){setStatus(type,'Login/cloud backend required before upload.',true);return}
   var pack,drv=driveDolApi();
   try{pack=await cloudRecords(type)}catch(e){
@@ -1956,9 +1977,12 @@ async function searchAsync(type,qs,box){
   pack=pack?mergeSearchPacks(type,qs,pack,local):local;
   var coverage=Array.isArray(pack.coverage)?pack.coverage:state[type].periods||[],unindexed=Array.isArray(pack.unindexed)?pack.unindexed:[],h='<table class="cd2-table"><thead><tr><th>ID / EMPLOYEE</th><th>LAST CONTRIBUTION / DOL</th><th>SOURCE & DETAILS</th><th>CONTRIBUTION TIMELINE</th></tr></thead><tbody>';
   qs.forEach(function(id){
-    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return unindexedBlocksDol(type,r,last)}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
-    if(!m.length){h+='<tr><td><b>'+esc(id)+'</b></td><td><span class="cd2-bad">No contribution record found in uploaded challans.</span></td><td>—</td><td>—</td></tr>';return}
-    var dol=unresolved.length?'<span class="cd2-warn">Set source month first</span>':blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference</div>';
+    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return unindexedBlocksDol(type,r,last)}),strictlyNewerBlocking=blocking.filter(function(r){return !r.period||(last&&String(r.period)>String(last))}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
+    if(!m.length){
+      var emptyMsg=blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-bad">No contribution record found in uploaded challans.</span>';
+      h+='<tr><td><b>'+esc(id)+'</b></td><td>'+emptyMsg+'</td><td>—</td><td>—</td></tr>';return
+    }
+    var dol=unresolved.length?'<span class="cd2-warn">Set source month first</span>':('<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference</div>'+(strictlyNewerBlocking.length?'<div style="font-size:8px;color:#b45309;margin-top:2px">⚠ '+strictlyNewerBlocking.length+' unindexed/undated challan(s) skipped</div>':''));
     var dt=latest?detailText(latest.details):'',src=latest?'<b>'+esc(latest.sourceChallan||'Saved challan')+'</b><div style="font-size:8px;color:#64748b;margin-top:3px">'+esc(dt||'Contribution found; amount detail not available in source format.')+'</div>':'—';
     h+='<tr><td><b>'+esc(id)+'</b>'+(name?'<div style="font-size:9px;color:#475569;margin-top:3px">'+esc(name)+'</div>':'')+'</td><td>'+dol+'</td><td>'+src+'</td><td><div class="cd2-months">'+(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+esc(later+' later uploaded month(s) checked; gaps ignored')+'</div></td></tr>'
   });

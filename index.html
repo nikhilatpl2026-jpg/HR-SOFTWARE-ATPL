@@ -15911,6 +15911,13 @@ function AFiles(d){
   if(!d)return [];
   if(Array.isArray(d.file_data_list) && d.file_data_list.length)return d.file_data_list;
   if(d.file_data)return [{name:d.file_name||'Attachment',data:d.file_data,type:d.file_type||''}];
+  if(d.has_attachment || d.drive_attachment_file || (d.file_name && String(d.file_name).trim())){
+    var names=Array.isArray(d.attachment_names) && d.attachment_names.length
+      ? d.attachment_names
+      : String(d.file_name || 'Attachment').split(' + ').filter(Boolean);
+    if(!names.length)names=['Attachment'];
+    return names.map(function(n){return {name:n,type:d.file_type||'',remote:true};});
+  }
   return [];
 }
 function ARead(f){
@@ -15984,7 +15991,12 @@ window.hrDocAttachFiles = async function(id,input){
     d.file_data=list[0].data;
     d.file_name=list.map(function(x){return x.name;}).join(' + ');
     d.file_type=list[0].type||'application/octet-stream';
-    d.updated_at=new Date().toISOString();
+    d.has_attachment=true;
+    d.drive_attachment_file='';
+    d.attachment_names=list.map(function(x){return x.name;});
+    d.attachment_count=list.length;
+    d.attachment_updated_at=new Date().toISOString();
+    d.updated_at=d.attachment_updated_at;
 
     var done=function(){
       if(typeof window.hrDocRender==='function')window.hrDocRender();
@@ -16119,6 +16131,11 @@ function AInit(){
       if(name==='hrdocs'){
         AInitFilters();
         setTimeout(ARender,80);
+        if(window.ATPLDriveHrDolSync && typeof window.ATPLDriveHrDolSync.syncHrDocs === 'function'){
+          window.ATPLDriveHrDolSync.syncHrDocs(false).then(function(){
+            try{ ARender(); }catch(_){}
+          }).catch(function(){});
+        }
       }
       return r;
     }
@@ -16142,8 +16159,8 @@ else AInit();
 <script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261019v12"></script>
 <script src="hr-workplace.js?v=20261109-live-sync-v2&cb=20261109v3"></script>
-<script src="hr-docs-activity-v1.js?v=20261113-drive-v1&cb=20261113v15"></script>
-<script src="hr-docs-open-fix-v2.js?v=20261113-drive-v1&cb=20261113v15"></script>
+<script src="hr-docs-activity-v1.js?v=20261113-drive-v2&cb=20261113v16"></script>
+<script src="hr-docs-open-fix-v2.js?v=20261113-drive-v2&cb=20261113v16"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>
 <!-- Legacy permanent-sync replaced by Google Drive Sync -->
 <!-- AI Commander & Smart Chat Assistant -->
@@ -16152,17 +16169,17 @@ else AInit();
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
 <script src="erp-cloud-sync-v1.js?v=20261113-em-fix-v1"></script>
-<script src="atpl-firebase-bundle.js?v=20261113-drive-v1"></script>
+<script src="atpl-firebase-bundle.js?v=20261113-drive-v2"></script>
 <script src="atpl-github-cloud-sync-v1.js?v=20261029-v2"></script>
-<script src="erp-cloud-shared-storage-v1.js?v=20261113-drive-v1"></script>
+<script src="erp-cloud-shared-storage-v1.js?v=20261113-drive-v2"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261113-drive-v1"></script>
-<script src="atpl-drive-hr-dol-sync-v1.js?v=20261113-drive-v1"></script>
+<script src="atpl-google-drive-sync.js?v=20261113-drive-v2"></script>
+<script src="atpl-drive-hr-dol-sync-v1.js?v=20261113-drive-v2"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
-<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261113v15-drive"></script>
+<script src="compliance-dol-rebuild-v2.js?v=20261015-opfs-stable-original-v2&cb=20261113v16-drive"></script>
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>

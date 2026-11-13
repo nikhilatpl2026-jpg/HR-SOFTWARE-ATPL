@@ -444,3 +444,76 @@ test('Google Drive + Sheet permanent cross-browser sync for HR Docs and PF/ESIC 
   browserA.cleanup();
   browserB.cleanup();
 });
+
+test("Regression checks: HR remote Open button, legacy attachment backfill, no getDOLFileInfo crash, DOL found even with unindexed file", async () => {
+  const backend = createMockGasBackend();
+  const browserA = createBrowserEnv("A2", backend);
+  const browserB = createBrowserEnv("B2", backend);
+
+  // 1. Verify index.html AFiles(d) recognizes remote Drive HR doc attachments (so Open button always renders)
+  const indexHtml = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const aFilesMatch = indexHtml.match(/function AFiles\(d\)\{[\s\S]*?return \[\];\s*\}/);
+  assert.ok(aFilesMatch, "AFiles(d) must exist in index.html");
+  const aFilesFn = new Function(aFilesMatch[0] + "; return AFiles;")();
+  const remoteOnlyHrDoc = {
+    id: "HRD-REM-1",
+    document_name: "Fire NOC",
+    file_name: "fire_noc.pdf",
+    has_attachment: true,
+    drive_attachment_file: "atpl_hr_doc_att_HRD-REM-1.json",
+    file_data: null,
+    file_data_list: null
+  };
+  const filesSeenInB = aFilesFn(remoteOnlyHrDoc);
+  assert.equal(filesSeenInB.length, 1, "AFiles(d) must report remote Drive attachment so Open button renders");
+  assert.equal(filesSeenInB[0].name, "fire_noc.pdf");
+
+  // 2. Legacy HR doc attachment auto-backfill from Browser A to Drive
+  const legacyDocA = {
+    id: "HRD-LEG-2",
+    document_name: "Factory License",
+    file_name: "license.pdf",
+    file_type: "application/pdf",
+    file_data: "data:application/pdf;base64,QkFD",
+    file_data_list: [{ name: "license.pdf", type: "application/pdf", data: "data:application/pdf;base64,QkFD" }],
+    updated_at: "2026-11-13T08:00:00.000Z"
+  };
+  // Pre-seed remote vault with stripped metadata only (missing attachment flag)
+  backend.drive.set("atpl_hr_docs_vault_v1.json", {
+    fileName: "atpl_hr_docs_vault_v1.json",
+    mimeType: "application/json",
+    updatedAt: "2026-11-13T08:00:00.000Z",
+    name: "atpl_hr_docs_vault_v1.json",
+    fileBase64: Buffer.from(JSON.stringify({
+      version: 1,
+      updatedAt: "2026-11-13T08:00:00.000Z",
+      docs: [{ id: "HRD-LEG-2", document_name: "Factory License", updated_at: "2026-11-13T08:00:00.000Z", file_name: "", has_attachment: false }],
+      tombstones: {}
+    }), "utf8").toString("base64")
+  });
+  browserA.win.hrDocReplaceDocs([legacyDocA]);
+  await browserA.win.ATPLDriveHrDolSync.syncHrDocs(true);
+  assert.ok(backend.drive.has("atpl_hr_doc_att_HRD-LEG-2.json"), "Legacy local HR attachment must auto-backfill to Drive");
+  await browserB.win.ATPLDriveHrDolSync.syncHrDocs(true);
+  const bDoc = browserB.getHrDocs().find(x => x.id === "HRD-LEG-2");
+  assert.ok(bDoc && bDoc.has_attachment && bDoc.file_name === "license.pdf", "Browser B must receive preserved attachment metadata");
+
+  // 3. uploadDolOriginalOnly backfill + hash-prefix download fallback when driveFileName is missing
+  const challanBytes = Buffer.from("%PDF-1.4 BACKFILL ESIC", "utf8");
+  const partialRec = { id: "v2_esic_bf1", type: "esic", name: "ESIC_BF.pdf", hash: "11223344556677889900aabbccddeeff", period: "2026-07", ids: ["2707265263"], parseStatus: "ready" };
+  const bfRes = await browserA.win.ATPLDriveHrDolSync.uploadDolOriginalOnly(partialRec, challanBytes.buffer.slice(challanBytes.byteOffset, challanBytes.byteOffset + challanBytes.byteLength));
+  assert.equal(bfRes.ok, true);
+  // Simulate old record missing driveFileName in Browser B
+  const dlFallback = await browserB.win.ATPLDriveHrDolSync.downloadDolOriginalBlob({ id: "v2_esic_bf1", type: "esic", hash: "11223344556677889900aabbccddeeff" });
+  assert.ok(dlFallback, "downloadDolOriginalBlob must find original by hash prefix on Drive");
+  assert.equal(Buffer.from(await dlFallback.arrayBuffer()).toString("utf8"), challanBytes.toString("utf8"));
+
+  // 4. Static checks on compliance-dol-rebuild-v2.js: never call v.fileBlob when drive-sheets mode, never emit unguarded "Index incomplete" when DOL matched
+  const dolCode = fs.readFileSync(path.join(ROOT, "compliance-dol-rebuild-v2.js"), "utf8");
+  assert.ok(dolCode.includes("allowLegacyV4"), "recordBlob must gate legacy v.fileBlob behind allowLegacyV4");
+  assert.ok(dolCode.includes("strictlyNewerBlocking"), "searchAsync must not hide matched DOL month behind blocking unindexed files");
+  assert.ok(dolCode.includes("⚠ Needs indexing"), "year12 mode must show accurate indexing status instead of lying Indexed");
+
+  browserA.cleanup();
+  browserB.cleanup();
+});
