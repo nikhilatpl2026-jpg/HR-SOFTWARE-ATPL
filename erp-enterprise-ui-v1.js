@@ -35,7 +35,7 @@ function addCss(){
     '.logo-box{background:linear-gradient(135deg,#4f46e5,#6366f1)!important;box-shadow:none!important;border-radius:10px!important;width:34px!important;height:34px!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:18px!important;}',
     '.logo-name{color:#0f172a!important;font-size:14px!important;font-weight:800!important;letter-spacing:-0.2px!important;}.logo-name span{color:#4f46e5!important;font-weight:900!important;}.logo-sub{color:#64748b!important;font-size:9px!important;letter-spacing:.3px!important;font-weight:500!important;}',
     /* ── Hide items highlighted in yellow by user ── */
-    '#testBtn,#cloudSyncModalBtn,#dsBtn,#deepScanPanel,#atplDurableEverythingBadge,#atplAccountCloudBadge,#atplCloudSyncBadge,#vn-test,#cat-dash #vn-test{display:none!important;}',
+    '#testBtn,#cloudSyncModalBtn,#dsBtn,#deepScanPanel,#atplDurableEverythingBadge,#atplAccountCloudBadge,#atplCloudSyncBadge,#vn-test,#cat-dash #vn-test,#vn-ai-commander,#vn-challan,#vn-dol,#vn-dolverify{display:none!important;}',
     '#atplCloudFilesBadge{display:none!important;}',
     /* ── Header right actions & badges ── */
     '.header-right{display:flex!important;align-items:center!important;gap:10px!important;}',

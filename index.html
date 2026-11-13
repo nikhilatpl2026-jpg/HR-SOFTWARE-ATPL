@@ -2423,7 +2423,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-dash">
       <div class="vitem active" id="vn-cmd" onclick="goPage('cmd')"><span class="vi">⚡</span>Smart Commands</div>
-      <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" style="color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
+      <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" hidden aria-hidden="true" style="display:none!important;color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
       <div class="vitem" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
       <div class="vitem" id="vn-test" onclick="goPage('test')" style="background:rgba(99,102,241,0.15);color:#a5b4fc"><span class="vi">🧪</span>Test Feature</div>
     </div>
@@ -2437,7 +2437,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="vnav-sub" id="cat-sal">      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
       <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
-      <div class="vitem" id="vn-challan" onclick="goPage('challan')" style="background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
+      <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-advance" onclick="goPage('advance')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">💳</span>Advance Management <span class="vbadge" id="advBadge" style="background:#10b981;display:none">0</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
@@ -2449,8 +2449,8 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
     <div class="vnav-sub" id="cat-emp">
       <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge" style="background:#10b981">LIVE</span></div>
-      <div class="vitem" id="vn-dol" onclick="goPage('dol')"><span class="vi">📅</span>Date of Leaving</div>
-      <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')"><span class="vi">✅</span>DOL Verifier</div>
+      <div class="vitem" id="vn-dol" onclick="goPage('dol')" hidden aria-hidden="true" style="display:none!important"><span class="vi">📅</span>Date of Leaving</div>
+      <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')" hidden aria-hidden="true" style="display:none!important"><span class="vi">✅</span>DOL Verifier</div>
       <div class="vitem" id="vn-ff" onclick="goPage('ff')"><span class="vi">📄</span>F&amp;F Settlement</div>
       <div class="vitem" id="vn-empmaster" onclick="goPage('empmaster')"><span class="vi">🗂️</span>Employee Master <span class="vbadge" id="empMasterBadge" style="background:#6366f1">496</span></div>
       <div class="vitem" id="vn-hrdocs" onclick="goPage('hrdocs')"><span class="vi">📚</span>HR Documents <span class="vbadge" id="hrDocsBadge" style="background:#0ea5e9;display:none">0</span></div>
@@ -2524,7 +2524,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="qc red" onclick="goPage('audit')"><div class="qi">🔴</div>Salary formula divisor check karo</div>
 
       <div class="qg-lbl">📅 Leaving & F&F</div>
-      <div class="qc green" onclick="goPage('dol')"><div class="qi">📅</div>Date of Leaving nikalo (saari files)</div>
+      <div class="qc green" onclick="goPage('dol')" style="display:none"><div class="qi">📅</div>Date of Leaving nikalo (saari files)</div>
       <div class="qc green" onclick="goPage('ff')"><div class="qi">📄</div>F&F Settlement generate karo</div>
     </div>
   </div>
@@ -2982,9 +2982,18 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
     <!-- ══ PAGE: ALL FILES ══ -->
     <div class="page" id="page-files">
-      <div class="page-top">
-        <div class="page-title">💾 All Saved Files</div>
-        <div class="page-sub">Saari previously uploaded files yahan dikhti hain — click karke data dekho</div>
+      <div class="page-top" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <div class="page-title">💾 All Saved Files</div>
+          <div class="page-sub">Saari previously uploaded files yahan dikhti hain — search karo ya click karke data dekho</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:260px">
+          <div style="position:relative;display:flex;align-items:center">
+            <input type="search" id="allFilesSearchInput" placeholder="🔍 Search file name, sheet, month..." oninput="filterAllFilesList(this.value)" autocomplete="off" style="min-width:260px;height:36px;padding:0 32px 0 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:600;color:#0f172a;background:#fff;outline:none">
+            <button type="button" id="allFilesSearchClearBtn" onclick="clearAllFilesSearch()" title="Clear search" style="display:none;position:absolute;right:6px;border:none;background:#e2e8f0;color:#475569;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;cursor:pointer;line-height:1">✕</button>
+          </div>
+          <span id="allFilesSearchCount" style="font-size:11px;font-weight:700;color:#64748b;white-space:nowrap"></span>
+        </div>
       </div>
       <div class="results-scroll" id="allFilesArea">
         <div class="empty">
@@ -4863,6 +4872,38 @@ function renderViewerSheet(fi, si) {
 // ALL FILES PAGE (LAZY LOADED & MEMOIZED)
 // ═══════════════════════════════════════════════════════════════
 window.__allFilesNeedsRender = true;
+window.__allFilesSearchQuery = window.__allFilesSearchQuery || '';
+function filterAllFilesList(query) {
+  window.__allFilesSearchQuery = String(query || '');
+  var q = window.__allFilesSearchQuery.trim().toLowerCase();
+  var clearBtn = document.getElementById('allFilesSearchClearBtn');
+  if (clearBtn) clearBtn.style.display = q ? 'inline-flex' : 'none';
+  var cards = document.querySelectorAll('#allFilesArea .all-files-card');
+  var total = cards.length;
+  var matched = 0;
+  for (var idx = 0; idx < cards.length; idx++) {
+    var card = cards[idx];
+    var hay = (card.getAttribute('data-search-text') || '').toLowerCase();
+    var ok = !q || hay.indexOf(q) >= 0;
+    card.style.display = ok ? '' : 'none';
+    if (ok) matched++;
+  }
+  var countEl = document.getElementById('allFilesSearchCount');
+  if (countEl) {
+    countEl.textContent = total > 0 ? (q ? (matched + ' of ' + total + ' files') : (total + ' files')) : '';
+  }
+  var emptyEl = document.getElementById('allFilesNoMatch');
+  if (emptyEl) {
+    emptyEl.style.display = (total > 0 && matched === 0) ? 'block' : 'none';
+  }
+}
+window.filterAllFilesList = filterAllFilesList;
+function clearAllFilesSearch() {
+  var inp = document.getElementById('allFilesSearchInput');
+  if (inp) { inp.value = ''; inp.focus(); }
+  filterAllFilesList('');
+}
+window.clearAllFilesSearch = clearAllFilesSearch;
 function renderAllFilesPage(force) {
   var pg = document.getElementById('page-files');
   if (!force && (!pg || !pg.classList.contains('active'))) {
@@ -4875,6 +4916,8 @@ function renderAllFilesPage(force) {
   var allFiles = getAllLoadedSalaryFiles();
   if (!allFiles.length) {
     area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:10px 20px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Sync Browsers</button></div></div>';
+    var countEl = document.getElementById('allFilesSearchCount');
+    if (countEl) countEl.textContent = '';
     return;
   }
   var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
@@ -4898,7 +4941,8 @@ function renderAllFilesPage(force) {
       var savedAt = f.savedAt ? new Date(f.savedAt).toLocaleString('en-IN') : '';
       var fName = (f && f.name) ? String(f.name) : ('File ' + (i + 1));
       var safeName = typeof esc === 'function' ? esc(fName) : fName;
-      html += '<div style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
+      var searchHay = typeof esc === 'function' ? esc((fName + ' ' + sheetNames.join(' ') + ' ' + savedAt).toLowerCase()) : (fName + ' ' + sheetNames.join(' ')).toLowerCase();
+      html += '<div class="all-files-card" data-search-text="' + searchHay + '" style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
       html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#4F46E5,#6366F1);display:flex;align-items:center;gap:10px">';
       html += '<div style="font-size:20px">📊</div>';
       html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + safeName + '</div>';
@@ -4924,7 +4968,13 @@ function renderAllFilesPage(force) {
       console.warn('renderAllFilesPage item error', e);
     }
   });
+  html += '<div id="allFilesNoMatch" style="display:none;padding:36px 20px;text-align:center;background:#fff;border:1px solid #e2e8f0;border-radius:14px;color:#64748b"><div style="font-size:28px;margin-bottom:6px">🔍</div><div style="font-size:13px;font-weight:700;color:#334155">No matching files found</div><div style="font-size:11px;margin-top:4px">Try another file name or sheet keyword, or <button type="button" onclick="clearAllFilesSearch()" style="border:none;background:none;color:#4f46e5;font-weight:700;cursor:pointer;text-decoration:underline">clear search</button></div></div>';
   area.innerHTML = html;
+  var searchInp = document.getElementById('allFilesSearchInput');
+  if (searchInp && searchInp.value !== (window.__allFilesSearchQuery || '')) {
+    searchInp.value = window.__allFilesSearchQuery || '';
+  }
+  filterAllFilesList(window.__allFilesSearchQuery || '');
 }
 
 // INLINE VIEWER - view + edit cells directly

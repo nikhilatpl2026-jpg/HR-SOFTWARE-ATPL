@@ -21,19 +21,25 @@
   var CHANNEL_NAME = 'ATPL_ERP_TRIGGER_BUS';
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 
+  var SIGNED_BY_OPTIONS = ['Ayush ji', 'Sarthak ji', 'Manish ji'];
+
   var state = {
     advances: [],
     deductions: [],
     tombstones: {},
-    activeTab: 'advances', // 'advances' | 'deductions' | 'ledger'
+    activeTab: 'advances', // 'advances' | 'deductions' | 'ledger' | 'monthly'
     searchQuery: '',
     statusFilter: 'ALL', // 'ALL' | 'ACTIVE' | 'PARTIAL' | 'REPAID'
-    deductionSourceFilter: 'ALL', // 'ALL' | 'salary' | 'manual'
+    deductionSourceFilter: 'ALL', // 'ALL' | 'salary' | 'manual' | 'voucher'
     historySourceFilter: 'ALL', // 'ALL' | 'salary' | 'manual'
+    selectedMonth: new Date().toISOString().slice(0, 7), // 'YYYY-MM'
+    selectedDateFilter: '', // optional 'YYYY-MM-DD'
+    filterTablesByMonth: false,
     openHistoryEmpCode: null,
     isSyncing: false,
     selectedAdvanceForModal: null,
-    editingAdvanceId: null
+    editingAdvanceId: null,
+    monthFeedRows: []
   };
 
   function round2(n) {
@@ -108,6 +114,187 @@
       if (mo >= 1 && mo <= 12) return mNames[mo - 1] + ' ' + yr;
     }
     return String(dateStr);
+  }
+
+  function isCashVoucherDeduction(d) {
+    if (!d) return false;
+    if (d.isCashVoucher) return true;
+    var mode = String(d.deductionMode || d.columnName || '').toLowerCase();
+    return mode.indexOf('cash voucher') >= 0;
+  }
+
+  function parseMonthYearToKey(str) {
+    if (!str) return '';
+    var s = String(str).trim().toLowerCase();
+    var iso = s.match(/^(\d{4})-(\d{2})/);
+    if (iso) return iso[1] + '-' + iso[2];
+    var months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    var shortMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    var yrMatch = s.match(/(20\d{2})/);
+    var yr = yrMatch ? yrMatch[1] : '';
+    if (!yr) return '';
+    for (var i = 0; i < months.length; i++) {
+      if (s.indexOf(months[i]) >= 0 || new RegExp('(?:^|[^a-z])' + shortMonths[i] + '(?:[^a-z]|$)').test(s)) {
+        return yr + '-' + String(i + 1).padStart(2, '0');
+      }
+    }
+    return '';
+  }
+
+  function getAdvanceMonthKey(adv) {
+    if (!adv) return '';
+    var d = String(adv.advanceDate || adv.createdAt || '').trim();
+    var m = d.match(/^(\d{4}-\d{2})/);
+    return m ? m[1] : '';
+  }
+
+  function getDeductionMonthKey(d) {
+    if (!d) return '';
+    if (getDeductionSourceType(d) === 'manual') {
+      var ds = getDeductionDateStr(d);
+      if (ds && /^\d{4}-\d{2}/.test(ds)) return ds.slice(0, 7);
+    }
+    var fromSal = parseMonthYearToKey(d.salaryMonth || '');
+    if (fromSal) return fromSal;
+    var ds2 = getDeductionDateStr(d);
+    return (ds2 && /^\d{4}-\d{2}/.test(ds2)) ? ds2.slice(0, 7) : '';
+  }
+
+  function getPreviousMonthKey(monthKey) {
+    var m = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) {
+      var now = new Date();
+      now.setMonth(now.getMonth() - 1);
+      return now.toISOString().slice(0, 7);
+    }
+    var y = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10) - 1;
+    if (mo <= 0) {
+      mo = 12;
+      y -= 1;
+    }
+    return y + '-' + String(mo).padStart(2, '0');
+  }
+
+  function formatMonthKeyLabel(monthKey) {
+    var m = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
+    if (!m) return monthKey || 'Selected Month';
+    return formatMonthYearFromDate(m[1] + '-' + m[2] + '-01');
+  }
+
+  function getMonthAnalytics(monthKey, exactDate) {
+    var selKey = /^\d{4}-\d{2}$/.test(String(monthKey || '')) ? String(monthKey) : new Date().toISOString().slice(0, 7);
+    var prevKey = getPreviousMonthKey(selKey);
+
+    function emptyBucket(key) {
+      return {
+        monthKey: key,
+        label: formatMonthKeyLabel(key),
+        givenTotal: 0,
+        givenCount: 0,
+        recoveredTotal: 0,
+        salaryRecovered: 0,
+        voucherRecovered: 0,
+        manualOtherRecovered: 0,
+        recCount: 0
+      };
+    }
+
+    var sel = emptyBucket(selKey);
+    var prev = emptyBucket(prevKey);
+    var exact = exactDate ? { date: exactDate, givenTotal: 0, givenCount: 0, recoveredTotal: 0, recCount: 0 } : null;
+    var empMonthly = {};
+
+    function ensureEmp(code, name) {
+      var norm = normalizeCode(code);
+      if (!norm) return null;
+      if (!empMonthly[norm]) {
+        var master = findEmployeeByCode(code);
+        empMonthly[norm] = {
+          code: code,
+          name: (master && master.name) || name || ('Emp ' + code),
+          prevGiven: 0,
+          prevRecovered: 0,
+          selGiven: 0,
+          selSalaryCut: 0,
+          selVoucherCut: 0,
+          selManualOtherCut: 0,
+          selRecovered: 0,
+          currentOutstanding: 0
+        };
+      }
+      return empMonthly[norm];
+    }
+
+    (state.advances || []).forEach(function(a) {
+      if (!a) return;
+      var amt = round2(Number(a.amount) || 0);
+      var bal = round2(Number(a.balanceAmount) || 0);
+      var mk = getAdvanceMonthKey(a);
+      var dStr = String(a.advanceDate || '').slice(0, 10);
+      var eRow = ensureEmp(a.empCode, a.empName);
+      if (eRow) eRow.currentOutstanding = round2(eRow.currentOutstanding + bal);
+
+      if (mk === selKey) {
+        sel.givenTotal = round2(sel.givenTotal + amt);
+        sel.givenCount++;
+        if (eRow) eRow.selGiven = round2(eRow.selGiven + amt);
+      } else if (mk === prevKey) {
+        prev.givenTotal = round2(prev.givenTotal + amt);
+        prev.givenCount++;
+        if (eRow) eRow.prevGiven = round2(eRow.prevGiven + amt);
+      }
+      if (exact && dStr === exact.date) {
+        exact.givenTotal = round2(exact.givenTotal + amt);
+        exact.givenCount++;
+      }
+    });
+
+    (state.deductions || []).forEach(function(d) {
+      if (!d || isDeductionTombstoned(d)) return;
+      var amt = round2(Number(d.deductedAmount) || 0);
+      var mk = getDeductionMonthKey(d);
+      var dStr = getDeductionDateStr(d);
+      var sType = getDeductionSourceType(d);
+      var isVoucher = isCashVoucherDeduction(d);
+      var eRow = ensureEmp(d.empCode, d.empName);
+
+      if (mk === selKey) {
+        sel.recoveredTotal = round2(sel.recoveredTotal + amt);
+        sel.recCount++;
+        if (sType === 'salary') {
+          sel.salaryRecovered = round2(sel.salaryRecovered + amt);
+          if (eRow) eRow.selSalaryCut = round2(eRow.selSalaryCut + amt);
+        } else if (isVoucher) {
+          sel.voucherRecovered = round2(sel.voucherRecovered + amt);
+          if (eRow) eRow.selVoucherCut = round2(eRow.selVoucherCut + amt);
+        } else {
+          sel.manualOtherRecovered = round2(sel.manualOtherRecovered + amt);
+          if (eRow) eRow.selManualOtherCut = round2(eRow.selManualOtherCut + amt);
+        }
+        if (eRow) eRow.selRecovered = round2(eRow.selRecovered + amt);
+      } else if (mk === prevKey) {
+        prev.recoveredTotal = round2(prev.recoveredTotal + amt);
+        prev.recCount++;
+        if (sType === 'salary') prev.salaryRecovered = round2(prev.salaryRecovered + amt);
+        else if (isVoucher) prev.voucherRecovered = round2(prev.voucherRecovered + amt);
+        else prev.manualOtherRecovered = round2(prev.manualOtherRecovered + amt);
+        if (eRow) eRow.prevRecovered = round2(eRow.prevRecovered + amt);
+      }
+      if (exact && dStr === exact.date) {
+        exact.recoveredTotal = round2(exact.recoveredTotal + amt);
+        exact.recCount++;
+      }
+    });
+
+    return {
+      selected: sel,
+      previous: prev,
+      exactDate: exact,
+      employees: Object.values(empMonthly).filter(function(r) {
+        return r.prevGiven > 0 || r.prevRecovered > 0 || r.selGiven > 0 || r.selRecovered > 0;
+      })
+    };
   }
 
   // ── 1. EMPLOYEE MASTER LOOKUP ──
@@ -648,6 +835,7 @@
         evtSrc.addEventListener('advance_saved', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advance_deleted', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advance_deduction_saved', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('advance_deduction_deleted', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advances_updated', function() { fetchRemoteAdvances(false); });
       } catch (_) {}
     }
@@ -870,7 +1058,13 @@
     var nowIso = new Date().toISOString();
     var timestampIso = dedDate + 'T' + nowIso.slice(11);
     var mode = String(payload.mode || 'Manual Cash Recovery').trim();
+    var signedBy = String(payload.signedBy || '').trim();
+    var voucherNo = String(payload.voucherNo || '').trim();
+    var isCashVoucher = !!(payload.isCashVoucher || mode.toLowerCase().indexOf('cash voucher') >= 0);
     var remarks = String(payload.remarks || '').trim();
+    if (isCashVoucher && !remarks && signedBy) {
+      remarks = 'Cash Voucher · Signed by ' + signedBy;
+    }
     var periodLabel = formatMonthYearFromDate(dedDate);
 
     var remainingToCut = amount;
@@ -885,15 +1079,20 @@
       if (cut <= 0) continue;
 
       var dedRec = {
-        id: 'ded_man_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        id: (isCashVoucher ? 'ded_cv_' : 'ded_man_') + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         advanceId: adv.id,
         empCode: adv.empCode,
         empName: adv.empName || (emp ? emp.name : ('Emp ' + empCodeRaw)),
         sourceType: 'manual',
         deductionMode: mode,
-        fileName: 'Manual Deduction (' + mode + ')',
-        sheetName: 'Manual Entry',
-        columnName: mode,
+        isCashVoucher: isCashVoucher,
+        signedBy: signedBy,
+        voucherNo: voucherNo,
+        fileName: isCashVoucher
+          ? ('Cash Voucher' + (signedBy ? ' (Signed by: ' + signedBy + ')' : ''))
+          : ('Manual Deduction (' + mode + ')'),
+        sheetName: isCashVoucher ? 'Cash Voucher' : 'Manual Entry',
+        columnName: isCashVoucher ? 'Cash Voucher' : mode,
         salaryMonth: periodLabel,
         remarks: remarks,
         previousBalance: outBal,
@@ -909,21 +1108,34 @@
       remainingToCut = round2(remainingToCut - cut);
     }
 
-    if (created.length > 0) {
+    if (created.length > 0 && !payload.skipRemoteSync) {
       recalculateAllBalances();
       saveToLocal();
       renderUI();
 
-      var lastDed = created[created.length - 1];
-      pushDeductionRemote(lastDed).then(function(res) {
+      created.forEach(function(recItem) {
+        try {
+          fetch('/api/sync/advance-deduction', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(recItem)
+          }).catch(function() {});
+        } catch (_) {}
+      });
+
+      pushAuthoritativeToCloud().then(function(res) {
+        broadcastSync('advance_deduction_saved', { id: created[created.length - 1].id });
         if (window.showToast) {
+          var labelTxt = isCashVoucher ? ('Cash Voucher of ' + formatINR(amount)) : ('Manual deduction of ' + formatINR(amount));
           if (res && res.ok) {
-            window.showToast('✅ Manual deduction of ' + formatINR(amount) + ' for ' + created[0].empName + ' saved & synced!');
+            window.showToast('✅ ' + labelTxt + ' for ' + created[0].empName + ' saved & synced!');
           } else {
-            window.showToast('⚠️ Manual deduction of ' + formatINR(amount) + ' saved locally. Cloud sync pending retry.');
+            window.showToast('⚠️ ' + labelTxt + ' saved locally. Cloud sync pending retry.');
           }
         }
       });
+    } else if (created.length > 0) {
+      recalculateAllBalances();
     }
 
     return { ok: created.length > 0, deductions: created };
@@ -948,6 +1160,12 @@
     if (state.openHistoryEmpCode) {
       viewEmployeeHistory(state.openHistoryEmpCode);
     }
+
+    try {
+      fetch('/api/sync/advance-deduction/' + encodeURIComponent(deductionId), {
+        method: 'DELETE'
+      }).catch(function() {});
+    } catch (_) {}
 
     pushAuthoritativeToCloud().then(function(res) {
       broadcastSync('advance_deduction_deleted', { id: deductionId });
@@ -1600,13 +1818,19 @@
     });
 
     var salaryCutTotal = 0;
-    var manualCutTotal = 0;
+    var voucherCutTotal = 0;
+    var manualOtherCutTotal = 0;
     (state.deductions || []).forEach(function(d) {
       if (!d || isDeductionTombstoned(d)) return;
       var amt = Number(d.deductedAmount) || 0;
       var isMan = getDeductionSourceType(d) === 'manual';
-      if (isMan) manualCutTotal += amt;
-      else salaryCutTotal += amt;
+      var isCv = isCashVoucherDeduction(d);
+      if (isMan) {
+        if (isCv) voucherCutTotal += amt;
+        else manualOtherCutTotal += amt;
+      } else {
+        salaryCutTotal += amt;
+      }
 
       var k = normalizeCode(d.empCode);
       if (empMap[k]) {
@@ -1615,6 +1839,8 @@
         else empMap[k].salaryRec += amt;
       }
     });
+    var manualCutTotal = round2(voucherCutTotal + manualOtherCutTotal);
+    var analytics = getMonthAnalytics(state.selectedMonth, state.selectedDateFilter);
 
     var badge = document.getElementById('advBadge');
     if (badge) {
@@ -1629,13 +1855,19 @@
     html += '  <div>';
     html += '    <div style="font-size:9px;font-weight:900;letter-spacing:1.3px;color:#7c3aed;margin-bottom:5px;text-transform:uppercase">SALARY PAYROLL / ADVANCE &amp; LOAN AUDIT</div>';
     html += '    <div style="font-size:21px;font-weight:850;color:#111827;letter-spacing:-.45px">Advance &amp; Loan Management</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Exact Salary-Sheet Advance Column matching, Manual Advance Deduction aur complete Employee History audit.</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Salary-Sheet Deduction, Cash Voucher, Month-Wise Data Feed aur Pichle Mahine ka Complete Audit.</div>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
-    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 16px;border-radius:9px;background:#312e81;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">';
+    html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#312e81;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">';
     html += '      <span>💳</span> Record New Advance';
     html += '    </button>';
-    html += '    <button onclick="ATPLAdvanceManager.openManualDeductionModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#b45309;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(180,83,9,0.25)">';
+    html += '    <button onclick="ATPLAdvanceManager.openCashVoucherModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#0f766e;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(15,118,110,0.25)">';
+    html += '      <span>🧾</span> Cash Voucher';
+    html += '    </button>';
+    html += '    <button onclick="ATPLAdvanceManager.openMonthFeedModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#4338ca;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(67,56,202,0.25)">';
+    html += '      <span>📅</span> Month-Wise Feed';
+    html += '    </button>';
+    html += '    <button onclick="ATPLAdvanceManager.openManualDeductionModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:9px;background:#b45309;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(180,83,9,0.25)">';
     html += '      <span>✂️</span> Manual Deduction';
     html += '    </button>';
     html += '    <button onclick="ATPLAdvanceManager.triggerDeductionScan()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
@@ -1654,23 +1886,74 @@
     html += '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px">';
     html += '  <div style="display:flex;flex-direction:column;gap:2px">';
     html += '    <b style="font-size:11px;color:#334155">View Mode</b>';
-    html += '    <span style="font-size:9px;color:#94a3b8">Active Advances, All Deductions (Salary + Manual), aur Employee Ledger / History ke beech switch karo</span>';
+    html += '    <span style="font-size:9px;color:#94a3b8">Advances Register, All Deductions (Sheet + Cash Voucher + Manual), Employee Ledger, aur Month-Wise Report</span>';
     html += '  </div>';
-    html += '  <div style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:9px">';
+    html += '  <div style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:9px;flex-wrap:wrap">';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="border:0;background:' + (state.activeTab === 'advances' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'advances' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">₹ Advances Register (' + state.advances.length + ')</button>';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="border:0;background:' + (state.activeTab === 'deductions' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'deductions' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">📉 All Deductions (' + state.deductions.length + ')</button>';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="border:0;background:' + (state.activeTab === 'ledger' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'ledger' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">👥 Employee Ledger (' + Object.keys(empMap).length + ')</button>';
+    html += '    <button onclick="ATPLAdvanceManager.setTab(\'monthly\')" style="border:0;background:' + (state.activeTab === 'monthly' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'monthly' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'monthly' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">📅 Month-Wise Summary</button>';
     html += '  </div>';
     html += '</div>';
 
-    // 3. Status Filebar
-    html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:10px 14px;font-size:10px">';
-    html += '  <span style="font-size:18px">💳</span>';
-    html += '  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">';
-    html += '    <b style="color:#334155;font-size:11px">Exact Salary-Column + Manual Advance Deduction Engine Active</b>';
-    html += '    <small style="color:#94a3b8;font-size:9px">Sirf wahi salary sheet scan hoti hai jisme explicit Advance column ho · Column ki exact value cut hoti hai · Manual cut aur full Employee History supported</small>';
+    // 3. Month / Date Selector & Previous Month Comparison Strip
+    html += '<div style="margin-bottom:12px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px">';
+    html += '  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">';
+    html += '    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    html += '      <span style="font-size:11px;font-weight:800;color:#1e293b">📅 Month / Date Check (Pichle Mahine ka Hisab):</span>';
+    html += '      <button type="button" onclick="ATPLAdvanceManager.shiftSelectedMonth(-1)" style="height:30px;padding:0 9px;border:1px solid #d1d5db;background:#f8fafc;color:#334155;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer" title="Previous Month">◀</button>';
+    html += '      <input type="month" id="advMonthPicker" value="' + esc(analytics.selected.monthKey) + '" onchange="ATPLAdvanceManager.setSelectedMonth(this.value)" style="height:30px;padding:0 9px;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;color:#111827;background:#fff">';
+    html += '      <button type="button" onclick="ATPLAdvanceManager.shiftSelectedMonth(1)" style="height:30px;padding:0 9px;border:1px solid #d1d5db;background:#f8fafc;color:#334155;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer" title="Next Month">▶</button>';
+    html += '      <span style="font-size:10px;color:#64748b;font-weight:700">or Date:</span>';
+    html += '      <input type="date" id="advDatePicker" value="' + esc(state.selectedDateFilter || '') + '" onchange="ATPLAdvanceManager.setSelectedDate(this.value)" style="height:30px;padding:0 9px;border:1px solid #cbd5e1;border-radius:7px;font-size:11px;font-weight:700;color:#111827;background:#fff">';
+    if (state.selectedDateFilter) {
+      html += '      <button type="button" onclick="ATPLAdvanceManager.setSelectedDate(\'\')" style="height:28px;padding:0 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">✕ Clear Date</button>';
+    }
+    html += '    </div>';
+    html += '    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    html += '      <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;background:#f8fafc;border:1px solid #e2e8f0;padding:5px 10px;border-radius:7px">';
+    html += '        <input type="checkbox" ' + (state.filterTablesByMonth ? 'checked' : '') + ' onchange="ATPLAdvanceManager.toggleFilterTablesByMonth(this.checked)">';
+    html += '        <span>Filter Tables to ' + esc(analytics.selected.label) + '</span>';
+    html += '      </label>';
+    html += '      <button type="button" onclick="ATPLAdvanceManager.openMonthFeedModal(\'' + esc(analytics.selected.monthKey) + '\')" style="height:30px;padding:0 12px;border:none;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer">➕ Feed Data for ' + esc(analytics.selected.label) + '</button>';
+    html += '    </div>';
     html += '  </div>';
-    html += '  <span style="font-size:9px;font-weight:900;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:999px;padding:4px 9px;letter-spacing:0.5px">READY</span>';
+
+    html += '  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">';
+    // Selected Month Card
+    html += '    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px">';
+    html += '      <div>';
+    html += '        <div style="font-size:9.5px;font-weight:800;color:#4338ca;text-transform:uppercase;letter-spacing:0.6px">Selected Month · ' + esc(analytics.selected.label) + '</div>';
+    html += '        <div style="font-size:12px;color:#334155;margin-top:3px">Given: <strong style="color:#111827">' + formatINR(analytics.selected.givenTotal) + '</strong> <span style="font-size:10px;color:#64748b">(' + analytics.selected.givenCount + ')</span></div>';
+    html += '        <div style="font-size:12px;color:#334155;margin-top:2px">Recovered: <strong style="color:#15803d">' + formatINR(analytics.selected.recoveredTotal) + '</strong> <span style="font-size:10px;color:#64748b">(' + analytics.selected.recCount + ' cuts)</span></div>';
+    html += '      </div>';
+    html += '      <div style="text-align:right;font-size:10px;color:#64748b;line-height:1.5">';
+    html += '        <div>Sheet: <strong style="color:#312e81">' + formatINR(analytics.selected.salaryRecovered) + '</strong></div>';
+    html += '        <div>Cash Voucher: <strong style="color:#0f766e">' + formatINR(analytics.selected.voucherRecovered) + '</strong></div>';
+    html += '        <div>Other Manual: <strong style="color:#b45309">' + formatINR(analytics.selected.manualOtherRecovered) + '</strong></div>';
+    html += '      </div>';
+    html += '    </div>';
+    // Previous Month (Pichla Mahina) Card
+    html += '    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px">';
+    html += '      <div>';
+    html += '        <div style="font-size:9.5px;font-weight:800;color:#b45309;text-transform:uppercase;letter-spacing:0.6px">Pichla Mahina (Previous Month) · ' + esc(analytics.previous.label) + '</div>';
+    html += '        <div style="font-size:12px;color:#334155;margin-top:3px">Kitna Adv Diya: <strong style="color:#111827">' + formatINR(analytics.previous.givenTotal) + '</strong> <span style="font-size:10px;color:#64748b">(' + analytics.previous.givenCount + ')</span></div>';
+    html += '        <div style="font-size:12px;color:#334155;margin-top:2px">Kitna Recover Hua: <strong style="color:#15803d">' + formatINR(analytics.previous.recoveredTotal) + '</strong> <span style="font-size:10px;color:#64748b">(' + analytics.previous.recCount + ' cuts)</span></div>';
+    html += '      </div>';
+    html += '      <div style="text-align:right;font-size:10px;color:#64748b;line-height:1.5">';
+    html += '        <div>Sheet: <strong style="color:#312e81">' + formatINR(analytics.previous.salaryRecovered) + '</strong></div>';
+    html += '        <div>Cash Voucher: <strong style="color:#0f766e">' + formatINR(analytics.previous.voucherRecovered) + '</strong></div>';
+    html += '        <div>Net Diff: <strong style="color:' + (analytics.previous.givenTotal - analytics.previous.recoveredTotal > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(round2(analytics.previous.givenTotal - analytics.previous.recoveredTotal)) + '</strong></div>';
+    html += '      </div>';
+    html += '    </div>';
+    html += '  </div>';
+
+    if (analytics.exactDate) {
+      html += '  <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:11px;color:#1e3a8a">';
+      html += '    <span>📌 <strong>Selected Date (' + esc(analytics.exactDate.date) + '):</strong> Advance Given: <strong>' + formatINR(analytics.exactDate.givenTotal) + '</strong> (' + analytics.exactDate.givenCount + ') · Recovered / Voucher Cut: <strong style="color:#15803d">' + formatINR(analytics.exactDate.recoveredTotal) + '</strong> (' + analytics.exactDate.recCount + ')</span>';
+      html += '    <span style="font-size:10px;color:#3b82f6">Showing ' + esc(analytics.selected.label) + ' vs ' + esc(analytics.previous.label) + '</span>';
+      html += '  </div>';
+    }
     html += '</div>';
 
     // 4. Metric Statistic Cards
@@ -1683,7 +1966,7 @@
     html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
     html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Total Recovered</span>';
     html += '    <b style="font-size:20px;font-weight:850;color:#15803d">' + formatINR(totalRecovered) + '</b>';
-    html += '    <small style="font-size:9px;color:#94a3b8">Sheet: ' + formatINR(salaryCutTotal) + ' · Manual: ' + formatINR(manualCutTotal) + '</small>';
+    html += '    <small style="font-size:9px;color:#94a3b8">Sheet: ' + formatINR(salaryCutTotal) + ' · Voucher: ' + formatINR(voucherCutTotal) + ' · Manual: ' + formatINR(manualOtherCutTotal) + '</small>';
     html += '  </div>';
     html += '  <div style="background:#fff;border:1px solid #fecaca;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
     html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#dc2626;font-weight:800">Outstanding Balance</span>';
@@ -1698,10 +1981,17 @@
     html += '</div>';
 
     // 5. Toolbar
+    var tabTitle = state.activeTab === 'advances'
+      ? 'Advances Register &amp; Active Dues'
+      : state.activeTab === 'deductions'
+        ? 'Salary, Cash Voucher &amp; Manual Deduction Audit'
+        : state.activeTab === 'monthly'
+          ? ('Month-Wise Report: ' + esc(analytics.selected.label) + ' vs ' + esc(analytics.previous.label))
+          : 'Employee Balance Ledger &amp; History';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e5e7eb;border-radius:10px 10px 0 0;padding:11px 14px">';
     html += '  <div style="display:flex;flex-direction:column;gap:2px">';
-    html += '    <b style="font-size:11px;color:#334155">' + (state.activeTab === 'advances' ? 'Advances Register &amp; Active Dues' : state.activeTab === 'deductions' ? 'Salary &amp; Manual Deduction Audit' : 'Employee Balance Ledger &amp; History') + '</b>';
-    html += '    <small style="font-size:9px;color:#94a3b8">Verified records · Click Employee History on any row to view full Salary Sheet + Manual deduction audit</small>';
+    html += '    <b style="font-size:11px;color:#334155">' + tabTitle + (state.filterTablesByMonth && state.activeTab !== 'monthly' ? ' <span style="color:#4338ca">(' + esc(analytics.selected.label) + ')</span>' : '') + '</b>';
+    html += '    <small style="font-size:9px;color:#94a3b8">Verified records · Cash Voucher, Month-Wise Feed aur Employee History ke saath complete sync</small>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
     html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="height:32px;padding:0 12px;background:#fff;border:1px solid #d1d5db;border-radius:7px;color:#111827;font-size:11px;outline:none;min-width:220px">';
@@ -1714,9 +2004,10 @@
       html += '    </select>';
     } else if (state.activeTab === 'deductions') {
       html += '    <select onchange="ATPLAdvanceManager.setDeductionSourceFilter(this.value)" style="height:32px;border:1px solid #d1d5db;border-radius:7px;background:#fff;padding:0 10px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
-      html += '      <option value="ALL"' + (state.deductionSourceFilter === 'ALL' ? ' selected' : '') + '>All Cut Types (Salary + Manual)</option>';
+      html += '      <option value="ALL"' + (state.deductionSourceFilter === 'ALL' ? ' selected' : '') + '>All Cut Types (Salary + Voucher + Manual)</option>';
       html += '      <option value="salary"' + (state.deductionSourceFilter === 'salary' ? ' selected' : '') + '>📄 Salary Sheet Only</option>';
-      html += '      <option value="manual"' + (state.deductionSourceFilter === 'manual' ? ' selected' : '') + '>✍️ Manual Deduction Only</option>';
+      html += '      <option value="voucher"' + (state.deductionSourceFilter === 'voucher' ? ' selected' : '') + '>🧾 Cash Voucher Only</option>';
+      html += '      <option value="manual"' + (state.deductionSourceFilter === 'manual' ? ' selected' : '') + '>✍️ All Manual / Cash Voucher</option>';
       html += '    </select>';
     }
     html += '  </div>';
@@ -1728,6 +2019,8 @@
       html += renderAdvancesTable();
     } else if (state.activeTab === 'deductions') {
       html += renderDeductionsTable();
+    } else if (state.activeTab === 'monthly') {
+      html += renderMonthlySummaryTable(analytics);
     } else if (state.activeTab === 'ledger') {
       html += renderLedgerTable(empMap);
     }
@@ -1743,6 +2036,8 @@
     var filtered = (state.advances || []).filter(function(a) {
       if (!a) return false;
       if (state.statusFilter !== 'ALL' && a.status !== state.statusFilter) return false;
+      if (state.filterTablesByMonth && getAdvanceMonthKey(a) !== state.selectedMonth) return false;
+      if (state.selectedDateFilter && String(a.advanceDate || '').slice(0, 10) !== state.selectedDateFilter) return false;
       if (!query) return true;
       return String(a.empCode || '').toLowerCase().includes(query) ||
              String(a.empName || '').toLowerCase().includes(query) ||
@@ -1753,7 +2048,7 @@
       return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
              '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">💳</div>' +
              '  <div style="font-size:14px;font-weight:700;color:#334155">No Advance Records Found</div>' +
-             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Click "Record New Advance" above to record an employee advance.</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Click "Record New Advance" or "Month-Wise Feed" above to record employee advances.</div>' +
              '</div>';
     }
 
@@ -1794,6 +2089,7 @@
       html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">';
       html += '        <button onclick="ATPLAdvanceManager.viewEmployeeHistory(\'' + esc(adv.empCode) + '\')" style="height:26px;padding:0 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Employee History (Salary + Manual)">📜 History</button>';
       if (adv.balanceAmount > 0) {
+        html += '        <button onclick="ATPLAdvanceManager.openCashVoucherModal(\'' + esc(adv.empCode) + '\',\'' + esc(adv.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Cash Voucher se Advance Minus Karein">🧾 Voucher</button>';
         html += '        <button onclick="ATPLAdvanceManager.openManualDeductionModal(\'' + esc(adv.empCode) + '\',\'' + esc(adv.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Manual Advance Cut">✂️ Cut</button>';
       }
       html += '        <button onclick="ATPLAdvanceManager.viewStatement(\'' + esc(adv.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #d1d5db;background:#fff;color:#475569;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;margin-right:4px" title="View Single Advance Statement">👁</button>';
@@ -1814,13 +2110,21 @@
     var filtered = (state.deductions || []).filter(function(d) {
       if (!d || isDeductionTombstoned(d)) return false;
       var sType = getDeductionSourceType(d);
-      if (state.deductionSourceFilter !== 'ALL' && sType !== state.deductionSourceFilter) return false;
+      var isCv = isCashVoucherDeduction(d);
+      if (state.deductionSourceFilter === 'voucher') {
+        if (!isCv) return false;
+      } else if (state.deductionSourceFilter !== 'ALL' && sType !== state.deductionSourceFilter) {
+        return false;
+      }
+      if (state.filterTablesByMonth && getDeductionMonthKey(d) !== state.selectedMonth) return false;
+      if (state.selectedDateFilter && getDeductionDateStr(d) !== state.selectedDateFilter) return false;
       if (!query) return true;
       return String(d.empCode || '').toLowerCase().includes(query) ||
              String(d.empName || '').toLowerCase().includes(query) ||
              String(d.fileName || '').toLowerCase().includes(query) ||
              String(d.sheetName || '').toLowerCase().includes(query) ||
              String(d.columnName || '').toLowerCase().includes(query) ||
+             String(d.signedBy || '').toLowerCase().includes(query) ||
              String(d.remarks || '').toLowerCase().includes(query) ||
              String(d.salaryMonth || '').toLowerCase().includes(query);
     }).slice().sort(function(a, b) {
@@ -1831,7 +2135,7 @@
       return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
              '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">📉</div>' +
              '  <div style="font-size:14px;font-weight:700;color:#334155">No Advance Deductions Found</div>' +
-             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Salary sheets with an Advance column or Manual Deductions will appear here with full audit details.</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Salary sheets with an Advance column, Cash Vouchers, or Manual Deductions will appear here.</div>' +
              '</div>';
     }
 
@@ -1841,7 +2145,7 @@
     html += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.8px;font-weight:800">';
     html += '      <th style="padding:10px 14px">Date</th>';
     html += '      <th style="padding:10px 14px">Cut Type</th>';
-    html += '      <th style="padding:10px 14px">Source (File / Sheet / Column or Remarks)</th>';
+    html += '      <th style="padding:10px 14px">Source (File / Voucher / Signed By / Remarks)</th>';
     html += '      <th style="padding:10px 14px">Emp Code</th>';
     html += '      <th style="padding:10px 14px">Employee Name</th>';
     html += '      <th style="padding:10px 14px;text-align:right">Prev Balance</th>';
@@ -1855,13 +2159,19 @@
     filtered.forEach(function(d) {
       var dDate = getDeductionDateStr(d) || '-';
       var sType = getDeductionSourceType(d);
-      var typeBadge = sType === 'manual'
-        ? '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;background:#fffbeb;color:#b45309;border:1px solid #fde68a">✍️ MANUAL</span>'
-        : '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe">📄 SALARY SHEET</span>';
+      var isCv = isCashVoucherDeduction(d);
+      var typeBadge = isCv
+        ? '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4">🧾 CASH VOUCHER</span>'
+        : sType === 'manual'
+          ? '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;background:#fffbeb;color:#b45309;border:1px solid #fde68a">✍️ MANUAL</span>'
+          : '<span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe">📄 SALARY SHEET</span>';
 
       var sourceHtml = '';
-      if (sType === 'manual') {
-        sourceHtml += '<div style="font-weight:700;color:#111827">' + esc(d.deductionMode || d.columnName || 'Manual Deduction') + '</div>';
+      if (isCv) {
+        sourceHtml += '<div style="font-weight:700;color:#0f766e">Cash Voucher' + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + '</div>';
+        sourceHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || 'Voucher settled') + '</div>';
+      } else if (sType === 'manual') {
+        sourceHtml += '<div style="font-weight:700;color:#111827">' + esc(d.deductionMode || d.columnName || 'Manual Deduction') + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + '</div>';
         sourceHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || 'No remarks') + '</div>';
       } else {
         sourceHtml += '<div style="font-weight:700;color:#111827">' + esc(d.salaryMonth || 'Salary Sheet') + '</div>';
@@ -1880,6 +2190,66 @@
       html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">';
       html += '        <button onclick="ATPLAdvanceManager.viewEmployeeHistory(\'' + esc(d.empCode) + '\')" style="height:26px;padding:0 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px">📜 History</button>';
       html += '        <button onclick="ATPLAdvanceManager.confirmDeleteDeduction(\'' + esc(d.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700" title="Reverse / Delete Deduction">🗑</button>';
+      html += '      </td>';
+      html += '    </tr>';
+    });
+
+    html += '  </tbody>';
+    html += '</table>';
+    html += '</div>';
+    return html;
+  }
+
+  function renderMonthlySummaryTable(analytics) {
+    var query = state.searchQuery.toLowerCase().trim();
+    var list = (analytics && Array.isArray(analytics.employees) ? analytics.employees : []).filter(function(r) {
+      if (!query) return true;
+      return String(r.code || '').toLowerCase().includes(query) ||
+             String(r.name || '').toLowerCase().includes(query);
+    });
+
+    if (!list.length) {
+      return '<div style="padding:44px 20px;text-align:center;color:#94a3b8;background:#fff">' +
+             '  <div style="font-size:34px;margin-bottom:8px;opacity:0.45">📅</div>' +
+             '  <div style="font-size:14px;font-weight:700;color:#334155">No Activity in ' + esc(analytics.selected.label) + ' or ' + esc(analytics.previous.label) + '</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Is mahine ya pichle mahine ka data feed karne ke liye "Month-Wise Feed" button par click karein.</div>' +
+             '  <div style="margin-top:14px"><button onclick="ATPLAdvanceManager.openMonthFeedModal(\'' + esc(analytics.selected.monthKey) + '\')" style="padding:8px 16px;background:#4338ca;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">📅 Feed Month-Wise Data</button></div>' +
+             '</div>';
+    }
+
+    var html = '<div style="overflow-x:auto">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">';
+    html += '  <thead>';
+    html += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.6px;font-weight:800">';
+    html += '      <th style="padding:10px 12px">Emp Code</th>';
+    html += '      <th style="padding:10px 12px">Employee Name</th>';
+    html += '      <th style="padding:10px 12px;text-align:right;background:#fffbeb;color:#b45309">Prev Given (' + esc(analytics.previous.label) + ')</th>';
+    html += '      <th style="padding:10px 12px;text-align:right;background:#fffbeb;color:#15803d">Prev Recovered</th>';
+    html += '      <th style="padding:10px 12px;text-align:right">Sel Month Given (' + esc(analytics.selected.label) + ')</th>';
+    html += '      <th style="padding:10px 12px;text-align:right">Sheet Cut</th>';
+    html += '      <th style="padding:10px 12px;text-align:right;color:#0f766e">Cash Voucher / Manual</th>';
+    html += '      <th style="padding:10px 12px;text-align:right">Total Outstanding</th>';
+    html += '      <th style="padding:10px 12px;text-align:center">Actions</th>';
+    html += '    </tr>';
+    html += '  </thead>';
+    html += '  <tbody>';
+
+    list.forEach(function(item) {
+      var manualCombo = round2((item.selVoucherCut || 0) + (item.selManualOtherCut || 0));
+      html += '    <tr style="border-bottom:1px solid #f3f4f6" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+      html += '      <td style="padding:10px 12px;font-weight:800;color:#312e81;font-family:monospace">' + esc(item.code) + '</td>';
+      html += '      <td style="padding:10px 12px;font-weight:700;color:#111827">' + esc(item.name) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:700;background:#fffdf5;color:#111827">' + formatINR(item.prevGiven) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:700;background:#fffdf5;color:#15803d">' + formatINR(item.prevRecovered) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:700;color:#111827">' + formatINR(item.selGiven) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:650;color:#312e81">' + formatINR(item.selSalaryCut) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:650;color:#0f766e">' + formatINR(manualCombo) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:right;font-weight:800;color:' + (item.currentOutstanding > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(item.currentOutstanding) + '</td>';
+      html += '      <td style="padding:10px 12px;text-align:center;white-space:nowrap">';
+      html += '        <button onclick="ATPLAdvanceManager.viewEmployeeHistory(\'' + esc(item.code) + '\')" style="height:26px;padding:0 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px">📜 History</button>';
+      if (item.currentOutstanding > 0) {
+        html += '        <button onclick="ATPLAdvanceManager.openCashVoucherModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 8px;border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800">🧾 Cash Voucher</button>';
+      }
       html += '      </td>';
       html += '    </tr>';
     });
@@ -1916,7 +2286,7 @@
     html += '      <th style="padding:10px 14px;text-align:center">Advances</th>';
     html += '      <th style="padding:10px 14px;text-align:right">Disbursed (₹)</th>';
     html += '      <th style="padding:10px 14px;text-align:right">Salary Cut (₹)</th>';
-    html += '      <th style="padding:10px 14px;text-align:right">Manual Cut (₹)</th>';
+    html += '      <th style="padding:10px 14px;text-align:right">Manual / Voucher (₹)</th>';
     html += '      <th style="padding:10px 14px;text-align:right">Net Outstanding (₹)</th>';
     html += '      <th style="padding:10px 14px;text-align:center">Status</th>';
     html += '      <th style="padding:10px 14px;text-align:center">Actions</th>';
@@ -1944,6 +2314,7 @@
       html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">';
       html += '        <button onclick="ATPLAdvanceManager.viewEmployeeHistory(\'' + esc(item.code) + '\')" style="height:26px;padding:0 10px;border:1px solid #818cf8;background:#eef2ff;color:#3730a3;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px">👤 Employee History</button>';
       if (isPending) {
+        html += '        <button onclick="ATPLAdvanceManager.openCashVoucherModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Cash Voucher se Ledger se Minus karein">🧾 Cash Voucher</button>';
         html += '        <button onclick="ATPLAdvanceManager.openManualDeductionModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px">✂️ Manual Cut</button>';
       }
       html += '        <button onclick="ATPLAdvanceManager.openNewModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:none;background:#312e81;color:#fff;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700">➕ Add</button>';
@@ -2473,6 +2844,7 @@
     content += '      </div>';
     content += '      <div style="display:flex;gap:8px;align-items:center">';
     if (hist.totalRemaining > 0) {
+      content += '        <button onclick="ATPLAdvanceManager.openCashVoucherModal(\'' + esc(hist.empCode) + '\')" style="padding:7px 12px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🧾 Cash Voucher</button>';
       content += '        <button onclick="ATPLAdvanceManager.openManualDeductionModal(\'' + esc(hist.empCode) + '\')" style="padding:7px 12px;background:#b45309;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">✂️ Manual Cut</button>';
     }
     content += '        <button onclick="ATPLAdvanceManager.openNewModal(\'' + esc(hist.empCode) + '\')" style="padding:7px 12px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">➕ Add Advance</button>';
@@ -2484,7 +2856,7 @@
     content += '    <div style="padding:14px 22px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">';
     content += '      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px"><div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:800">Total Advance Given</div><div style="font-size:17px;font-weight:850;color:#111827">' + formatINR(hist.totalGiven) + '</div><div style="font-size:10px;color:#94a3b8">' + hist.advances.length + ' advance(s)</div></div>';
     content += '      <div style="background:#fff;border:1px solid #c7d2fe;border-radius:10px;padding:10px 12px"><div style="font-size:9px;color:#312e81;text-transform:uppercase;font-weight:800">Salary Sheet Cut</div><div style="font-size:17px;font-weight:850;color:#312e81">' + formatINR(hist.totalSalaryCut) + '</div><div style="font-size:10px;color:#6366f1">' + hist.deductions.filter(function(d){return getDeductionSourceType(d)==='salary';}).length + ' sheet cut(s)</div></div>';
-    content += '      <div style="background:#fff;border:1px solid #fde68a;border-radius:10px;padding:10px 12px"><div style="font-size:9px;color:#b45309;text-transform:uppercase;font-weight:800">Manual Cut</div><div style="font-size:17px;font-weight:850;color:#b45309">' + formatINR(hist.totalManualCut) + '</div><div style="font-size:10px;color:#d97706">' + hist.deductions.filter(function(d){return getDeductionSourceType(d)==='manual';}).length + ' manual cut(s)</div></div>';
+    content += '      <div style="background:#fff;border:1px solid #fde68a;border-radius:10px;padding:10px 12px"><div style="font-size:9px;color:#b45309;text-transform:uppercase;font-weight:800">Manual / Voucher Cut</div><div style="font-size:17px;font-weight:850;color:#b45309">' + formatINR(hist.totalManualCut) + '</div><div style="font-size:10px;color:#d97706">' + hist.deductions.filter(function(d){return getDeductionSourceType(d)==='manual';}).length + ' manual/voucher cut(s)</div></div>';
     content += '      <div style="background:#fff;border:1px solid ' + (hist.totalRemaining > 0 ? '#fecaca' : '#bbf7d0') + ';border-radius:10px;padding:10px 12px"><div style="font-size:9px;color:' + (hist.totalRemaining > 0 ? '#dc2626' : '#15803d') + ';text-transform:uppercase;font-weight:800">Remaining Balance</div><div style="font-size:17px;font-weight:850;color:' + (hist.totalRemaining > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(hist.totalRemaining) + '</div><div style="font-size:10px;color:#64748b">' + (hist.totalRemaining > 0 ? 'Pending recovery' : 'Fully cleared') + '</div></div>';
     content += '    </div>';
 
@@ -2522,7 +2894,7 @@
     content += '          <div style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:8px">';
     content += '            <button onclick="ATPLAdvanceManager.setHistoryFilter(\'ALL\')" style="border:0;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;background:' + (state.historySourceFilter === 'ALL' ? '#312e81' : 'transparent') + ';color:' + (state.historySourceFilter === 'ALL' ? '#fff' : '#64748b') + '">All (' + hist.deductions.length + ')</button>';
     content += '            <button onclick="ATPLAdvanceManager.setHistoryFilter(\'salary\')" style="border:0;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;background:' + (state.historySourceFilter === 'salary' ? '#312e81' : 'transparent') + ';color:' + (state.historySourceFilter === 'salary' ? '#fff' : '#64748b') + '">📄 Salary Sheet</button>';
-    content += '            <button onclick="ATPLAdvanceManager.setHistoryFilter(\'manual\')" style="border:0;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;background:' + (state.historySourceFilter === 'manual' ? '#b45309' : 'transparent') + ';color:' + (state.historySourceFilter === 'manual' ? '#fff' : '#64748b') + '">✍️ Manual</button>';
+    content += '            <button onclick="ATPLAdvanceManager.setHistoryFilter(\'manual\')" style="border:0;padding:4px 10px;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;background:' + (state.historySourceFilter === 'manual' ? '#b45309' : 'transparent') + ';color:' + (state.historySourceFilter === 'manual' ? '#fff' : '#64748b') + '">✍️ Manual / Voucher</button>';
     content += '          </div>';
     content += '        </div>';
 
@@ -2535,7 +2907,7 @@
       content += '              <tr style="background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800">';
       content += '                <th style="padding:8px 10px">Cut Date</th>';
       content += '                <th style="padding:8px 10px">Type</th>';
-      content += '                <th style="padding:8px 10px">File / Sheet / Column / Remarks</th>';
+      content += '                <th style="padding:8px 10px">File / Voucher / Signed By / Remarks</th>';
       content += '                <th style="padding:8px 10px">Advance Ref</th>';
       content += '                <th style="padding:8px 10px;text-align:right">Prev Bal</th>';
       content += '                <th style="padding:8px 10px;text-align:right">Deducted</th>';
@@ -2547,16 +2919,22 @@
 
       filteredDed.forEach(function(d) {
         var sType = getDeductionSourceType(d);
+        var isCv = isCashVoucherDeduction(d);
         var dDate = getDeductionDateStr(d) || '-';
         var parentAdv = advLookup[d.advanceId];
         var advRefText = parentAdv ? ((parentAdv.advanceDate || '') + ' (' + formatINR(parentAdv.amount) + ')') : '-';
-        var badge = sType === 'manual'
-          ? '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:850;background:#fffbeb;color:#b45309;border:1px solid #fde68a">✍️ MANUAL</span>'
-          : '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:850;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe">📄 SALARY</span>';
+        var badge = isCv
+          ? '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:850;background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4">🧾 VOUCHER</span>'
+          : sType === 'manual'
+            ? '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:850;background:#fffbeb;color:#b45309;border:1px solid #fde68a">✍️ MANUAL</span>'
+            : '<span style="display:inline-block;padding:2px 7px;border-radius:999px;font-size:9px;font-weight:850;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe">📄 SALARY</span>';
 
         var detailHtml = '';
-        if (sType === 'manual') {
-          detailHtml += '<div style="font-weight:700;color:#111827">' + esc(d.deductionMode || d.columnName || 'Manual Deduction') + '</div>';
+        if (isCv) {
+          detailHtml += '<div style="font-weight:700;color:#0f766e">Cash Voucher' + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + '</div>';
+          detailHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || '—') + '</div>';
+        } else if (sType === 'manual') {
+          detailHtml += '<div style="font-weight:700;color:#111827">' + esc(d.deductionMode || d.columnName || 'Manual Deduction') + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + '</div>';
           detailHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || '—') + '</div>';
         } else {
           detailHtml += '<div style="font-weight:700;color:#111827">' + esc(d.salaryMonth || 'Salary Sheet') + '</div>';
@@ -2645,9 +3023,15 @@
       content += '        <tbody>';
       decList.forEach(function(d) {
         var sType = getDeductionSourceType(d);
+        var isCv = isCashVoucherDeduction(d);
+        var srcDesc = isCv
+          ? ('<strong style="color:#0f766e">🧾 Cash Voucher' + (d.signedBy ? ' (' + esc(d.signedBy) + ')' : '') + ':</strong> ' + esc(d.remarks || 'Voucher settled'))
+          : sType === 'manual'
+            ? ('<strong style="color:#b45309">✍️ Manual:</strong> ' + esc(d.deductionMode || '') + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + (d.remarks ? ' · ' + esc(d.remarks) : ''))
+            : ('<strong style="color:#312e81">📄 Sheet:</strong> ' + esc(d.fileName) + (d.sheetName ? ' · ' + esc(d.sheetName) : '') + (d.columnName ? ' (Col: ' + esc(d.columnName) + ')' : ''));
         content += '        <tr style="border-bottom:1px solid #f3f4f6">';
         content += '          <td style="padding:8px 10px;font-weight:700;color:#111827">' + esc(getDeductionDateStr(d) || d.salaryMonth || '-') + '<div style="font-size:9.5px;color:#94a3b8">' + esc(d.salaryMonth || '') + '</div></td>';
-        content += '          <td style="padding:8px 10px;color:#64748b;font-size:10px">' + (sType === 'manual' ? '<strong style="color:#b45309">✍️ Manual:</strong> ' + esc(d.deductionMode || '') + (d.remarks ? ' · ' + esc(d.remarks) : '') : '<strong style="color:#312e81">📄 Sheet:</strong> ' + esc(d.fileName) + (d.sheetName ? ' · ' + esc(d.sheetName) : '') + (d.columnName ? ' (Col: ' + esc(d.columnName) + ')' : '')) + '</td>';
+        content += '          <td style="padding:8px 10px;color:#64748b;font-size:10px">' + srcDesc + '</td>';
         content += '          <td style="padding:8px 10px;text-align:right;color:#64748b">' + formatINR(d.previousBalance) + '</td>';
         content += '          <td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">-' + formatINR(d.deductedAmount) + '</td>';
         content += '          <td style="padding:8px 10px;text-align:right;font-weight:750;color:' + (d.remainingBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(d.remainingBalance) + '</td>';
@@ -2660,6 +3044,7 @@
 
     content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc">';
     if (adv.balanceAmount > 0) {
+      content += '      <button onclick="ATPLAdvanceManager.openCashVoucherModal(\'' + esc(adv.empCode) + '\',\'' + esc(adv.id) + '\')" style="padding:8px 16px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">🧾 Cash Voucher</button>';
       content += '      <button onclick="ATPLAdvanceManager.openManualDeductionModal(\'' + esc(adv.empCode) + '\',\'' + esc(adv.id) + '\')" style="padding:8px 16px;background:#b45309;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">✂️ Manual Deduct</button>';
     }
     content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 18px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">Close</button>';
@@ -2669,6 +3054,562 @@
     content += '</div>';
 
     modal.innerHTML = content;
+  }
+
+  // ── CASH VOUCHER MODAL (LEDGER SE ADVANCE MINUS KARNE KE LIYE) ──
+  function openCashVoucherModal(prefillCode, prefillAdvanceId) {
+    state.openHistoryEmpCode = null;
+    var modal = getOrCreateModal();
+    var today = new Date().toISOString().slice(0, 10);
+    var emp = prefillCode ? findEmployeeByCode(prefillCode) : null;
+    var outBal = prefillCode ? getEmployeeOutstandingBalance(prefillCode) : 0;
+    if (prefillAdvanceId) {
+      var selAdv = (state.advances || []).find(function(a) { return a.id === prefillAdvanceId; });
+      if (selAdv) outBal = Number(selAdv.balanceAmount) || 0;
+    }
+
+    var content = '';
+    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.45);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:560px;width:100%;box-shadow:0 20px 40px rgba(15,23,42,0.18);overflow:hidden">';
+
+    content += '    <div style="padding:18px 22px;border-bottom:1px solid #ccfbf1;display:flex;justify-content:space-between;align-items:center;background:#f0fdfa">';
+    content += '      <div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#0f766e;text-transform:uppercase">ADVANCE LEDGER CASH VOUCHER</div>';
+    content += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">🧾 Cash Voucher Entry</h3>';
+    content += '        <div style="font-size:11px;color:#475569;margin-top:2px">Voucher amount employee ke advance ledger balance se seedha minus ho jayega</div>';
+    content += '      </div>';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #99f6e4;background:#fff;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
+    content += '    </div>';
+
+    content += '    <div style="padding:20px 22px;display:flex;flex-direction:column;gap:13px;background:#ffffff">';
+    content += '      <div style="position:relative">';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Employee Code / Name *</label>';
+    content += '        <input type="text" id="advCvCode" placeholder="Enter Code or Name with Advance Balance..." value="' + esc(prefillCode || '') + '" oninput="ATPLAdvanceManager.onCashVoucherCodeInput(this.value)" autocomplete="off" style="width:100%;padding:10px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:13px;font-weight:700;font-family:monospace;outline:none">';
+    content += '        <div id="advCvSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;margin-top:4px;max-height:190px;overflow-y:auto;z-index:200;box-shadow:0 12px 28px rgba(15,23,42,0.18)"></div>';
+    content += '      </div>';
+
+    content += '      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:11px 14px;display:flex;justify-content:space-between;align-items:center">';
+    content += '        <div>';
+    content += '          <div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Selected Employee</div>';
+    content += '          <div id="advCvEmpName" style="font-size:13px;font-weight:800;color:' + (emp ? '#312e81' : '#64748b') + '">' + esc(emp ? emp.name : 'Enter Employee Code...') + '</div>';
+    content += '          <div id="advCvEmpDept" style="font-size:10px;color:#94a3b8">' + esc(emp && emp.dept ? emp.dept : '-') + '</div>';
+    content += '        </div>';
+    content += '        <div style="text-align:right">';
+    content += '          <div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Current Ledger Balance</div>';
+    content += '          <div id="advCvBal" data-bal="' + outBal + '" style="font-size:15px;font-weight:850;color:' + (outBal > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(outBal) + '</div>';
+    content += '        </div>';
+    content += '      </div>';
+
+    content += '      <div>';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Target Advance Record</label>';
+    content += '        <select id="advCvTarget" onchange="ATPLAdvanceManager.onCashVoucherTargetChange(this.value)" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;font-weight:600;outline:none">';
+    content +=            buildTargetAdvanceOptionsHtml(prefillCode, prefillAdvanceId);
+    content += '        </select>';
+    content += '      </div>';
+
+    content += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    content += '        <div>';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Cash Voucher Date *</label>';
+    content += '          <input type="date" id="advCvDate" value="' + today + '" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
+    content += '        </div>';
+    content += '        <div>';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Cash Voucher Amount (₹) *</label>';
+    content += '          <input type="number" id="advCvAmount" min="1" step="any" placeholder="Enter voucher amount" oninput="ATPLAdvanceManager.updateCashVoucherPreview()" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:13px;font-weight:800;outline:none">';
+    content += '        </div>';
+    content += '      </div>';
+
+    content += '      <div id="advCvQuickBtns" style="display:flex;gap:6px;flex-wrap:wrap">';
+    if (outBal > 0) {
+      content += '      <button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + outBal + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">Full Ledger Bal: ' + formatINR(outBal) + '</button>';
+    }
+    [500, 1000, 2000, 5000].forEach(function(amt) {
+      content += '      <button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + amt + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f3f4f6;border:1px solid #e5e7eb;color:#374151;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">' + formatINR(amt) + '</button>';
+    });
+    content += '      </div>';
+
+    content += '      <div id="advCvBalancePreview" style="padding:8px 12px;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:8px;font-size:11px;color:#0f766e;font-weight:700">Remaining Balance Preview: ' + formatINR(outBal) + '</div>';
+
+    content += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    content += '        <div>';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Signed By *</label>';
+    content += '          <select id="advCvSignedBy" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;font-weight:700;outline:none">';
+    SIGNED_BY_OPTIONS.forEach(function(nm) {
+      content += '            <option value="' + esc(nm) + '">' + esc(nm) + '</option>';
+    });
+    content += '          </select>';
+    content += '        </div>';
+    content += '        <div>';
+    content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Voucher Remarks (Optional)</label>';
+    content += '          <input type="text" id="advCvRemarks" placeholder="e.g. Voucher #104 cash settled" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
+    content += '        </div>';
+    content += '      </div>';
+    content += '      <div id="advCvError" style="display:none;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:700"></div>';
+    content += '    </div>';
+
+    content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc">';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="padding:9px 16px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    content += '      <button onclick="ATPLAdvanceManager.submitCashVoucher()" style="padding:9px 20px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 1px 3px rgba(15,118,110,0.25)">🧾 Minus from Ledger &amp; Sync</button>';
+    content += '    </div>';
+
+    content += '  </div>';
+    content += '</div>';
+
+    modal.innerHTML = content;
+  }
+
+  function updateCashVoucherPreview() {
+    var balEl = document.getElementById('advCvBal');
+    var amtEl = document.getElementById('advCvAmount');
+    var prevEl = document.getElementById('advCvBalancePreview');
+    if (!balEl || !prevEl) return;
+    var bal = round2(Number(balEl.getAttribute('data-bal')) || 0);
+    var cut = round2(Number(amtEl && amtEl.value) || 0);
+    var after = Math.max(0, round2(bal - cut));
+    if (cut > bal + 0.001) {
+      prevEl.style.background = '#fef2f2';
+      prevEl.style.borderColor = '#fecaca';
+      prevEl.style.color = '#dc2626';
+      prevEl.textContent = 'Voucher amount (' + formatINR(cut) + ') exceeds current balance (' + formatINR(bal) + ')';
+    } else {
+      prevEl.style.background = '#f0fdfa';
+      prevEl.style.borderColor = '#ccfbf1';
+      prevEl.style.color = '#0f766e';
+      prevEl.textContent = 'Ledger Balance: ' + formatINR(bal) + ' − Cash Voucher: ' + formatINR(cut) + ' = Remaining: ' + formatINR(after);
+    }
+  }
+
+  function onCashVoucherCodeInput(val) {
+    var raw = String(val || '').trim();
+    var boxName = document.getElementById('advCvEmpName');
+    var boxDept = document.getElementById('advCvEmpDept');
+    var boxBal = document.getElementById('advCvBal');
+    var targetSel = document.getElementById('advCvTarget');
+    var suggBox = document.getElementById('advCvSuggestions');
+    var quickBtns = document.getElementById('advCvQuickBtns');
+
+    if (!raw) {
+      if (boxName) { boxName.textContent = 'Enter Employee Code...'; boxName.style.color = '#64748b'; }
+      if (boxDept) boxDept.textContent = '-';
+      if (boxBal) { boxBal.textContent = '₹0'; boxBal.setAttribute('data-bal', '0'); boxBal.style.color = '#15803d'; }
+      if (targetSel) targetSel.innerHTML = buildTargetAdvanceOptionsHtml('', null);
+      if (suggBox) suggBox.style.display = 'none';
+      updateCashVoucherPreview();
+      return;
+    }
+
+    var emp = findEmployeeByCode(raw);
+    var bal = getEmployeeOutstandingBalance(raw);
+
+    if (boxName) {
+      boxName.textContent = emp ? emp.name : 'Employee not found';
+      boxName.style.color = emp ? '#312e81' : '#d97706';
+    }
+    if (boxDept) boxDept.textContent = emp && emp.dept ? emp.dept : '-';
+    if (boxBal) {
+      boxBal.textContent = formatINR(bal);
+      boxBal.setAttribute('data-bal', String(bal));
+      boxBal.style.color = bal > 0 ? '#dc2626' : '#15803d';
+    }
+    if (targetSel) {
+      targetSel.innerHTML = buildTargetAdvanceOptionsHtml(raw, null);
+    }
+    if (quickBtns) {
+      var qb = '';
+      if (bal > 0) {
+        qb += '<button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + bal + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">Full Ledger Bal: ' + formatINR(bal) + '</button>';
+      }
+      [500, 1000, 2000, 5000].forEach(function(amt) {
+        qb += '<button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + amt + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f3f4f6;border:1px solid #e5e7eb;color:#374151;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">' + formatINR(amt) + '</button>';
+      });
+      quickBtns.innerHTML = qb;
+    }
+    updateCashVoucherPreview();
+
+    if (suggBox) {
+      var norm = raw.toLowerCase();
+      var empMap = {};
+      (state.advances || []).forEach(function(a) {
+        if (!a || (Number(a.balanceAmount) || 0) <= 0) return;
+        var k = normalizeCode(a.empCode);
+        if (!empMap[k]) empMap[k] = { code: a.empCode, name: a.empName, bal: 0 };
+        empMap[k].bal += (Number(a.balanceAmount) || 0);
+      });
+      var matches = Object.values(empMap).filter(function(m) {
+        return String(m.code || '').toLowerCase().includes(norm) || String(m.name || '').toLowerCase().includes(norm);
+      }).slice(0, 6);
+
+      if (matches.length > 0 && (!emp || normalizeCode(raw) !== normalizeCode(emp.code) || bal === 0)) {
+        var sHtml = '';
+        matches.forEach(function(m) {
+          sHtml += '<div onclick="ATPLAdvanceManager.selectCashVoucherSuggestion(\'' + esc(m.code) + '\')" style="padding:10px 14px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#ffffff" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#ffffff\'">';
+          sHtml += '  <div><strong style="color:#312e81;font-family:monospace">' + esc(m.code) + '</strong> — <span style="font-weight:750;color:#0f172a">' + esc(m.name) + '</span></div>';
+          sHtml += '  <div style="font-size:10px;font-weight:800;color:#dc2626">Bal: ' + formatINR(m.bal) + '</div>';
+          sHtml += '</div>';
+        });
+        suggBox.innerHTML = sHtml;
+        suggBox.style.display = 'block';
+      } else {
+        suggBox.style.display = 'none';
+      }
+    }
+  }
+
+  function selectCashVoucherSuggestion(code) {
+    var inp = document.getElementById('advCvCode');
+    if (inp) {
+      inp.value = code;
+      onCashVoucherCodeInput(code);
+    }
+    var suggBox = document.getElementById('advCvSuggestions');
+    if (suggBox) suggBox.style.display = 'none';
+  }
+
+  function onCashVoucherTargetChange(advId) {
+    var code = (document.getElementById('advCvCode') || {}).value || '';
+    var boxBal = document.getElementById('advCvBal');
+    var quickBtns = document.getElementById('advCvQuickBtns');
+    var bal = getEmployeeOutstandingBalance(code);
+    if (advId && advId !== 'AUTO') {
+      var found = (state.advances || []).find(function(a) { return a.id === advId; });
+      if (found) bal = Number(found.balanceAmount) || 0;
+    }
+    if (boxBal) {
+      boxBal.textContent = formatINR(bal);
+      boxBal.setAttribute('data-bal', String(bal));
+      boxBal.style.color = bal > 0 ? '#dc2626' : '#15803d';
+    }
+    if (quickBtns) {
+      var qb = '';
+      if (bal > 0) {
+        qb += '<button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + bal + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f0fdfa;border:1px solid #99f6e4;color:#0f766e;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">Full Ledger Bal: ' + formatINR(bal) + '</button>';
+      }
+      [500, 1000, 2000, 5000].forEach(function(amt) {
+        qb += '<button type="button" onclick="document.getElementById(\'advCvAmount\').value=' + amt + ';ATPLAdvanceManager.updateCashVoucherPreview()" style="padding:4px 9px;background:#f3f4f6;border:1px solid #e5e7eb;color:#374151;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">' + formatINR(amt) + '</button>';
+      });
+      quickBtns.innerHTML = qb;
+    }
+    updateCashVoucherPreview();
+  }
+
+  function submitCashVoucher() {
+    var code = (document.getElementById('advCvCode') || {}).value;
+    var advanceId = (document.getElementById('advCvTarget') || {}).value || 'AUTO';
+    var date = (document.getElementById('advCvDate') || {}).value;
+    var amount = (document.getElementById('advCvAmount') || {}).value;
+    var signedBy = (document.getElementById('advCvSignedBy') || {}).value || 'Ayush ji';
+    var remarks = (document.getElementById('advCvRemarks') || {}).value;
+    var errEl = document.getElementById('advCvError');
+
+    function showCvErr(msg) {
+      if (errEl) {
+        errEl.textContent = msg;
+        errEl.style.display = 'block';
+      }
+    }
+    if (errEl) errEl.style.display = 'none';
+
+    if (!code || !String(code).trim()) {
+      showCvErr('Please enter Employee Code.');
+      return { ok: false, error: 'INVALID_CODE' };
+    }
+    if (!date) {
+      showCvErr('Please select Cash Voucher Date.');
+      return { ok: false, error: 'INVALID_DATE' };
+    }
+    if (!amount || Number(amount) <= 0) {
+      showCvErr('Please enter a positive Cash Voucher Amount.');
+      return { ok: false, error: 'INVALID_AMOUNT' };
+    }
+
+    var res = deductAdvanceManually({
+      empCode: String(code).trim(),
+      advanceId: advanceId,
+      deductionDate: date,
+      amount: Number(amount),
+      mode: 'Cash Voucher',
+      isCashVoucher: true,
+      signedBy: signedBy,
+      remarks: remarks
+    });
+
+    if (res && res.ok) {
+      closeModal();
+    } else if (res && res.error === 'EXCEEDS_BALANCE') {
+      showCvErr('Cash Voucher amount cannot exceed available balance (' + formatINR(res.available) + ').');
+    } else if (res && res.error === 'NO_ACTIVE_ADVANCE') {
+      showCvErr('No active advance balance found in ledger for Employee ' + code + '.');
+    }
+    return res;
+  }
+
+  // ── MONTH-WISE DATA FEED MODAL ──
+  function makeEmptyFeedRow() {
+    return { empCode: '', empName: '', givenAmount: '', recoveredAmount: '', mode: 'Salary Sheet Recovery', signedBy: '', remarks: '' };
+  }
+
+  function renderMonthFeedRowsHtml() {
+    var rows = state.monthFeedRows || [];
+    var html = '';
+    rows.forEach(function(r, idx) {
+      html += '<tr style="border-bottom:1px solid #f1f5f9">';
+      html += '  <td style="padding:6px 8px;color:#94a3b8;font-size:10px;font-weight:700">' + (idx + 1) + '</td>';
+      html += '  <td style="padding:6px 8px"><input type="text" value="' + esc(r.empCode) + '" placeholder="Code" oninput="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'empCode\',this.value)" style="width:92px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-family:monospace;font-weight:700"></td>';
+      html += '  <td style="padding:6px 8px"><input type="text" id="advFeedName_' + idx + '" value="' + esc(r.empName) + '" placeholder="Auto / Name" oninput="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'empName\',this.value)" style="width:150px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:600"></td>';
+      html += '  <td style="padding:6px 8px"><input type="number" min="0" value="' + esc(r.givenAmount) + '" placeholder="0" oninput="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'givenAmount\',this.value)" style="width:105px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:700;text-align:right"></td>';
+      html += '  <td style="padding:6px 8px"><input type="number" min="0" value="' + esc(r.recoveredAmount) + '" placeholder="0" oninput="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'recoveredAmount\',this.value)" style="width:105px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:700;text-align:right"></td>';
+      html += '  <td style="padding:6px 8px"><select onchange="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'mode\',this.value)" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"><option value="Salary Sheet Recovery"' + (r.mode === 'Salary Sheet Recovery' ? ' selected' : '') + '>Salary Sheet</option><option value="Cash Voucher"' + (r.mode === 'Cash Voucher' ? ' selected' : '') + '>Cash Voucher</option><option value="Manual Cash Recovery"' + (r.mode === 'Manual Cash Recovery' ? ' selected' : '') + '>Manual Cash</option></select></td>';
+      html += '  <td style="padding:6px 8px"><select onchange="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'signedBy\',this.value)" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"><option value="">—</option>';
+      SIGNED_BY_OPTIONS.forEach(function(nm) {
+        html += '<option value="' + esc(nm) + '"' + (r.signedBy === nm ? ' selected' : '') + '>' + esc(nm) + '</option>';
+      });
+      html += '</select></td>';
+      html += '  <td style="padding:6px 8px"><input type="text" value="' + esc(r.remarks) + '" placeholder="Remarks" oninput="ATPLAdvanceManager.updateMonthFeedCell(' + idx + ',\'remarks\',this.value)" style="width:130px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"></td>';
+      html += '  <td style="padding:6px 8px;text-align:center"><button type="button" onclick="ATPLAdvanceManager.removeMonthFeedRow(' + idx + ')" style="border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;padding:4px 7px;font-size:10px;cursor:pointer">✕</button></td>';
+      html += '</tr>';
+    });
+    return html;
+  }
+
+  function openMonthFeedModal(targetMonth) {
+    state.openHistoryEmpCode = null;
+    var mKey = /^\d{4}-\d{2}$/.test(String(targetMonth || '')) ? String(targetMonth) : (state.selectedMonth || new Date().toISOString().slice(0, 7));
+    var defaultDate = mKey + '-01';
+    if (!Array.isArray(state.monthFeedRows) || !state.monthFeedRows.length) {
+      state.monthFeedRows = [makeEmptyFeedRow(), makeEmptyFeedRow(), makeEmptyFeedRow()];
+    }
+
+    var modal = getOrCreateModal();
+    var content = '';
+    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:980px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+
+    content += '    <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#eef2ff">';
+    content += '      <div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#4338ca;text-transform:uppercase">BULK MONTH-WISE DATA FEED</div>';
+    content += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">📅 Month-Wise Advance &amp; Recovery Feed</h3>';
+    content += '        <div style="font-size:11px;color:#475569;margin-top:2px">Kisi bhi mahine ka advance diya hua aur recovery data ek saath feed karein — Emp Code dalte hi Name auto-fill hoga</div>';
+    content += '      </div>';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #c7d2fe;background:#fff;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
+    content += '    </div>';
+
+    content += '    <div style="padding:14px 22px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">';
+    content += '      <div>';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Target Month *</label>';
+    content += '        <input type="month" id="advFeedMonth" value="' + esc(mKey) + '" onchange="var d=document.getElementById(\'advFeedDate\');if(d&&this.value)d.value=this.value+\'-01\'" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;background:#fff">';
+    content += '      </div>';
+    content += '      <div>';
+    content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Entry Date *</label>';
+    content += '        <input type="date" id="advFeedDate" value="' + esc(defaultDate) + '" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;background:#fff">';
+    content += '      </div>';
+    content += '      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">';
+    content += '        <button type="button" onclick="ATPLAdvanceManager.addMonthFeedRows(1)" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">+ Add Row</button>';
+    content += '        <button type="button" onclick="ATPLAdvanceManager.addMonthFeedRows(5)" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">+ Add 5 Rows</button>';
+    content += '      </div>';
+    content += '    </div>';
+
+    content += '    <div style="padding:14px 22px;overflow:auto;flex:1;background:#fff">';
+    content += '      <table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:left">';
+    content += '        <thead><tr style="background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800"><th style="padding:8px">#</th><th style="padding:8px">Emp Code *</th><th style="padding:8px">Employee Name</th><th style="padding:8px;text-align:right">Advance Given (₹)</th><th style="padding:8px;text-align:right">Recovered / Cut (₹)</th><th style="padding:8px">Cut Mode</th><th style="padding:8px">Signed By</th><th style="padding:8px">Remarks</th><th style="padding:8px;text-align:center">Del</th></tr></thead>';
+    content += '        <tbody id="advFeedRowsBody">' + renderMonthFeedRowsHtml() + '</tbody>';
+    content += '      </table>';
+
+    content += '      <div style="margin-top:14px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px">';
+    content += '        <div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:4px">📋 Quick Bulk Paste (CSV / Excel copy-paste: EmpCode, AdvanceGiven, Recovered, Remarks)</div>';
+    content += '        <div style="display:flex;gap:8px;align-items:flex-start">';
+    content += '          <textarea id="advFeedPasteBox" rows="2" placeholder="Example:\n25924, 5000, 1500, Oct Advance\n26002, 0, 2000, Oct Recovery" style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-family:monospace"></textarea>';
+    content += '          <button type="button" onclick="ATPLAdvanceManager.parseMonthFeedPaste()" style="height:40px;padding:0 14px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Load Rows</button>';
+    content += '        </div>';
+    content += '      </div>';
+    content += '      <div id="advFeedError" style="display:none;margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:700"></div>';
+    content += '    </div>';
+
+    content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f8fafc">';
+    content += '      <span style="font-size:11px;color:#64748b">Sabhi rows ek baar me local + cloud me sync ho jayengi</span>';
+    content += '      <div style="display:flex;gap:10px">';
+    content += '        <button onclick="ATPLAdvanceManager.closeModal()" style="padding:9px 16px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    content += '        <button onclick="ATPLAdvanceManager.submitMonthFeed()" style="padding:9px 20px;background:#4338ca;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">💾 Save Month-Wise Data &amp; Sync</button>';
+    content += '      </div>';
+    content += '    </div>';
+
+    content += '  </div>';
+    content += '</div>';
+
+    modal.innerHTML = content;
+  }
+
+  function updateMonthFeedCell(idx, field, value) {
+    if (!state.monthFeedRows || !state.monthFeedRows[idx]) return;
+    state.monthFeedRows[idx][field] = value;
+    if (field === 'empCode') {
+      var emp = findEmployeeByCode(value);
+      if (emp && emp.name) {
+        state.monthFeedRows[idx].empName = emp.name;
+        var nameInp = document.getElementById('advFeedName_' + idx);
+        if (nameInp) nameInp.value = emp.name;
+      }
+    }
+  }
+
+  function addMonthFeedRows(count) {
+    if (!Array.isArray(state.monthFeedRows)) state.monthFeedRows = [];
+    for (var i = 0; i < (count || 1); i++) {
+      state.monthFeedRows.push(makeEmptyFeedRow());
+    }
+    var tbody = document.getElementById('advFeedRowsBody');
+    if (tbody) tbody.innerHTML = renderMonthFeedRowsHtml();
+  }
+
+  function removeMonthFeedRow(idx) {
+    if (!Array.isArray(state.monthFeedRows)) return;
+    state.monthFeedRows.splice(idx, 1);
+    if (!state.monthFeedRows.length) state.monthFeedRows.push(makeEmptyFeedRow());
+    var tbody = document.getElementById('advFeedRowsBody');
+    if (tbody) tbody.innerHTML = renderMonthFeedRowsHtml();
+  }
+
+  function parseMonthFeedPaste() {
+    var box = document.getElementById('advFeedPasteBox');
+    var raw = box ? String(box.value || '').trim() : '';
+    if (!raw) return;
+    var lines = raw.split(/\r?\n/);
+    var parsed = [];
+    lines.forEach(function(line) {
+      var parts = line.split(/\t|,/).map(function(s) { return s.trim(); });
+      if (!parts[0]) return;
+      var code = parts[0];
+      var emp = findEmployeeByCode(code);
+      parsed.push({
+        empCode: code,
+        empName: (emp && emp.name) || '',
+        givenAmount: parts[1] ? String(parseMoney(parts[1]) || '') : '',
+        recoveredAmount: parts[2] ? String(parseMoney(parts[2]) || '') : '',
+        mode: 'Salary Sheet Recovery',
+        signedBy: '',
+        remarks: parts[3] || ''
+      });
+    });
+    if (parsed.length) {
+      state.monthFeedRows = parsed;
+      var tbody = document.getElementById('advFeedRowsBody');
+      if (tbody) tbody.innerHTML = renderMonthFeedRowsHtml();
+      if (box) box.value = '';
+    }
+  }
+
+  function submitMonthFeedBatch(rows, entryDate, targetMonth) {
+    var errEl = document.getElementById('advFeedError');
+    var cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(String(entryDate || '').trim())
+      ? String(entryDate).trim()
+      : (targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) ? (targetMonth + '-01') : new Date().toISOString().slice(0, 10));
+    var nowIso = new Date().toISOString();
+    var createdAdvs = [];
+    var createdDeds = [];
+    var recoveryErrors = [];
+
+    (rows || []).forEach(function(r, idx) {
+      if (!r) return;
+      var code = String(r.empCode || '').trim();
+      var given = round2(Number(r.givenAmount) || 0);
+      var recAmt = round2(Number(r.recoveredAmount) || 0);
+      if (!code || (given <= 0 && recAmt <= 0)) return;
+
+      var emp = findEmployeeByCode(code);
+      var empName = String(r.empName || '').trim() || (emp ? emp.name : ('Employee ' + code));
+
+      if (given > 0) {
+        var newAdv = {
+          id: 'adv_m_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2, 6),
+          empCode: code,
+          empName: empName,
+          advanceDate: cleanDate,
+          amount: given,
+          recoveredAmount: 0,
+          balanceAmount: given,
+          monthlyCap: 0,
+          remarks: String(r.remarks || '').trim() || ('Month Feed (' + formatMonthYearFromDate(cleanDate) + ')'),
+          status: 'ACTIVE',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          deductions: []
+        };
+        state.advances.unshift(newAdv);
+        createdAdvs.push(newAdv);
+      }
+
+      if (recAmt > 0) {
+        var dedRes = deductAdvanceManually({
+          empCode: code,
+          deductionDate: cleanDate,
+          amount: recAmt,
+          mode: r.mode || 'Salary Sheet Recovery',
+          isCashVoucher: String(r.mode || '').toLowerCase().indexOf('cash voucher') >= 0,
+          signedBy: r.signedBy || '',
+          remarks: String(r.remarks || '').trim() || ('Month Feed (' + formatMonthYearFromDate(cleanDate) + ')'),
+          skipRemoteSync: true
+        });
+        if (dedRes && dedRes.ok && dedRes.deductions.length) {
+          createdDeds = createdDeds.concat(dedRes.deductions);
+        } else if (dedRes && dedRes.error) {
+          recoveryErrors.push(code + ': ' + dedRes.error);
+        }
+      }
+    });
+
+    if (!createdAdvs.length && !createdDeds.length) {
+      if (errEl) {
+        errEl.textContent = recoveryErrors.length
+          ? ('Recovery could not be applied (' + recoveryErrors.join(', ') + '). Check active advance balance for the employee.')
+          : 'Please enter at least one valid row with Employee Code and Advance Given or Recovered amount.';
+        errEl.style.display = 'block';
+      }
+      return { ok: false, advancesCount: 0, deductionsCount: 0, errors: recoveryErrors };
+    }
+
+    state.selectedMonth = cleanDate.slice(0, 7);
+    recalculateAllBalances();
+    saveToLocal();
+    state.monthFeedRows = [];
+    renderUI();
+
+    try {
+      if (createdAdvs.length) {
+        fetch('/api/sync/advances/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: state.advances || [] })
+        }).catch(function() {});
+      }
+      createdDeds.forEach(function(dItem) {
+        fetch('/api/sync/advance-deduction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dItem)
+        }).catch(function() {});
+      });
+    } catch (_) {}
+
+    pushAuthoritativeToCloud().then(function(res) {
+      if (window.showToast) {
+        var summary = createdAdvs.length + ' advance(s) & ' + createdDeds.length + ' recovery entry(s)';
+        if (res && res.ok) {
+          window.showToast('✅ Month-wise feed saved (' + summary + ') & synced to cloud!');
+        } else {
+          window.showToast('⚠️ Month-wise feed saved locally (' + summary + '). Cloud sync pending retry.');
+        }
+      }
+    });
+
+    return { ok: true, advancesCount: createdAdvs.length, deductionsCount: createdDeds.length };
+  }
+
+  function submitMonthFeed() {
+    var mVal = (document.getElementById('advFeedMonth') || {}).value;
+    var dVal = (document.getElementById('advFeedDate') || {}).value;
+    var res = submitMonthFeedBatch(state.monthFeedRows, dVal, mVal);
+    if (res && res.ok) {
+      closeModal();
+    }
+    return res;
   }
 
   function closeModal() {
@@ -2721,6 +3662,7 @@
     getAllDeductions: function() { return state.deductions; },
     getEmployeeOutstandingBalance: getEmployeeOutstandingBalance,
     getEmployeeHistoryData: getEmployeeHistoryData,
+    getMonthAnalytics: getMonthAnalytics,
     detectAdvanceSheetInfo: detectAdvanceSheetInfo,
     addOrUpdateAdvance: addOrUpdateAdvance,
     deleteAdvance: deleteAdvance,
@@ -2735,6 +3677,35 @@
     exportDataCSV: exportDataCSV,
     setTab: function(tab) {
       state.activeTab = tab;
+      renderUI();
+    },
+    setSelectedMonth: function(monthKey) {
+      if (monthKey && /^\d{4}-\d{2}$/.test(String(monthKey))) {
+        state.selectedMonth = String(monthKey);
+        state.selectedDateFilter = '';
+        renderUI();
+      }
+    },
+    shiftSelectedMonth: function(delta) {
+      var m = String(state.selectedMonth || new Date().toISOString().slice(0, 7)).match(/^(\d{4})-(\d{2})$/);
+      if (!m) return;
+      var d = new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1 + (delta || 0), 1);
+      state.selectedMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      state.selectedDateFilter = '';
+      renderUI();
+    },
+    setSelectedDate: function(dateStr) {
+      var clean = String(dateStr || '').trim();
+      if (clean && /^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+        state.selectedDateFilter = clean;
+        state.selectedMonth = clean.slice(0, 7);
+      } else {
+        state.selectedDateFilter = '';
+      }
+      renderUI();
+    },
+    toggleFilterTablesByMonth: function(flag) {
+      state.filterTablesByMonth = !!flag;
       renderUI();
     },
     setSearch: function(q) {
@@ -2762,14 +3733,27 @@
     },
     openNewModal: openNewModal,
     openManualDeductionModal: openManualDeductionModal,
+    openCashVoucherModal: openCashVoucherModal,
+    openMonthFeedModal: openMonthFeedModal,
     closeModal: closeModal,
     onCodeInput: onCodeInput,
     selectSuggestion: selectSuggestion,
     onManualCodeInput: onManualCodeInput,
     selectManualSuggestion: selectManualSuggestion,
     onManualTargetChange: onManualTargetChange,
+    onCashVoucherCodeInput: onCashVoucherCodeInput,
+    selectCashVoucherSuggestion: selectCashVoucherSuggestion,
+    onCashVoucherTargetChange: onCashVoucherTargetChange,
+    updateCashVoucherPreview: updateCashVoucherPreview,
+    updateMonthFeedCell: updateMonthFeedCell,
+    addMonthFeedRows: addMonthFeedRows,
+    removeMonthFeedRow: removeMonthFeedRow,
+    parseMonthFeedPaste: parseMonthFeedPaste,
+    submitMonthFeedBatch: submitMonthFeedBatch,
+    submitMonthFeed: submitMonthFeed,
     submitForm: submitForm,
     submitManualDeduction: submitManualDeduction,
+    submitCashVoucher: submitCashVoucher,
     editAdvance: editAdvance,
     confirmDelete: confirmDelete,
     viewStatement: viewStatement,

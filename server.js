@@ -1774,6 +1774,33 @@ app.post('/api/sync/advance-deduction', (req, res) => {
   }
 });
 
+app.delete('/api/sync/advance-deduction/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    const removed = syncAdvanceDeductions[id];
+    delete syncAdvanceDeductions[id];
+    if (removed && removed.advanceId && syncAdvances[removed.advanceId]) {
+      const adv = syncAdvances[removed.advanceId];
+      if (Array.isArray(adv.deductions)) {
+        adv.deductions = adv.deductions.filter(d => d && d.id !== id);
+      }
+      const totalRec = (adv.deductions || []).reduce((s, d) => s + (Number(d.deductedAmount) || 0), 0);
+      adv.recoveredAmount = Math.round(totalRec * 100) / 100;
+      adv.balanceAmount = Math.max(0, Math.round(((Number(adv.amount) || 0) - adv.recoveredAmount) * 100) / 100);
+      adv.status = adv.balanceAmount <= 0 ? 'REPAID' : (adv.recoveredAmount > 0 ? 'PARTIAL' : 'ACTIVE');
+      adv.updatedAt = new Date().toISOString();
+    }
+    incrementVersion();
+    writeJsonFile('advance_deductions.json', syncAdvanceDeductions);
+    writeJsonFile('advances.json', syncAdvances);
+    broadcastEvent('advance_deduction_deleted', { id: id, deleted_at: new Date().toISOString() });
+    forwardAdvanceSyncToCloud();
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ── Native DOL API Endpoint (/functions/v1/dol-api) ──
 app.all('/functions/v1/dol-api', (req, res) => {
   try {
