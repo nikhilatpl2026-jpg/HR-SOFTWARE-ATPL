@@ -162,7 +162,9 @@ function current(){
     var list=json(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase();
     var u=(Array.isArray(list)?list:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});
     var adm=isOwner(id)||s.admin===true||String(s.admin).toLowerCase()==='true'||!!(u&&(u.admin===true||String(u.admin).toLowerCase()==='true'));
-    var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));
+    function _normAcc(raw){if(Array.isArray(raw))return raw.map(text).filter(Boolean);if(typeof raw==='string'&&raw.trim()){try{var p=JSON.parse(raw);if(Array.isArray(p))return p.map(text).filter(Boolean)}catch(_){}return raw.split(',').map(text).filter(Boolean)}return []}
+    var ua=_normAcc(u&&u.access),sa=_normAcc(s&&s.access);
+    var acc=adm?['*']:(ua.length?ua:sa);
     var resolved={id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc};
     resolved.rights=getRights(resolved);
     return resolved;
@@ -295,6 +297,13 @@ function apply(){
     var any=Array.prototype.some.call(group.querySelectorAll('.vitem[id^="vn-"]'),function(el){return !el.hidden});
     setVisible(group,any)
   });
+  Array.prototype.forEach.call(root.document.querySelectorAll('[onclick*="goPage("]'),function(el){
+    if(el.classList&&el.classList.contains('vitem'))return;
+    var oc=el.getAttribute('onclick')||'',m=oc.match(/goPage\s*\(\s*['"]([a-zA-Z0-9_-]+)['"]\s*\)/);
+    if(m)setVisible(el,has(u,m[1]));
+  });
+  var fab=root.document.getElementById('atplAiFab')||root.document.getElementById('aroraAiFab');
+  if(fab)setVisible(fab,has(u,'ai-commander'));
   applyActionLocks(u);
   return true;
 }
@@ -327,7 +336,7 @@ function installGoGuard(){
     var u=current();
     if(u&&!has(u,String(name||''))){denied(String(name||''));return false}
     var res=old.apply(this,arguments);
-    root.setTimeout(function(){var cu=current();if(cu)applyActionLocks(cu)},40);
+    root.setTimeout(function(){apply()},20);
     return res;
   }
   guarded.__atplPermissionGuard=true;guarded.__original=old;root.goPage=guarded;return true

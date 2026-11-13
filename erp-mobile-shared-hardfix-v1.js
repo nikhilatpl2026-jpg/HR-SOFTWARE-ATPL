@@ -17,8 +17,9 @@ function text(v){return v==null?'':String(v).trim()}
 function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
 function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function isOwner(id){return /^(admin|nikhil\s*1911|arora|hr)$/i.test(text(id))}
+function parseAccessList(raw,adm){if(adm)return['*'];if(Array.isArray(raw))return raw.map(text).filter(Boolean);if(typeof raw==='string'&&raw.trim()){try{var p=JSON.parse(raw);if(Array.isArray(p))return p.map(text).filter(Boolean)}catch(_){}return raw.split(',').map(text).filter(Boolean)}return[]}
 function sess(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
-function current(){var s=sess();if(!s)return null;var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase(),u=(Array.isArray(a)?a:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});var adm=isOwner(id)||s.admin===true||String(s.admin)==='true'||!!(u&&(u.admin===true||String(u.admin)==='true'));var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));return {id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc}}
+function current(){var s=sess();if(!s)return null;var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase(),u=(Array.isArray(a)?a:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});var adm=isOwner(id)||s.admin===true||String(s.admin)==='true'||!!(u&&(u.admin===true||String(u.admin)==='true'));var ua=parseAccessList(u&&u.access,false),sa=parseAccessList(s&&s.access,false);var acc=adm?['*']:(ua.length?ua:sa);return {id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc}}
 function api(p,timeoutOrOpts){/* broker-routed-login-authority */
   var opts=typeof timeoutOrOpts==="object"&&timeoutOrOpts!==null?timeoutOrOpts:{timeout:timeoutOrOpts,source:"login-authority"};
   if(root.ATPLCloudAPI)return root.ATPLCloudAPI.request(p,opts);
@@ -81,7 +82,7 @@ function busyBtn(on,msg){
 }
 function setSession(user,token){
   var adm=isOwner(user.id)||user.admin===true||String(user.admin)==='true';
-  var norm={id:user.id,name:user.name||user.id,admin:adm,access:adm?['*']:(Array.isArray(user.access)&&user.access.length?user.access:['*'])};
+  var norm={id:user.id,name:user.name||user.id,admin:adm,access:parseAccessList(user.access,adm)};
   var list=J(root.localStorage.getItem(USERS)||'[]',[]);if(!Array.isArray(list))list=[];
   var idx=list.findIndex(function(x){return x&&text(x.id).toLowerCase()===text(norm.id).toLowerCase()});
   if(idx>=0)list[idx]=Object.assign({},list[idx],norm);else list.push(norm);
@@ -100,6 +101,7 @@ function applyAccess(){
   var u=current();if(!u)return;
   Array.prototype.forEach.call(root.document.querySelectorAll('.vitem[id^="vn-"]'),function(el){var id=el.id.slice(3),ok=id==='useraccess'?u.admin===true:has(u,id);el.hidden=!ok;if(ok){el.classList.remove('uaNoAccess');el.style.removeProperty('display');el.removeAttribute('aria-hidden')}else{el.classList.add('uaNoAccess');el.style.setProperty('display','none','important');el.setAttribute('aria-hidden','true')}});
   Array.prototype.forEach.call(root.document.querySelectorAll('[id^="page-"]'),function(pg){var id=pg.id.slice(5),ok=id==='useraccess'?u.admin===true:has(u,id);if(ok){pg.hidden=false;pg.classList.remove('uaDeniedPage','uaNoAccess');pg.style.removeProperty('display');pg.removeAttribute('aria-hidden')}else{pg.hidden=true;pg.classList.add('uaDeniedPage');pg.style.setProperty('display','none','important')}});
+  Array.prototype.forEach.call(root.document.querySelectorAll('.vnav-group'),function(g){var any=Array.prototype.some.call(g.querySelectorAll('.vitem[id^="vn-"]'),function(el){var id=el.id.slice(3);return id==='useraccess'?u.admin===true:has(u,id)});g.hidden=!any;if(any){g.classList.remove('uaNoAccess','uaEmptyGroup');g.style.removeProperty('display');g.removeAttribute('aria-hidden')}else{g.classList.add('uaNoAccess');g.style.setProperty('display','none','important');g.setAttribute('aria-hidden','true')}});
   var who=q('uaWho'),lo=q('uaLogoutBtn');if(who){who.style.display='inline-flex';who.textContent='👤 '+text(u.name||u.id)}if(lo)lo.style.display='inline-flex'
 }
 function cleanMaster(a){return (Array.isArray(a)?a:[]).filter(function(r){var id=text(r&&r.emp_id);return r&&r._atpl_system!==true&&id.indexOf('__ATPL_SYS__')!==0})}
@@ -192,10 +194,7 @@ function unlockApp(user,navigate){
   var login=q("uaLogin");if(login)login.style.display="none";
   var ls=q("loginScreen");if(ls)ls.style.display="none";
   root.document.body.classList.remove("uaLocked");
-  var landing=q("landingPage");if(landing){
-    if(root.innerWidth<=820){landing.style.display="none";}
-    else{landing.style.display="flex";landing.style.opacity="1";landing.style.visibility="visible";landing.style.pointerEvents="auto";}
-  }
+  var landing=q("landingPage");if(landing){landing.style.display="none";landing.style.pointerEvents="none";landing.classList.add("hidden");}
   applyAccess();
   if(root.ATPLPermissionGuard&&typeof root.ATPLPermissionGuard.apply==="function")root.ATPLPermissionGuard.apply();
   if(navigate!==false){var p=firstAllowed(user||current());if(p&&typeof root.goPage==="function")try{root.goPage(p)}catch(_){}}
@@ -227,8 +226,8 @@ async function hardLogin(ev){
   var localUsers=J(root.localStorage.getItem(USERS)||"[]",[]);
   var legacyUsers=J(root.localStorage.getItem("ATPL_UserAccess_V1")||"[]",[]);
   var allUsers=(Array.isArray(localUsers)?localUsers:[]).concat(Array.isArray(legacyUsers)?legacyUsers:[]);
-  var matchUser=allUsers.find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(!u.pass||u.pass===pass)});
-  if(!matchUser&&typeof root.load==="function"){try{matchUser=root.load().find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass===pass||!u.pass)})}catch(_){}}
+  var matchUser=allUsers.find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass&&u.pass===pass)});
+  if(!matchUser&&typeof root.load==="function"){try{matchUser=root.load().find(function(u){return text(u&&u.id).toLowerCase()===uid.toLowerCase()&&(u.pass&&u.pass===pass)})}catch(_){}}
   if(!matchUser&&isOwner(uid)&&pass.length>=1){
     matchUser={id:uid,name:uid.toLowerCase()==="hr"?"HR Manager":(uid.toLowerCase()==="arora"?"Arora User":"Owner / Admin"),admin:true,access:["*"]};
   }

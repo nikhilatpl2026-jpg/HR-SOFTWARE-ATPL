@@ -18,6 +18,10 @@ function getApiUrl() {
   } catch(_) {}
   return (root.ATPL_GAS_URL && String(root.ATPL_GAS_URL).trim()) || 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 }
+var AUTH_API_URL = "https://script.google.com/macros/s/AKfycby99_893hVtbWOQr67ikxIwiq81MWW8JAa2LuxTu67JBxjQ_iWb-YkqhBmW0RrHU512SQ/exec";
+var DRIVE_SYNC_ACTIONS={ping:1,status:1,getEmployeeMaster:1,upsertEmployeeMaster:1,deleteEmployeeMaster:1,saveEmployeeMaster:1,bulkUpsertEmployeeMaster:1,getSystemRecords:1,getSyncVersion:1,getSyncState:1,downloadFile:1,uploadFile:1,save_file:1,deleteFile:1,delete_file:1};
+function getAuthApiUrl(){try{var c=(root.localStorage&&root.localStorage.getItem("ATPL_AUTH_GAS_URL"))||"";if(c&&c.trim()&&/^https:\/\/script\.google\.com\/macros\/s\//.test(c.trim()))return c.trim();}catch(_){}return (root.ATPL_AUTH_GAS_URL&&String(root.ATPL_AUTH_GAS_URL).trim())||AUTH_API_URL;}
+function getActionUrl(action){var a=String(action||"ping").trim();return DRIVE_SYNC_ACTIONS[a]?getApiUrl():getAuthApiUrl();}
 var API = getApiUrl();
 var TOKEN_KEY='ATPL_RemoteToken_V1',ALT_KEY='ATPL_SharedToken_V1',SESS_KEY='ATPL_UserSession_V5',USERS_KEY='ATPL_UserAccess_V1',HASH_KEY='ATPL_LastLoginHash_V1';
 var DEFAULT_ADMIN_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; // sha256('admin123')
@@ -88,11 +92,12 @@ function jsonp(params,timeout){
     s.crossOrigin='anonymous';
     s.addEventListener('error',function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))},true);
     s.onerror=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();if(ev&&ev.preventDefault)ev.preventDefault();finish();reject(new Error('CLOUD_NETWORK'))};
-    s.src=getApiUrl()+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
+    s.src=getActionUrl(params&&params.action)+'?'+qs(p);(root.document.head||root.document.documentElement).appendChild(s)
   })
 }
 async function proxyFetch(params,timeout){
   if(!isLocalServerHost())throw new Error('PROXY_SKIPPED_STATIC_HOST');
+  if(getActionUrl(params&&params.action)!==getApiUrl())throw new Error('PROXY_SKIPPED_AUTH_ACTION');
   if(typeof root.fetch!=='function')throw new Error('FETCH_UNAVAILABLE');
   var ctrl=typeof root.AbortController==='function'?new root.AbortController():null;
   var t=root.setTimeout(function(){try{if(ctrl)ctrl.abort()}catch(_){}},timeout);
@@ -110,7 +115,7 @@ async function fetchFallback(params,timeout){
   var ctrl=typeof root.AbortController==='function'?new root.AbortController():null;
   var t=root.setTimeout(function(){try{if(ctrl)ctrl.abort()}catch(_){}},timeout);
   try{
-    var p=Object.assign({},cleanParams(params),{_ts:now()}),r=await root.fetch(getApiUrl()+'?'+qs(p),{
+    var p=Object.assign({},cleanParams(params),{_ts:now()}),r=await root.fetch(getActionUrl(params&&params.action)+'?'+qs(p),{
       method:'GET',mode:'cors',cache:'no-store',credentials:'omit',redirect:'follow',signal:ctrl?ctrl.signal:undefined
     });
     if(!r.ok)throw new Error('HTTP_'+r.status);
@@ -206,9 +211,17 @@ async function ensureCloudToken(forceRefresh){
         candidates.push({uid:String(sess.id).trim(),hash:savedHash});
       }
     }catch(_){}
-    candidates.push({uid:'admin',hash:DEFAULT_ADMIN_HASH});
-    candidates.push({uid:'Nikhil 1911',hash:'226bc0fb747d387b75ffaa3b9d8ff2520e8886cd8de0ae9a8a21e1131280c7b4'});
-    candidates.push({uid:'admin',hash:'a3f5fb7226d1899a42212679e88c2720c2d5c1a40861c386e92d4e97c9347916'});
+    var _allowAdminMint = true;
+    try{
+      var _sr=(root.sessionStorage&&root.sessionStorage.getItem(SESS_KEY))||(root.localStorage&&root.localStorage.getItem(SESS_KEY))||"null";
+      var _so=JSON.parse(_sr);
+      if(_so&&_so.id&&_so.admin!==true&&String(_so.admin)!=="true"&&!/^(admin|nikhil\s*1911|arora|hr)$/i.test(String(_so.id).trim())){_allowAdminMint=false;}
+    }catch(_){}
+    if(_allowAdminMint){
+      candidates.push({uid:'admin',hash:DEFAULT_ADMIN_HASH});
+      candidates.push({uid:'Nikhil 1911',hash:'226bc0fb747d387b75ffaa3b9d8ff2520e8886cd8de0ae9a8a21e1131280c7b4'});
+      candidates.push({uid:'admin',hash:'a3f5fb7226d1899a42212679e88c2720c2d5c1a40861c386e92d4e97c9347916'});
+    }
     var seen={};
     for(var i=0;i<candidates.length;i++){
       var c=candidates[i];
@@ -330,6 +343,8 @@ root.ATPLCloudAPI={
   status:status,
   version:function(){return BUILD},
   apiUrl:getApiUrl,
+  authApiUrl:getAuthApiUrl,
+  urlForAction:getActionUrl,
   setCustomUrl:function(url){
     try{
       if(url&&url.trim()){
