@@ -10,7 +10,7 @@ root.__ATPL_PERMISSION_GUARD__=BUILD;
 
 var USERS='ATPL_UserAccess_V1',SESS='ATPL_UserSession_V5',timer=0,observer=null;
 var RIGHT_MODE='__right_mode:v1',ACT_PREFIX='__act:';
-var MASTER_READ={cmd:1,files:1,audit:1,machineaudit:1,bankverify:1,dol:1,dolverify:1,ff:1,empmaster:1,hrdocs:1,mamsalary:1,challan:1,empdashboard:1,test:1,compliancecalendar:1,advance:1,servicehistory:1};
+var MASTER_READ={cmd:1,files:1,audit:1,machineaudit:1,bankverify:1,dol:1,dolverify:1,ff:1,empmaster:1,hrdocs:1,letter:1,mamsalary:1,challan:1,empdashboard:1,test:1,compliancecalendar:1,advance:1,servicehistory:1};
 var KNOWN_HIDDEN={compliance:1,newjoin:1,misspunch:1,formula:1,test:1,cmd:1,attendanceaudit:1,empdashboard:1};
 
 function json(v,d){try{return JSON.parse(v)}catch(_){return d}}

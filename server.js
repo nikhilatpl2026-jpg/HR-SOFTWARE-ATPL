@@ -175,6 +175,7 @@ let syncEmployeeMaster = readJsonFile('employee_master.json', []);
 let syncDolRecords = readJsonFile('dol_records.json', {}); // id -> DOL challan
 let syncAdvances = readJsonFile('advances.json', {}); // id -> advance record
 let syncAdvanceDeductions = readJsonFile('advance_deductions.json', {}); // id -> deduction record
+let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
 
 // Merge all existing legacy tombstones into central filesDb.tombstones
 if (syncSalaryTombstones && typeof syncSalaryTombstones === 'object') {
@@ -1795,6 +1796,57 @@ app.delete('/api/sync/advance-deduction/:id', (req, res) => {
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advance_deduction_deleted', { id: id, deleted_at: new Date().toISOString() });
     forwardAdvanceSyncToCloud();
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── HR Letters & Leave History Endpoints ──
+function forwardLeaveLettersToCloud() {
+  try {
+    const payload = {
+      letters: Object.values(syncLeaveLetters),
+      updatedAt: new Date().toISOString()
+    };
+    const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    syncToGoogleAppsScript('uploadFile', {
+      fileName: 'ATPL_LEAVE_LETTERS_DATA.json',
+      fileBase64: b64,
+      mimeType: 'application/json'
+    });
+  } catch (_) {}
+}
+
+app.get('/api/sync/leave-letters', (req, res) => {
+  return res.json({ ok: true, records: Object.values(syncLeaveLetters) });
+});
+
+app.post('/api/sync/leave-letter', (req, res) => {
+  try {
+    const record = req.body || {};
+    if (!record || !record.id) return res.status(400).json({ ok: false, error: 'Record ID required' });
+    syncLeaveLetters[record.id] = Object.assign({}, record, {
+      updatedAt: record.updatedAt || new Date().toISOString()
+    });
+    incrementVersion();
+    writeJsonFile('leave_letters.json', syncLeaveLetters);
+    broadcastEvent('leave_letter_saved', syncLeaveLetters[record.id]);
+    forwardLeaveLettersToCloud();
+    return res.json({ ok: true, saved: true, id: record.id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/leave-letter/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    delete syncLeaveLetters[id];
+    incrementVersion();
+    writeJsonFile('leave_letters.json', syncLeaveLetters);
+    broadcastEvent('leave_letter_deleted', { id: id, deleted_at: new Date().toISOString() });
+    forwardLeaveLettersToCloud();
     return res.json({ ok: true, deleted: true, id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });

@@ -20,6 +20,7 @@ var PAGE_NAMES={
   empmaster:'Employee / Employee Master',
   servicehistory:'Employee / Service History',
   hrdocs:'Employee / HR Documents',
+  letter:'Employee / HR Letters',
   esic:'Tools / ESIC DOL Filler',
   esictodol:'Compliance / ESIC → DOL',
   pftodol:'Compliance / PF → DOL'
