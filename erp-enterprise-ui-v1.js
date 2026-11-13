@@ -142,7 +142,7 @@ function boot(){
   if(!g.__ATPL_SERVICE_HISTORY_LOADER_V1__){
     g.__ATPL_SERVICE_HISTORY_LOADER_V1__=true;
     var sh=document.createElement('script');
-    sh.src='service-history-v1.js?v=20261111-1';
+    sh.src='service-history-v1.js?v=20261113-2';
     sh.async=true;
     sh.onerror=function(){console.error('[ATPL Service History] Module failed to load.');};
     (document.head||document.documentElement).appendChild(sh);
