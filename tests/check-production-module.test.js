@@ -261,4 +261,61 @@ test('Check Production Module — Card Mapping, Sheet Parsing, Rates, Multi-Mach
     assert.equal(writtenFiles.length, 5);
     assert.deepEqual(writtenFiles[3].sheets, ['Card_Wise', 'Machine_Wise', 'Employee_Wise', 'Rate_Wise', 'Daily_1_31_Detail']);
   });
+
+  await t.test('5. Anti-Hang: Background Worker & Sparse Extractor handle bloated 1,048,576-row sheets in milliseconds without freezing', async () => {
+    const vm = require('node:vm');
+    const workerCode = fs.readFileSync(path.join(ROOT, 'check-production-worker-v1.js'), 'utf8');
+    assert.doesNotThrow(() => new Function(workerCode), 'check-production-worker-v1.js syntax valid');
+
+    const posted = [];
+    const mockWs = {
+      '!ref': 'A1:XFD1048576', // Simulated Excel formatted to 1M rows x 16K cols!
+      A1: { v: 'Code' }, B1: { v: 'Card No. 1' }, C1: { v: 'Loctatic' },
+      D1: { v: 1 }, E1: { v: 2 }, F1: { v: 3 }, G1: { v: 4 }, H1: { v: 5 },
+      I1: { v: 'Days' }, J1: { v: 'Salry' }, K1: { v: 'Total' },
+      A2: { v: 26303 }, B2: { v: 'Ramawadh' }, C2: { v: 'C7P' },
+      D2: { v: 200 }, E2: { v: 150 }, I2: { v: 350 }, J2: { v: 2.25 }, K2: { v: 788 },
+      // Simulate styled empty cell at row 1,048,576 with no value
+      A1048576: { s: {} }
+    };
+    const mockXlsx = {
+      read: () => ({ SheetNames: ['Card no-1', 'Summary'], Sheets: { 'Card no-1': mockWs, Summary: { '!ref': 'A1:A1' } } }),
+      utils: {
+        decode_cell: (addr) => {
+          const m = addr.match(/^([A-Z]+)(\d+)$/);
+          if (!m) return { r: 0, c: 0 };
+          let c = 0;
+          for (let i = 0; i < m[1].length; i++) c = c * 26 + (m[1].charCodeAt(i) - 64);
+          return { r: parseInt(m[2], 10) - 1, c: c - 1 };
+        }
+      }
+    };
+    const sandbox = {
+      self: { postMessage: (msg) => posted.push(msg), onmessage: null },
+      postMessage: (msg) => posted.push(msg),
+      importScripts: () => {},
+      XLSX: mockXlsx,
+      FileReaderSync: function() { this.readAsArrayBuffer = () => new ArrayBuffer(8); },
+      console
+    };
+    sandbox.self.postMessage = sandbox.postMessage;
+    vm.runInNewContext(workerCode, sandbox);
+
+    const t0 = Date.now();
+    await sandbox.self.onmessage({ data: { type: 'parse', jobId: 7, buffer: new ArrayBuffer(8), fileName: 'attendence sheet sep-26.xlsx' } });
+    const elapsed = Date.now() - t0;
+
+    assert.ok(elapsed < 500, 'Bloated 1M-row sheet parsed in ' + elapsed + 'ms (<500ms)');
+    const doneMsg = posted.find(m => m.type === 'done');
+    assert.ok(doneMsg && doneMsg.dataset, 'Worker posted done dataset');
+    assert.equal(doneMsg.dataset.records.length, 1);
+    assert.equal(doneMsg.dataset.records[0].cardKey, 'C7', 'C7P credited to Card 07');
+    assert.equal(doneMsg.dataset.records[0].qty, 350);
+    assert.equal(doneMsg.dataset.records[0].value, 787.5);
+
+    // Also verify main module uses Worker cleanly when available
+    const cpSrc = fs.readFileSync(path.join(ROOT, 'atpl-check-production.js'), 'utf8');
+    assert.ok(cpSrc.includes("new Worker('check-production-worker-v1.js"), 'Main module spawns Web Worker for uploads');
+    assert.ok(cpSrc.includes('sheetToCompactAoa'), 'Main module fallback uses sparse O(populated cells) reader');
+  });
 });

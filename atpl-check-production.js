@@ -41,6 +41,9 @@
     empSortBy: 'value', // 'value' | 'qty' | 'name'
     isParsing: false,
     parseProgressText: '',
+    parsePercent: 0,
+    empViewLimit: 120,
+    machineViewLimit: 120,
     lastError: '',
     pendingMonthKey: '', // optional override in upload bar
     viewMoreEmpKey: null,
@@ -546,11 +549,11 @@
       var empKey = normCodeKey ? ('CODE::' + normCodeKey) : ('NAME::' + finalName.toLowerCase().replace(/\s+/g, ' ').trim());
 
       records.push({
-        id: sheetName + '::r' + (r + 1),
+        id: sheetName + '::r' + (row.__excelRow || (r + 1)),
         sheetName: sheetName,
         sourceCardNum: fallbackCardNum,
         sourceCardLabel: sheetCard ? sheetCard.cardLabel : sheetName,
-        excelRow: r + 1,
+        excelRow: row.__excelRow || (r + 1),
         empCode: empCode,
         empName: finalName,
         empKey: empKey,
@@ -583,6 +586,33 @@
   /**
    * Parse an entire workbook (either SheetJS workbook `wb` OR plain map `{ sheetName: 2DArray }`).
    */
+  function sheetToCompactAoa(ws, xlsxLib) {
+    if (!ws) return [];
+    var keys = Object.keys(ws);
+    var rowBuckets = {};
+    var maxRow = -1;
+    for (var i = 0; i < keys.length; i++) {
+      var addr = keys[i];
+      if (!addr || addr.charCodeAt(0) === 33) continue;
+      var cell = ws[addr];
+      if (!cell || cell.v === undefined || cell.v === null || cell.v === '') continue;
+      var pos;
+      try { pos = xlsxLib.utils.decode_cell(addr); } catch (_) { continue; }
+      if (!pos || pos.c > 80) continue;
+      if (pos.r > maxRow) maxRow = pos.r;
+      if (!rowBuckets[pos.r]) rowBuckets[pos.r] = [];
+      rowBuckets[pos.r][pos.c] = cell.v;
+    }
+    var out = [];
+    var rIndices = Object.keys(rowBuckets).map(Number).sort(function(a, b) { return a - b; });
+    for (var j = 0; j < rIndices.length; j++) {
+      var rowArr = rowBuckets[rIndices[j]];
+      rowArr.__excelRow = rIndices[j] + 1;
+      out.push(rowArr);
+    }
+    return out;
+  }
+
   function parseWorkbookData(input, options) {
     options = options || {};
     var fileName = options.fileName || 'Attendance_Sheet.xlsx';
@@ -596,11 +626,14 @@
         throw new Error('SheetJS (XLSX) library is unavailable.');
       }
       sheetNames = input.SheetNames.slice();
-      sheetNames.forEach(function(sn) {
+      // Identify Card sheets up front so we don't even convert non-Card tabs when Card sheets exist
+      var preCardSheets = sheetNames.filter(function(sn) { return !!parseSheetCardInfo(sn); });
+      var extractList = preCardSheets.length > 0 ? preCardSheets : sheetNames;
+      extractList.forEach(function(sn) {
         try {
           var ws = input.Sheets[sn];
           if (ws) {
-            sheetsMap[sn] = xlsxLib.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+            sheetsMap[sn] = sheetToCompactAoa(ws, xlsxLib);
           }
         } catch (_) {}
       });
@@ -1090,8 +1123,9 @@
       });
     }).catch(function() {
       try {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(LOCAL_FALLBACK_KEY + '_' + dataset.monthKey, JSON.stringify(dataset));
+        if (typeof localStorage !== 'undefined' && dataset.records && dataset.records.length <= 2500) {
+          var payload = JSON.stringify(dataset);
+          if (payload.length < 1500000) localStorage.setItem(LOCAL_FALLBACK_KEY + '_' + dataset.monthKey, payload);
           return true;
         }
       } catch (_) {}
@@ -1186,47 +1220,95 @@
     });
   }
 
-  // ── Upload & File Processing ──
-  function handleFileUpload(file) {
-    if (!file) return Promise.resolve(null);
+  // ── Upload & File Processing (Off-Main-Thread Web Worker) ──
+  var activeWorker = null;
+  var activeJobId = 0;
+  var searchDebounceTimer = null;
+  var analyticsMemo = { key: '', res: null };
+
+  function invalidateAnalyticsCache() {
+    analyticsMemo.key = '';
+    analyticsMemo.res = null;
+  }
+
+  function stopActiveWorker() {
+    try {
+      if (activeWorker) {
+        activeWorker.terminate();
+        activeWorker = null;
+      }
+    } catch (_) {}
+  }
+
+  function updateProgressDom(text, pct) {
+    state.parseProgressText = text || 'Processing…';
+    state.parsePercent = Math.max(0, Math.min(100, Number(pct) || 0));
+    if (typeof document === 'undefined') return;
+    var wrap = document.getElementById('cpProgressWrap');
+    var lbl = document.getElementById('cpProgressText');
+    var bar = document.getElementById('cpProgressFill');
+    if (wrap) wrap.style.display = state.isParsing ? 'block' : 'none';
+    if (lbl) lbl.textContent = state.parseProgressText + ' (' + state.parsePercent + '%)';
+    if (bar) bar.style.width = state.parsePercent + '%';
+  }
+
+  function finishDatasetLoad(ds) {
+    state.months[ds.monthKey] = ds;
+    state.activeMonthKey = ds.monthKey;
+    state.cardFilter = 'ALL';
+    state.machineFilter = 'ALL';
+    state.searchQuery = '';
+    state.empViewLimit = 120;
+    state.machineViewLimit = 120;
+    state.viewMoreEmpKey = null;
+    state.isParsing = false;
+    state.parseProgressText = '';
+    state.parsePercent = 100;
+    state.lastError = '';
+    invalidateAnalyticsCache();
+    updateSidebarBadge();
+    renderUI();
+    // Persist asynchronously after UI paints so dashboard appears in <16ms
+    setTimeout(function() {
+      saveMonthToStorage(ds);
+    }, 50);
+    if (typeof window !== 'undefined' && window.showToast) {
+      window.showToast('✅ Loaded <strong>' + esc(ds.monthLabel) + '</strong>: ' + ds.detectedSheets.length + ' card sheet(s), ' + ds.records.length + ' production entries.');
+    }
+  }
+
+  function cancelUpload() {
+    activeJobId++;
+    stopActiveWorker();
+    state.isParsing = false;
+    state.parseProgressText = '';
+    state.parsePercent = 0;
+    renderUI();
+  }
+
+  function fallbackMainThreadParse(file, jobId) {
     if (!window.XLSX || typeof window.XLSX.read !== 'function') {
+      state.isParsing = false;
       state.lastError = 'Excel parser (XLSX) is still loading. Please try again in a second.';
       renderUI();
       return Promise.resolve(null);
     }
-
-    state.isParsing = true;
-    state.lastError = '';
-    state.parseProgressText = 'Reading ' + file.name + '…';
-    renderUI();
-
+    updateProgressDom('Reading ' + file.name + '…', 15);
     return new Promise(function(resolve) {
       var reader = new FileReader();
       reader.onload = function(ev) {
-        // Yield a frame so UI shows parsing spinner smoothly without freezing
+        if (jobId !== activeJobId) { resolve(null); return; }
         setTimeout(function() {
           try {
             var data = new Uint8Array(ev.target.result);
-            var wb = window.XLSX.read(data, { type: 'array', cellDates: false, cellFormula: false, cellStyles: false });
+            var wb = window.XLSX.read(data, { type: 'array', cellDates: false, cellFormula: false, cellStyles: false, cellNF: false, cellHTML: false, sheetStubs: false });
             var ds = parseWorkbookData(wb, {
               fileName: file.name,
               monthKey: state.pendingMonthKey || ''
             });
-            state.months[ds.monthKey] = ds;
-            state.activeMonthKey = ds.monthKey;
-            state.cardFilter = 'ALL';
-            state.machineFilter = 'ALL';
-            state.searchQuery = '';
-            state.viewMoreEmpKey = null;
-            state.isParsing = false;
-            state.parseProgressText = '';
-            state.lastError = '';
-            saveMonthToStorage(ds);
-            updateSidebarBadge();
-            renderUI();
-            if (window.showToast) {
-              window.showToast('✅ Loaded <strong>' + esc(ds.monthLabel) + '</strong>: ' + ds.detectedSheets.length + ' card sheet(s), ' + ds.records.length + ' production entries.');
-            }
+            wb = null;
+            if (jobId !== activeJobId) { resolve(null); return; }
+            finishDatasetLoad(ds);
             resolve(ds);
           } catch (err) {
             state.isParsing = false;
@@ -1236,7 +1318,7 @@
             if (window.showToast) window.showToast('⚠️ ' + esc(state.lastError));
             resolve(null);
           }
-        }, 25);
+        }, 30);
       };
       reader.onerror = function() {
         state.isParsing = false;
@@ -1249,42 +1331,105 @@
     });
   }
 
+  function handleFileUpload(file) {
+    if (!file) return Promise.resolve(null);
+    stopActiveWorker();
+    var jobId = ++activeJobId;
+    state.isParsing = true;
+    state.lastError = '';
+    state.parseProgressText = 'Starting background scan for ' + file.name + '…';
+    state.parsePercent = 5;
+    renderUI();
+
+    if (typeof Worker !== 'function') {
+      return fallbackMainThreadParse(file, jobId);
+    }
+
+    return new Promise(function(resolve) {
+      try {
+        activeWorker = new Worker('check-production-worker-v1.js?v=20261113-v2');
+      } catch (_) {
+        activeWorker = null;
+        fallbackMainThreadParse(file, jobId).then(resolve);
+        return;
+      }
+
+      var settled = false;
+      activeWorker.onmessage = function(ev) {
+        var d = ev.data || {};
+        if (d.jobId !== jobId || jobId !== activeJobId) return;
+        if (d.type === 'progress') {
+          updateProgressDom(d.stage || 'Scanning workbook…', d.percent || 20);
+          return;
+        }
+        if (d.type === 'done' && d.dataset) {
+          settled = true;
+          stopActiveWorker();
+          finishDatasetLoad(d.dataset);
+          resolve(d.dataset);
+          return;
+        }
+        if (d.type === 'error') {
+          settled = true;
+          stopActiveWorker();
+          state.isParsing = false;
+          state.parseProgressText = '';
+          state.lastError = d.message || 'Unable to parse Excel file.';
+          renderUI();
+          if (window.showToast) window.showToast('⚠️ ' + esc(state.lastError));
+          resolve(null);
+        }
+      };
+
+      activeWorker.onerror = function() {
+        if (settled || jobId !== activeJobId) return;
+        stopActiveWorker();
+        // Transparent fallback to sparse main-thread parse if worker fails to load
+        fallbackMainThreadParse(file, jobId).then(resolve);
+      };
+
+      try {
+        activeWorker.postMessage({
+          type: 'parse',
+          jobId: jobId,
+          file: file,
+          fileName: file.name,
+          monthKey: state.pendingMonthKey || ''
+        });
+      } catch (_) {
+        stopActiveWorker();
+        fallbackMainThreadParse(file, jobId).then(resolve);
+      }
+    });
+  }
+
   function loadFromErpSavedFile(fileIndex) {
     try {
       var list = (typeof window.files !== 'undefined' && Array.isArray(window.files)) ? window.files : [];
       var fileObj = list[fileIndex];
       if (!fileObj) return;
+      var jobId = ++activeJobId;
       state.isParsing = true;
       state.lastError = '';
       state.parseProgressText = 'Scanning ERP file: ' + (fileObj.name || 'Workbook') + '…';
+      state.parsePercent = 25;
       renderUI();
 
       setTimeout(function() {
+        if (jobId !== activeJobId) return;
         try {
           var ds = parseWorkbookData(fileObj.wb ? fileObj.wb : { sheets: fileObj.sheets || {} }, {
             fileName: fileObj.name || 'ERP_Attendance_Sheet.xlsx',
             monthKey: state.pendingMonthKey || ''
           });
-          state.months[ds.monthKey] = ds;
-          state.activeMonthKey = ds.monthKey;
-          state.cardFilter = 'ALL';
-          state.machineFilter = 'ALL';
-          state.searchQuery = '';
-          state.isParsing = false;
-          state.parseProgressText = '';
-          saveMonthToStorage(ds);
-          updateSidebarBadge();
-          renderUI();
-          if (window.showToast) {
-            window.showToast('✅ Imported <strong>' + esc(ds.monthLabel) + '</strong> from Saved ERP Files (' + ds.records.length + ' rows).');
-          }
+          finishDatasetLoad(ds);
         } catch (err) {
           state.isParsing = false;
           state.parseProgressText = '';
           state.lastError = err && err.message ? err.message : 'Selected ERP file does not match attendance card structure.';
           renderUI();
         }
-      }, 25);
+      }, 30);
     } catch (e) {
       state.isParsing = false;
       state.lastError = e.message || 'Failed to read ERP file.';
@@ -1301,15 +1446,29 @@
   function getFilteredAnalytics() {
     var ds = getActiveDataset();
     if (!ds) return { dataset: null, filteredRecords: [], analytics: computeAnalytics([]), allAnalytics: computeAnalytics([]) };
-    var allAnalytics = computeAnalytics(ds.records);
-    var filtered = filterRecords(ds.records, {
+    var cacheKey = [ds.monthKey, ds.uploadedAt || '', state.cardFilter, state.machineFilter, state.rateModeFilter, state.searchQuery].join('||');
+    if (analyticsMemo.key === cacheKey && analyticsMemo.res) {
+      return analyticsMemo.res;
+    }
+    var allKey = ds.monthKey + '||' + (ds.uploadedAt || '') + '||ALL';
+    var allAnalytics = (analyticsMemo.allKey === allKey && analyticsMemo.allRes)
+      ? analyticsMemo.allRes
+      : computeAnalytics(ds.records);
+    analyticsMemo.allKey = allKey;
+    analyticsMemo.allRes = allAnalytics;
+
+    var isUnfiltered = (state.cardFilter === 'ALL' && state.machineFilter === 'ALL' && state.rateModeFilter === 'ALL' && !cleanText(state.searchQuery));
+    var filtered = isUnfiltered ? ds.records : filterRecords(ds.records, {
       cardFilter: state.cardFilter,
       machineFilter: state.machineFilter,
       rateModeFilter: state.rateModeFilter,
       searchQuery: state.searchQuery
     });
-    var analytics = computeAnalytics(filtered);
-    return { dataset: ds, filteredRecords: filtered, analytics: analytics, allAnalytics: allAnalytics };
+    var analytics = isUnfiltered ? allAnalytics : computeAnalytics(filtered);
+    var result = { dataset: ds, filteredRecords: filtered, analytics: analytics, allAnalytics: allAnalytics };
+    analyticsMemo.key = cacheKey;
+    analyticsMemo.res = result;
+    return result;
   }
 
   function buildCardExportRows(ds, analytics) {
@@ -1644,6 +1803,13 @@
             'Auto-reads Card sheets (C1, C3, C5–C13) · Machine codes credit true Card (e.g. C7R → Card 07) · Supports .xlsx, .xls, .csv' +
           '</div>' +
           sheetSummaryText +
+          '<div id="cpProgressWrap" style="display:' + (state.isParsing ? 'block' : 'none') + ';margin-top:8px;max-width:460px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;font-weight:700;color:#4f46e5;margin-bottom:4px">' +
+              '<span id="cpProgressText">' + esc(state.parseProgressText || 'Processing in background…') + ' (' + (state.parsePercent || 0) + '%)</span>' +
+              '<button type="button" class="cp-btn cp-btn-sm" style="padding:2px 8px;margin-left:8px" onclick="ATPLCheckProduction.cancelUpload()">Cancel</button>' +
+            '</div>' +
+            '<div style="height:6px;background:#e2e8f0;border-radius:99px;overflow:hidden"><div id="cpProgressFill" style="height:100%;width:' + (state.parsePercent || 0) + '%;background:#4f46e5;transition:width .15s ease"></div></div>' +
+          '</div>' +
           (state.lastError ? '<div style="font-size:12px;color:#dc2626;font-weight:700;margin-top:6px">' + esc(state.lastError) + '</div>' : '') +
         '</div>' +
         '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">' +
@@ -1922,7 +2088,8 @@
   }
 
   function renderMachinesTab(analytics) {
-    var rows = analytics.machines.map(function(m) {
+    var visibleMachines = analytics.machines.slice(0, state.machineViewLimit || 120);
+    var rows = visibleMachines.map(function(m) {
       var rateStr = m.rates.map(function(rt) { return formatRate(rt.rate, rt.rateKind, rt.divisor); }).join(' · ');
       return '' +
         '<tr>' +
@@ -1949,12 +2116,16 @@
         '</tr></thead><tbody>' +
           (rows || '<tr><td colspan="9" style="text-align:center;padding:24px;color:#64748b">No machines match filters.</td></tr>') +
         '</tbody></table></div>' +
+        (analytics.machines.length > visibleMachines.length
+          ? '<div style="padding:12px;text-align:center;border-top:1px solid #f1f5f9"><button type="button" class="cp-btn cp-btn-sm" onclick="ATPLCheckProduction.showMoreMachines()">Show More Machines (' + (analytics.machines.length - visibleMachines.length) + ' remaining)</button></div>'
+          : '') +
       '</div>';
   }
 
   function renderEmployeesTab(analytics) {
     var list = getSortedEmployees(analytics.employees);
-    var rows = list.map(function(e) {
+    var visibleList = list.slice(0, state.empViewLimit || 120);
+    var rows = visibleList.map(function(e) {
       var machinesSummary = e.machineRecords.map(function(mr) {
         return mr.machineCode + ' (' + formatQty(mr.qty) + ')';
       }).join(', ');
@@ -1991,6 +2162,12 @@
         '</tr></thead><tbody>' +
           (rows || '<tr><td colspan="8" style="text-align:center;padding:24px;color:#64748b">No employees match search/filters.</td></tr>') +
         '</tbody></table></div>' +
+        (list.length > visibleList.length
+          ? '<div style="padding:12px;text-align:center;border-top:1px solid #f1f5f9;display:flex;justify-content:center;gap:8px">' +
+              '<button type="button" class="cp-btn cp-btn-sm" onclick="ATPLCheckProduction.showMoreEmployees(120)">Show Next 120 (' + (list.length - visibleList.length) + ' remaining)</button>' +
+              '<button type="button" class="cp-btn cp-btn-sm" onclick="ATPLCheckProduction.showMoreEmployees(10000)">Show All (' + list.length + ')</button>' +
+            '</div>'
+          : '') +
       '</div>';
   }
 
@@ -2181,6 +2358,9 @@
     },
     renderUI: renderUI,
     handleFileUpload: handleFileUpload,
+    cancelUpload: cancelUpload,
+    showMoreEmployees: function(step) { state.empViewLimit = (state.empViewLimit || 120) + (step || 120); renderUI(); },
+    showMoreMachines: function() { state.machineViewLimit = (state.machineViewLimit || 120) + 120; renderUI(); },
     loadFromErpSavedFile: loadFromErpSavedFile,
     setPendingMonth: function(mk) {
       state.pendingMonthKey = mk || '';
@@ -2188,6 +2368,7 @@
     setMonth: function(mk) {
       if (state.months[mk]) {
         state.activeMonthKey = mk;
+        invalidateAnalyticsCache();
         state.cardFilter = 'ALL';
         state.machineFilter = 'ALL';
         state.viewMoreEmpKey = null;
@@ -2208,6 +2389,7 @@
       if (typeof confirm === 'function' && !confirm('Remove uploaded production data for ' + m.monthLabel + '?')) {
         return;
       }
+      invalidateAnalyticsCache();
       deleteMonthFromStorage(mk).then(function() {
         updateSidebarBadge();
         renderUI();
@@ -2233,12 +2415,17 @@
     },
     setSearch: function(q) {
       state.searchQuery = q || '';
-      renderUI();
-      var inp = document.getElementById('cpSearchInput');
-      if (inp) {
-        inp.focus();
-        try { inp.selectionStart = inp.selectionEnd = inp.value.length; } catch (_) {}
-      }
+      state.empViewLimit = 120;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(function() {
+        searchDebounceTimer = null;
+        renderUI();
+        var inp = document.getElementById('cpSearchInput');
+        if (inp) {
+          inp.focus();
+          try { inp.selectionStart = inp.selectionEnd = inp.value.length; } catch (_) {}
+        }
+      }, 140);
     },
     resetFilters: function() {
       state.cardFilter = 'ALL';
