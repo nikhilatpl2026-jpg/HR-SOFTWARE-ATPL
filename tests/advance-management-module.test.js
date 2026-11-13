@@ -265,10 +265,26 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     mockWindow.ATPLAdvanceManager.setTab('ledger');
     assert(container.innerHTML.includes('Employee History'), 'Ledger must render Employee History button');
     assert(container.innerHTML.includes('Manual Cut'), 'Ledger must render Manual Cut button');
+    assert(container.innerHTML.includes('confirmDeleteEmployeeLedger'), 'Ledger must render Delete button for employee row');
 
     // 5. Reversing/deleting the manual deduction restores balance accurately
     const deletedOk = mockWindow.ATPLAdvanceManager.deleteDeduction(manRes.deductions[0].id);
     assert.equal(deletedOk, true);
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 7000);
+
+    // 6. Deleting entire Employee Ledger deletes all advances & deductions for that employee only
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_other_emp',
+      empCode: '26002',
+      amount: 4000,
+      advanceDate: '2026-03-02',
+      remarks: 'Other employee advance'
+    });
+    const delLedgerCount = mockWindow.ATPLAdvanceManager.deleteEmployeeLedger('25924');
+    assert.equal(delLedgerCount, 1, 'Must delete 1 advance for employee 25924');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 0);
+    assert.equal(mockWindow.ATPLAdvanceManager.getAllAdvances().some(a => a.empCode === '25924'), false);
+    assert.equal(mockWindow.ATPLAdvanceManager.getAllDeductions().some(d => d.empCode === '25924'), false);
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 4000, 'Other employee advance must stay intact');
   });
 });

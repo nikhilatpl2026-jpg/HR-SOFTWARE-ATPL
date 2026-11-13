@@ -305,5 +305,22 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 12000);
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllDeductions().length, 1);
+
+    // Delete entire employee ledger for 25924 on Mobile and verify Desktop deletes it cleanly via cloud tombstones
+    mobile.mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_nikhil_keep',
+      empCode: '26448',
+      amount: 9000,
+      advanceDate: '2026-11-12',
+      remarks: 'Keep other employee'
+    });
+    const removedCount = mobile.mockWindow.ATPLAdvanceManager.deleteEmployeeLedger('25924');
+    assert.equal(removedCount, 1);
+    await new Promise(r => setTimeout(r, 60));
+
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().some(a => a.empCode === '25924'), false, 'Deleted employee ledger must stay deleted across devices');
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllDeductions().some(d => d.empCode === '25924'), false, 'Deleted employee deductions must stay deleted across devices');
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26448'), 9000, 'Other employee advance must sync intact');
   });
 });

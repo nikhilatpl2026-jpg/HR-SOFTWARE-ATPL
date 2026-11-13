@@ -421,42 +421,52 @@
   }
 
   var activePushPromise = null;
+  var pendingPushQueued = false;
   function pushAuthoritativeToCloud() {
-    if (activePushPromise) return activePushPromise;
+    if (activePushPromise) {
+      pendingPushQueued = true;
+      return activePushPromise;
+    }
     activePushPromise = (async function() {
+      var lastRes = { ok: false, error: 'CLOUD_UNCONFIRMED' };
       try {
-        var nowIso = new Date().toISOString();
-        var payload = {
-          version: 3,
-          advances: state.advances || [],
-          deductions: state.deductions || [],
-          tombstones: state.tombstones || {},
-          updatedAt: nowIso
-        };
-        var b64Data = utf8ToB64(JSON.stringify(payload));
+        do {
+          pendingPushQueued = false;
+          var nowIso = new Date().toISOString();
+          var payload = {
+            version: 3,
+            advances: state.advances || [],
+            deductions: state.deductions || [],
+            tombstones: state.tombstones || {},
+            updatedAt: nowIso
+          };
+          var b64Data = utf8ToB64(JSON.stringify(payload));
 
-        var res = await callGoogleBackend('uploadFile', {
-          fileName: CLOUD_FILENAME,
-          fileBase64: b64Data,
-          mimeType: 'application/json'
-        });
+          var res = await callGoogleBackend('uploadFile', {
+            fileName: CLOUD_FILENAME,
+            fileBase64: b64Data,
+            mimeType: 'application/json'
+          });
 
-        var confirmed = !!(res && res.ok);
+          var confirmed = !!(res && res.ok);
 
-        try {
-          fetch('/api/sync/advances/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ records: state.advances || [] })
-          }).catch(function() {});
-        } catch (_) {}
+          try {
+            fetch('/api/sync/advances/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ records: state.advances || [] })
+            }).catch(function() {});
+          } catch (_) {}
 
-        broadcastSync('advance_cloud_synced', { ts: Date.now(), count: (state.advances || []).length });
-        return { ok: confirmed, error: confirmed ? null : 'CLOUD_UNCONFIRMED' };
+          broadcastSync('advance_cloud_synced', { ts: Date.now(), count: (state.advances || []).length });
+          lastRes = { ok: confirmed, error: confirmed ? null : 'CLOUD_UNCONFIRMED' };
+        } while (pendingPushQueued);
+        return lastRes;
       } catch (err) {
         return { ok: false, error: err.message };
       } finally {
         activePushPromise = null;
+        pendingPushQueued = false;
       }
     })();
     return activePushPromise;
@@ -737,6 +747,83 @@
         }
       }
     });
+  }
+
+  function deleteEmployeeLedger(empCode) {
+    var norm = normalizeCode(empCode);
+    if (!norm) return 0;
+
+    var toDeleteAdvs = (state.advances || []).filter(function(a) {
+      return a && normalizeCode(a.empCode) === norm;
+    });
+    var toDeleteDeds = (state.deductions || []).filter(function(d) {
+      return d && normalizeCode(d.empCode) === norm;
+    });
+    if (!toDeleteAdvs.length && !toDeleteDeds.length) return 0;
+
+    var empLabel = (toDeleteAdvs[0] && toDeleteAdvs[0].empName) || (toDeleteDeds[0] && toDeleteDeds[0].empName) || ('Emp ' + empCode);
+    var nowIso = new Date().toISOString();
+    var deletedAdvIds = [];
+
+    toDeleteAdvs.forEach(function(a) {
+      if (a && a.id) {
+        state.tombstones[a.id] = nowIso;
+        deletedAdvIds.push(a.id);
+      }
+    });
+    toDeleteDeds.forEach(function(d) {
+      if (d && d.id) {
+        state.tombstones['ded:' + d.id] = nowIso;
+      }
+    });
+
+    state.advances = (state.advances || []).filter(function(a) {
+      return a && normalizeCode(a.empCode) !== norm;
+    });
+    state.deductions = (state.deductions || []).filter(function(d) {
+      return d && normalizeCode(d.empCode) !== norm && !(d.advanceId && deletedAdvIds.indexOf(d.advanceId) >= 0);
+    });
+
+    if (state.openHistoryEmpCode && normalizeCode(state.openHistoryEmpCode) === norm) {
+      closeModal();
+    }
+
+    recalculateAllBalances();
+    saveToLocal();
+    renderUI();
+
+    deletedAdvIds.forEach(function(id) {
+      try {
+        fetch('/api/sync/advance/' + encodeURIComponent(id), { method: 'DELETE' }).catch(function() {});
+      } catch (_) {}
+    });
+
+    pushAuthoritativeToCloud().then(function(res) {
+      broadcastSync('advance_deleted', { empCode: empCode, ids: deletedAdvIds });
+      if (window.showToast) {
+        if (res && res.ok) {
+          window.showToast('🗑 Deleted all advance records for ' + empLabel + ' (' + empCode + ') from cloud & all devices.');
+        } else {
+          window.showToast('⚠️ Deleted ' + empLabel + ' ledger locally. Cloud sync pending retry.');
+        }
+      }
+    });
+
+    return deletedAdvIds.length;
+  }
+
+  function confirmDeleteEmployeeLedger(empCode) {
+    var norm = normalizeCode(empCode);
+    var empAdvs = (state.advances || []).filter(function(a) {
+      return a && normalizeCode(a.empCode) === norm;
+    });
+    if (!empAdvs.length) return;
+    var empName = empAdvs[0].empName || ('Emp ' + empCode);
+    var totalAmt = empAdvs.reduce(function(s, a) { return s + (Number(a.amount) || 0); }, 0);
+    var totalBal = empAdvs.reduce(function(s, a) { return s + (Number(a.balanceAmount) || 0); }, 0);
+    if (confirm('Delete ALL ' + empAdvs.length + ' advance record(s) & deduction history for ' + empName + ' (' + empCode + ')?\nTotal Disbursed: ' + formatINR(totalAmt) + ' | Outstanding: ' + formatINR(totalBal))) {
+      deleteEmployeeLedger(empCode);
+    }
   }
 
   /**
@@ -1860,6 +1947,7 @@
         html += '        <button onclick="ATPLAdvanceManager.openManualDeductionModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px">✂️ Manual Cut</button>';
       }
       html += '        <button onclick="ATPLAdvanceManager.openNewModal(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:none;background:#312e81;color:#fff;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700">➕ Add</button>';
+      html += '        <button onclick="ATPLAdvanceManager.confirmDeleteEmployeeLedger(\'' + esc(item.code) + '\')" style="height:26px;padding:0 9px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-left:4px" title="Delete All Advances for Employee">🗑 Delete</button>';
       html += '      </td>';
       html += '    </tr>';
     });
@@ -2636,6 +2724,8 @@
     detectAdvanceSheetInfo: detectAdvanceSheetInfo,
     addOrUpdateAdvance: addOrUpdateAdvance,
     deleteAdvance: deleteAdvance,
+    deleteEmployeeLedger: deleteEmployeeLedger,
+    confirmDeleteEmployeeLedger: confirmDeleteEmployeeLedger,
     deductAdvanceManually: deductAdvanceManually,
     deleteDeduction: deleteDeduction,
     confirmDeleteDeduction: confirmDeleteDeduction,
