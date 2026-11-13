@@ -14101,7 +14101,7 @@ function renderFinal(){
  });
  h+='</div>';wrap.innerHTML=h;if(typeof updateAlertBadge==='function')updateAlertBadge(typeof getAlertItems==='function'?getAlertItems().length:0);
 }
-function removeHistoryUI(){var b=Q('hrEmployeeHistory');if(b)b.remove();var btns=document.querySelectorAll('button');btns.forEach(function(b){if((b.textContent||'').includes('Employee History'))b.remove()})}
+function removeHistoryUI(){var b=Q('hrEmployeeHistory');if(b)b.remove();var btns=document.querySelectorAll('button');btns.forEach(function(b){if(b.closest&&b.closest('#advanceModuleContainer'))return;if((b.textContent||'').includes('Employee History'))b.remove()})}
 function patchSave(){
  var save=function(e){
   e.preventDefault();var id=Q('hrDocId').value||('HRD-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)),docs=getDocs(),old=docs.find(function(x){return String(x.id)===String(id)})||{},input=Q('hrDocFile'),selected=Array.from(input?.files||[]);
@@ -14139,7 +14139,7 @@ window.hrDocRender=renderFinal;
 <script>
 /* Keep HR attachment name visible after edit/open and remove history button if it gets re-added. */
 (function(){
- function cleanup(){var bs=document.querySelectorAll('button');bs.forEach(function(b){if((b.textContent||'').indexOf('Employee History')>=0)b.remove()});var m=document.getElementById('hrEmployeeHistory');if(m)m.remove();}
+ function cleanup(){var bs=document.querySelectorAll('button');bs.forEach(function(b){if(b.closest&&b.closest('#advanceModuleContainer'))return;if((b.textContent||'').indexOf('Employee History')>=0)b.remove()});var m=document.getElementById('hrEmployeeHistory');if(m)m.remove();}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',cleanup);else cleanup();
 })();
 </script>
@@ -15861,6 +15861,7 @@ setTimeout(aroraInstallSaveHook,1000);
 /* Remove the old Employee History UI if any old script recreates it. */
 function aroraRemoveHistory(){
   document.querySelectorAll('button').forEach(function(b){
+    if(b.closest&&b.closest('#advanceModuleContainer'))return;
     if((b.textContent||'').toLowerCase().indexOf('employee history')>=0)b.remove();
   });
   var m=document.getElementById('hrEmployeeHistory');if(m)m.remove();

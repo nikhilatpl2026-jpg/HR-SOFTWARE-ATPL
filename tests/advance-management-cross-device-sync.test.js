@@ -219,8 +219,8 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
       name: 'Salary_Sheet_Nov_2026.xlsx',
       sheets: {
         'Salaries': [
-          ['Emp Code', 'Name', 'Net Pay'],
-          ['25924', 'Ram Kumar Sharma', '28000']
+          ['Emp Code', 'Name', 'Gross', 'Advance', 'Net Pay'],
+          ['25924', 'Ram Kumar Sharma', '34000', '6000', '28000']
         ]
       }
     };
@@ -265,5 +265,45 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     assert.ok(googleSyncJsCode.includes('downloadFile'), 'Must preserve downloadFile');
     assert.ok(googleSyncJsCode.includes('deleteFile'), 'Must preserve deleteFile');
     assert.ok(googleSyncJsCode.includes('saveEmployeeMaster'), 'Must preserve saveEmployeeMaster');
+  });
+
+  await t.test('Test 7: Manual Advance Deduction and Deduction Reversal sync cleanly across devices', async () => {
+    const desktop = createMockBrowser('Desktop_Manual_Entry', cloudStorage);
+    const ctxDesktop = vm.createContext(desktop.mockWindow);
+    vm.runInContext(advanceJsCode, ctxDesktop);
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+
+    // Ram currently has 12000 remaining; manually cut 3500
+    const manRes = desktop.mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '25924',
+      amount: 3500,
+      deductionDate: '2026-11-12',
+      mode: 'Manual Cash Recovery',
+      remarks: 'Paid cash at counter'
+    });
+    assert.equal(manRes.ok, true);
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8500);
+    await new Promise(r => setTimeout(r, 60));
+
+    // Mobile syncs and sees both Salary Sheet (6000) + Manual Cut (3500)
+    const mobile = createMockBrowser('Mobile_Manual_Check', cloudStorage);
+    const ctxMobile = vm.createContext(mobile.mockWindow);
+    vm.runInContext(advanceJsCode, ctxMobile);
+    await mobile.mockWindow.ATPLAdvanceManager.syncNow(false);
+
+    const histMobile = mobile.mockWindow.ATPLAdvanceManager.getEmployeeHistoryData('25924');
+    assert.equal(histMobile.totalSalaryCut, 6000);
+    assert.equal(histMobile.totalManualCut, 3500);
+    assert.equal(histMobile.totalRemaining, 8500);
+
+    // Reverse/Delete manual deduction on Mobile -> must also stay deleted on Desktop after sync
+    const dedId = manRes.deductions[0].id;
+    assert.equal(mobile.mockWindow.ATPLAdvanceManager.deleteDeduction(dedId), true);
+    assert.equal(mobile.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 12000);
+    await new Promise(r => setTimeout(r, 60));
+
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 12000);
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllDeductions().length, 1);
   });
 });
