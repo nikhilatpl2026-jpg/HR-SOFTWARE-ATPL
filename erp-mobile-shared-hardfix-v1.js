@@ -15,7 +15,7 @@ var busy=false,lastMasterPull=0,backgroundRun=null;
 function q(id){return root.document.getElementById(id)}
 function text(v){return v==null?'':String(v).trim()}
 function J(s,d){try{return JSON.parse(s)}catch(_){return d}}
-function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||root.localStorage.getItem(TOKEN)||root.localStorage.getItem(ALT)||'')}catch(_){return''}}
+function tok(){try{return text(root.sessionStorage.getItem(TOKEN)||root.sessionStorage.getItem(ALT)||'')}catch(_){return''}}
 function isOwner(id){return /^(admin|nikhil\s*1911|arora|hr)$/i.test(text(id))}
 function sess(){try{var s=J(root.sessionStorage.getItem(SESS)||'null',null);return s&&s.id?s:null}catch(_){return null}}
 function current(){var s=sess();if(!s)return null;var a=J(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase(),u=(Array.isArray(a)?a:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});var adm=isOwner(id)||s.admin===true||String(s.admin)==='true'||!!(u&&(u.admin===true||String(u.admin)==='true'));var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));return {id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc}}
@@ -88,11 +88,8 @@ function setSession(user,token){
   root.localStorage.setItem(USERS,JSON.stringify(list));
   var sessData=JSON.stringify(norm);
   root.sessionStorage.setItem(SESS,sessData);
-  root.localStorage.setItem(SESS,sessData);
   root.sessionStorage.setItem(TOKEN,token);
   root.sessionStorage.setItem(ALT,token);
-  root.localStorage.setItem(TOKEN,token);
-  root.localStorage.setItem(ALT,token);
 }function has(u,p){if(!u)return false;if(p==='dashboard')p='cmd';return u.admin===true||String(u.admin)==='true'||isOwner(u.id)||(Array.isArray(u.access)&&(u.access.indexOf('*')>=0||u.access.indexOf(p)>=0))}
 function canUseMaster(u){
   if(root.ATPLPermissionGuard&&typeof root.ATPLPermissionGuard.canUseMaster==='function')return root.ATPLPermissionGuard.canUseMaster(u);

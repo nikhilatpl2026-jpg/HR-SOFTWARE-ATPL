@@ -2,6 +2,32 @@
 <html lang="en">
 <head>
 <script>
+  // Require fresh login on every page load / refresh / bfcache restore
+  (function() {
+    var SESS_KEYS = ["ATPL_UserSession_V1","ATPL_UserSession_V2","ATPL_UserSession_V3","ATPL_UserSession_V4","ATPL_UserSession_V5","ATPL_RemoteToken_V1","ATPL_SharedToken_V1"];
+    function clearAuthSessions() {
+      for (var i = 0; i < SESS_KEYS.length; i++) {
+        var k = SESS_KEYS[i];
+        try { if (window.sessionStorage) sessionStorage.removeItem(k); } catch (_) {}
+        try { if (window.localStorage) localStorage.removeItem(k); } catch (_) {}
+      }
+    }
+    clearAuthSessions();
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("pageshow", function(ev) {
+        if (ev && ev.persisted) {
+          clearAuthSessions();
+          try {
+            if (document.body) document.body.classList.add("uaLocked");
+            var ua = document.getElementById("uaLogin");
+            if (ua) ua.style.display = "flex";
+            var ls = document.getElementById("loginScreen");
+            if (ls) ls.style.display = "none";
+          } catch (_) {}
+        }
+      });
+    }
+  })();
   // Global error safety shield for iframe and cross-origin environments
   window.onerror = function(msg, url, line, col, err) {
     return true; // Completely prevent cross-origin Script error propagation to AI Studio iframe host
@@ -456,7 +482,6 @@ function doLogin() {
     if (uaErr) uaErr.textContent = '';
     var js = JSON.stringify(userObj);
     sessionStorage.setItem('ATPL_UserSession_V5', js);
-    localStorage.setItem('ATPL_UserSession_V5', js);
     try {
       var uList = JSON.parse(localStorage.getItem('ATPL_UserAccess_V1') || '[]');
       if (!Array.isArray(uList)) uList = [];
@@ -465,11 +490,9 @@ function doLogin() {
       else uList.push(userObj);
       localStorage.setItem('ATPL_UserAccess_V1', JSON.stringify(uList));
     } catch(_) {}
-    var curTk = sessionStorage.getItem('ATPL_RemoteToken_V1') || localStorage.getItem('ATPL_RemoteToken_V1') || ('FAST_AUTH_' + Date.now());
+    var curTk = sessionStorage.getItem('ATPL_RemoteToken_V1') || ('FAST_AUTH_' + Date.now());
     sessionStorage.setItem('ATPL_RemoteToken_V1', curTk);
-    localStorage.setItem('ATPL_RemoteToken_V1', curTk);
     sessionStorage.setItem('ATPL_SharedToken_V1', curTk);
-    localStorage.setItem('ATPL_SharedToken_V1', curTk);
 
     var ls = document.getElementById('loginScreen');
     if (ls) ls.style.display = 'none';
@@ -16156,10 +16179,10 @@ else AInit();
 })();
 </script>
 
-<script src="erp-cloud-api-broker-v1.js?v=20260922-production-v6-dol-long-reads&cb=20261019v12"></script>
-<script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
-<script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261019v12"></script>
-<script src="hr-workplace.js?v=20261109-live-sync-v2&cb=20261109v3"></script>
+<script src="erp-cloud-api-broker-v1.js?v=20260922-production-v6-dol-long-reads&cb=20261113v17"></script>
+<script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261113v17"></script>
+<script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261113v17"></script>
+<script src="hr-workplace.js?v=20261109-live-sync-v2&cb=20261113v17"></script>
 <script src="hr-docs-activity-v1.js?v=20261113-drive-v2&cb=20261113v16"></script>
 <script src="hr-docs-open-fix-v2.js?v=20261113-drive-v2&cb=20261113v16"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>

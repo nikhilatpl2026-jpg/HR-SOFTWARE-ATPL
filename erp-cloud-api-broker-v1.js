@@ -187,10 +187,7 @@ function saveRealToken(tk){
       if(root.sessionStorage.getItem(TOKEN_KEY)!==tk)root.sessionStorage.setItem(TOKEN_KEY,tk);
       if(root.sessionStorage.getItem(ALT_KEY)!==tk)root.sessionStorage.setItem(ALT_KEY,tk);
     }
-    if(root.localStorage){
-      if(root.localStorage.getItem(TOKEN_KEY)!==tk)root.localStorage.setItem(TOKEN_KEY,tk);
-      if(root.localStorage.getItem(ALT_KEY)!==tk)root.localStorage.setItem(ALT_KEY,tk);
-    }
+
   }catch(_){}
 }
 async function ensureCloudToken(forceRefresh){

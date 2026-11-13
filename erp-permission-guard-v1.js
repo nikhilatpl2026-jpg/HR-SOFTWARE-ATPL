@@ -16,16 +16,13 @@ function text(v){return v==null?'':String(v).trim()}
 function isOwner(id){return /^(admin|nikhil\s*1911|arora|hr)$/i.test(text(id))}
 function current(){
   try{
-    var s=json(root.sessionStorage.getItem(SESS)||root.localStorage.getItem(SESS)||'null',null);
+    var s=json(root.sessionStorage.getItem(SESS)||'null',null);
     if(!s||!s.id)return null;
     var list=json(root.localStorage.getItem(USERS)||'[]',[]),id=text(s.id).toLowerCase();
     var u=(Array.isArray(list)?list:[]).find(function(x){return text(x&&x.id).toLowerCase()===id});
     var adm=isOwner(id)||s.admin===true||String(s.admin).toLowerCase()==='true'||!!(u&&(u.admin===true||String(u.admin).toLowerCase()==='true'));
     var acc=adm?['*']:(u&&Array.isArray(u.access)&&u.access.length?u.access:(Array.isArray(s.access)&&s.access.length?s.access:['*']));
     var resolved={id:u&&u.id||s.id,name:u&&u.name||s.name||s.id,admin:adm,access:acc};
-    if(!root.sessionStorage.getItem(SESS)){
-      try{root.sessionStorage.setItem(SESS,JSON.stringify(resolved))}catch(_){}
-    }
     return resolved;
   }catch(_){return null}
 }
