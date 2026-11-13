@@ -12,7 +12,6 @@ var PAGE_NAMES={
   mamsalary:'Salary Payroll / Mam → Compliance',
   audit:'Salary Payroll / Salary Audit',
   machineaudit:'Salary Payroll / Machine Rate Audit',
-  checkproduction:'Salary Payroll / Check Production',
   bankverify:'Salary Payroll / Bank A/C Verifier',
   lookup:'Salary Payroll / Salary Lookup',
   dol:'Employee / Date of Leaving',
