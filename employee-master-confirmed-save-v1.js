@@ -92,6 +92,27 @@ function fieldsToEmployee(){
       out[c.key] = val ? val.toUpperCase() : '';
     }
   });
+  var statusEl = g.document.getElementById("emf_status") || (typeof g.getEmfElement === "function" ? g.getEmfElement("status") : null);
+  var dolEl = g.document.getElementById("emf_dol") || (typeof g.getEmfElement === "function" ? g.getEmfElement("dol") : null);
+  if (statusEl && statusEl.value) {
+    out.status = String(statusEl.value).trim().toUpperCase();
+    out._status_updated_at = Date.now();
+  }
+  if (dolEl) {
+    var dVal = String(dolEl.value || "").trim();
+    if (dVal && typeof g.normalizeDate === "function") {
+      var dNorm = g.normalizeDate(dVal);
+      if (dNorm && /^\d{2}-\d{2}-\d{4}$/.test(dNorm)) dVal = dNorm;
+    }
+    out.dol = dVal;
+  }
+  if (out.status === "ACTIVE") {
+    out.dol = "";
+    out.leaving_date = "";
+    out.date_of_leaving = "";
+    out.dolField = "";
+  }
+  out._em_updated_at = Date.now();
   if(out && out.gross && !out.new_gross) out.new_gross = out.gross;
   if(out && out.new_gross && !out.gross) out.gross = out.new_gross;
   return valid ? out : null;
@@ -135,6 +156,9 @@ async function confirmedSingleSave(){
     var verified=copy(res.record||candidate),k=empKey(verified);
     var ix=g.EM.data.findIndex(function(x){return empKey(x)===k});
     if(ix>=0)g.EM.data[ix]=verified;else g.EM.data.push(verified);
+    if(g.ATPLEmployeeMasterRealtimeEngine && typeof g.ATPLEmployeeMasterRealtimeEngine.saveEmployees === "function"){
+      try{ await g.ATPLEmployeeMasterRealtimeEngine.saveEmployees([verified]); }catch(_){}
+    }
     persistConfirmed({skipMirrors:true});refreshMasterUi();
     try {
       fetch('/api/sync/employee-master', {

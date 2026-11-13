@@ -9382,9 +9382,16 @@ function emInit() {
     }
 
     // Single Source of Truth: sync authoritative Employee Master from server or static data
-    var applySyncedRecords = function(recs) {
+    var applySyncedRecords = function(recs, fromStaticCdn) {
       if (!Array.isArray(recs)) return;
       var isCleared = (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || localStorage.getItem('AroraTextilesEmployeeMasterV3') === '[]');
+      if (fromStaticCdn && ((EM && Array.isArray(EM.data) && EM.data.length > 0) || isCleared)) {
+        return;
+      }
+      if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords === 'function') {
+        if (!fromStaticCdn) window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords(recs, true);
+        return;
+      }
       if (recs.length === 0 && isCleared) {
         EM.data = [];
         if (Array.isArray(window.EMP_MASTER_DATA)) window.EMP_MASTER_DATA.length = 0;
@@ -9420,9 +9427,10 @@ function emInit() {
           if (d && d.ok && Array.isArray(d.records)) applySyncedRecords(d.records);
         })
         .catch(function() {
+          if (EM && Array.isArray(EM.data) && EM.data.length > 0) return;
           fetch('./data/employee_master.json?_t=' + Date.now())
             .then(function(res) { return res.json(); })
-            .then(function(recs) { if (Array.isArray(recs)) applySyncedRecords(recs); })
+            .then(function(recs) { if (Array.isArray(recs)) applySyncedRecords(recs, true); })
             .catch(function() {});
         });
     } catch(_) {}
@@ -9804,8 +9812,10 @@ window.emToggleRow = function(idx, cb) {
 window.emUpdateStatus = function(idx, newStatus) {
   var e = EM.data[idx];
   if (!e) return;
-  e.status = newStatus;
-  if (newStatus === 'LEFT' || newStatus === 'INACTIVE') {
+  var nowTs = Date.now();
+  var targetStatus = (newStatus === 'LEFT' || newStatus === 'INACTIVE') ? newStatus : 'ACTIVE';
+  e.status = targetStatus;
+  if (targetStatus === 'LEFT' || targetStatus === 'INACTIVE') {
     if (!e.dol || e.dol === '—' || e.dol === 'NA') {
       var d = new Date();
       var day = String(d.getDate()).padStart(2, '0');
@@ -9815,46 +9825,41 @@ window.emUpdateStatus = function(idx, newStatus) {
   } else {
     e.status = 'ACTIVE';
     e.dol = '';
+    e.leaving_date = '';
+    e.date_of_leaving = '';
+    if ('dolField' in e) e.dolField = '';
   }
+  e._status_updated_at = nowTs;
+  e._em_updated_at = nowTs;
+  window.__ATPL_INTERNAL_STORAGE_WRITE = true;
   try {
     localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
-  } catch(_) {}
+  } catch(_) {} finally {
+    window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+  }
   if (window.EMP_MASTER_DATA && Array.isArray(window.EMP_MASTER_DATA)) {
     window.EMP_MASTER_DATA = EM.data.slice();
   }
-  // Immediately persist to backend API and Google Drive vault so background 8s probes never revert it!
-  try {
-    fetch('/api/sync/employee-master', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: [e], mode: 'upsert' })
-    }).catch(function(){});
-  } catch(_) {}
-  if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster === 'function') {
-    window.ATPLGoogleSync.upsertEmployeeMaster([e]);
-  }
-  if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
-    window.ATPLCloudSyncV1.saveMaster(e, { commitLocal: true });
-  }
   if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.updateEmployeeStatus === 'function') {
-    window.ATPLEmployeeMasterRealtimeEngine.updateEmployeeStatus(e.emp_id, newStatus, e.dol, e);
+    window.ATPLEmployeeMasterRealtimeEngine.updateEmployeeStatus(e.emp_id, e.status, e.dol, e);
+  } else {
+    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.upsertEmployeeMaster === 'function') {
+      window.ATPLGoogleSync.upsertEmployeeMaster([e]);
+    }
+    if (window.ATPLCloudSyncV1 && typeof window.ATPLCloudSyncV1.saveMaster === 'function') {
+      window.ATPLCloudSyncV1.saveMaster(e, { commitLocal: true });
+    }
   }
-  if (window.BroadcastChannel) {
-    try {
-      var bc = new window.BroadcastChannel('ATPL_ERP_TRIGGER_BUS');
-      bc.postMessage({ action: 'employee_updated', details: { emp_id: e.emp_id, record: e, records: [e], count: EM.data.length } });
-      bc.close();
-    } catch(_) {}
-    try {
-      var bc2 = new window.BroadcastChannel('ATPL_ERP_SHARED_V2');
-      bc2.postMessage({ type: 'employee_master_saved', records: [e], record: e, count: EM.data.length });
-      bc2.close();
-    } catch(_) {}
-  }
+  var savedPage = EM.currentPage || 1;
   emUpdateStats();
   emFilter();
+  if (savedPage > 1 && typeof emGoPage === 'function') {
+    var rpp = EM.rowsPerPage || 50;
+    var maxP = Math.max(1, Math.ceil((EM.filtered || []).length / rpp));
+    if (savedPage <= maxP) emGoPage(savedPage);
+  }
   if (window.showToast) {
-    window.showToast('✅ ' + (e.name || e.emp_id) + ' status updated to ' + newStatus);
+    window.showToast('✅ ' + (e.name || e.emp_id) + ' status updated to ' + e.status);
   }
 };
 
@@ -11723,6 +11728,26 @@ function emSaveModal() {
     if(c.type==='number') newEmp[c.key] = parseFloat(val)||0;
     else newEmp[c.key] = val ? val.toUpperCase() : '';
   });
+  var statusEl = getEmfElement('status');
+  var dolEl = getEmfElement('dol');
+  if (statusEl && statusEl.value) {
+    newEmp.status = String(statusEl.value).trim().toUpperCase();
+    newEmp._status_updated_at = Date.now();
+  }
+  if (dolEl) {
+    var dv = String(dolEl.value || '').trim();
+    if (dv && typeof window.normalizeDate === 'function') {
+      var dn = window.normalizeDate(dv);
+      if (dn && /^\d{2}-\d{2}-\d{4}$/.test(dn)) dv = dn;
+    }
+    newEmp.dol = dv;
+  }
+  if (newEmp.status === 'ACTIVE') {
+    newEmp.dol = '';
+    newEmp.leaving_date = '';
+    newEmp.date_of_leaving = '';
+  }
+  newEmp._em_updated_at = Date.now();
   if(!valid){ alert('Employee Code aur Name mandatory hain!'); return; }
 
   var savedEmp;
@@ -16124,13 +16149,13 @@ else AInit();
 <script src="atpl-ai.js?v=20261102-zerofreeze-v1"></script>
 <script src="erp-ui-cleanup-v1.js?v=20260918-2&cb=20261019v12"></script>
 <script src="employee-master-persistence-guard-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
-<script src="erp-cloud-sync-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261019v12"></script>
+<script src="erp-cloud-sync-v1.js?v=20261113-em-fix-v1"></script>
 <script src="atpl-firebase-bundle.js?v=20261102-zerofreeze-v1"></script>
 <script src="atpl-github-cloud-sync-v1.js?v=20261029-v2"></script>
 <script src="erp-cloud-shared-storage-v1.js?v=20261102-zerofreeze-v1"></script>
 <script src="atpl-permanent-sync-v1.js?v=202610-live-force-v6"></script>
 <!-- ATPL UNIFIED ZERO-HANG SYNC ENGINE -->
-<script src="atpl-google-drive-sync.js?v=20261101-nofreeze-v5"></script>
+<script src="atpl-google-drive-sync.js?v=20261113-em-fix-v1"></script>
 <script src="erp-durable-everything-v1.js?v=20260922-system-records-authority17-kind-scoped-dol"></script>
 <script src="compliance-dol-cloud-v4.js?v=20260922-production9-long-read-authority"></script>
 <!-- compliance-dol-supabase-v2.js removed: its timeoutFetch stub returned fake responses and it overwrote the working ATPLDOLCloudV4 backend -->
@@ -16138,8 +16163,8 @@ else AInit();
 <script src="compliance-calendar-v1.js?v=20260922-fullscreen3&cb=20261019v12"></script>
 <script src="erp-account-cloud-restore-v1.js?v=20260921-permission-orchestrator3&cb=20261019v12"></script>
 <script src="erp-enterprise-ui-v1.js?v=20261103-v2&cb=20261103"></script>
-<script src="employee-master-confirmed-save-v1.js?v=20261109-drive-vault-v3&cb=20261109v3"></script>
-<script src="atpl-employee-master-realtime-engine.js?v=20261112-v13"></script>
+<script src="employee-master-confirmed-save-v1.js?v=20261113-em-fix-v1"></script>
+<script src="atpl-employee-master-realtime-engine.js?v=20261113-v14"></script>
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>

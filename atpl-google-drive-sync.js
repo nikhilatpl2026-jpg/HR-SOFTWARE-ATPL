@@ -384,6 +384,11 @@
       applySystemVaultRecords(sysRows);
     }
 
+    if (empRows.length && window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords === "function") {
+      window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords(empRows, !!isForcedVault);
+      return;
+    }
+
     var localList = (window.EM && Array.isArray(window.EM.data)) ? window.EM.data : [];
     var localCount = localList.length;
     var remoteCount = empRows.length;
@@ -444,6 +449,10 @@
           base[fk] = row[fk];
         }
       });
+      if (String(row.status || '').toUpperCase().trim() === 'ACTIVE') {
+        base.status = 'ACTIVE';
+        base.dol = '';
+      }
       if (!base.account_no && (base.bank_account_no || row.bank_account_no)) base.account_no = base.bank_account_no || row.bank_account_no;
       if (!base.ifsc && (base.ifsc_code || row.ifsc_code)) base.ifsc = base.ifsc_code || row.ifsc_code;
       if (!base.dept && (base.department || row.department)) base.dept = base.department || row.department;
@@ -693,7 +702,11 @@
           var vaultJson = b64ToUtf8(vaultRes.fileBase64);
           var vaultData = JSON.parse(vaultJson);
           if (vaultData && Array.isArray(vaultData.employees) && vaultData.employees.length > 0) {
-            applyEmployeeRecords(vaultData.employees, true);
+            if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords === "function") {
+              window.ATPLEmployeeMasterRealtimeEngine.reconcileExternalRecords(vaultData.employees, true, vaultData.tombstones);
+            } else {
+              applyEmployeeRecords(vaultData.employees, true);
+            }
             localStorage.setItem('ATPL_EMP_VAULT_LAST_TS', String(remoteVaultTs));
           }
         }
@@ -1002,6 +1015,9 @@
     // 2. Live ATPLCloudSyncV1 Bridge
     window.ATPLCloudSyncV1 = {
       pullMaster: async function() {
+        if (window.ATPLEmployeeMasterRealtimeEngine && typeof window.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates === "function") {
+          await window.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates(true);
+        }
         await pollSyncState(true);
         return true;
       },

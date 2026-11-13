@@ -257,6 +257,9 @@
     }catch(_){}
   }
   async function pullMaster(force){
+    if(root.ATPLEmployeeMasterRealtimeEngine&&typeof root.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates==="function"){
+      try{await root.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates(true);lastPull=Date.now();return true;}catch(_){}
+    }
     if(!tok())return false;
     try{
       var cloud=await fetchCloud(true);
@@ -296,6 +299,12 @@
   function addStatusBadge(){try{if(root.document.getElementById('atplCloudSyncBadge'))return;var h=root.document.querySelector('.header-right');if(!h)return;var b=root.document.createElement('span');b.id='atplCloudSyncBadge';b.style.cssText='display:none;font-size:9px;padding:4px 7px;border-radius:999px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:700';b.textContent='☁ Shared Data';h.appendChild(b)}catch(_){}}
   var lastProbeTime=0, probeWarned=false;
   function probe(force){
+    if(root.ATPLEmployeeMasterRealtimeEngine&&typeof root.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates==="function"){
+      var nowRt=Date.now();
+      if(!force&&(nowRt-lastProbeTime<8000))return Promise.resolve(false);
+      lastProbeTime=nowRt;
+      return root.ATPLEmployeeMasterRealtimeEngine.checkRemoteUpdates(!!force).then(function(){paint();return true;}).catch(function(){return false;});
+    }
     if(!tok())return Promise.resolve(false);
     var now=Date.now();
     if(!force && (now - lastProbeTime < 8000)) return Promise.resolve(false);
