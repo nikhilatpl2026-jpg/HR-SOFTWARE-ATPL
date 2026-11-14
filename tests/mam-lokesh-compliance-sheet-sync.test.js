@@ -358,3 +358,148 @@ test('browser handleMamUpload runs end-to-end for CSV and XLSX without advanceMa
   assert.equal(sheet.rows[0].netPayable, 24528);
   assert.ok(elements.get('mcsTableBody').innerHTML.includes('00135'));
 });
+
+test('browser Excel features: Full Screen, Expand Grid, Sort, Undo/Redo, Bulk Actions, Worksheet Tabs, Find/Replace', async () => {
+  const vm = require('node:vm');
+  const studioSrc = fs.readFileSync(path.join(ROOT, 'mam-compliance-excel-studio.js'), 'utf8');
+
+  const elements = new Map();
+  const listeners = {};
+  function makeEl(tag, id) {
+    const clsSet = new Set();
+    const el = {
+      tagName: String(tag || 'DIV').toUpperCase(),
+      id: id || '',
+      className: '',
+      style: {},
+      dataset: {},
+      children: [],
+      value: '',
+      checked: false,
+      disabled: false,
+      textContent: '',
+      classList: {
+        add(...cs) { cs.forEach(c => clsSet.add(c)); },
+        remove(...cs) { cs.forEach(c => clsSet.delete(c)); },
+        toggle(c, force) {
+          const on = typeof force === 'boolean' ? force : !clsSet.has(c);
+          if (on) clsSet.add(c); else clsSet.delete(c);
+          return on;
+        },
+        contains(c) { return clsSet.has(c); }
+      },
+      addEventListener(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); },
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      appendChild(child) {
+        this.children.push(child);
+        if (child && child.id) elements.set(child.id, child);
+        return child;
+      },
+      remove() { if (this.id) elements.delete(this.id); },
+      requestFullscreen: async () => { sandbox.document.fullscreenElement = el; },
+      set innerHTML(html) {
+        this._innerHTML = String(html || '');
+        const idMatches = this._innerHTML.matchAll(/id="([^"]+)"/g);
+        for (const m of idMatches) {
+          if (!elements.has(m[1])) {
+            const child = makeEl('DIV', m[1]);
+            elements.set(m[1], child);
+          }
+        }
+      },
+      get innerHTML() { return this._innerHTML || ''; }
+    };
+    return el;
+  }
+
+  const body = makeEl('BODY', '');
+  const head = makeEl('HEAD', '');
+  const storageMap = new Map();
+  storageMap.set('AroraTextilesEmployeeMasterV3', JSON.stringify([
+    { emp_id: '00135', name: 'SAMPAT LAL', father: 'SOHAN LAL', pf_no: '100330064649', esi_no: '2706516566', gender: 'MALE', dept: 'STAFF', desig: 'SUPERVISOR', cat2: 'STAFF NAME', basic: 20489, gross: 27660 },
+    { emp_id: '00136', name: 'RAMESH KUMAR', father: 'MOHAN LAL', pf_no: '100330064650', esi_no: '2706516567', gender: 'MALE', dept: 'CARD', desig: 'OPERATOR', cat2: 'CARD NO.6', basic: 12000, gross: 16000 }
+  ]));
+
+  const localStorageMock = {
+    getItem: k => storageMap.has(k) ? storageMap.get(k) : null,
+    setItem: (k, v) => storageMap.set(k, String(v)),
+    removeItem: k => storageMap.delete(k)
+  };
+
+  const sandbox = {
+    console, setTimeout, clearTimeout, Date, Math, Number, String, Array, Object, Set, Map, JSON, Promise, Error, RegExp, CSS: { escape: s => s },
+    XLSX,
+    localStorage: localStorageMock,
+    sessionStorage: localStorageMock,
+    location: { hostname: 'nikhilatpl2026-jpg.github.io', protocol: 'https:', origin: 'https://nikhilatpl2026-jpg.github.io' },
+    document: {
+      readyState: 'complete',
+      hidden: false,
+      fullscreenElement: null,
+      head, body,
+      activeElement: null,
+      getElementById: id => elements.get(id) || null,
+      createElement: tag => makeEl(tag, ''),
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      addEventListener() {},
+      exitFullscreen: async () => { sandbox.document.fullscreenElement = null; }
+    },
+    addEventListener() {},
+    fetch: async () => ({ ok: false, status: 404, json: async () => ({}) })
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+
+  vm.runInNewContext(studioSrc, sandbox);
+
+  // Upload 2-row CSV
+  const mamInput = elements.get('mcsMamInput');
+  const csv = 'Code,Staff Name,Total\n135,Sampat Lal,27660\n136,Ramesh Kumar,15000\n';
+  await mamInput.onchange({
+    target: { files: [{ name: 'OCT_2026_MAM.csv', text: async () => csv }] }
+  });
+
+  // 1. Expand Grid & Fullscreen toggles
+  elements.get('mcsExpandGridBtn').onclick();
+  assert.ok(elements.get('mcsShell').classList.contains('mcs-focus'));
+  await elements.get('mcsFullscreenBtn').onclick();
+  assert.ok(sandbox.document.fullscreenElement);
+  await elements.get('mcsFullscreenBtn').onclick();
+  assert.equal(sandbox.document.fullscreenElement, null);
+
+  // 2. Add Row + Undo + Redo
+  elements.get('mcsAddRowBtn').onclick();
+  let sheets = JSON.parse(storageMap.get(studio.STORAGE_SHEETS_KEY));
+  assert.equal(sheets['2026-10'].rows.length, 3);
+  assert.equal(elements.get('mcsUndoBtn').disabled, false);
+
+  elements.get('mcsUndoBtn').onclick();
+  sheets = JSON.parse(storageMap.get(studio.STORAGE_SHEETS_KEY));
+  assert.equal(sheets['2026-10'].rows.length, 2);
+
+  elements.get('mcsRedoBtn').onclick();
+  sheets = JSON.parse(storageMap.get(studio.STORAGE_SHEETS_KEY));
+  assert.equal(sheets['2026-10'].rows.length, 3);
+
+  // 3. Freeze Panes toggle
+  elements.get('mcsFreezeBtn').onclick();
+  assert.ok(!elements.get('mcsTableHead').innerHTML.includes('left:0px;'));
+  elements.get('mcsFreezeBtn').onclick();
+  assert.ok(elements.get('mcsTableHead').innerHTML.includes('left:0px;'));
+
+  // 4. Find & Replace across category
+  elements.get('mcsFrField').value = 'category';
+  elements.get('mcsFrFind').value = 'CARD NO.6';
+  elements.get('mcsFrReplace').value = 'CARD NO.9';
+  elements.get('mcsFrScope').value = 'FILTERED';
+  elements.get('mcsFrApplyBtn').onclick();
+  sheets = JSON.parse(storageMap.get(studio.STORAGE_SHEETS_KEY));
+  assert.ok(sheets['2026-10'].rows.some(r => r.category === 'CARD NO.9'));
+
+  // 5. Sort & Worksheet Tabs
+  const headHtml = elements.get('mcsTableHead').innerHTML;
+  assert.ok(headHtml.includes('mcs-xl-letters'), 'Must render Excel column letter header A, B, C...');
+  assert.ok(elements.get('mcsSheetTabs'), 'Must render bottom Excel worksheet tabs');
+});

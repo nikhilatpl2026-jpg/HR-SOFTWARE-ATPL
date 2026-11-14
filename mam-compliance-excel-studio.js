@@ -886,36 +886,40 @@
   const esc = v => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const inr = v => (num(v) === null ? '—' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }));
 
+  const STORAGE_HIDDENCOLS_KEY = 'ATPL_ComplianceHiddenCols_V1';
+
   const GRID_COLS = [
-    { key: 'serial', label: 'S.No.', col: 'A', width: 54, align: 'center', sticky: 0 },
-    { key: 'empId', label: 'Employee ID', col: 'B', width: 102, edit: 'text', sticky: 54 },
-    { key: 'name', label: 'Name of employee', col: 'C', width: 196, edit: 'text', sticky: 156 },
-    { key: 'father', label: 'Fathers Name', col: 'D', width: 164, edit: 'text' },
-    { key: 'pfNo', label: 'PF NO', col: 'E', width: 132, edit: 'text' },
-    { key: 'esiNo', label: 'ESI NO', col: 'F', width: 118, edit: 'text' },
-    { key: 'gender', label: 'Gender', col: 'G', width: 78, edit: 'text' },
-    { key: 'designation', label: 'Designation', col: 'H2', width: 145, edit: 'text' },
-    { key: 'category', label: 'Catgrory 02', col: 'H', width: 142, edit: 'text' },
-    { key: 'basic', label: 'Basic', col: 'I', width: 96, edit: 'number', align: 'right', money: true },
-    { key: 'gross', label: 'Gross Total Salary', col: 'J', width: 110, edit: 'number', align: 'right', money: true },
-    { key: 'monthDays', label: 'Month Days', col: 'K', width: 82, edit: 'number', align: 'right' },
-    { key: 'absent', label: 'Absent', col: 'L', width: 72, align: 'right', formula: r => `=MAX(0, ${r.monthDays} - ${r.paidDays})` },
-    { key: 'paidDays', label: 'Paid Days', col: 'M', width: 84, edit: 'number', align: 'right' },
-    { key: 'overtimeHours', label: 'OT Hours', col: 'N', width: 80, edit: 'number', align: 'right' },
-    { key: 'earnBasic', label: 'Earn Basic', col: 'O', width: 98, align: 'right', money: true, formula: r => `=ROUND(${r.basic} * ${r.paidDays} / ${r.monthDays}, 0)` },
-    { key: 'grossEarned', label: 'Gross Earned', col: 'P', width: 108, align: 'right', money: true, formula: r => `=ROUND(${r.gross} * ${r.paidDays} / ${r.monthDays}, 0)` },
-    { key: 'totalGross', label: 'Total Gross salary', col: 'Q', width: 118, align: 'right', money: true, formula: (r, s) => `=ROUND(GrossEarned + EarnBasic*${s.bonusRate}% + (Gross/${s.otDivisor})*OT, 0)` },
-    { key: 'manualAmount', label: 'Manual Amount', col: 'R', width: 112, edit: 'number', align: 'right', money: true },
-    { key: 'diffAmount', label: 'Diff. Amount', col: 'S', width: 96, align: 'right', money: true, formula: r => `=MAX(0, ${r.manualAmount || 0} - ${r.totalGross})` },
-    { key: 'pfMode', label: 'PF Rule', col: 'T0', width: 96, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'NONE'] },
-    { key: 'pfEmployee', label: 'PF@12%', col: 'T', width: 88, align: 'right', money: true, formula: (r, s) => `=ROUND(EarnBasic * ${(s.pfRate * 100).toFixed(2)}%, 0)` },
-    { key: 'esiMode', label: 'ESIC Rule', col: 'U0', width: 104, edit: 'select', options: ['AUTO', 'EARN_BASIC', 'TOTAL_GROSS', 'NONE'] },
-    { key: 'esiEmployee', label: 'ESIC @0.75%', col: 'U', width: 92, align: 'right', money: true, formula: (r, s) => `=ROUND(EarnBasic * ${(s.esiRate * 100).toFixed(2)}%, 0)` },
-    { key: 'advance', label: 'Advance Ded.', col: 'V', width: 98, edit: 'number', align: 'right', money: true },
-    { key: 'totalDeduction', label: 'Total Ded.', col: 'W', width: 102, align: 'right', money: true, formula: r => `=${r.pfEmployee} + ${r.esiEmployee} + ${r.advance}` },
-    { key: 'netPayable', label: 'Net Payable', col: 'X', width: 112, align: 'right', money: true, formula: r => `=${r.totalGross} - ${r.totalDeduction}` },
-    { key: 'remarks', label: 'Remarks', col: 'Y', width: 108, edit: 'select', options: ['onroll', 'off roll'] },
-    { key: '_delete', label: 'Action', col: 'Z', width: 62, align: 'center' }
+    { key: '_select', label: '', col: '', width: 38, align: 'center', stickyBase: true },
+    { key: 'serial', label: 'S.No.', col: 'A', width: 52, align: 'center', stickyBase: true },
+    { key: 'empId', label: 'Employee ID', col: 'B', width: 102, edit: 'text', stickyBase: true, sortable: true },
+    { key: 'name', label: 'Name of employee', col: 'C', width: 196, edit: 'text', stickyBase: true, sortable: true },
+    { key: 'father', label: 'Fathers Name', col: 'D', width: 164, edit: 'text', optional: true, sortable: true },
+    { key: 'pfNo', label: 'PF NO', col: 'E', width: 132, edit: 'text', optional: true, sortable: true },
+    { key: 'esiNo', label: 'ESI NO', col: 'F', width: 118, edit: 'text', optional: true, sortable: true },
+    { key: 'gender', label: 'Gender', col: 'G', width: 76, edit: 'text', optional: true, sortable: true },
+    { key: 'designation', label: 'Designation', col: 'H', width: 145, edit: 'text', optional: true, sortable: true },
+    { key: 'category', label: 'Catgrory 02', col: 'I', width: 142, edit: 'text', optional: true, sortable: true },
+    { key: 'basic', label: 'Basic', col: 'J', width: 96, edit: 'number', align: 'right', money: true, numeric: true, sortable: true, totalKey: 'basic' },
+    { key: 'gross', label: 'Gross Total Salary', col: 'K', width: 112, edit: 'number', align: 'right', money: true, numeric: true, sortable: true, totalKey: 'gross' },
+    { key: 'monthDays', label: 'Month Days', col: 'L', width: 82, edit: 'number', align: 'right', numeric: true, optional: true },
+    { key: 'absent', label: 'Absent', col: 'M', width: 72, align: 'right', numeric: true, optional: true, sortable: true, formula: r => `=MAX(0, ${r.monthDays} - ${r.paidDays})` },
+    { key: 'paidDays', label: 'Paid Days', col: 'N', width: 84, edit: 'number', align: 'right', numeric: true, sortable: true },
+    { key: 'overtimeHours', label: 'OT Hours', col: 'O', width: 80, edit: 'number', align: 'right', numeric: true, sortable: true },
+    { key: 'earnBasic', label: 'Earn Basic', col: 'P', width: 98, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'earnBasic', formula: r => `=ROUND(${r.basic} * ${r.paidDays} / ${r.monthDays}, 0)` },
+    { key: 'grossEarned', label: 'Gross Earned', col: 'Q', width: 108, align: 'right', money: true, numeric: true, optional: true, sortable: true, totalKey: 'grossEarned', formula: r => `=ROUND(${r.gross} * ${r.paidDays} / ${r.monthDays}, 0)` },
+    { key: 'totalGross', label: 'Total Gross salary', col: 'R', width: 118, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'totalGross', formula: (r, s) => `=ROUND(GrossEarned + EarnBasic*${s.bonusRate}% + (Gross/${s.otDivisor})*OT, 0)` },
+    { key: 'manualAmount', label: 'Manual Amount', col: 'S', width: 112, edit: 'number', align: 'right', money: true, numeric: true, sortable: true, totalKey: 'manualAmount' },
+    { key: 'diffAmount', label: 'Diff. Amount', col: 'T', width: 96, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'diffAmount', formula: r => `=MAX(0, ${r.manualAmount || 0} - ${r.totalGross})` },
+    { key: 'pfMode', label: 'PF Rule', col: 'U', width: 96, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'NONE'], optional: true, sortable: true },
+    { key: 'pfEmployee', label: 'PF@12%', col: 'V', width: 88, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'pfEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.pfRate * 100).toFixed(2)}%, 0)` },
+    { key: 'esiMode', label: 'ESIC Rule', col: 'W', width: 104, edit: 'select', options: ['AUTO', 'EARN_BASIC', 'TOTAL_GROSS', 'NONE'], optional: true, sortable: true },
+    { key: 'esiEmployee', label: 'ESIC @0.75%', col: 'X', width: 92, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'esiEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.esiRate * 100).toFixed(2)}%, 0)` },
+    { key: 'advance', label: 'Advance Ded.', col: 'Y', width: 98, edit: 'number', align: 'right', money: true, numeric: true, optional: true, sortable: true, totalKey: 'advance' },
+    { key: 'totalDeduction', label: 'Total Ded.', col: 'Z', width: 102, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'totalDeduction', formula: r => `=${r.pfEmployee} + ${r.esiEmployee} + ${r.advance}` },
+    { key: 'netPayable', label: 'Net Payable', col: 'AA', width: 112, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'netPayable', formula: r => `=${r.totalGross} - ${r.totalDeduction}` },
+    { key: 'paymentHold', label: 'Hold', col: 'AB', width: 58, edit: 'checkbox', align: 'center', optional: true, sortable: true },
+    { key: 'remarks', label: 'Remarks', col: 'AC', width: 108, edit: 'select', options: ['onroll', 'off roll'], sortable: true },
+    { key: '_delete', label: 'Action', col: 'AD', width: 58, align: 'center' }
   ];
 
   const state = {
@@ -926,14 +930,25 @@
     search: '',
     categoryFilter: 'ALL',
     statusFilter: 'ALL', // ALL | ONROLL | OFFROLL | MISSING_STAT | DIFF_ALERT
-    selectedCell: null,  // { uid, key, label, col, value, formula }
+    selectedCell: null,  // { uid, key, label, col, value, formula, editable }
     notice: '',
     noticeType: 'info',  // info | ok | warn | err
     syncLabel: 'Synced',
     listenersBound: false,
     syncDebounce: null,
     pageOffset: 0,
-    pageSize: 100
+    pageSize: 100,
+    focusMode: false,
+    isFullscreen: false,
+    freezePanes: true,
+    activeTab: 'MAIN',   // MAIN | CATEGORY | PF_ESIC | MASTER
+    sortKey: '',
+    sortDir: '',         // '' | 'asc' | 'desc'
+    selectedUids: new Set(),
+    hiddenCols: {},
+    undoStack: [],
+    redoStack: [],
+    _editBatchOpen: false
   };
 
   function currentUserLabel() {
@@ -1006,6 +1021,10 @@
     } catch (_) {}
     try {
       state.activeId = localStorage.getItem(STORAGE_ACTIVE_KEY) || '';
+    } catch (_) {}
+    try {
+      const hc = JSON.parse(localStorage.getItem(STORAGE_HIDDENCOLS_KEY) || '{}');
+      if (hc && typeof hc === 'object') state.hiddenCols = hc;
     } catch (_) {}
 
     // Reconcile local tombstones
@@ -1291,6 +1310,10 @@
       state.pageOffset = 0;
       state.categoryFilter = 'ALL';
       state.statusFilter = 'ALL';
+      state.selectedUids.clear();
+      state.sortKey = '';
+      state.sortDir = '';
+      state.activeTab = 'MAIN';
       saveToLocal();
       render();
       pushSheetRemote(record);
@@ -1332,11 +1355,69 @@
     }
   }
 
+  function visibleGridCols() {
+    let leftAcc = 0;
+    return GRID_COLS.filter(c => !state.hiddenCols[c.key]).map(c => {
+      if (state.freezePanes && c.stickyBase) {
+        const out = Object.assign({}, c, { sticky: leftAcc });
+        leftAcc += c.width;
+        return out;
+      }
+      return Object.assign({}, c, { sticky: undefined });
+    });
+  }
+
+  function snapshotRows(rows) {
+    return (rows || []).map(r => Object.assign({}, r, { flags: Array.isArray(r.flags) ? r.flags.slice() : [] }));
+  }
+
+  function pushUndoSnapshot() {
+    const sh = activeSheet();
+    if (!sh) return;
+    state.undoStack.push({ activeId: state.activeId, rows: snapshotRows(sh.rows) });
+    if (state.undoStack.length > 25) state.undoStack.shift();
+    state.redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function updateUndoRedoButtons() {
+    const u = $('mcsUndoBtn');
+    const r = $('mcsRedoBtn');
+    if (u) u.disabled = state.undoStack.length === 0;
+    if (r) r.disabled = state.redoStack.length === 0;
+  }
+
+  function undoEdit() {
+    const sh = activeSheet();
+    if (!sh || !state.undoStack.length) return;
+    const prev = state.undoStack.pop();
+    if (!prev || prev.activeId !== state.activeId) return;
+    state.redoStack.push({ activeId: state.activeId, rows: snapshotRows(sh.rows) });
+    sh.rows = prev.rows;
+    state.selectedUids.clear();
+    render();
+    scheduleSyncActiveSheet();
+    setNotice('Undo applied (previous state restored & synced).', 'info');
+  }
+
+  function redoEdit() {
+    const sh = activeSheet();
+    if (!sh || !state.redoStack.length) return;
+    const next = state.redoStack.pop();
+    if (!next || next.activeId !== state.activeId) return;
+    state.undoStack.push({ activeId: state.activeId, rows: snapshotRows(sh.rows) });
+    sh.rows = next.rows;
+    state.selectedUids.clear();
+    render();
+    scheduleSyncActiveSheet();
+    setNotice('Redo applied.', 'info');
+  }
+
   function filteredRows() {
     const sh = activeSheet();
     if (!sh || !Array.isArray(sh.rows)) return [];
     const q = norm(state.search);
-    return sh.rows.filter(r => {
+    const filtered = sh.rows.filter(r => {
       if (state.categoryFilter !== 'ALL' && text(r.category) !== state.categoryFilter) return false;
       if (state.statusFilter === 'ONROLL' && (norm(r.remarks) === 'off roll' || r.paidDays <= 0)) return false;
       if (state.statusFilter === 'OFFROLL' && norm(r.remarks) !== 'off roll' && r.paidDays > 0) return false;
@@ -1348,6 +1429,32 @@
       }
       return true;
     });
+    if (state.sortKey && state.sortDir) {
+      const colDef = GRID_COLS.find(c => c.key === state.sortKey);
+      const isNum = !!(colDef && colDef.numeric);
+      const mult = state.sortDir === 'desc' ? -1 : 1;
+      return filtered.slice().sort((a, b) => {
+        if (isNum) {
+          return ((Number(a[state.sortKey]) || 0) - (Number(b[state.sortKey]) || 0)) * mult;
+        }
+        return String(a[state.sortKey] ?? '').localeCompare(String(b[state.sortKey] ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * mult;
+      });
+    }
+    return filtered;
+  }
+
+  function toggleSort(colKey) {
+    if (state.sortKey !== colKey) {
+      state.sortKey = colKey;
+      state.sortDir = 'asc';
+    } else if (state.sortDir === 'asc') {
+      state.sortDir = 'desc';
+    } else {
+      state.sortKey = '';
+      state.sortDir = '';
+    }
+    state.pageOffset = 0;
+    render();
   }
 
   function selectCellInfo(row, colDef, rowIndexZero) {
@@ -1356,29 +1463,46 @@
     const s = settingsOf(sh && sh.settings);
     const xlRow = rowIndexZero + 2;
     const formula = typeof colDef.formula === 'function' ? colDef.formula(row, s) : String(row[colDef.key] ?? '');
+    const editable = !!(colDef.edit && colDef.edit !== 'checkbox');
     state.selectedCell = {
       uid: row.uid,
       key: colDef.key,
-      coord: `${colDef.col}${xlRow}`,
+      coord: `${colDef.col || ''}${xlRow}`,
       label: colDef.label,
       empName: row.name || row.empId,
       value: row[colDef.key],
-      formula
+      formula,
+      editable
     };
     const barCoord = $('mcsFormulaCoord');
     const barVal = $('mcsFormulaExpr');
+    const barInp = $('mcsFormulaInput');
     if (barCoord) barCoord.textContent = `${state.selectedCell.coord} · ${state.selectedCell.empName} · ${state.selectedCell.label}`;
     if (barVal) barVal.textContent = state.selectedCell.formula || '—';
+    if (barInp && barVal) {
+      if (editable) {
+        barInp.style.display = 'block';
+        barVal.style.display = 'none';
+        if (document.activeElement !== barInp) {
+          barInp.value = row[colDef.key] === null || row[colDef.key] === undefined ? '' : String(row[colDef.key]);
+        }
+      } else {
+        barInp.style.display = 'none';
+        barVal.style.display = 'block';
+      }
+    }
   }
 
-  function applyRowCellEdit(uid, field, rawVal) {
+  function applyRowCellEdit(uid, field, rawVal, skipDomSync) {
     const sh = activeSheet();
     if (!sh) return;
     const row = (sh.rows || []).find(r => r.uid === uid);
     if (!row) return;
     const s = settingsOf(sh.settings);
 
-    if (field === 'remarks') {
+    if (field === 'paymentHold') {
+      row.paymentHold = !!rawVal;
+    } else if (field === 'remarks') {
       row._remarksEdited = true;
       row.remarks = text(rawVal) || 'onroll';
     } else if (['pfMode', 'esiMode'].includes(field)) {
@@ -1414,16 +1538,17 @@
     }
 
     recalculateRow(row, s);
-    updateRowDomInPlace(row);
-    updateSummaryAndTotalsBar();
-    scheduleSyncActiveSheet();
+    if (!skipDomSync) {
+      updateRowDomInPlace(row);
+      updateSummaryAndTotalsBar();
+      scheduleSyncActiveSheet();
+    }
   }
 
   function updateRowDomInPlace(row) {
-    const tr = document.querySelector(`tr[data-uid="${CSS.escape(row.uid)}"]`);
+    const escUid = (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') ? CSS.escape(row.uid) : row.uid.replace(/["\\]/g, '\\$&');
+    const tr = document.querySelector(`tr[data-uid="${escUid}"]`);
     if (!tr) return;
-    const sh = activeSheet();
-    const s = settingsOf(sh && sh.settings);
     const derivedKeys = ['absent', 'earnBasic', 'grossEarned', 'totalGross', 'diffAmount', 'pfEmployee', 'esiEmployee', 'totalDeduction', 'netPayable'];
     derivedKeys.forEach(k => {
       const span = tr.querySelector(`[data-ro="${k}"]`);
@@ -1432,14 +1557,16 @@
         span.textContent = col && col.money ? inr(row[k]) : String(row[k] ?? 0);
       }
     });
-    // Also update paidDays/OT/remarks/name if auto-recalculated on manualAmount/empId edit
-    ['paidDays', 'overtimeHours', 'name', 'father', 'pfNo', 'esiNo', 'designation', 'category', 'basic', 'gross', 'remarks'].forEach(k => {
+    ['paidDays', 'overtimeHours', 'name', 'father', 'pfNo', 'esiNo', 'designation', 'category', 'basic', 'gross', 'remarks', 'manualAmount', 'advance'].forEach(k => {
       const inp = tr.querySelector(`[data-field="${k}"]`);
       if (inp && document.activeElement !== inp) {
         inp.value = row[k] === null || row[k] === undefined ? '' : String(row[k]);
       }
     });
+    const holdCb = tr.querySelector('input[data-field="paymentHold"]');
+    if (holdCb && document.activeElement !== holdCb) holdCb.checked = !!row.paymentHold;
     tr.dataset.remarks = norm(row.remarks);
+    tr.classList.toggle('mcs-row-hold', !!row.paymentHold);
     const activeCell = document.activeElement && document.activeElement.closest('[data-field]');
     if (activeCell) {
       const key = activeCell.dataset.field;
@@ -1447,7 +1574,6 @@
       const idx = Number(tr.dataset.rowidx || 0);
       if (colDef) selectCellInfo(row, colDef, idx);
     }
-    void s;
   }
 
   function updateSummaryAndTotalsBar() {
@@ -1486,11 +1612,107 @@
       const td = document.querySelector(`#mcsTotalRow [data-tot="${k}"]`);
       if (td) td.textContent = inr(val);
     });
+
+    // Live Excel selection / filter status bar in footer
+    const statusStat = $('mcsStatusStats');
+    if (statusStat) {
+      const selectedList = state.selectedUids.size
+        ? rows.filter(r => state.selectedUids.has(r.uid))
+        : filtered;
+      const st = computeTotals(selectedList);
+      const avg = st.count ? Math.round(st.netPayable / st.count) : 0;
+      const label = state.selectedUids.size ? 'Selected' : 'Filtered';
+      statusStat.textContent = `${label}: ${st.count} · Net Sum: ₹${inr(st.netPayable)} · Avg: ₹${inr(avg)}`;
+    }
+
+    updateBulkBar();
+  }
+
+  function updateBulkBar() {
+    const bar = $('mcsBulkBar');
+    if (!bar) return;
+    const sh = activeSheet();
+    const n = state.selectedUids.size;
+    if (!sh || n === 0 || state.activeTab !== 'MAIN') {
+      bar.style.display = 'none';
+      return;
+    }
+    const selRows = (sh.rows || []).filter(r => state.selectedUids.has(r.uid));
+    const t = computeTotals(selRows);
+    bar.style.display = 'flex';
+    const info = $('mcsBulkInfo');
+    if (info) {
+      info.textContent = `${selRows.length} selected · Net ₹${inr(t.netPayable)} · Diff ₹${inr(t.diffAmount)}`;
+    }
+  }
+
+  function applyBulkAction(action, value) {
+    const sh = activeSheet();
+    if (!sh || !state.selectedUids.size) return;
+    const s = settingsOf(sh.settings);
+    const targets = (sh.rows || []).filter(r => state.selectedUids.has(r.uid));
+    if (!targets.length) return;
+    pushUndoSnapshot();
+    if (action === 'delete') {
+      sh.rows = (sh.rows || []).filter(r => !state.selectedUids.has(r.uid));
+      state.selectedUids.clear();
+      render();
+      scheduleSyncActiveSheet();
+      setNotice(`${targets.length} selected rows deleted (Undo available).`, 'info');
+      return;
+    }
+    targets.forEach(r => {
+      if (action === 'paidDays') r.paidDays = Math.max(0, Math.min(r.monthDays || s.monthDays, num(value) || 0));
+      else if (action === 'overtimeHours') r.overtimeHours = Math.max(0, num(value) || 0);
+      else if (action === 'pfMode') r.pfMode = text(value) || 'AUTO';
+      else if (action === 'esiMode') r.esiMode = text(value) || 'AUTO';
+      else if (action === 'remarks') { r._remarksEdited = true; r.remarks = text(value) || 'onroll'; }
+      else if (action === 'hold') r.paymentHold = !!value;
+      recalculateRow(r, s);
+    });
+    render();
+    scheduleSyncActiveSheet();
+    setNotice(`Bulk update applied to ${targets.length} rows & synced.`, 'ok');
+  }
+
+  function applyFindAndReplace() {
+    const sh = activeSheet();
+    if (!sh) return;
+    const field = ($('mcsFrField') && $('mcsFrField').value) || 'category';
+    const findVal = ($('mcsFrFind') && $('mcsFrFind').value) || '';
+    const replaceVal = ($('mcsFrReplace') && $('mcsFrReplace').value) || '';
+    const scope = ($('mcsFrScope') && $('mcsFrScope').value) || 'FILTERED';
+    if (!findVal && !replaceVal) {
+      setNotice('Find ya Replace value enter karein.', 'warn');
+      return;
+    }
+    const pool = scope === 'SELECTED' && state.selectedUids.size
+      ? (sh.rows || []).filter(r => state.selectedUids.has(r.uid))
+      : filteredRows();
+    const s = settingsOf(sh.settings);
+    let count = 0;
+    pushUndoSnapshot();
+    pool.forEach(r => {
+      const cur = text(r[field]);
+      if (!findVal || norm(cur) === norm(findVal) || cur.toLowerCase().includes(findVal.toLowerCase())) {
+        if (!findVal) r[field] = replaceVal;
+        else if (norm(cur) === norm(findVal)) r[field] = replaceVal;
+        else r[field] = cur.replace(new RegExp(findVal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), replaceVal);
+        if (field === 'remarks') r._remarksEdited = true;
+        recalculateRow(r, s);
+        count++;
+      }
+    });
+    if (!count) state.undoStack.pop();
+    render();
+    if (count) scheduleSyncActiveSheet();
+    setNotice(count ? `Replaced in ${count} rows & synced.` : 'Koi matching value nahi mili.', count ? 'ok' : 'warn');
   }
 
   function addBlankRow() {
     const sh = activeSheet();
     if (!sh) return;
+    pushUndoSnapshot();
     const s = settingsOf(sh.settings);
     const row = recalculateRow({
       uid: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -1526,6 +1748,7 @@
     }, s);
     sh.rows.unshift(row);
     state.pageOffset = 0;
+    state.activeTab = 'MAIN';
     render();
     scheduleSyncActiveSheet();
     setNotice('Nayi blank row add ho gayi. Employee ID daalne par Employee Master se details auto-fill hongi.', 'ok');
@@ -1534,7 +1757,9 @@
   function deleteRow(uid) {
     const sh = activeSheet();
     if (!sh) return;
+    pushUndoSnapshot();
     sh.rows = (sh.rows || []).filter(r => r.uid !== uid);
+    state.selectedUids.delete(uid);
     render();
     scheduleSyncActiveSheet();
   }
@@ -1542,6 +1767,7 @@
   function refreshFromMasterAndAdvance(pullAdvances) {
     const sh = activeSheet();
     if (!sh) return;
+    pushUndoSnapshot();
     const s = settingsOf(sh.settings);
     const master = indexEmployeeMaster(getEmployeeMasterList());
     const advMap = pullAdvances ? getAdvanceBalanceMap() : {};
@@ -1596,6 +1822,7 @@
   function applySettingsFromDrawer() {
     const sh = activeSheet();
     if (!sh) return;
+    pushUndoSnapshot();
     const s = settingsOf({
       month: ($('mcsSetMonth') && $('mcsSetMonth').value) || sh.month,
       monthDays: $('mcsSetMonthDays') ? $('mcsSetMonthDays').value : sh.settings.monthDays,
@@ -1625,6 +1852,10 @@
       setNotice('Download ke liye pehle Mam sheet upload karein.', 'warn');
       return;
     }
+    if (!root.XLSX) {
+      setNotice('Excel library (XLSX) load nahi hui. Page refresh karein.', 'err');
+      return;
+    }
     try {
       const wb = buildComplianceWorkbook(root.XLSX, sh.rows, sh.settings, {
         mamFile: sh.mamFile,
@@ -1638,6 +1869,138 @@
     }
   }
 
+  function exportCsv() {
+    const sh = activeSheet();
+    if (!sh || !sh.rows || !sh.rows.length) {
+      setNotice('CSV export ke liye pehle Mam sheet upload karein.', 'warn');
+      return;
+    }
+    const cols = visibleGridCols().filter(c => c.key !== '_select' && c.key !== '_delete');
+    const escCsv = v => {
+      const s = String(v === null || v === undefined ? '' : v);
+      return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const rows = state.selectedUids.size ? sh.rows.filter(r => state.selectedUids.has(r.uid)) : filteredRows();
+    const lines = [cols.map(c => escCsv(c.label)).join(',')];
+    rows.forEach((r, i) => {
+      lines.push(cols.map(c => escCsv(c.key === 'serial' ? i + 1 : r[c.key])).join(','));
+    });
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ATPL_Compliance_${sh.month || todayMonth()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setNotice(`CSV exported (${rows.length} rows).`, 'ok');
+  }
+
+  async function copyToExcelClipboard() {
+    const sh = activeSheet();
+    if (!sh || !sh.rows || !sh.rows.length) return;
+    const cols = visibleGridCols().filter(c => c.key !== '_select' && c.key !== '_delete');
+    const rows = state.selectedUids.size ? sh.rows.filter(r => state.selectedUids.has(r.uid)) : filteredRows();
+    const cleanCell = v => String(v === null || v === undefined ? '' : v).replace(/[\t\r\n]+/g, ' ');
+    const lines = [cols.map(c => cleanCell(c.label)).join('\t')];
+    rows.forEach((r, i) => {
+      lines.push(cols.map(c => cleanCell(c.key === 'serial' ? i + 1 : r[c.key])).join('\t'));
+    });
+    const tsv = lines.join('\n');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tsv);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = tsv;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setNotice(`Copied ${rows.length} rows for MS Excel — ab Excel me seedha Ctrl+V paste kar sakte ho.`, 'ok');
+    } catch (_) {
+      setNotice('Clipboard copy blocked by browser permissions.', 'warn');
+    }
+  }
+
+  function pasteFromClipboardText(startUid, startField, clipText) {
+    const sh = activeSheet();
+    if (!sh || !clipText) return false;
+    if (!clipText.includes('\t') && !clipText.includes('\n')) return false;
+    const list = filteredRows();
+    const startRowIdx = list.findIndex(r => r.uid === startUid);
+    const cols = visibleGridCols();
+    const startColIdx = cols.findIndex(c => c.key === startField);
+    if (startRowIdx < 0 || startColIdx < 0) return false;
+
+    const matrix = clipText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    if (matrix.length && matrix[matrix.length - 1] === '') matrix.pop();
+    if (!matrix.length) return false;
+
+    pushUndoSnapshot();
+    let updatedCells = 0;
+    for (let rOff = 0; rOff < matrix.length; rOff++) {
+      const targetRow = list[startRowIdx + rOff];
+      if (!targetRow) break;
+      const vals = matrix[rOff].split('\t');
+      for (let cOff = 0; cOff < vals.length; cOff++) {
+        const targetCol = cols[startColIdx + cOff];
+        if (!targetCol || !targetCol.edit) continue;
+        const val = targetCol.edit === 'checkbox' ? /^(1|true|yes|hold)$/i.test(vals[cOff].trim()) : vals[cOff];
+        applyRowCellEdit(targetRow.uid, targetCol.key, val, true);
+        updatedCells++;
+      }
+    }
+    if (updatedCells > 0) {
+      render();
+      scheduleSyncActiveSheet();
+      setNotice(`Excel paste applied: ${updatedCells} cells updated & recalculated.`, 'ok');
+    } else {
+      state.undoStack.pop();
+    }
+    return true;
+  }
+
+  function toggleFocusMode(force) {
+    state.focusMode = typeof force === 'boolean' ? force : !state.focusMode;
+    const shell = $('mcsShell');
+    if (shell) shell.classList.toggle('mcs-focus', state.focusMode);
+    const btn = $('mcsExpandGridBtn');
+    if (btn) btn.textContent = state.focusMode ? '⊟ Show Summary' : '⛶ Expand Grid';
+  }
+
+  async function toggleBrowserFullscreen() {
+    const page = $('page-mamsalary');
+    if (!page) return;
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsEl) {
+      state.isFullscreen = true;
+      toggleFocusMode(true);
+      try {
+        if (page.requestFullscreen) await page.requestFullscreen();
+        else if (page.webkitRequestFullscreen) page.webkitRequestFullscreen();
+      } catch (_) {}
+    } else {
+      state.isFullscreen = false;
+      try {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } catch (_) {}
+    }
+    updateFullscreenButton();
+  }
+
+  function updateFullscreenButton() {
+    const fsEl = typeof document !== 'undefined' && (document.fullscreenElement || document.webkitFullscreenElement);
+    state.isFullscreen = !!fsEl;
+    const btn = $('mcsFullscreenBtn');
+    if (btn) btn.textContent = state.isFullscreen ? '✕ Exit Full Screen' : '⛶ Full Screen';
+  }
+
   async function deleteActiveMonthSheet() {
     const sh = activeSheet();
     if (!sh) return;
@@ -1646,6 +2009,9 @@
     delete state.sheets[id];
     const rem = Object.keys(state.sheets).sort().reverse();
     state.activeId = rem[0] || '';
+    state.selectedUids.clear();
+    state.undoStack = [];
+    state.redoStack = [];
     saveToLocal();
     render();
     await deleteSheetRemote(id);
@@ -1653,19 +2019,32 @@
   }
 
   function renderCell(row, col, rowIdxZero) {
+    const stickyStyle = typeof col.sticky === 'number' ? `left:${col.sticky}px;` : '';
+    if (col.key === '_select') {
+      const checked = state.selectedUids.has(row.uid) ? ' checked' : '';
+      return `<td class="${typeof col.sticky === 'number' ? 'mcs-sticky' : ''}" style="${stickyStyle}width:${col.width}px;text-align:center">
+        <input type="checkbox" class="mcs-row-check" data-sel="${esc(row.uid)}"${checked} aria-label="Select row">
+      </td>`;
+    }
     if (col.key === 'serial') {
-      return `<td class="mcs-sticky num" style="left:0;width:54px;text-align:center;color:#64748b">${rowIdxZero + 1}</td>`;
+      return `<td class="${typeof col.sticky === 'number' ? 'mcs-sticky ' : ''}num" style="${stickyStyle}width:${col.width}px;text-align:center;color:#64748b">${rowIdxZero + 1}</td>`;
     }
     if (col.key === '_delete') {
       return `<td style="text-align:center"><button type="button" class="mcs-row-del" data-del="${esc(row.uid)}" title="Remove row">✕</button></td>`;
     }
 
-    const stickyStyle = typeof col.sticky === 'number' ? `left:${col.sticky}px;` : '';
     const cls = [
       typeof col.sticky === 'number' ? 'mcs-sticky' : '',
       col.align === 'right' ? 'num mcs-num' : '',
       col.edit ? 'mcs-editable' : 'mcs-formula-cell'
     ].filter(Boolean).join(' ');
+
+    if (col.edit === 'checkbox') {
+      const checked = row[col.key] ? ' checked' : '';
+      return `<td class="${cls}" style="${stickyStyle}width:${col.width}px;text-align:center">
+        <input data-field="${col.key}" type="checkbox" class="mcs-row-check"${checked}>
+      </td>`;
+    }
 
     if (col.edit === 'select') {
       const val = text(row[col.key]) || col.options[0];
@@ -1687,6 +2066,180 @@
     return `<td class="${cls}" data-ro-cell="${col.key}" style="${stickyStyle}width:${col.width}px" tabindex="0">
       <span data-ro="${col.key}">${disp}</span>
     </td>`;
+  }
+
+  function renderMainTableChrome(cols, filteredList) {
+    const colgroup = $('mcsTableColgroup');
+    const thead = $('mcsTableHead');
+    const tfoot = $('mcsTableFoot');
+    if (colgroup) {
+      colgroup.innerHTML = cols.map(c => `<col style="width:${c.width}px;min-width:${c.width}px">`).join('');
+    }
+    if (thead) {
+      const allFilteredSelected = filteredList.length > 0 && filteredList.every(r => state.selectedUids.has(r.uid));
+      const letterRow = `<tr class="mcs-xl-letters">${cols.map(c => {
+        const st = typeof c.sticky === 'number' ? `left:${c.sticky}px;` : '';
+        return `<th class="${typeof c.sticky === 'number' ? 'mcs-sticky' : ''}" style="${st}">${esc(c.col || '')}</th>`;
+      }).join('')}</tr>`;
+      const headerRow = `<tr>${cols.map(c => {
+        const st = typeof c.sticky === 'number' ? `left:${c.sticky}px;` : '';
+        const align = c.align === 'right' ? 'text-align:right;' : (c.align === 'center' ? 'text-align:center;' : '');
+        if (c.key === '_select') {
+          return `<th class="${typeof c.sticky === 'number' ? 'mcs-sticky' : ''}" style="${st}${align}"><input type="checkbox" id="mcsSelectAll" class="mcs-row-check"${allFilteredSelected ? ' checked' : ''} title="Select all filtered rows"></th>`;
+        }
+        const sortIcon = state.sortKey === c.key ? (state.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        const sortAttr = c.sortable ? ` data-sort="${c.key}" style="${st}${align}cursor:pointer"` : ` style="${st}${align}"`;
+        return `<th class="${typeof c.sticky === 'number' ? 'mcs-sticky ' : ''}${c.sortable ? 'mcs-th-sort' : ''}"${sortAttr} title="${c.sortable ? 'Click to sort' : ''}">${esc(c.label)}${sortIcon ? `<span class="mcs-sort-ind">${sortIcon}</span>` : ''}</th>`;
+      }).join('')}</tr>`;
+      thead.innerHTML = letterRow + headerRow;
+    }
+    if (tfoot) {
+      tfoot.innerHTML = `<tr id="mcsTotalRow">${cols.map(c => {
+        const st = typeof c.sticky === 'number' ? `left:${c.sticky}px;` : '';
+        const cls = typeof c.sticky === 'number' ? 'mcs-sticky' : '';
+        if (c.key === '_select') return `<td class="${cls}" style="${st}"></td>`;
+        if (c.key === 'serial') return `<td class="${cls}" style="${st}text-align:center">—</td>`;
+        if (c.key === 'empId') return `<td class="${cls}" style="${st}">TOTAL</td>`;
+        if (c.key === 'name') return `<td class="${cls}" style="${st}">Grand Total</td>`;
+        if (c.totalKey) return `<td class="num" data-tot="${c.totalKey}">0</td>`;
+        return '<td></td>';
+      }).join('')}</tr>`;
+    }
+  }
+
+  function renderSummaryTab(tab, allRows) {
+    const colgroup = $('mcsTableColgroup');
+    const thead = $('mcsTableHead');
+    const tbody = $('mcsTableBody');
+    const tfoot = $('mcsTableFoot');
+    const t = computeTotals(allRows);
+
+    if (tab === 'CATEGORY') {
+      const groups = {};
+      allRows.forEach(r => {
+        const k = text(r.category) || 'OTHER';
+        (groups[k] = groups[k] || []).push(r);
+      });
+      const cats = Object.keys(groups).sort();
+      const hdrs = ['S.No.', 'Category (Click to Filter)', 'Employees', 'Onroll', 'Off Roll', 'Earn Basic', 'Total Gross', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC@0.75%', 'Advance', 'Net Payable'];
+      if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 1 ? 220 : i === 0 ? 58 : 115}px">`).join('');
+      if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${i >= 2 ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
+      if (tbody) {
+        tbody.innerHTML = cats.map((cat, idx) => {
+          const ct = computeTotals(groups[cat]);
+          return `<tr class="mcs-cat-row" data-jump-cat="${esc(cat)}" style="cursor:pointer">
+            <td style="text-align:center;color:#64748b" class="num">${idx + 1}</td>
+            <td style="padding:0 10px;font-weight:700;color:#1d4ed8">${esc(cat)}</td>
+            <td class="mcs-formula-cell num">${ct.count}</td>
+            <td class="mcs-formula-cell num">${ct.onroll}</td>
+            <td class="mcs-formula-cell num">${ct.offroll}</td>
+            <td class="mcs-formula-cell num">${inr(ct.earnBasic)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.totalGross)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.manualAmount)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.diffAmount)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.pfEmployee)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.esiEmployee)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.advance)}</td>
+            <td class="mcs-formula-cell num">${inr(ct.netPayable)}</td>
+          </tr>`;
+        }).join('');
+      }
+      if (tfoot) {
+        tfoot.innerHTML = `<tr>
+          <td style="text-align:center">—</td><td style="text-align:left">GRAND TOTAL (${cats.length} Categories)</td>
+          <td class="num">${t.count}</td><td class="num">${t.onroll}</td><td class="num">${t.offroll}</td>
+          <td class="num">${inr(t.earnBasic)}</td><td class="num">${inr(t.totalGross)}</td><td class="num">${inr(t.manualAmount)}</td>
+          <td class="num">${inr(t.diffAmount)}</td><td class="num">${inr(t.pfEmployee)}</td><td class="num">${inr(t.esiEmployee)}</td>
+          <td class="num">${inr(t.advance)}</td><td class="num">${inr(t.netPayable)}</td>
+        </tr>`;
+      }
+      return;
+    }
+
+    if (tab === 'PF_ESIC') {
+      const hdrs = ['S.No.', 'Employee ID', 'Name of employee', 'PF NO', 'ESI NO', 'PF Wages', 'PF Emp (12%)', 'PF Empr (13%)', 'ESIC Wages', 'ESIC Emp (0.75%)', 'ESIC Empr (3.25%)', 'Total PF+ESIC', 'Remarks'];
+      if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 2 ? 200 : i === 0 ? 54 : 122}px">`).join('');
+      if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${i >= 5 && i <= 11 ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
+      const statRows = allRows.filter(r => (r.pfEmployee || 0) > 0 || (r.esiEmployee || 0) > 0 || validId(r.pfNo) || validId(r.esiNo));
+      const pfW = round0(statRows.reduce((a, b) => a + (b.pfWage || 0), 0));
+      const esiW = round0(statRows.reduce((a, b) => a + (b.esiWage || 0), 0));
+      const st = computeTotals(statRows);
+      if (tbody) {
+        tbody.innerHTML = statRows.slice(0, 500).map((r, idx) => {
+          const totalC = (r.pfEmployee || 0) + (r.pfEmployer || 0) + (r.esiEmployee || 0) + (r.esiEmployer || 0);
+          return `<tr>
+            <td style="text-align:center;color:#64748b" class="num">${idx + 1}</td>
+            <td style="padding:0 8px">${esc(r.empId)}</td>
+            <td style="padding:0 8px;font-weight:600">${esc(r.name)}</td>
+            <td style="padding:0 8px" class="num">${esc(r.pfNo)}</td>
+            <td style="padding:0 8px" class="num">${esc(r.esiNo)}</td>
+            <td class="mcs-formula-cell num">${inr(r.pfWage || 0)}</td>
+            <td class="mcs-formula-cell num">${inr(r.pfEmployee || 0)}</td>
+            <td class="mcs-formula-cell num">${inr(r.pfEmployer || 0)}</td>
+            <td class="mcs-formula-cell num">${inr(r.esiWage || 0)}</td>
+            <td class="mcs-formula-cell num">${inr(r.esiEmployee || 0)}</td>
+            <td class="mcs-formula-cell num">${inr(r.esiEmployer || 0)}</td>
+            <td class="mcs-formula-cell num" style="font-weight:700">${inr(totalC)}</td>
+            <td style="padding:0 8px">${esc(r.remarks)}</td>
+          </tr>`;
+        }).join('');
+      }
+      if (tfoot) {
+        tfoot.innerHTML = `<tr>
+          <td></td><td style="text-align:left">TOTAL</td><td style="text-align:left">${statRows.length} Statutory</td><td></td><td></td>
+          <td class="num">${inr(pfW)}</td><td class="num">${inr(st.pfEmployee)}</td><td class="num">${inr(st.pfEmployer)}</td>
+          <td class="num">${inr(esiW)}</td><td class="num">${inr(st.esiEmployee)}</td><td class="num">${inr(st.esiEmployer)}</td>
+          <td class="num">${inr(st.pfEmployee + st.pfEmployer + st.esiEmployee + st.esiEmployer)}</td><td></td>
+        </tr>`;
+      }
+      return;
+    }
+
+    // MASTER tab
+    const hdrs = ['S.No.', 'Employee ID', 'Name of employee', 'Fathers Name', 'D.O.B', 'D-O-J', 'Department', 'Designation', 'Category', 'Bank Name', 'IFSC Code', 'Account Number', 'Net Payable'];
+    if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 2 ? 190 : i === 0 ? 54 : 132}px">`).join('');
+    if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${i === 12 ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
+    if (tbody) {
+      tbody.innerHTML = allRows.slice(0, 500).map((r, idx) => `<tr>
+        <td style="text-align:center;color:#64748b" class="num">${idx + 1}</td>
+        <td style="padding:0 8px">${esc(r.empId)}</td>
+        <td style="padding:0 8px;font-weight:600">${esc(r.name)}</td>
+        <td style="padding:0 8px">${esc(r.father)}</td>
+        <td style="padding:0 8px" class="num">${esc(r.dob)}</td>
+        <td style="padding:0 8px" class="num">${esc(r.doj)}</td>
+        <td style="padding:0 8px">${esc(r.department)}</td>
+        <td style="padding:0 8px">${esc(r.designation)}</td>
+        <td style="padding:0 8px">${esc(r.category)}</td>
+        <td style="padding:0 8px">${esc(r.bankName)}</td>
+        <td style="padding:0 8px" class="num">${esc(r.ifsc)}</td>
+        <td style="padding:0 8px" class="num">${esc(r.accountNo)}</td>
+        <td class="mcs-formula-cell num">${inr(r.netPayable)}</td>
+      </tr>`).join('');
+    }
+    if (tfoot) {
+      tfoot.innerHTML = `<tr><td colspan="12" style="text-align:left">MASTER TOTAL (${allRows.length} employees)</td><td class="num">${inr(t.netPayable)}</td></tr>`;
+    }
+  }
+
+  function renderColumnPicker() {
+    const pop = $('mcsColPicker');
+    if (!pop) return;
+    const opts = GRID_COLS.filter(c => c.key !== '_select' && c.key !== 'serial' && c.key !== '_delete');
+    pop.innerHTML = `
+      <div class="mcs-colpop-head">
+        <strong>Show / Hide Excel Columns</strong>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="mcs-mini-btn" id="mcsColShowAll">Show All</button>
+          <button type="button" class="mcs-mini-btn" id="mcsColCompact">Compact</button>
+        </div>
+      </div>
+      <div class="mcs-colpop-grid">
+        ${opts.map(c => `<label class="mcs-colpop-item">
+          <input type="checkbox" data-col-toggle="${esc(c.key)}"${!state.hiddenCols[c.key] ? ' checked' : ''}>
+          <span>${esc(c.col ? c.col + ' · ' : '')}${esc(c.label)}</span>
+        </label>`).join('')}
+      </div>
+    `;
   }
 
   function render() {
@@ -1715,7 +2268,6 @@
         categories.map(c => `<option value="${esc(c)}"${c === state.categoryFilter ? ' selected' : ''}>${esc(c)}</option>`).join('');
     }
 
-    // Update formula settings inputs
     if ($('mcsSetMonth')) $('mcsSetMonth').value = s.month;
     if ($('mcsSetMonthDays')) $('mcsSetMonthDays').value = s.monthDays;
     if ($('mcsSetMaxOt')) $('mcsSetMaxOt').value = s.maxOtHours;
@@ -1724,16 +2276,23 @@
     if ($('mcsSetOtDivisor')) $('mcsSetOtDivisor').value = s.otDivisor;
     if ($('mcsSetPfMode')) $('mcsSetPfMode').value = s.pfDefaultMode;
     if ($('mcsSetEsiBase')) $('mcsSetEsiBase').value = s.esiBase;
+    if ($('mcsPageSize')) $('mcsPageSize').value = String(state.pageSize);
+    if ($('mcsFreezeBtn')) $('mcsFreezeBtn').classList.toggle('mcs-btn-active', !!state.freezePanes);
 
-    // Status segmented active states
     document.querySelectorAll('.mcs-seg-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.status === state.statusFilter);
     });
+    document.querySelectorAll('.mcs-sheet-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === state.activeTab);
+    });
 
     const dlBtn = $('mcsDownloadBtn');
+    const csvBtn = $('mcsDownloadCsvBtn');
     const delBtn = $('mcsDeleteSheetBtn');
     if (dlBtn) dlBtn.disabled = !allRows.length;
+    if (csvBtn) csvBtn.disabled = !allRows.length;
     if (delBtn) delBtn.disabled = !sh;
+    updateUndoRedoButtons();
 
     const metaLine = $('mcsSheetMeta');
     if (metaLine) {
@@ -1754,12 +2313,25 @@
     if (emptyBox) emptyBox.style.display = 'none';
     if (gridWrap) gridWrap.style.display = 'flex';
 
-    // Pagination inside grid for crisp rendering of 500+ rows without DOM lag
-    const totalPages = Math.max(1, Math.ceil(list.length / state.pageSize));
+    if (state.activeTab !== 'MAIN') {
+      renderSummaryTab(state.activeTab, allRows);
+      if ($('mcsPageInfo')) $('mcsPageInfo').textContent = `Tab: ${state.activeTab.replace('_', ' & ')}`;
+      if ($('mcsPrevPage')) $('mcsPrevPage').disabled = true;
+      if ($('mcsNextPage')) $('mcsNextPage').disabled = true;
+      updateSummaryAndTotalsBar();
+      if (state.notice) setNotice(state.notice, state.noticeType);
+      return;
+    }
+
+    const cols = visibleGridCols();
+    renderMainTableChrome(cols, list);
+
+    const effSize = state.pageSize >= 9999 ? Math.max(1, list.length) : state.pageSize;
+    const totalPages = Math.max(1, Math.ceil(list.length / effSize));
     const currentPage = Math.min(state.pageOffset, totalPages - 1);
     state.pageOffset = Math.max(0, currentPage);
-    const start = state.pageOffset * state.pageSize;
-    const pageRows = list.slice(start, start + state.pageSize);
+    const start = state.pageOffset * effSize;
+    const pageRows = list.slice(start, start + effSize);
 
     const tbody = $('mcsTableBody');
     if (tbody) {
@@ -1767,14 +2339,20 @@
         const absIdx = start + j;
         const isOff = norm(r.remarks) === 'off roll' || r.paidDays <= 0;
         const isMissing = !r.masterMatched;
-        return `<tr data-uid="${esc(r.uid)}" data-rowidx="${absIdx}" data-remarks="${esc(norm(r.remarks))}" class="${isMissing ? 'mcs-row-warn' : isOff ? 'mcs-row-off' : ''}">${GRID_COLS.map(c => renderCell(r, c, absIdx)).join('')}</tr>`;
+        const isHold = !!r.paymentHold;
+        const rowCls = [
+          isMissing ? 'mcs-row-warn' : (isOff ? 'mcs-row-off' : ''),
+          isHold ? 'mcs-row-hold' : '',
+          state.selectedUids.has(r.uid) ? 'mcs-row-sel' : ''
+        ].filter(Boolean).join(' ');
+        return `<tr data-uid="${esc(r.uid)}" data-rowidx="${absIdx}" data-remarks="${esc(norm(r.remarks))}" class="${rowCls}">${cols.map(c => renderCell(r, c, absIdx)).join('')}</tr>`;
       }).join('');
     }
 
     const pageInfo = $('mcsPageInfo');
     if (pageInfo) {
       pageInfo.textContent = list.length
-        ? `Showing ${start + 1}–${Math.min(start + state.pageSize, list.length)} of ${list.length} rows`
+        ? `Showing ${start + 1}–${Math.min(start + effSize, list.length)} of ${list.length} rows`
         : '0 matching rows';
     }
     if ($('mcsPrevPage')) $('mcsPrevPage').disabled = state.pageOffset <= 0;
@@ -1808,6 +2386,20 @@
         flex-direction: column;
         background: #f8fafc;
       }
+      .mcs-shell.mcs-focus .mcs-kpi-strip,
+      .mcs-shell.mcs-focus .mcs-notice {
+        display: none !important;
+      }
+      .mcs-shell.mcs-focus .mcs-topbar {
+        padding: 7px 16px;
+      }
+      .mcs-shell.mcs-focus .mcs-toolbar {
+        padding: 6px 16px;
+        gap: 6px;
+      }
+      .mcs-shell.mcs-focus .mcs-formulabar {
+        padding: 4px 16px;
+      }
       .num {
         font-family: 'JetBrains Mono', monospace;
         font-variant-numeric: tabular-nums;
@@ -1816,8 +2408,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
-        padding: 12px 20px;
+        gap: 12px;
+        padding: 10px 20px;
         background: #ffffff;
         border-bottom: 1px solid #e2e8f0;
       }
@@ -1834,21 +2426,22 @@
         white-space: nowrap;
       }
       .mcs-meta {
-        font-size: 12px;
+        font-size: 11.5px;
         color: #64748b;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin-top: 2px;
+        margin-top: 1px;
       }
       .mcs-actions-zone {
         display: flex;
         align-items: center;
-        gap: 10px;
-        flex-shrink: 0;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       .mcs-select, .mcs-input {
-        height: 36px;
+        height: 34px;
         padding: 0 10px;
         border: 1px solid #cbd5e1;
         border-radius: 7px;
@@ -1863,18 +2456,18 @@
         box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
       }
       .mcs-btn {
-        height: 36px;
-        padding: 0 14px;
+        height: 34px;
+        padding: 0 12px;
         border-radius: 7px;
         border: 1px solid #cbd5e1;
         background: #ffffff;
         color: #0f172a;
-        font-size: 12.5px;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
         white-space: nowrap;
         transition: background-color 140ms ease, border-color 140ms ease;
       }
@@ -1883,8 +2476,13 @@
         border-color: #94a3b8;
       }
       .mcs-btn:disabled {
-        opacity: 0.48;
+        opacity: 0.45;
         cursor: not-allowed;
+      }
+      .mcs-btn-active {
+        background: #eff6ff !important;
+        border-color: #2563eb !important;
+        color: #1d4ed8 !important;
       }
       .mcs-btn-primary {
         background: #0f172a;
@@ -1904,6 +2502,18 @@
         background: #166534;
         border-color: #166534;
       }
+      .mcs-mini-btn {
+        height: 26px;
+        padding: 0 9px;
+        border-radius: 5px;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #0f172a;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .mcs-mini-btn:hover { background: #f1f5f9; }
       .mcs-file-label {
         position: relative;
         overflow: hidden;
@@ -1921,47 +2531,44 @@
         border-bottom: 1px solid #e2e8f0;
       }
       .mcs-kpi {
-        padding: 10px 16px;
+        padding: 8px 14px;
         border-right: 1px solid #e2e8f0;
       }
-      .mcs-kpi:last-child {
-        border-right: none;
-      }
+      .mcs-kpi:last-child { border-right: none; }
       .mcs-kpi-label {
         font-size: 11px;
         font-weight: 600;
         color: #64748b;
       }
       .mcs-kpi-val {
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 700;
         color: #0f172a;
-        margin-top: 2px;
+        margin-top: 1px;
       }
       .mcs-kpi-sub {
         font-size: 11px;
         color: #64748b;
-        margin-top: 1px;
       }
       .mcs-toolbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
-        gap: 10px;
-        padding: 10px 20px;
+        gap: 8px;
+        padding: 8px 20px;
         background: #f8fafc;
         border-bottom: 1px solid #e2e8f0;
       }
       .mcs-toolbar-left, .mcs-toolbar-right {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
       }
       .mcs-seg {
         display: inline-flex;
-        padding: 3px;
+        padding: 2px;
         background: #e2e8f0;
         border-radius: 7px;
         gap: 2px;
@@ -1970,9 +2577,9 @@
         border: none;
         background: transparent;
         color: #475569;
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 600;
-        padding: 5px 10px;
+        padding: 5px 9px;
         border-radius: 5px;
         cursor: pointer;
         white-space: nowrap;
@@ -1982,11 +2589,80 @@
         color: #0f172a;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
       }
+      .mcs-bulkbar {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 6px 20px;
+        background: #eff6ff;
+        border-bottom: 1px solid #bfdbfe;
+        font-size: 12px;
+      }
+      .mcs-bulk-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .mcs-bulk-info {
+        font-weight: 700;
+        color: #1e40af;
+      }
+      .mcs-frbar {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 7px 20px;
+        background: #fefce8;
+        border-bottom: 1px solid #fde047;
+        font-size: 12px;
+      }
+      .mcs-frbar.open { display: flex; }
+      .mcs-colpop-wrap { position: relative; }
+      .mcs-colpop {
+        display: none;
+        position: absolute;
+        top: 38px;
+        right: 0;
+        z-index: 50;
+        width: 340px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.16);
+        padding: 12px;
+      }
+      .mcs-colpop.open { display: block; }
+      .mcs-colpop-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 12px;
+      }
+      .mcs-colpop-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        max-height: 260px;
+        overflow: auto;
+      }
+      .mcs-colpop-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        color: #334155;
+        cursor: pointer;
+      }
       .mcs-formulabar {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 6px 20px;
+        gap: 10px;
+        padding: 5px 20px;
         background: #ffffff;
         border-bottom: 1px solid #e2e8f0;
         font-size: 12px;
@@ -2003,12 +2679,12 @@
       .mcs-fcoord {
         font-weight: 600;
         color: #334155;
-        min-width: 240px;
+        min-width: 220px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .mcs-fexpr {
+      .mcs-fexpr, .mcs-finput {
         flex: 1;
         font-family: 'JetBrains Mono', monospace;
         color: #0f172a;
@@ -2016,13 +2692,19 @@
         border: 1px solid #e2e8f0;
         border-radius: 4px;
         padding: 3px 8px;
+        font-size: 12px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
+      .mcs-finput {
+        background: #ffffff;
+        border-color: #3b82f6;
+        outline: none;
+      }
       .mcs-notice {
-        padding: 7px 20px;
-        font-size: 12.5px;
+        padding: 6px 20px;
+        font-size: 12px;
         font-weight: 500;
         background: #f1f5f9;
         color: #1e293b;
@@ -2037,9 +2719,7 @@
         background: #ffffff;
         border-bottom: 1px solid #cbd5e1;
       }
-      .mcs-drawer.open {
-        display: block;
-      }
+      .mcs-drawer.open { display: block; }
       .mcs-drawer-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -2083,26 +2763,49 @@
         table-layout: fixed;
         font-size: 12.5px;
       }
-      .mcs-table th {
+      .mcs-table thead tr.mcs-xl-letters th {
         position: sticky;
         top: 0;
+        z-index: 14;
+        height: 22px;
+        padding: 2px 6px;
+        background: #e2e8f0;
+        color: #475569;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-align: center;
+        border-bottom: 1px solid #cbd5e1;
+      }
+      .mcs-table thead tr.mcs-xl-letters th.mcs-sticky {
+        z-index: 22;
+        background: #cbd5e1;
+      }
+      .mcs-table thead tr:not(.mcs-xl-letters) th {
+        position: sticky;
+        top: 22px;
         z-index: 12;
         background: #f1f5f9;
         color: #0f172a;
         font-weight: 700;
         font-size: 11.5px;
-        padding: 9px 8px;
+        padding: 7px 8px;
         text-align: left;
         border-bottom: 2px solid #cbd5e1;
         border-right: 1px solid #e2e8f0;
         white-space: nowrap;
+        user-select: none;
       }
-      .mcs-table th.mcs-sticky {
+      .mcs-table thead tr:only-child th {
+        top: 0;
+      }
+      .mcs-table thead tr:not(.mcs-xl-letters) th.mcs-sticky {
         z-index: 20;
         background: #e2e8f0;
       }
+      .mcs-th-sort:hover { background: #e2e8f0 !important; }
+      .mcs-sort-ind { color: #1d4ed8; font-size: 10px; }
       .mcs-table td {
-        height: 36px;
+        height: 34px;
         padding: 0;
         border-bottom: 1px solid #e2e8f0;
         border-right: 1px solid #e2e8f0;
@@ -2111,24 +2814,19 @@
         white-space: nowrap;
         overflow: hidden;
       }
-      .mcs-table tbody tr:hover td {
-        background: #f8fafc;
-      }
-      .mcs-table tbody tr.mcs-row-off td {
-        background: #fffbeb;
-      }
-      .mcs-table tbody tr.mcs-row-warn td {
-        background: #fef2f2;
-      }
+      .mcs-table tbody tr:hover td { background: #f8fafc; }
+      .mcs-table tbody tr.mcs-row-off td { background: #fffbeb; }
+      .mcs-table tbody tr.mcs-row-warn td { background: #fef2f2; }
+      .mcs-table tbody tr.mcs-row-hold td { background: #fefce8; opacity: 0.9; }
+      .mcs-table tbody tr.mcs-row-sel td { background: #dbeafe !important; }
       .mcs-table td.mcs-sticky {
         position: sticky;
         z-index: 8;
         background: #ffffff;
         box-shadow: inset -1px 0 0 #cbd5e1;
       }
-      .mcs-table tbody tr:hover td.mcs-sticky {
-        background: #f1f5f9;
-      }
+      .mcs-table tbody tr:hover td.mcs-sticky { background: #f1f5f9; }
+      .mcs-table tbody tr.mcs-row-sel td.mcs-sticky { background: #bfdbfe !important; }
       .mcs-table td.mcs-formula-cell {
         padding: 0 8px;
         text-align: right;
@@ -2140,9 +2838,15 @@
         outline-offset: -2px;
         background: #eff6ff;
       }
+      .mcs-row-check {
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+        accent-color: #1d4ed8;
+      }
       .mcs-cell-input, .mcs-cell-select {
         width: 100%;
-        height: 35px;
+        height: 33px;
         border: none;
         background: transparent;
         padding: 0 8px;
@@ -2168,9 +2872,7 @@
         font-size: 13px;
         padding: 4px 8px;
       }
-      .mcs-row-del:hover {
-        color: #dc2626;
-      }
+      .mcs-row-del:hover { color: #dc2626; }
       .mcs-table tfoot td {
         position: sticky;
         bottom: 0;
@@ -2178,7 +2880,7 @@
         background: #0f172a;
         color: #ffffff;
         font-weight: 700;
-        padding: 9px 8px;
+        padding: 8px 8px;
         border-right: 1px solid #334155;
         text-align: right;
       }
@@ -2186,6 +2888,32 @@
         z-index: 22;
         background: #0f172a;
         text-align: left;
+      }
+      .mcs-sheet-tabs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 4px 16px 0;
+        background: #e2e8f0;
+        border-top: 1px solid #cbd5e1;
+      }
+      .mcs-sheet-tab {
+        border: 1px solid transparent;
+        border-bottom: none;
+        background: transparent;
+        color: #475569;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 5px 14px;
+        border-radius: 6px 6px 0 0;
+        cursor: pointer;
+      }
+      .mcs-sheet-tab:hover { background: #f1f5f9; color: #0f172a; }
+      .mcs-sheet-tab.active {
+        background: #ffffff;
+        color: #15803d;
+        border-color: #cbd5e1;
+        font-weight: 700;
       }
       .mcs-empty {
         flex: 1;
@@ -2219,10 +2947,12 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 8px 20px;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 6px 20px;
         background: #ffffff;
         border-top: 1px solid #e2e8f0;
-        font-size: 12px;
+        font-size: 11.5px;
         color: #475569;
       }
     `;
@@ -2237,7 +2967,7 @@
     page.id = 'page-mamsalary';
     page.className = 'page';
     page.innerHTML = `
-      <div class="mcs-shell">
+      <div id="mcsShell" class="mcs-shell">
         <header class="mcs-topbar">
           <div class="mcs-brand-zone">
             <div class="mcs-title">Mam → ESI &amp; PF Compliance Sheet</div>
@@ -2250,6 +2980,9 @@
               <input id="mcsMamInput" type="file" accept=".csv,.xlsx,.xls">
             </label>
             <button type="button" id="mcsDownloadBtn" class="mcs-btn mcs-btn-accent" disabled>Download Excel (.xlsx)</button>
+            <button type="button" id="mcsDownloadCsvBtn" class="mcs-btn" disabled title="Export current view as CSV">CSV</button>
+            <button type="button" id="mcsExpandGridBtn" class="mcs-btn" title="Maximize spreadsheet area (Ctrl+Shift+F)">⛶ Expand Grid</button>
+            <button type="button" id="mcsFullscreenBtn" class="mcs-btn" title="Enter/Exit Browser Full Screen">⛶ Full Screen</button>
             <button type="button" id="mcsBackBtn" class="mcs-btn">Back to ERP</button>
           </div>
         </header>
@@ -2258,7 +2991,7 @@
 
         <div class="mcs-toolbar">
           <div class="mcs-toolbar-left">
-            <input id="mcsSearch" class="mcs-input" style="width:220px" placeholder="Search Emp ID, Name, PF, ESI...">
+            <input id="mcsSearch" class="mcs-input" style="width:200px" placeholder="Search Emp ID, Name, PF, ESI...">
             <select id="mcsCatFilter" class="mcs-select"></select>
             <div class="mcs-seg" role="group" aria-label="Filter rows by status">
               <button type="button" class="mcs-seg-btn active" data-status="ALL">All</button>
@@ -2269,11 +3002,75 @@
             </div>
           </div>
           <div class="mcs-toolbar-right">
+            <button type="button" id="mcsUndoBtn" class="mcs-btn" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+            <button type="button" id="mcsRedoBtn" class="mcs-btn" disabled title="Redo (Ctrl+Y)">↪ Redo</button>
             <button type="button" id="mcsAddRowBtn" class="mcs-btn">+ Add Row</button>
+            <button type="button" id="mcsCopyTsvBtn" class="mcs-btn" title="Copy visible/selected rows for MS Excel">📋 Copy Excel</button>
+            <button type="button" id="mcsFreezeBtn" class="mcs-btn mcs-btn-active" title="Freeze S.No, ID &amp; Name columns">❄️ Freeze A–C</button>
+            <div class="mcs-colpop-wrap">
+              <button type="button" id="mcsColPickerBtn" class="mcs-btn" title="Show/Hide Excel columns">⊞ Columns</button>
+              <div id="mcsColPicker" class="mcs-colpop"></div>
+            </div>
+            <button type="button" id="mcsFindReplaceBtn" class="mcs-btn" title="Find &amp; Replace (Ctrl+H)">⇄ Find/Replace</button>
             <button type="button" id="mcsSyncMasterBtn" class="mcs-btn">Sync Master</button>
             <button type="button" id="mcsSyncAdvBtn" class="mcs-btn">Sync Advances</button>
             <button type="button" id="mcsFormulaBtn" class="mcs-btn">Formulas &amp; Rules</button>
             <button type="button" id="mcsDeleteSheetBtn" class="mcs-btn" disabled>Delete Month</button>
+          </div>
+        </div>
+
+        <div id="mcsFindReplaceBar" class="mcs-frbar">
+          <strong>Find &amp; Replace:</strong>
+          <select id="mcsFrField" class="mcs-select" style="height:28px">
+            <option value="category">Category</option>
+            <option value="designation">Designation</option>
+            <option value="department">Department</option>
+            <option value="remarks">Remarks (onroll / off roll)</option>
+            <option value="pfMode">PF Rule</option>
+            <option value="esiMode">ESIC Rule</option>
+          </select>
+          <input id="mcsFrFind" class="mcs-input" style="height:28px;width:150px" placeholder="Find (blank = all)">
+          <input id="mcsFrReplace" class="mcs-input" style="height:28px;width:150px" placeholder="Replace with">
+          <select id="mcsFrScope" class="mcs-select" style="height:28px">
+            <option value="FILTERED">Filtered Rows</option>
+            <option value="SELECTED">Selected Rows Only</option>
+          </select>
+          <button type="button" id="mcsFrApplyBtn" class="mcs-btn mcs-btn-primary" style="height:28px">Replace All</button>
+          <button type="button" id="mcsFrCloseBtn" class="mcs-btn" style="height:28px">Close</button>
+        </div>
+
+        <div id="mcsBulkBar" class="mcs-bulkbar">
+          <div class="mcs-bulk-group">
+            <span id="mcsBulkInfo" class="mcs-bulk-info">0 selected</span>
+            <input id="mcsBulkDays" type="number" step="1" min="0" max="31" class="mcs-input" style="height:28px;width:76px" placeholder="Days">
+            <button type="button" id="mcsBulkApplyDays" class="mcs-mini-btn">Set Days</button>
+            <input id="mcsBulkOt" type="number" step="1" min="0" max="100" class="mcs-input" style="height:28px;width:68px" placeholder="OT">
+            <button type="button" id="mcsBulkApplyOt" class="mcs-mini-btn">Set OT</button>
+            <select id="mcsBulkPf" class="mcs-select" style="height:28px">
+              <option value="">PF Rule…</option>
+              <option value="AUTO">AUTO</option>
+              <option value="FULL_12">FULL_12</option>
+              <option value="CAP_15000">CAP_15000</option>
+              <option value="NONE">NONE</option>
+            </select>
+            <select id="mcsBulkEsi" class="mcs-select" style="height:28px">
+              <option value="">ESIC Rule…</option>
+              <option value="AUTO">AUTO</option>
+              <option value="EARN_BASIC">EARN_BASIC</option>
+              <option value="TOTAL_GROSS">TOTAL_GROSS</option>
+              <option value="NONE">NONE</option>
+            </select>
+            <select id="mcsBulkRemarks" class="mcs-select" style="height:28px">
+              <option value="">Remarks…</option>
+              <option value="onroll">onroll</option>
+              <option value="off roll">off roll</option>
+            </select>
+          </div>
+          <div class="mcs-bulk-group">
+            <button type="button" id="mcsBulkHoldBtn" class="mcs-mini-btn">Hold Pay</button>
+            <button type="button" id="mcsBulkUnholdBtn" class="mcs-mini-btn">Release Hold</button>
+            <button type="button" id="mcsBulkDelBtn" class="mcs-mini-btn" style="color:#dc2626">Delete Selected</button>
+            <button type="button" id="mcsBulkClearBtn" class="mcs-mini-btn">Clear</button>
           </div>
         </div>
 
@@ -2336,6 +3133,7 @@
           <span class="mcs-fx">fx</span>
           <span id="mcsFormulaCoord" class="mcs-fcoord">Select any cell</span>
           <span id="mcsFormulaExpr" class="mcs-fexpr">Lokesh formulas: Earn Basic = ROUND(Basic * PaidDays / MonthDays, 0) · PF = 12% Earn Basic · ESIC = 0.75% Earn Basic</span>
+          <input id="mcsFormulaInput" class="mcs-finput" style="display:none" placeholder="Edit selected cell & press Enter...">
         </div>
 
         <div id="mcsNotice" class="mcs-notice" data-type="info">Upload only Mam Salary Sheet (.csv / .xlsx). Software Employee Master se PF, ESIC, Category, Designation, Basic aur Gross automatic utha lega.</div>
@@ -2358,40 +3156,17 @@
         <div id="mcsGridContainer" class="mcs-grid-container" style="display:none">
           <div class="mcs-grid-scroll">
             <table class="mcs-table">
-              <colgroup>
-                ${GRID_COLS.map(c => `<col style="width:${c.width}px;min-width:${c.width}px">`).join('')}
-              </colgroup>
-              <thead>
-                <tr>
-                  ${GRID_COLS.map(c => `<th class="${typeof c.sticky === 'number' ? 'mcs-sticky' : ''}" style="${typeof c.sticky === 'number' ? `left:${c.sticky}px;` : ''}${c.align === 'right' ? 'text-align:right' : ''}">${esc(c.label)}</th>`).join('')}
-                </tr>
-              </thead>
+              <colgroup id="mcsTableColgroup"></colgroup>
+              <thead id="mcsTableHead"></thead>
               <tbody id="mcsTableBody"></tbody>
-              <tfoot>
-                <tr id="mcsTotalRow">
-                  <td class="mcs-sticky" style="left:0;text-align:center">—</td>
-                  <td class="mcs-sticky" style="left:54px">TOTAL</td>
-                  <td class="mcs-sticky" style="left:156px">Grand Total</td>
-                  <td></td><td></td><td></td><td></td><td></td><td></td>
-                  <td class="num" data-tot="basic">0</td>
-                  <td class="num" data-tot="gross">0</td>
-                  <td></td><td></td><td></td><td></td>
-                  <td class="num" data-tot="earnBasic">0</td>
-                  <td class="num" data-tot="grossEarned">0</td>
-                  <td class="num" data-tot="totalGross">0</td>
-                  <td class="num" data-tot="manualAmount">0</td>
-                  <td class="num" data-tot="diffAmount">0</td>
-                  <td></td>
-                  <td class="num" data-tot="pfEmployee">0</td>
-                  <td></td>
-                  <td class="num" data-tot="esiEmployee">0</td>
-                  <td class="num" data-tot="advance">0</td>
-                  <td class="num" data-tot="totalDeduction">0</td>
-                  <td class="num" data-tot="netPayable">0</td>
-                  <td></td><td></td>
-                </tr>
-              </tfoot>
+              <tfoot id="mcsTableFoot"></tfoot>
             </table>
+          </div>
+          <div id="mcsSheetTabs" class="mcs-sheet-tabs">
+            <button type="button" class="mcs-sheet-tab active" data-tab="MAIN">Main Sheet</button>
+            <button type="button" class="mcs-sheet-tab" data-tab="CATEGORY">Category Summary</button>
+            <button type="button" class="mcs-sheet-tab" data-tab="PF_ESIC">PF &amp; ESIC Summary</button>
+            <button type="button" class="mcs-sheet-tab" data-tab="MASTER">Master &amp; Bank</button>
           </div>
         </div>
 
@@ -2399,12 +3174,23 @@
           <div>
             <span id="mcsSyncLabel">Synced across browsers</span>
             <span> · </span>
-            <span>Enter / ↑ / ↓ / Tab se Excel ki tarah navigate aur edit karein</span>
+            <span id="mcsStatusStats" class="num">Filtered: 0</span>
+            <span> · </span>
+            <span>Enter / ↑ / ↓ / Ctrl+V Excel Paste / Ctrl+Z Undo</span>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
+            <label style="display:inline-flex;align-items:center;gap:4px">
+              <span>Rows:</span>
+              <select id="mcsPageSize" class="mcs-select" style="height:26px;font-size:11.5px;padding:0 6px">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="9999">All</option>
+              </select>
+            </label>
             <span id="mcsPageInfo" class="num">0 rows</span>
-            <button type="button" id="mcsPrevPage" class="mcs-btn" style="height:28px;padding:0 10px">Prev</button>
-            <button type="button" id="mcsNextPage" class="mcs-btn" style="height:28px;padding:0 10px">Next</button>
+            <button type="button" id="mcsPrevPage" class="mcs-btn" style="height:26px;padding:0 10px">Prev</button>
+            <button type="button" id="mcsNextPage" class="mcs-btn" style="height:26px;padding:0 10px">Next</button>
           </div>
         </footer>
       </div>
@@ -2420,12 +3206,18 @@
     if ($('mcsEmptyUpload')) $('mcsEmptyUpload').onchange = e => handleMamUpload(e.target.files[0]);
     if ($('mcsRefInput')) $('mcsRefInput').onchange = e => handleReferenceUpload(e.target.files[0]);
     if ($('mcsDownloadBtn')) $('mcsDownloadBtn').onclick = downloadExcel;
+    if ($('mcsDownloadCsvBtn')) $('mcsDownloadCsvBtn').onclick = exportCsv;
+    if ($('mcsExpandGridBtn')) $('mcsExpandGridBtn').onclick = () => toggleFocusMode();
+    if ($('mcsFullscreenBtn')) $('mcsFullscreenBtn').onclick = () => toggleBrowserFullscreen();
     if ($('mcsBackBtn')) $('mcsBackBtn').onclick = () => {
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (fsEl && document.exitFullscreen) { try { document.exitFullscreen(); } catch (_) {} }
       if (typeof root.goPage === 'function') root.goPage('cmd');
     };
     if ($('mcsMonthSwitch')) $('mcsMonthSwitch').onchange = e => {
       state.activeId = e.target.value;
       state.pageOffset = 0;
+      state.selectedUids.clear();
       saveToLocal();
       render();
     };
@@ -2446,7 +3238,86 @@
         render();
       };
     });
+    document.querySelectorAll('.mcs-sheet-tab').forEach(btn => {
+      btn.onclick = () => {
+        state.activeTab = btn.dataset.tab || 'MAIN';
+        render();
+      };
+    });
+
+    if ($('mcsUndoBtn')) $('mcsUndoBtn').onclick = undoEdit;
+    if ($('mcsRedoBtn')) $('mcsRedoBtn').onclick = redoEdit;
     if ($('mcsAddRowBtn')) $('mcsAddRowBtn').onclick = addBlankRow;
+    if ($('mcsCopyTsvBtn')) $('mcsCopyTsvBtn').onclick = copyToExcelClipboard;
+    if ($('mcsFreezeBtn')) $('mcsFreezeBtn').onclick = () => {
+      state.freezePanes = !state.freezePanes;
+      render();
+    };
+    if ($('mcsColPickerBtn')) $('mcsColPickerBtn').onclick = e => {
+      e.stopPropagation();
+      const pop = $('mcsColPicker');
+      if (!pop) return;
+      renderColumnPicker();
+      pop.classList.toggle('open');
+    };
+    if ($('mcsColPicker')) {
+      $('mcsColPicker').addEventListener('click', e => {
+        e.stopPropagation();
+        if (e.target && e.target.id === 'mcsColShowAll') {
+          state.hiddenCols = {};
+          try { localStorage.setItem(STORAGE_HIDDENCOLS_KEY, '{}'); } catch (_) {}
+          renderColumnPicker();
+          render();
+        } else if (e.target && e.target.id === 'mcsColCompact') {
+          state.hiddenCols = { father: true, gender: true, monthDays: true, absent: true, grossEarned: true, pfMode: true, esiMode: true, paymentHold: true };
+          try { localStorage.setItem(STORAGE_HIDDENCOLS_KEY, JSON.stringify(state.hiddenCols)); } catch (_) {}
+          renderColumnPicker();
+          render();
+        }
+      });
+      $('mcsColPicker').addEventListener('change', e => {
+        const cb = e.target.closest('input[data-col-toggle]');
+        if (!cb) return;
+        const k = cb.dataset.colToggle;
+        if (cb.checked) delete state.hiddenCols[k];
+        else state.hiddenCols[k] = true;
+        try { localStorage.setItem(STORAGE_HIDDENCOLS_KEY, JSON.stringify(state.hiddenCols)); } catch (_) {}
+        render();
+      });
+    }
+    if ($('mcsFindReplaceBtn')) $('mcsFindReplaceBtn').onclick = () => {
+      const b = $('mcsFindReplaceBar');
+      if (b) b.classList.toggle('open');
+    };
+    if ($('mcsFrCloseBtn')) $('mcsFrCloseBtn').onclick = () => {
+      const b = $('mcsFindReplaceBar');
+      if (b) b.classList.remove('open');
+    };
+    if ($('mcsFrApplyBtn')) $('mcsFrApplyBtn').onclick = applyFindAndReplace;
+
+    // Bulk action controls
+    if ($('mcsBulkApplyDays')) $('mcsBulkApplyDays').onclick = () => {
+      const v = $('mcsBulkDays') ? $('mcsBulkDays').value : '';
+      if (v !== '') applyBulkAction('paidDays', v);
+    };
+    if ($('mcsBulkApplyOt')) $('mcsBulkApplyOt').onclick = () => {
+      const v = $('mcsBulkOt') ? $('mcsBulkOt').value : '';
+      if (v !== '') applyBulkAction('overtimeHours', v);
+    };
+    if ($('mcsBulkPf')) $('mcsBulkPf').onchange = e => {
+      if (e.target.value) { applyBulkAction('pfMode', e.target.value); e.target.value = ''; }
+    };
+    if ($('mcsBulkEsi')) $('mcsBulkEsi').onchange = e => {
+      if (e.target.value) { applyBulkAction('esiMode', e.target.value); e.target.value = ''; }
+    };
+    if ($('mcsBulkRemarks')) $('mcsBulkRemarks').onchange = e => {
+      if (e.target.value) { applyBulkAction('remarks', e.target.value); e.target.value = ''; }
+    };
+    if ($('mcsBulkHoldBtn')) $('mcsBulkHoldBtn').onclick = () => applyBulkAction('hold', true);
+    if ($('mcsBulkUnholdBtn')) $('mcsBulkUnholdBtn').onclick = () => applyBulkAction('hold', false);
+    if ($('mcsBulkDelBtn')) $('mcsBulkDelBtn').onclick = () => applyBulkAction('delete');
+    if ($('mcsBulkClearBtn')) $('mcsBulkClearBtn').onclick = () => { state.selectedUids.clear(); render(); };
+
     if ($('mcsSyncMasterBtn')) $('mcsSyncMasterBtn').onclick = () => refreshFromMasterAndAdvance(false);
     if ($('mcsSyncAdvBtn')) $('mcsSyncAdvBtn').onclick = () => refreshFromMasterAndAdvance(true);
     if ($('mcsFormulaBtn')) $('mcsFormulaBtn').onclick = () => {
@@ -2455,28 +3326,86 @@
     };
     if ($('mcsApplyFormulaBtn')) $('mcsApplyFormulaBtn').onclick = applySettingsFromDrawer;
     if ($('mcsDeleteSheetBtn')) $('mcsDeleteSheetBtn').onclick = deleteActiveMonthSheet;
+    if ($('mcsPageSize')) $('mcsPageSize').onchange = e => {
+      state.pageSize = Math.max(10, Number(e.target.value) || 100);
+      state.pageOffset = 0;
+      render();
+    };
     if ($('mcsPrevPage')) $('mcsPrevPage').onclick = () => { state.pageOffset = Math.max(0, state.pageOffset - 1); render(); };
     if ($('mcsNextPage')) $('mcsNextPage').onclick = () => { state.pageOffset++; render(); };
+
+    // Formula bar live edit
+    if ($('mcsFormulaInput')) {
+      $('mcsFormulaInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && state.selectedCell && state.selectedCell.editable) {
+          e.preventDefault();
+          pushUndoSnapshot();
+          applyRowCellEdit(state.selectedCell.uid, state.selectedCell.key, e.target.value);
+        }
+      });
+    }
+
+    // Header sort & Select All
+    const thead = $('mcsTableHead');
+    if (thead) {
+      thead.addEventListener('click', e => {
+        const selAll = e.target.closest('#mcsSelectAll');
+        if (selAll) {
+          const fl = filteredRows();
+          if (selAll.checked) fl.forEach(r => state.selectedUids.add(r.uid));
+          else fl.forEach(r => state.selectedUids.delete(r.uid));
+          render();
+          return;
+        }
+        const th = e.target.closest('th[data-sort]');
+        if (th && state.activeTab === 'MAIN') toggleSort(th.dataset.sort);
+      });
+    }
 
     const tbody = $('mcsTableBody');
     if (tbody) {
       tbody.addEventListener('input', e => {
         const inp = e.target.closest('input[data-field]');
         const tr = e.target.closest('tr[data-uid]');
-        if (!inp || !tr) return;
+        if (!inp || !tr || inp.type === 'checkbox') return;
+        if (!state._editBatchOpen) {
+          pushUndoSnapshot();
+          state._editBatchOpen = true;
+        }
         applyRowCellEdit(tr.dataset.uid, inp.dataset.field, inp.value);
       });
       tbody.addEventListener('change', e => {
-        const sel = e.target.closest('select[data-field]');
+        const selCb = e.target.closest('input[data-sel]');
+        if (selCb) {
+          if (selCb.checked) state.selectedUids.add(selCb.dataset.sel);
+          else state.selectedUids.delete(selCb.dataset.sel);
+          const trRow = selCb.closest('tr[data-uid]');
+          if (trRow) trRow.classList.toggle('mcs-row-sel', selCb.checked);
+          updateSummaryAndTotalsBar();
+          return;
+        }
+        const fieldEl = e.target.closest('[data-field]');
         const tr = e.target.closest('tr[data-uid]');
-        if (!sel || !tr) return;
-        applyRowCellEdit(tr.dataset.uid, sel.dataset.field, sel.value);
+        if (!fieldEl || !tr) return;
+        if (fieldEl.tagName === 'SELECT' || fieldEl.type === 'checkbox') {
+          pushUndoSnapshot();
+          const val = fieldEl.type === 'checkbox' ? fieldEl.checked : fieldEl.value;
+          applyRowCellEdit(tr.dataset.uid, fieldEl.dataset.field, val);
+        }
       });
       tbody.addEventListener('click', e => {
         const del = e.target.closest('[data-del]');
         if (del) { deleteRow(del.dataset.del); return; }
+        const catRow = e.target.closest('tr[data-jump-cat]');
+        if (catRow) {
+          state.categoryFilter = catRow.dataset.jumpCat;
+          state.activeTab = 'MAIN';
+          state.pageOffset = 0;
+          render();
+        }
       });
       tbody.addEventListener('focusin', e => {
+        state._editBatchOpen = false;
         const tr = e.target.closest('tr[data-uid]');
         if (!tr) return;
         const sh = activeSheet();
@@ -2487,13 +3416,27 @@
         const colDef = GRID_COLS.find(c => c.key === key);
         if (row && colDef) selectCellInfo(row, colDef, Number(tr.dataset.rowidx || 0));
       });
-      // Excel-style Enter / ArrowUp / ArrowDown navigation across rows
+      tbody.addEventListener('focusout', () => {
+        state._editBatchOpen = false;
+      });
+      tbody.addEventListener('paste', e => {
+        const inp = e.target.closest('input[data-field]');
+        const tr = e.target.closest('tr[data-uid]');
+        if (!inp || !tr || !e.clipboardData) return;
+        const txt = e.clipboardData.getData('text/plain');
+        if (txt && (txt.includes('\t') || txt.includes('\n'))) {
+          if (pasteFromClipboardText(tr.dataset.uid, inp.dataset.field, txt)) {
+            e.preventDefault();
+          }
+        }
+      });
+      // Excel-style Enter / Shift+Enter / ArrowUp / ArrowDown navigation across rows
       tbody.addEventListener('keydown', e => {
         if (!['Enter', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
         const inp = e.target.closest('input[data-field]');
         const tr = e.target.closest('tr[data-uid]');
         if (!inp || !tr) return;
-        const dir = e.key === 'ArrowUp' ? -1 : 1;
+        const dir = (e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey)) ? -1 : 1;
         const nextTr = dir > 0 ? tr.nextElementSibling : tr.previousElementSibling;
         if (!nextTr) return;
         const target = nextTr.querySelector(`input[data-field="${inp.dataset.field}"]`);
@@ -2504,6 +3447,34 @@
         }
       });
     }
+
+    document.addEventListener('click', () => {
+      const pop = $('mcsColPicker');
+      if (pop) pop.classList.remove('open');
+    });
+    document.addEventListener('fullscreenchange', updateFullscreenButton);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+    document.addEventListener('keydown', e => {
+      const page = $('page-mamsalary');
+      if (!page || !page.classList.contains('active')) return;
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        toggleFocusMode();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        const b = $('mcsFindReplaceBar');
+        if (b) b.classList.toggle('open');
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        redoEdit();
+      } else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA') {
+          e.preventDefault();
+          undoEdit();
+        }
+      }
+    });
   }
 
   function initStudio() {
