@@ -206,3 +206,155 @@ test('server.js & mam-salary.js expose cross-browser compliance sheet sync endpo
   assert.ok(loaderSrc.includes('mam-salary-july-v4.js'));
   assert.ok(loaderSrc.includes('mam-salary-generator.js'));
 });
+
+test('browser handleMamUpload runs end-to-end for CSV and XLSX without advanceMap ReferenceError', async () => {
+  const vm = require('node:vm');
+  const studioSrc = fs.readFileSync(path.join(ROOT, 'mam-compliance-excel-studio.js'), 'utf8');
+
+  const elements = new Map();
+  function makeEl(tag, id) {
+    const el = {
+      tagName: String(tag || 'DIV').toUpperCase(),
+      id: id || '',
+      className: '',
+      style: {},
+      dataset: {},
+      children: [],
+      value: '',
+      disabled: false,
+      textContent: '',
+      classList: {
+        add() {},
+        remove() {},
+        toggle() {},
+        contains() { return false; }
+      },
+      addEventListener() {},
+      querySelector() { return null; },
+      querySelectorAll() { return []; },
+      appendChild(child) {
+        this.children.push(child);
+        if (child && child.id) elements.set(child.id, child);
+        return child;
+      },
+      remove() {
+        if (this.id) elements.delete(this.id);
+      },
+      set innerHTML(html) {
+        this._innerHTML = String(html || '');
+        const idMatches = this._innerHTML.matchAll(/id="([^"]+)"/g);
+        for (const m of idMatches) {
+          if (!elements.has(m[1])) {
+            const child = makeEl('DIV', m[1]);
+            elements.set(m[1], child);
+          }
+        }
+      },
+      get innerHTML() {
+        return this._innerHTML || '';
+      }
+    };
+    return el;
+  }
+
+  const body = makeEl('BODY', '');
+  const head = makeEl('HEAD', '');
+  const storageMap = new Map();
+  storageMap.set('AroraTextilesEmployeeMasterV3', JSON.stringify([
+    {
+      emp_id: '00135',
+      name: 'SAMPAT LAL',
+      father: 'SOHAN LAL',
+      pf_no: '100330064649',
+      esi_no: '2706516566',
+      gender: 'MALE',
+      dept: 'STAFF',
+      desig: 'SUPERVISOR',
+      cat2: 'STAFF NAME',
+      basic: 20489,
+      gross: 27660
+    }
+  ]));
+  storageMap.set('ATPL_AdvanceRecordsV2', JSON.stringify([
+    { empCode: '135', balanceAmount: 2000, monthlyCap: 500, status: 'ACTIVE' }
+  ]));
+
+  const localStorageMock = {
+    getItem: k => storageMap.has(k) ? storageMap.get(k) : null,
+    setItem: (k, v) => storageMap.set(k, String(v)),
+    removeItem: k => storageMap.delete(k)
+  };
+
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    Date,
+    Math,
+    Number,
+    String,
+    Array,
+    Object,
+    Set,
+    Map,
+    JSON,
+    Promise,
+    Error,
+    RegExp,
+    XLSX,
+    localStorage: localStorageMock,
+    sessionStorage: localStorageMock,
+    location: { hostname: 'nikhilatpl2026-jpg.github.io', protocol: 'https:', origin: 'https://nikhilatpl2026-jpg.github.io' },
+    document: {
+      readyState: 'complete',
+      hidden: false,
+      head,
+      body,
+      activeElement: null,
+      getElementById: id => elements.get(id) || null,
+      createElement: tag => makeEl(tag, ''),
+      querySelector: () => null,
+      querySelectorAll: () => [],
+      addEventListener() {}
+    },
+    addEventListener() {},
+    fetch: async () => ({ ok: false, status: 404, json: async () => ({}) })
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+
+  vm.runInNewContext(studioSrc, sandbox);
+
+  const mamInput = elements.get('mcsMamInput');
+  assert.ok(mamInput && typeof mamInput.onchange === 'function', 'mcsMamInput onchange handler must be bound');
+
+  // Build real XLSX file buffer matching Mam format
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Code', 'Staff Name', 'Total'],
+    ['135', 'Sampat Lal', 27660]
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws, 'OCT MAM');
+  const xlsxBuf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  await mamInput.onchange({
+    target: {
+      files: [{
+        name: 'OCT_2026_MAM.xlsx',
+        arrayBuffer: async () => xlsxBuf.buffer.slice(xlsxBuf.byteOffset, xlsxBuf.byteOffset + xlsxBuf.byteLength)
+      }]
+    }
+  });
+
+  const notice = elements.get('mcsNotice');
+  assert.equal(notice.dataset.type, 'ok', 'Expected upload success notice, got: ' + notice.textContent);
+  assert.ok(!notice.textContent.includes('advanceMap'), 'Must not fail with advanceMap ReferenceError');
+
+  const savedSheets = JSON.parse(storageMap.get(studio.STORAGE_SHEETS_KEY) || '{}');
+  const sheet = savedSheets['2026-10'];
+  assert.ok(sheet && Array.isArray(sheet.rows) && sheet.rows.length === 1);
+  assert.equal(sheet.rows[0].empId, '00135');
+  assert.equal(sheet.rows[0].advance, 500, 'Must pull monthly advance cap from ATPL_AdvanceRecordsV2');
+  assert.equal(sheet.rows[0].netPayable, 24528);
+  assert.ok(elements.get('mcsTableBody').innerHTML.includes('00135'));
+});

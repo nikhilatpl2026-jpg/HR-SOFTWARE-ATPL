@@ -967,18 +967,26 @@
   function getAdvanceBalanceMap() {
     const map = {};
     try {
+      let list = [];
       if (root.ATPLAdvanceManager && typeof root.ATPLAdvanceManager.getState === 'function') {
         const st = root.ATPLAdvanceManager.getState();
-        (st && st.advances || []).forEach(a => {
-          const ck = codeKey(a && a.empCode);
-          const bal = num(a && a.balanceAmount);
-          if (ck && bal > 0 && a.status !== 'REPAID') {
-            const cap = num(a.monthlyCap);
-            const ded = cap && cap > 0 ? Math.min(bal, cap) : 0;
-            if (ded > 0) map[ck] = (map[ck] || 0) + ded;
-          }
-        });
+        if (st && Array.isArray(st.advances)) list = st.advances;
       }
+      if (!list.length && typeof localStorage !== 'undefined') {
+        try {
+          const raw = JSON.parse(localStorage.getItem('ATPL_AdvanceRecordsV2') || '[]');
+          if (Array.isArray(raw)) list = raw;
+        } catch (_) {}
+      }
+      list.forEach(a => {
+        const ck = codeKey(a && a.empCode);
+        const bal = num(a && a.balanceAmount);
+        if (ck && bal > 0 && a.status !== 'REPAID') {
+          const cap = num(a.monthlyCap);
+          const ded = cap && cap > 0 ? Math.min(bal, cap) : 0;
+          if (ded > 0) map[ck] = (map[ck] || 0) + ded;
+        }
+      });
     } catch (_) {}
     return map;
   }
@@ -1080,9 +1088,28 @@
     return changed;
   }
 
-  async function pullRemoteSheets() {
+  function getSyncApiBase() {
     try {
-      const res = await fetch('/api/sync/compliance-sheets', { cache: 'no-store' });
+      if (typeof root.ATPL_GET_API_BASE === 'function') return root.ATPL_GET_API_BASE() || '';
+      if (root.__ATPL_CENTRAL_BACKEND_URL) return root.__ATPL_CENTRAL_BACKEND_URL;
+    } catch (_) {}
+    return '';
+  }
+
+  function hasSyncBackend() {
+    try {
+      if (getSyncApiBase()) return true;
+      const host = (root.location && root.location.hostname) || '';
+      return host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function pullRemoteSheets() {
+    if (!hasSyncBackend()) return;
+    try {
+      const res = await fetch(getSyncApiBase() + '/api/sync/compliance-sheets', { cache: 'no-store' });
       if (!res || !res.ok) return;
       const data = await res.json();
       if (data && data.ok) {
@@ -1094,9 +1121,14 @@
 
   async function pushSheetRemote(sheet) {
     if (!sheet || !sheet.id) return false;
+    if (!hasSyncBackend()) {
+      broadcastSync('compliance_sheet_saved', { id: sheet.id, updatedAt: sheet.updatedAt });
+      setSyncStatus('Saved locally (browser synced)');
+      return false;
+    }
     setSyncStatus('Syncing…');
     try {
-      const res = await fetch('/api/sync/compliance-sheet', {
+      const res = await fetch(getSyncApiBase() + '/api/sync/compliance-sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(sheet)
@@ -1113,8 +1145,10 @@
 
   async function deleteSheetRemote(id) {
     if (!id) return false;
+    broadcastSync('compliance_sheet_deleted', { id });
+    if (!hasSyncBackend()) return false;
     try {
-      const res = await fetch('/api/sync/compliance-sheet/' + encodeURIComponent(id), { method: 'DELETE' });
+      const res = await fetch(getSyncApiBase() + '/api/sync/compliance-sheet/' + encodeURIComponent(id), { method: 'DELETE' });
       if (res && res.ok) {
         broadcastSync('compliance_sheet_deleted', { id });
         return true;
@@ -1161,9 +1195,9 @@
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) pullRemoteSheets();
     });
-    if (typeof root.EventSource !== 'undefined') {
+    if (typeof root.EventSource !== 'undefined' && hasSyncBackend()) {
       try {
-        const es = new root.EventSource('/api/sync/events');
+        const es = new root.EventSource(getSyncApiBase() + '/api/sync/events');
         es.addEventListener('compliance_sheet_saved', () => pullRemoteSheets());
         es.addEventListener('compliance_sheet_deleted', () => pullRemoteSheets());
       } catch (_) {}
@@ -1196,6 +1230,7 @@
       const txt = await file.text();
       return [{ name: file.name.replace(/\.[^.]+$/, '') || 'Sheet1', rows: parseCsvText(txt) }];
     }
+    if (!root.XLSX) throw new Error('Excel parser (XLSX) load nahi hua. Please page refresh karein.');
     const buf = await file.arrayBuffer();
     const wb = root.XLSX.read(buf, { type: 'array', cellDates: false, cellText: true });
     return (wb.SheetNames || []).map(sn => {
@@ -1228,7 +1263,7 @@
       const detectedMonth = detectMonthFromText(file.name) || detectMonthFromText(usedSheet) || ($('mcsMonth') && $('mcsMonth').value) || todayMonth();
       const currentSettings = settingsOf(Object.assign({}, activeSheet() ? activeSheet().settings : {}, { month: detectedMonth, monthDays: daysInMonth(detectedMonth) }));
       const emps = getEmployeeMasterList();
-      const advMap = getAdvanceBalanceMap();
+      const advanceMap = getAdvanceBalanceMap();
       const rows = generateComplianceRows(parsedRows, emps, {
         settings: currentSettings,
         profiles: state.profiles,
@@ -1269,6 +1304,7 @@
       setNotice(err && err.message ? err.message : String(err), 'err');
     } finally {
       if ($('mcsMamInput')) $('mcsMamInput').value = '';
+      if ($('mcsEmptyUpload')) $('mcsEmptyUpload').value = '';
     }
   }
 

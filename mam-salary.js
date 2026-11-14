@@ -21,7 +21,7 @@ function legacy(done){load('mam-salary-v2-legacy.js?v=20260911-stable1',done)}
 function generatorFallback(done){load('mam-salary-generator.js?v=20260914-generator1',function(err){if(err)return legacy(done);done&&done()})}
 function v3Fallback(done){load('mam-salary-next-v3.js?v=20260914-next3a',function(err){if(err||!window.__MAM_SALARY_NEXT_V3__)return generatorFallback(done);done&&done()})}
 function v4Fallback(done){load('mam-salary-july-v4.js?v=20260914-july4',function(err){if(err||!window.__MAM_SALARY_JULY_V4__)return v3Fallback(done);done&&done()})}
-function excelStudio(done){load('mam-compliance-excel-studio.js?v=20261114-excel-studio1',function(err){if(err||!window.__ATPL_COMPLIANCE_STUDIO__)return v4Fallback(done);done&&done()})}
+function excelStudio(done){load('mam-compliance-excel-studio.js?v=20261114-excel-studio2',function(err){if(err||!window.__ATPL_COMPLIANCE_STUDIO__)return v4Fallback(done);done&&done()})}
 function v5(done){excelStudio(done)}
 
 function ensureNav(){
