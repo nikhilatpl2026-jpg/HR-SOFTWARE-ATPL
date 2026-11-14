@@ -2434,7 +2434,9 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div class="vnav-cat" onclick="toggleVcat('cat-sal')">
       <span>💰 Salary</span><span class="vnav-arrow" id="arr-sal">▾</span>
     </div>
-    <div class="vnav-sub" id="cat-sal">      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
+    <div class="vnav-sub" id="cat-sal">
+      <div class="vitem" id="vn-mamsalary" onclick="goPage('mamsalary')" style="background:rgba(16,185,129,0.16);color:#34d399;font-weight:700"><span class="vi">🧾</span>Mam → Compliance <span class="vbadge" style="background:#059669">EXCEL</span></div>
+      <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
       <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
@@ -16484,7 +16486,8 @@ else AInit();
 <script src="erp-cloud-api-broker-v1.js?v=20260922-production-v6-dol-long-reads&cb=20261113v19"></script>
 <script src="erp-mobile-shared-hardfix-v1.js?v=20261015-verified-delete-pdf-v1&cb=20261113v19"></script>
 <script src="erp-permission-guard-v1.js?v=20260921-authority1&cb=20261113v19"></script>
-<script src="hr-workplace.js?v=20261109-live-sync-v2&cb=20261113v19"></script>
+<script src="hr-workplace.js?v=20261114-excel-studio1&cb=20261114v1"></script>
+<script src="mam-compliance-excel-studio.js?v=20261114-excel-studio1"></script>
 <script src="hr-docs-activity-v1.js?v=20261113-drive-v2&cb=20261113v16"></script>
 <script src="hr-docs-open-fix-v2.js?v=20261113-drive-v2&cb=20261113v16"></script>
 <script src="atpl-statutory-challan-generator-v1.js?v=20260923-v1&cb=20261019v12"></script>

@@ -21,42 +21,72 @@ function legacy(done){load('mam-salary-v2-legacy.js?v=20260911-stable1',done)}
 function generatorFallback(done){load('mam-salary-generator.js?v=20260914-generator1',function(err){if(err)return legacy(done);done&&done()})}
 function v3Fallback(done){load('mam-salary-next-v3.js?v=20260914-next3a',function(err){if(err||!window.__MAM_SALARY_NEXT_V3__)return generatorFallback(done);done&&done()})}
 function v4Fallback(done){load('mam-salary-july-v4.js?v=20260914-july4',function(err){if(err||!window.__MAM_SALARY_JULY_V4__)return v3Fallback(done);done&&done()})}
-function v5(done){loadLokeshLock(function(){load('mam-compliance-rules-india-v1.js?v=20260914-rules1a',function(ruleErr){
-  if(ruleErr||!window.ATPLComplianceRulesIndiaV1)return v4Fallback(done);
-  loadScopedV3(function(err){
-    var old=document.getElementById('atplUpgradeLoadError');if(old)old.remove();
-    if(err||!window.__MAM_COMPLIANCE_V5__)return v4Fallback(done);
-    load('mam-compliance-v5-open-fix.js?v=20260914-openfix1',function(){load('mam-auditor-level-v1.js?v=20260914-auditor1',function(){done&&done()})});
-  });
-})})}
+function excelStudio(done){load('mam-compliance-excel-studio.js?v=20261114-excel-studio1',function(err){if(err||!window.__ATPL_COMPLIANCE_STUDIO__)return v4Fallback(done);done&&done()})}
+function v5(done){excelStudio(done)}
 
 function ensureNav(){
-  if(document.getElementById('vn-mamsalary'))return;
-  var anchor=document.getElementById('vn-sync');if(!anchor||!anchor.parentNode)return;
-  var nav=document.createElement('div');nav.id='vn-mamsalary';nav.className='vitem';nav.innerHTML='<span class="vi">🧾</span>Mam → Compliance';
+  var existing=document.getElementById('vn-mamsalary');
+  if(existing){
+    existing.onclick=function(ev){if(ev){ev.preventDefault();ev.stopPropagation()}openMam()};
+    return;
+  }
+  var anchor=document.getElementById('vn-sync');
+  var nav=document.createElement('div');
+  nav.id='vn-mamsalary';
+  nav.className='vitem';
+  nav.style.cssText='background:rgba(16,185,129,0.16);color:#34d399;font-weight:700';
+  nav.innerHTML='<span class="vi">🧾</span>Mam → Compliance <span class="vbadge" style="background:#059669">EXCEL</span>';
   nav.onclick=function(ev){if(ev){ev.preventDefault();ev.stopPropagation()}openMam()};
-  anchor.parentNode.insertBefore(nav,anchor.nextSibling);
+  if(anchor&&anchor.parentNode){
+    anchor.parentNode.insertBefore(nav,anchor.nextSibling);
+    return;
+  }
+  var salGroup=document.getElementById('cat-sal');
+  if(salGroup){
+    var first=document.getElementById('vn-audit')||salGroup.firstElementChild;
+    if(first)salGroup.insertBefore(nav,first);
+    else salGroup.appendChild(nav);
+  }
 }
 function openWhenReady(){
   var n=0;(function wait(){
-    if(document.getElementById('page-mamsalary')){if(typeof window.goPage==='function')window.goPage('mamsalary');return}
+    if(document.getElementById('page-mamsalary')){ensureNavLabel();if(typeof window.goPage==='function')window.goPage('mamsalary');return}
     if(++n<80)setTimeout(wait,50);
-    else alert('Mam → Compliance load nahi hua. Dobara click karo.')
+    else{ensureNavLabel();alert('Mam → Compliance load nahi hua. Dobara click karo.')}
   })()
 }
+function ensureNavLabel(){var n=document.getElementById('vn-mamsalary');if(n)n.innerHTML='<span class="vi">🧾</span>Mam → Compliance <span class="vbadge" style="background:#059669">EXCEL</span>';}
 function loadNow(){
-  if(loaded||window.__MAM_COMPLIANCE_V5__){loaded=true;return Promise.resolve(true)}
+  if(loaded||window.__ATPL_COMPLIANCE_STUDIO__||window.__MAM_COMPLIANCE_V5__){loaded=true;return Promise.resolve(true)}
   if(loading)return loading;
   loading=new Promise(function(resolve,reject){
-    v5(function(err){if(err&&!window.__MAM_COMPLIANCE_V5__){loading=null;reject(err);return}loaded=true;resolve(true)})
+    v5(function(err){if(err&&!window.__ATPL_COMPLIANCE_STUDIO__&&!window.__MAM_COMPLIANCE_V5__){loading=null;reject(err);return}loaded=true;resolve(true)})
   });
   return loading
 }
 function openMam(){
   var n=document.getElementById('vn-mamsalary');if(n)n.innerHTML='<span class="vi">⏳</span>Mam → Compliance';
-  loadNow().then(function(){openWhenReady()}).catch(function(e){console.error(e);alert('Mam → Compliance load issue: '+(e&&e.message?e.message:e));ensureNav()})
+  loadNow().then(function(){openWhenReady()}).catch(function(e){console.error(e);alert('Mam → Compliance load issue: '+(e&&e.message?e.message:e));ensureNavLabel()})
+}
+function wrapGoPageForMam(){
+  if(typeof window.goPage!=='function'||window.goPage.__atplMamWrapped)return;
+  var prev=window.goPage;
+  function wrapped(p){
+    if(p==='mamsalary'&&!document.getElementById('page-mamsalary')){
+      openMam();
+      return;
+    }
+    return prev.apply(this,arguments);
+  }
+  wrapped.__atplMamWrapped=true;
+  window.goPage=wrapped;
 }
 window.ATPLLoadMamSalary=loadNow;
-function start(){ensureNav()}
+window.ATPLOpenMamCompliance=openMam;
+function start(){
+  ensureNav();
+  wrapGoPageForMam();
+  setTimeout(function(){ensureNav();wrapGoPageForMam();},600);
+}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();

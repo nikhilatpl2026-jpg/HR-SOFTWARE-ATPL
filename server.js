@@ -178,6 +178,8 @@ let syncAdvanceDeductions = readJsonFile('advance_deductions.json', {}); // id -
 let syncPendingDiffs = readJsonFile('pending_diff_vouchers.json', {}); // id -> pending diff amount / cash adv voucher record
 let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {}); // id -> deleted_at ISO
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
+let syncComplianceSheets = readJsonFile('compliance_sheets.json', {}); // id (e.g. monthKey) -> generated/edited compliance workbook snapshot
+let syncComplianceTombstones = readJsonFile('compliance_tombstones.json', {}); // id -> deleted_at ISO
 
 if (syncPendingDiffs && typeof syncPendingDiffs === 'object' && syncPendingDiffTombstones && typeof syncPendingDiffTombstones === 'object') {
   Object.keys(syncPendingDiffTombstones).forEach(tid => {
@@ -185,6 +187,16 @@ if (syncPendingDiffs && typeof syncPendingDiffs === 'object' && syncPendingDiffT
       const tTs = Date.parse(syncPendingDiffTombstones[tid]) || 0;
       const rTs = Date.parse(syncPendingDiffs[tid].updatedAt || syncPendingDiffs[tid].createdAt || 0) || 0;
       if (tTs >= rTs) delete syncPendingDiffs[tid];
+    }
+  });
+}
+
+if (syncComplianceSheets && typeof syncComplianceSheets === 'object' && syncComplianceTombstones && typeof syncComplianceTombstones === 'object') {
+  Object.keys(syncComplianceTombstones).forEach(tid => {
+    if (syncComplianceTombstones[tid] && syncComplianceSheets[tid]) {
+      const tTs = Date.parse(syncComplianceTombstones[tid]) || 0;
+      const rTs = Date.parse(syncComplianceSheets[tid].updatedAt || syncComplianceSheets[tid].createdAt || 0) || 0;
+      if (tTs >= rTs) delete syncComplianceSheets[tid];
     }
   });
 }
@@ -1435,6 +1447,8 @@ app.get('/api/sync/state', (req, res) => {
     advance_deductions: Object.values(syncAdvanceDeductions),
     pending_diffs: Object.values(syncPendingDiffs),
     pending_diff_tombstones: syncPendingDiffTombstones,
+    compliance_sheets: Object.values(syncComplianceSheets),
+    compliance_tombstones: syncComplianceTombstones,
     files: formattedFiles,
     files_count: allFiles.length,
     tombstones: filesDb.tombstones,
@@ -2064,6 +2078,91 @@ app.delete('/api/sync/leave-letter/:id', (req, res) => {
     writeJsonFile('leave_letters.json', syncLeaveLetters);
     broadcastEvent('leave_letter_deleted', { id: id, deleted_at: new Date().toISOString() });
     forwardLeaveLettersToCloud();
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Mam -> Compliance Live Salary Sheets Sync Endpoints ──
+function forwardComplianceSheetsToCloud() {
+  try {
+    const payload = {
+      sheets: Object.values(syncComplianceSheets),
+      tombstones: syncComplianceTombstones,
+      updatedAt: new Date().toISOString()
+    };
+    const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    syncToGoogleAppsScript('uploadFile', {
+      fileName: 'ATPL_COMPLIANCE_SHEETS_DATA.json',
+      fileBase64: b64,
+      mimeType: 'application/json'
+    });
+  } catch (_) {}
+}
+
+app.get('/api/sync/compliance-sheets', (req, res) => {
+  return res.json({
+    ok: true,
+    records: Object.values(syncComplianceSheets),
+    tombstones: syncComplianceTombstones
+  });
+});
+
+app.post('/api/sync/compliance-sheet', (req, res) => {
+  try {
+    const sheet = req.body || {};
+    const id = String(sheet.id || sheet.month || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Compliance sheet ID or month required' });
+
+    const now = new Date().toISOString();
+    const recTs = Date.parse(sheet.updatedAt || sheet.createdAt || now) || Date.now();
+    const tomb = syncComplianceTombstones[id];
+    if (tomb && Date.parse(tomb) > recTs) {
+      return res.json({ ok: true, ignored: 'tombstoned', id });
+    }
+    delete syncComplianceTombstones[id];
+
+    const existing = syncComplianceSheets[id];
+    const existTs = existing ? (Date.parse(existing.updatedAt || existing.createdAt || 0) || 0) : 0;
+    if (!existing || recTs >= existTs || sheet.force === true) {
+      syncComplianceSheets[id] = Object.assign({}, sheet, {
+        id,
+        updatedAt: sheet.updatedAt || now,
+        createdAt: (existing && existing.createdAt) || sheet.createdAt || now
+      });
+      delete syncComplianceSheets[id].force;
+    }
+
+    incrementVersion();
+    writeJsonFile('compliance_sheets.json', syncComplianceSheets);
+    writeJsonFile('compliance_tombstones.json', syncComplianceTombstones);
+    broadcastEvent('compliance_sheet_saved', {
+      id,
+      month: syncComplianceSheets[id].month || id,
+      updatedAt: syncComplianceSheets[id].updatedAt,
+      updatedBy: syncComplianceSheets[id].updatedBy || '',
+      rowCount: Array.isArray(syncComplianceSheets[id].rows) ? syncComplianceSheets[id].rows.length : 0
+    });
+    forwardComplianceSheetsToCloud();
+    return res.json({ ok: true, saved: true, id, record: syncComplianceSheets[id] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/compliance-sheet/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'Compliance sheet ID required' });
+    delete syncComplianceSheets[id];
+    const deletedAt = new Date().toISOString();
+    syncComplianceTombstones[id] = deletedAt;
+    incrementVersion();
+    writeJsonFile('compliance_sheets.json', syncComplianceSheets);
+    writeJsonFile('compliance_tombstones.json', syncComplianceTombstones);
+    broadcastEvent('compliance_sheet_deleted', { id, deleted_at: deletedAt });
+    forwardComplianceSheetsToCloud();
     return res.json({ ok: true, deleted: true, id });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
