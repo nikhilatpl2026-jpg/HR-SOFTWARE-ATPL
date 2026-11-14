@@ -102,10 +102,15 @@
         if(r.account_no) safe.account_no = r.account_no;
         if(r.ifsc) safe.ifsc = r.ifsc;
         if(r.bank_name) safe.bank_name = r.bank_name;
+        if(typeof root.atplSanitizeEmployeePfAccount==='function') root.atplSanitizeEmployeePfAccount(safe);
         map[k]=safe;
       }
     });
-    return order.map(function(k){return map[k]});
+    return order.map(function(k){
+      var rec = map[k];
+      if(rec && typeof root.atplSanitizeEmployeePfAccount==='function') root.atplSanitizeEmployeePfAccount(rec);
+      return rec;
+    });
   }
   function serialize(k,fn){
     var prev=chains[k]||Promise.resolve(),next=prev.catch(function(){}).then(fn),tracked;

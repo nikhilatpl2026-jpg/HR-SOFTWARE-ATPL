@@ -248,10 +248,86 @@
     writePendingOps(prunePendingOps(ops));
   }
 
+  function sanitizePfAccountRecord(emp) {
+    if (!emp || typeof emp !== 'object') return emp;
+    if (typeof root.atplSanitizeEmployeePfAccount === 'function') {
+      try { root.atplSanitizeEmployeePfAccount(emp); return emp; } catch (_) {}
+    }
+    var norm = function(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase().trim(); };
+    var cleanNum = function(v) {
+      if (typeof root.cleanAccountNo === 'function') return root.cleanAccountNo(v);
+      return norm(v).replace(/[\-_]/g, '');
+    };
+    var isNA = function(v) {
+      var s = norm(v);
+      return !s || s === 'NA' || s === 'N/A' || s === 'NIL' || s === 'NONE' || s === '-' || s === '—';
+    };
+    var isUAN = function(v) { return /^10\d{10}$/.test(norm(v)); };
+    var isIFSC = function(v) { return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(norm(v)); };
+    var ifscStr = norm(emp.ifsc);
+    var bankStr = String(emp.bank_name || '').toUpperCase();
+    var payBank = /^AIRP/.test(ifscStr) || /AIRTEL/.test(bankStr) || /^PYTM/.test(ifscStr) || /^JIOP/.test(ifscStr);
+
+    var seedLookup = root.__ATPL_SEED_EMP_MAP__ || {};
+    var rawId = normalizeId(emp.emp_id || emp.empCode || emp.employee_code || emp.code);
+    var keyId = normalizeKey(rawId);
+    var seed = seedLookup[keyId] || seedLookup[rawId] || null;
+
+    var pf = norm(emp.pf_no);
+    if (isNA(pf)) pf = 'NA';
+    var ac = cleanNum(emp.account_no);
+    if (isNA(ac)) ac = '';
+    var aad = norm(emp.aadhaar_no).replace(/\D/g, '');
+    var ph = norm(emp.phone_no).replace(/\D/g, '');
+    var esi = norm(emp.esi_no);
+
+    if (pf !== 'NA' && isIFSC(pf)) {
+      if (!ifscStr) { emp.ifsc = pf; ifscStr = pf; }
+      pf = 'NA';
+    }
+    if (ac && isIFSC(ac)) {
+      if (!ifscStr) { emp.ifsc = ac; ifscStr = ac; }
+      ac = '';
+    }
+    if (ac && aad && ac === aad) ac = '';
+    if (pf !== 'NA' && !isUAN(pf) && aad && pf === aad) pf = 'NA';
+    if (ac && ph && ac === ph && !payBank) ac = '';
+    if (pf !== 'NA' && !isUAN(pf) && ac && isUAN(ac)) {
+      var tmp = pf; pf = ac; ac = tmp;
+    }
+    if (!ac && pf !== 'NA' && !isUAN(pf) && !isIFSC(pf) && (!aad || pf !== aad) && (!esi || isNA(esi) || pf !== esi)) {
+      if (/^\d{8,22}$/.test(pf) && (!(ph && pf === ph) || payBank)) {
+        ac = pf;
+        pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && (!ph || norm(seed.pf_no) !== ph)) ? norm(seed.pf_no) : 'NA';
+      }
+    }
+    if (pf !== 'NA' && ac && pf === ac) {
+      if (isUAN(pf)) {
+        var seedAc = seed ? cleanNum(seed.account_no) : '';
+        ac = (seedAc && !isNA(seedAc) && seedAc !== pf && (!aad || seedAc !== aad)) ? seedAc : '';
+      } else {
+        var seedPf = seed ? norm(seed.pf_no) : '';
+        pf = (seedPf && !isNA(seedPf) && seedPf !== ac && (!ph || seedPf !== ph)) ? seedPf : 'NA';
+      }
+    }
+    if (pf !== 'NA' && !isUAN(pf) && ph && pf === ph) {
+      pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && norm(seed.pf_no) !== ph) ? norm(seed.pf_no) : 'NA';
+    }
+    if (pf !== 'NA' && !isUAN(pf) && !isNA(esi) && pf === esi) pf = 'NA';
+    if (ac && aad && ac === aad) ac = '';
+    if (ac && ph && ac === ph && !payBank) ac = '';
+    if (pf !== 'NA' && ac && pf === ac) {
+      if (isUAN(pf)) ac = ''; else pf = 'NA';
+    }
+    emp.pf_no = pf;
+    emp.account_no = ac;
+    return emp;
+  }
+
   // ── Timestamp-Aware Conflict-Free Record Merge ──
   function mergeOneRecord(baseRec, incomingRec, incomingWinsOnTie) {
-    if (!baseRec) return Object.assign({}, incomingRec);
-    if (!incomingRec) return Object.assign({}, baseRec);
+    if (!baseRec) return sanitizePfAccountRecord(Object.assign({}, incomingRec));
+    if (!incomingRec) return sanitizePfAccountRecord(Object.assign({}, baseRec));
 
     var baseCorrupt = isEmptyCorruptRow(baseRec);
     var incCorrupt = isEmptyCorruptRow(incomingRec);
@@ -318,7 +394,7 @@
     merged._em_updated_at = Math.max(baseEditTs, incEditTs) || 0;
     merged._status_updated_at = Math.max(baseStatusTs, incStatusTs) || 0;
     merged.emp_id = normalizeId(merged.emp_id || baseRec.emp_id || incomingRec.emp_id);
-    return merged;
+    return sanitizePfAccountRecord(merged);
   }
 
   function mergeEmployeeLists(localRows, remoteRows, tombs, remoteWinsOnTie) {
@@ -340,7 +416,7 @@
         return;
       }
 
-      var candidate = Object.assign({}, row, { emp_id: id });
+      var candidate = sanitizePfAccountRecord(Object.assign({}, row, { emp_id: id }));
       if (!map[k]) {
         map[k] = candidate;
         order.push(k);
@@ -1362,6 +1438,7 @@
             clearLeavingDates(copyRec);
           }
         }
+        sanitizePfAccountRecord(copyRec);
         stamped.push(copyRec);
         recordPendingOp(cid, {
           type: 'upsert',

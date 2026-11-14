@@ -460,6 +460,7 @@
       if (!base.pf_no && (base.uan_no || row.uan_no)) base.pf_no = base.uan_no || row.uan_no;
       if (!base.esi_no && (base.esic_no || row.esic_no)) base.esi_no = base.esic_no || row.esic_no;
       base.emp_id = rawId;
+      if (typeof window.atplSanitizeEmployeePfAccount === 'function') window.atplSanitizeEmployeePfAccount(base);
       valid.push(base);
     }
 
@@ -820,9 +821,11 @@
         if (!merged.pf_no && (merged.uan_no || rec.uan_no)) merged.pf_no = merged.uan_no || rec.uan_no;
         if (!merged.esi_no && (merged.esic_no || rec.esic_no)) merged.esi_no = merged.esic_no || rec.esic_no;
         merged.emp_id = id;
+        if (typeof window.atplSanitizeEmployeePfAccount === 'function') window.atplSanitizeEmployeePfAccount(merged);
         currentList[idx] = merged;
         changed = true;
       } else {
+        if (typeof window.atplSanitizeEmployeePfAccount === 'function') window.atplSanitizeEmployeePfAccount(rec);
         currentList.push(rec);
         changed = true;
       }

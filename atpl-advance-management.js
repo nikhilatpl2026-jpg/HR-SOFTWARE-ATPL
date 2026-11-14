@@ -17,20 +17,25 @@
   var STORAGE_KEY_ADVANCES = 'ATPL_AdvanceRecordsV2';
   var STORAGE_KEY_DEDUCTIONS = 'ATPL_AdvanceDeductionsV2';
   var STORAGE_KEY_TOMBSTONES = 'ATPL_AdvanceTombstonesV2';
+  var STORAGE_KEY_PENDING_DIFF = 'ATPL_PendingDiffVouchersV1';
   var CLOUD_FILENAME = 'ATPL_ADVANCE_MANAGEMENT_DATA.json';
   var CHANNEL_NAME = 'ATPL_ERP_TRIGGER_BUS';
   var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
 
-  var SIGNED_BY_OPTIONS = ['Ayush ji', 'Sarthak ji', 'Manish ji'];
+  var SIGNED_BY_OPTIONS = ['Sarthak ji', 'Manish ji', 'Ayush ji'];
+  var PENDING_DIFF_CATEGORIES = ['Pending Salary', 'Pending Advance', 'Diff Amount', 'F&F / Other Diff'];
 
   var state = {
     advances: [],
     deductions: [],
+    pendingDiffs: [],
     tombstones: {},
-    activeTab: 'advances', // 'advances' | 'deductions' | 'ledger' | 'monthly'
+    activeTab: 'advances', // 'advances' | 'deductions' | 'pending_diff' | 'ledger' | 'monthly'
     searchQuery: '',
     statusFilter: 'ALL', // 'ALL' | 'ACTIVE' | 'PARTIAL' | 'REPAID'
     deductionSourceFilter: 'ALL', // 'ALL' | 'salary' | 'manual' | 'voucher'
+    pendingDiffStatusFilter: 'ALL', // 'ALL' | 'PENDING' | 'PARTIAL' | 'SETTLED'
+    pendingDiffCategoryFilter: 'ALL',
     historySourceFilter: 'ALL', // 'ALL' | 'salary' | 'manual'
     selectedMonth: new Date().toISOString().slice(0, 7), // 'YYYY-MM'
     selectedDateFilter: '', // optional 'YYYY-MM-DD'
@@ -39,7 +44,9 @@
     isSyncing: false,
     selectedAdvanceForModal: null,
     editingAdvanceId: null,
-    monthFeedRows: []
+    editingPendingDiffId: null,
+    monthFeedRows: [],
+    pendingDiffFeedRows: []
   };
 
   function round2(n) {
@@ -287,12 +294,49 @@
       }
     });
 
+    sel.pendingDiffTotal = 0;
+    sel.pendingDiffPaid = 0;
+    sel.pendingDiffBalance = 0;
+    sel.pendingDiffCount = 0;
+    prev.pendingDiffTotal = 0;
+    prev.pendingDiffPaid = 0;
+    prev.pendingDiffBalance = 0;
+    prev.pendingDiffCount = 0;
+
+    (state.pendingDiffs || []).forEach(function(p) {
+      if (!p || isPendingDiffTombstoned(p)) return;
+      var mk = getPendingDiffMonthKey(p);
+      var amt = round2(Number(p.diffAmount) || 0);
+      var paid = round2(Number(p.paidAmount) || 0);
+      var bal = round2(Number(p.pendingBalance) || 0);
+      var eRow = ensureEmp(p.empCode, p.empName);
+      if (eRow) {
+        if (typeof eRow.selPendingDiff !== 'number') eRow.selPendingDiff = 0;
+        if (typeof eRow.prevPendingDiff !== 'number') eRow.prevPendingDiff = 0;
+        if (typeof eRow.pendingDiffBalance !== 'number') eRow.pendingDiffBalance = 0;
+        eRow.pendingDiffBalance = round2(eRow.pendingDiffBalance + bal);
+      }
+      if (mk === selKey) {
+        sel.pendingDiffTotal = round2(sel.pendingDiffTotal + amt);
+        sel.pendingDiffPaid = round2(sel.pendingDiffPaid + paid);
+        sel.pendingDiffBalance = round2(sel.pendingDiffBalance + bal);
+        sel.pendingDiffCount++;
+        if (eRow) eRow.selPendingDiff = round2(eRow.selPendingDiff + amt);
+      } else if (mk === prevKey) {
+        prev.pendingDiffTotal = round2(prev.pendingDiffTotal + amt);
+        prev.pendingDiffPaid = round2(prev.pendingDiffPaid + paid);
+        prev.pendingDiffBalance = round2(prev.pendingDiffBalance + bal);
+        prev.pendingDiffCount++;
+        if (eRow) eRow.prevPendingDiff = round2(eRow.prevPendingDiff + amt);
+      }
+    });
+
     return {
       selected: sel,
       previous: prev,
       exactDate: exact,
       employees: Object.values(empMonthly).filter(function(r) {
-        return r.prevGiven > 0 || r.prevRecovered > 0 || r.selGiven > 0 || r.selRecovered > 0;
+        return r.prevGiven > 0 || r.prevRecovered > 0 || r.selGiven > 0 || r.selRecovered > 0 || (r.selPendingDiff || 0) > 0 || (r.prevPendingDiff || 0) > 0;
       })
     };
   }
@@ -349,6 +393,49 @@
     return null;
   }
 
+  function isPendingDiffTombstoned(p) {
+    if (!p || !p.id) return true;
+    var t = state.tombstones || {};
+    var tombTs = t['pdiff:' + p.id] || t[p.id];
+    if (!tombTs) return false;
+    var rTs = Date.parse(p.updatedAt || p.createdAt || 0) || 0;
+    var dTs = Date.parse(tombTs) || 0;
+    return !rTs || dTs >= rTs;
+  }
+
+  function getPendingDiffMonthKey(p) {
+    if (!p) return '';
+    if (p.monthKey && /^\d{4}-\d{2}$/.test(String(p.monthKey).trim())) return String(p.monthKey).trim();
+    var ds = String(p.entryDate || p.createdAt || '').trim();
+    var m = ds.match(/^(\d{4}-\d{2})/);
+    return m ? m[1] : '';
+  }
+
+  function normalizePendingDiffRecord(p) {
+    if (!p || typeof p !== 'object') return p;
+    var amt = round2(Number(p.diffAmount) || 0);
+    var paid = 0;
+    if (Array.isArray(p.settlements) && p.settlements.length > 0) {
+      paid = round2(p.settlements.reduce(function(s, it) { return s + (Number(it && it.amount) || 0); }, 0));
+    } else {
+      paid = round2(Number(p.paidAmount) || 0);
+    }
+    if (paid > amt && amt > 0) paid = amt;
+    var bal = Math.max(0, round2(amt - paid));
+    var entryDate = String(p.entryDate || p.createdAt || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    var mk = getPendingDiffMonthKey({ monthKey: p.monthKey, entryDate: entryDate }) || entryDate.slice(0, 7);
+    p.diffAmount = amt;
+    p.paidAmount = paid;
+    p.pendingBalance = bal;
+    p.status = bal <= 0 ? 'SETTLED' : (paid > 0 ? 'PARTIAL' : 'PENDING');
+    p.entryDate = entryDate;
+    p.monthKey = mk;
+    p.category = String(p.category || 'Pending Salary').trim() || 'Pending Salary';
+    p.signedBy = String(p.signedBy || 'Sarthak ji').trim() || 'Sarthak ji';
+    if (!Array.isArray(p.settlements)) p.settlements = [];
+    return p;
+  }
+
   // ── 2. LOCAL PERSISTENCE & IN-MEMORY CACHE ──
   function loadFromLocal() {
     try {
@@ -364,6 +451,12 @@
       state.deductions = [];
     }
     try {
+      var rawPdiff = localStorage.getItem(STORAGE_KEY_PENDING_DIFF);
+      if (rawPdiff) state.pendingDiffs = JSON.parse(rawPdiff) || [];
+    } catch (_) {
+      state.pendingDiffs = [];
+    }
+    try {
       var rawTombs = localStorage.getItem(STORAGE_KEY_TOMBSTONES);
       if (rawTombs) state.tombstones = JSON.parse(rawTombs) || {};
     } catch (_) {
@@ -376,6 +469,9 @@
       state.deductions = (state.deductions || []).filter(function(d) {
         return !isDeductionTombstoned(d);
       });
+      state.pendingDiffs = (state.pendingDiffs || []).filter(function(p) {
+        return !isPendingDiffTombstoned(p);
+      });
     }
     recalculateAllBalances();
   }
@@ -384,6 +480,7 @@
     try {
       localStorage.setItem(STORAGE_KEY_ADVANCES, JSON.stringify(state.advances));
       localStorage.setItem(STORAGE_KEY_DEDUCTIONS, JSON.stringify(state.deductions));
+      localStorage.setItem(STORAGE_KEY_PENDING_DIFF, JSON.stringify(state.pendingDiffs));
       localStorage.setItem(STORAGE_KEY_TOMBSTONES, JSON.stringify(state.tombstones));
     } catch (_) {}
   }
@@ -394,6 +491,11 @@
     });
     state.deductions = (state.deductions || []).filter(function(d) {
       return !isDeductionTombstoned(d);
+    });
+    state.pendingDiffs = (state.pendingDiffs || []).filter(function(p) {
+      return !isPendingDiffTombstoned(p);
+    }).map(function(p) {
+      return normalizePendingDiffRecord(p);
     });
 
     var byAdvance = {};
@@ -556,10 +658,15 @@
     if (!cloudData || typeof cloudData !== 'object') return false;
     var remoteAdvances = Array.isArray(cloudData.advances) ? cloudData.advances : [];
     var remoteDeductions = Array.isArray(cloudData.deductions) ? cloudData.deductions : [];
+    var remotePendingDiffs = Array.isArray(cloudData.pendingDiffs) ? cloudData.pendingDiffs : [];
     var remoteTombstones = cloudData.tombstones && typeof cloudData.tombstones === 'object' ? cloudData.tombstones : {};
+    var remotePendingTombs = cloudData.pendingDiffTombstones && typeof cloudData.pendingDiffTombstones === 'object' ? cloudData.pendingDiffTombstones : {};
 
     Object.keys(remoteTombstones).forEach(function(k) {
       if (remoteTombstones[k]) state.tombstones[k] = remoteTombstones[k];
+    });
+    Object.keys(remotePendingTombs).forEach(function(k) {
+      if (remotePendingTombs[k]) state.tombstones['pdiff:' + String(k).replace(/^pdiff:/, '')] = remotePendingTombs[k];
     });
 
     state.advances = (state.advances || []).filter(function(a) {
@@ -604,6 +711,30 @@
     });
 
     state.deductions = Object.values(dedMap);
+
+    state.pendingDiffs = (state.pendingDiffs || []).filter(function(p) {
+      return !isPendingDiffTombstoned(p);
+    });
+    var pdiffMap = {};
+    (state.pendingDiffs || []).forEach(function(p) {
+      if (p && p.id) pdiffMap[p.id] = normalizePendingDiffRecord(p);
+    });
+    remotePendingDiffs.forEach(function(rp) {
+      if (!rp || !rp.id || isPendingDiffTombstoned(rp)) return;
+      var existingP = pdiffMap[rp.id];
+      if (!existingP) {
+        pdiffMap[rp.id] = normalizePendingDiffRecord(Object.assign({}, rp));
+      } else {
+        var lTs = Date.parse(existingP.updatedAt || existingP.createdAt || 0) || 0;
+        var rTs = Date.parse(rp.updatedAt || rp.createdAt || 0) || 0;
+        if (rTs >= lTs) {
+          pdiffMap[rp.id] = normalizePendingDiffRecord(Object.assign({}, rp));
+        }
+      }
+    });
+    state.pendingDiffs = Object.values(pdiffMap).sort(function(a, b) {
+      return String(b.entryDate || b.updatedAt || '').localeCompare(String(a.entryDate || a.updatedAt || ''));
+    });
     return true;
   }
 
@@ -620,11 +751,19 @@
         do {
           pendingPushQueued = false;
           var nowIso = new Date().toISOString();
+          var pendingTombs = {};
+          Object.keys(state.tombstones || {}).forEach(function(k) {
+            if (String(k).indexOf('pdiff:') === 0 && state.tombstones[k]) {
+              pendingTombs[k.slice(6)] = state.tombstones[k];
+            }
+          });
           var payload = {
-            version: 3,
+            version: 4,
             advances: state.advances || [],
             deductions: state.deductions || [],
+            pendingDiffs: state.pendingDiffs || [],
             tombstones: state.tombstones || {},
+            pendingDiffTombstones: pendingTombs,
             updatedAt: nowIso
           };
           var b64Data = utf8ToB64(JSON.stringify(payload));
@@ -645,7 +784,15 @@
             }).catch(function() {});
           } catch (_) {}
 
-          broadcastSync('advance_cloud_synced', { ts: Date.now(), count: (state.advances || []).length });
+          try {
+            fetch('/api/sync/pending-diffs/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ records: state.pendingDiffs || [], tombstones: pendingTombs })
+            }).catch(function() {});
+          } catch (_) {}
+
+          broadcastSync('advance_cloud_synced', { ts: Date.now(), count: (state.advances || []).length, pendingDiffCount: (state.pendingDiffs || []).length });
           lastRes = { ok: confirmed, error: confirmed ? null : 'CLOUD_UNCONFIRMED' };
         } while (pendingPushQueued);
         return lastRes;
@@ -703,6 +850,22 @@
             var dataDed = await resDed.json();
             if (dataDed && dataDed.ok && Array.isArray(dataDed.records) && dataDed.records.length > 0) {
               applyCloudData({ advances: [], deductions: dataDed.records });
+            }
+          }
+        } catch (_) {}
+
+        try {
+          var resPdiff = await fetch('/api/sync/pending-diffs', { cache: 'no-store' });
+          if (resPdiff && resPdiff.ok) {
+            var dataPdiff = await resPdiff.json();
+            if (dataPdiff && dataPdiff.ok) {
+              applyCloudData({
+                advances: [],
+                deductions: [],
+                pendingDiffs: Array.isArray(dataPdiff.records) ? dataPdiff.records : [],
+                pendingDiffTombstones: (dataPdiff.tombstones && typeof dataPdiff.tombstones === 'object') ? dataPdiff.tombstones : {}
+              });
+              cloudLoaded = true;
             }
           }
         } catch (_) {}
@@ -775,6 +938,32 @@
     return res;
   }
 
+  async function pushPendingDiffRemote(record) {
+    try {
+      fetch('/api/sync/pending-diff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record)
+      }).catch(function() {});
+    } catch (_) {}
+
+    var res = await pushAuthoritativeToCloud();
+    broadcastSync('pending_diff_saved', { id: record.id });
+    return res;
+  }
+
+  async function deletePendingDiffRemote(id) {
+    try {
+      fetch('/api/sync/pending-diff/' + encodeURIComponent(id), {
+        method: 'DELETE'
+      }).catch(function() {});
+    } catch (_) {}
+
+    var res = await pushAuthoritativeToCloud();
+    broadcastSync('pending_diff_deleted', { id: id });
+    return res;
+  }
+
   function broadcastSync(action, details) {
     var payload = { action: action, details: details || {}, ts: Date.now() };
     if (typeof window.BroadcastChannel !== 'undefined') {
@@ -794,7 +983,7 @@
       try {
         var bc = new window.BroadcastChannel(CHANNEL_NAME);
         bc.onmessage = function(ev) {
-          if (ev && ev.data && ev.data.action && ev.data.action.indexOf('advance') === 0) {
+          if (ev && ev.data && ev.data.action && (ev.data.action.indexOf('advance') === 0 || ev.data.action.indexOf('pending_diff') === 0)) {
             fetchRemoteAdvances(false);
           }
         };
@@ -805,7 +994,7 @@
       if (e.key === 'ATPL_TRIGGER_EVENT' && e.newValue) {
         try {
           var ev = JSON.parse(e.newValue);
-          if (ev && ev.action && ev.action.indexOf('advance') === 0) {
+          if (ev && ev.action && (ev.action.indexOf('advance') === 0 || ev.action.indexOf('pending_diff') === 0)) {
             fetchRemoteAdvances(false);
           }
         } catch (_) {}
@@ -837,6 +1026,9 @@
         evtSrc.addEventListener('advance_deduction_saved', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advance_deduction_deleted', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advances_updated', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('pending_diff_saved', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('pending_diff_deleted', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('pending_diffs_updated', function() { fetchRemoteAdvances(false); });
       } catch (_) {}
     }
   }
@@ -1842,6 +2034,17 @@
     var manualCutTotal = round2(voucherCutTotal + manualOtherCutTotal);
     var analytics = getMonthAnalytics(state.selectedMonth, state.selectedDateFilter);
 
+    var pendingDiffList = (state.pendingDiffs || []).filter(function(p) { return p && !isPendingDiffTombstoned(p); });
+    var totalPendingDiffAmt = 0;
+    var totalPendingDiffBal = 0;
+    var openPendingDiffCount = 0;
+    pendingDiffList.forEach(function(p) {
+      totalPendingDiffAmt = round2(totalPendingDiffAmt + (Number(p.diffAmount) || 0));
+      var b = Number(p.pendingBalance) || 0;
+      totalPendingDiffBal = round2(totalPendingDiffBal + b);
+      if (b > 0) openPendingDiffCount++;
+    });
+
     var badge = document.getElementById('advBadge');
     if (badge) {
       badge.textContent = activeCount;
@@ -1855,7 +2058,7 @@
     html += '  <div>';
     html += '    <div style="font-size:9px;font-weight:900;letter-spacing:1.3px;color:#7c3aed;margin-bottom:5px;text-transform:uppercase">SALARY PAYROLL / ADVANCE &amp; LOAN AUDIT</div>';
     html += '    <div style="font-size:21px;font-weight:850;color:#111827;letter-spacing:-.45px">Advance &amp; Loan Management</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Salary-Sheet Deduction, Cash Voucher, Month-Wise Data Feed aur Pichle Mahine ka Complete Audit.</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Salary-Sheet Deduction, Cash Voucher, Pending Diff Amount, Month-Wise Data Feed aur Pichle Mahine ka Complete Audit.</div>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
     html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#312e81;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">';
@@ -1863,6 +2066,9 @@
     html += '    </button>';
     html += '    <button onclick="ATPLAdvanceManager.openCashVoucherModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#0f766e;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(15,118,110,0.25)">';
     html += '      <span>🧾</span> Cash Voucher';
+    html += '    </button>';
+    html += '    <button onclick="ATPLAdvanceManager.openPendingDiffModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#7c2d12;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(124,45,18,0.25)">';
+    html += '      <span>⏳</span> Pending Diff / Cash Adv Voucher';
     html += '    </button>';
     html += '    <button onclick="ATPLAdvanceManager.openMonthFeedModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#4338ca;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(67,56,202,0.25)">';
     html += '      <span>📅</span> Month-Wise Feed';
@@ -1886,11 +2092,12 @@
     html += '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px">';
     html += '  <div style="display:flex;flex-direction:column;gap:2px">';
     html += '    <b style="font-size:11px;color:#334155">View Mode</b>';
-    html += '    <span style="font-size:9px;color:#94a3b8">Advances Register, All Deductions (Sheet + Cash Voucher + Manual), Employee Ledger, aur Month-Wise Report</span>';
+    html += '    <span style="font-size:9px;color:#94a3b8">Advances Register, All Deductions, Pending Diff Amount (Cash Adv Voucher), Employee Ledger, aur Month-Wise Report</span>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:4px;background:#f3f4f6;padding:3px;border-radius:9px;flex-wrap:wrap">';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'advances\')" style="border:0;background:' + (state.activeTab === 'advances' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'advances' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'advances' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">₹ Advances Register (' + state.advances.length + ')</button>';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'deductions\')" style="border:0;background:' + (state.activeTab === 'deductions' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'deductions' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'deductions' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">📉 All Deductions (' + state.deductions.length + ')</button>';
+    html += '    <button onclick="ATPLAdvanceManager.setTab(\'pending_diff\')" style="border:0;background:' + (state.activeTab === 'pending_diff' ? '#7c2d12' : 'transparent') + ';color:' + (state.activeTab === 'pending_diff' ? '#fff' : '#7c2d12') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'pending_diff' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">⏳ Pending Diff Amount (' + pendingDiffList.length + ')</button>';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'ledger\')" style="border:0;background:' + (state.activeTab === 'ledger' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'ledger' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'ledger' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">👥 Employee Ledger (' + Object.keys(empMap).length + ')</button>';
     html += '    <button onclick="ATPLAdvanceManager.setTab(\'monthly\')" style="border:0;background:' + (state.activeTab === 'monthly' ? '#312e81' : 'transparent') + ';color:' + (state.activeTab === 'monthly' ? '#fff' : '#64748b') + ';border-radius:7px;padding:6px 13px;font-size:10px;font-weight:850;cursor:pointer;' + (state.activeTab === 'monthly' ? 'box-shadow:0 1px 2px rgba(15,23,42,.12)' : '') + '">📅 Month-Wise Summary</button>';
     html += '  </div>';
@@ -1957,7 +2164,7 @@
     html += '</div>';
 
     // 4. Metric Statistic Cards
-    html += '<div style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:12px">';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:12px">';
     html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
     html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Total Disbursed</span>';
     html += '    <b style="font-size:20px;font-weight:850;color:#111827">' + formatINR(totalDisbursed) + '</b>';
@@ -1973,6 +2180,11 @@
     html += '    <b style="font-size:20px;font-weight:850;color:#dc2626">' + formatINR(totalOutstanding) + '</b>';
     html += '    <small style="font-size:9px;color:#ef4444">pending recovery</small>';
     html += '  </div>';
+    html += '  <div onclick="ATPLAdvanceManager.setTab(\'pending_diff\')" style="cursor:pointer;background:#fff7ed;border:1px solid #fed7aa;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
+    html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#9a3412;font-weight:800">Pending Diff Balance</span>';
+    html += '    <b style="font-size:20px;font-weight:850;color:#7c2d12">' + formatINR(totalPendingDiffBal) + '</b>';
+    html += '    <small style="font-size:9px;color:#c2410c">' + openPendingDiffCount + ' open · ' + formatINR(totalPendingDiffAmt) + ' total diff</small>';
+    html += '  </div>';
     html += '  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:11px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:0 1px 2px rgba(15,23,42,.02)">';
     html += '    <span style="font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;font-weight:800">Active Borrowers</span>';
     html += '    <b style="font-size:20px;font-weight:850;color:#312e81">' + activeCount + '</b>';
@@ -1985,13 +2197,15 @@
       ? 'Advances Register &amp; Active Dues'
       : state.activeTab === 'deductions'
         ? 'Salary, Cash Voucher &amp; Manual Deduction Audit'
-        : state.activeTab === 'monthly'
-          ? ('Month-Wise Report: ' + esc(analytics.selected.label) + ' vs ' + esc(analytics.previous.label))
-          : 'Employee Balance Ledger &amp; History';
+        : state.activeTab === 'pending_diff'
+          ? 'Pending Diff Amount &amp; Cash Adv Vouchers (Directors Signed · Month-Wise)'
+          : state.activeTab === 'monthly'
+            ? ('Month-Wise Report: ' + esc(analytics.selected.label) + ' vs ' + esc(analytics.previous.label))
+            : 'Employee Balance Ledger &amp; History';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #e5e7eb;border-radius:10px 10px 0 0;padding:11px 14px">';
     html += '  <div style="display:flex;flex-direction:column;gap:2px">';
     html += '    <b style="font-size:11px;color:#334155">' + tabTitle + (state.filterTablesByMonth && state.activeTab !== 'monthly' ? ' <span style="color:#4338ca">(' + esc(analytics.selected.label) + ')</span>' : '') + '</b>';
-    html += '    <small style="font-size:9px;color:#94a3b8">Verified records · Cash Voucher, Month-Wise Feed aur Employee History ke saath complete sync</small>';
+    html += '    <small style="font-size:9px;color:#94a3b8">Verified records · Cash Voucher, Pending Diff Amount (Directors Sign), Month-Wise Feed aur Employee History ke saath complete sync</small>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
     html += '    <input type="text" id="advSearchInput" placeholder="🔍 Search employee code, name..." value="' + esc(state.searchQuery) + '" oninput="ATPLAdvanceManager.setSearch(this.value)" style="height:32px;padding:0 12px;background:#fff;border:1px solid #d1d5db;border-radius:7px;color:#111827;font-size:11px;outline:none;min-width:220px">';
@@ -2009,6 +2223,21 @@
       html += '      <option value="voucher"' + (state.deductionSourceFilter === 'voucher' ? ' selected' : '') + '>🧾 Cash Voucher Only</option>';
       html += '      <option value="manual"' + (state.deductionSourceFilter === 'manual' ? ' selected' : '') + '>✍️ All Manual / Cash Voucher</option>';
       html += '    </select>';
+    } else if (state.activeTab === 'pending_diff') {
+      html += '    <select onchange="ATPLAdvanceManager.setPendingDiffCategoryFilter(this.value)" style="height:32px;border:1px solid #d1d5db;border-radius:7px;background:#fff;padding:0 10px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
+      html += '      <option value="ALL"' + (state.pendingDiffCategoryFilter === 'ALL' ? ' selected' : '') + '>All Types (Salary / Adv / Diff)</option>';
+      PENDING_DIFF_CATEGORIES.forEach(function(cat) {
+        html += '      <option value="' + esc(cat) + '"' + (state.pendingDiffCategoryFilter === cat ? ' selected' : '') + '>' + esc(cat) + '</option>';
+      });
+      html += '    </select>';
+      html += '    <select onchange="ATPLAdvanceManager.setPendingDiffStatusFilter(this.value)" style="height:32px;border:1px solid #d1d5db;border-radius:7px;background:#fff;padding:0 10px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
+      html += '      <option value="ALL"' + (state.pendingDiffStatusFilter === 'ALL' ? ' selected' : '') + '>All Status</option>';
+      html += '      <option value="PENDING"' + (state.pendingDiffStatusFilter === 'PENDING' ? ' selected' : '') + '>⏳ Pending Only</option>';
+      html += '      <option value="PARTIAL"' + (state.pendingDiffStatusFilter === 'PARTIAL' ? ' selected' : '') + '>🌓 Partial Paid</option>';
+      html += '      <option value="SETTLED"' + (state.pendingDiffStatusFilter === 'SETTLED' ? ' selected' : '') + '>✅ Settled / Paid</option>';
+      html += '    </select>';
+      html += '    <button type="button" onclick="ATPLAdvanceManager.openPendingDiffModal()" style="height:32px;padding:0 12px;border:none;border-radius:7px;background:#7c2d12;color:#fff;font-size:10px;font-weight:800;cursor:pointer">+ Add Pending Diff</button>';
+      html += '    <button type="button" onclick="ATPLAdvanceManager.openPendingDiffFeedModal()" style="height:32px;padding:0 12px;border:1px solid #fdba74;border-radius:7px;background:#fff7ed;color:#9a3412;font-size:10px;font-weight:800;cursor:pointer">📋 Bulk Month Entry</button>';
     }
     html += '  </div>';
     html += '</div>';
@@ -2019,6 +2248,8 @@
       html += renderAdvancesTable();
     } else if (state.activeTab === 'deductions') {
       html += renderDeductionsTable();
+    } else if (state.activeTab === 'pending_diff') {
+      html += renderPendingDiffsTab(analytics);
     } else if (state.activeTab === 'monthly') {
       html += renderMonthlySummaryTable(analytics);
     } else if (state.activeTab === 'ledger') {
@@ -3618,6 +3849,1025 @@
     if (modal) modal.innerHTML = '';
   }
 
+  // ── 7B. PENDING DIFF AMOUNT & CASH ADV VOUCHER ENGINE ──
+  function generatePendingDiffVoucherNo(monthKey) {
+    var mk = String(monthKey || state.selectedMonth || new Date().toISOString().slice(0, 7)).replace('-', '');
+    var seq = (state.pendingDiffs || []).length + 1;
+    var candidate = 'PDV-' + mk + '-' + String(seq).padStart(3, '0');
+    var used = {};
+    (state.pendingDiffs || []).forEach(function(p) {
+      if (p && p.voucherNo) used[String(p.voucherNo).toUpperCase()] = true;
+    });
+    while (used[candidate.toUpperCase()]) {
+      seq++;
+      candidate = 'PDV-' + mk + '-' + String(seq).padStart(3, '0');
+    }
+    return candidate;
+  }
+
+  function numberToIndianWords(num) {
+    var n = Math.floor(Math.abs(Number(num) || 0));
+    if (n === 0) return 'Zero';
+    var ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    var tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    function twoDigits(v) {
+      if (v < 20) return ones[v];
+      return tens[Math.floor(v / 10)] + (v % 10 ? ' ' + ones[v % 10] : '');
+    }
+    function threeDigits(v) {
+      var h = Math.floor(v / 100);
+      var rem = v % 100;
+      var s = h ? ones[h] + ' Hundred' : '';
+      if (rem) s += (s ? ' ' : '') + twoDigits(rem);
+      return s;
+    }
+    var out = '';
+    var crore = Math.floor(n / 10000000);
+    n %= 10000000;
+    var lakh = Math.floor(n / 100000);
+    n %= 100000;
+    var thousand = Math.floor(n / 1000);
+    n %= 1000;
+    if (crore) out += twoDigits(crore) + ' Crore ';
+    if (lakh) out += twoDigits(lakh) + ' Lakh ';
+    if (thousand) out += twoDigits(thousand) + ' Thousand ';
+    if (n) out += threeDigits(n);
+    return out.trim();
+  }
+
+  function formatDisplayDateDDMMYYYY(iso) {
+    var m = String(iso || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return iso || '-';
+    return m[3] + '/' + m[2] + '/' + m[1];
+  }
+
+  function getPendingDiffMonthlySummary() {
+    var byMonth = {};
+    (state.pendingDiffs || []).forEach(function(p) {
+      if (!p || isPendingDiffTombstoned(p)) return;
+      var mk = getPendingDiffMonthKey(p) || 'Unknown';
+      if (!byMonth[mk]) {
+        byMonth[mk] = {
+          monthKey: mk,
+          label: formatMonthKeyLabel(mk),
+          count: 0,
+          salaryDiffTotal: 0,
+          advanceDiffTotal: 0,
+          otherDiffTotal: 0,
+          totalDiff: 0,
+          totalPaid: 0,
+          totalBalance: 0
+        };
+      }
+      var bucket = byMonth[mk];
+      var amt = round2(Number(p.diffAmount) || 0);
+      var paid = round2(Number(p.paidAmount) || 0);
+      var bal = round2(Number(p.pendingBalance) || 0);
+      bucket.count++;
+      bucket.totalDiff = round2(bucket.totalDiff + amt);
+      bucket.totalPaid = round2(bucket.totalPaid + paid);
+      bucket.totalBalance = round2(bucket.totalBalance + bal);
+      var catLow = String(p.category || '').toLowerCase();
+      if (catLow.indexOf('salary') >= 0) bucket.salaryDiffTotal = round2(bucket.salaryDiffTotal + amt);
+      else if (catLow.indexOf('advance') >= 0) bucket.advanceDiffTotal = round2(bucket.advanceDiffTotal + amt);
+      else bucket.otherDiffTotal = round2(bucket.otherDiffTotal + amt);
+    });
+    return Object.values(byMonth).sort(function(a, b) {
+      return String(b.monthKey).localeCompare(String(a.monthKey));
+    });
+  }
+
+  function addOrUpdatePendingDiff(payload) {
+    payload = payload || {};
+    var code = String(payload.empCode || '').trim();
+    var diffAmount = round2(Number(payload.diffAmount));
+    if (!code || !diffAmount || diffAmount <= 0) {
+      return { ok: false, error: 'INVALID_INPUT' };
+    }
+    var emp = findEmployeeByCode(code);
+    var empName = String(payload.empName || '').trim() || (emp ? emp.name : ('Employee ' + code));
+    var designation = String(payload.designation || '').trim() || (emp && emp.desig) || '';
+    var department = String(payload.department || '').trim() || (emp && emp.dept) || '';
+    var nowIso = new Date().toISOString();
+    var entryDate = (payload.entryDate && /^\d{4}-\d{2}-\d{2}$/.test(String(payload.entryDate).trim()))
+      ? String(payload.entryDate).trim()
+      : nowIso.slice(0, 10);
+    var monthKey = (payload.monthKey && /^\d{4}-\d{2}$/.test(String(payload.monthKey).trim()))
+      ? String(payload.monthKey).trim()
+      : entryDate.slice(0, 7);
+
+    var recordId = payload.id || ('pdiff_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+    var existingIdx = (state.pendingDiffs || []).findIndex(function(p) { return p && p.id === recordId; });
+    var existing = existingIdx >= 0 ? state.pendingDiffs[existingIdx] : null;
+
+    var settlements = existing && Array.isArray(existing.settlements) ? existing.settlements.slice() : [];
+    var initialPaid = round2(Number(payload.paidAmount) || 0);
+    if (!existing && initialPaid > 0) {
+      if (initialPaid > diffAmount) initialPaid = diffAmount;
+      settlements.push({
+        id: 'pds_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        date: entryDate,
+        amount: initialPaid,
+        mode: 'Cash Adv Voucher',
+        voucherNo: String(payload.voucherNo || generatePendingDiffVoucherNo(monthKey)).trim(),
+        signedBy: String(payload.signedBy || 'Sarthak ji').trim(),
+        remarks: String(payload.remarks || 'Initial Cash Adv Voucher Disbursement').trim(),
+        createdAt: nowIso
+      });
+    }
+
+    var rec = normalizePendingDiffRecord({
+      id: recordId,
+      voucherNo: String(payload.voucherNo || (existing && existing.voucherNo) || generatePendingDiffVoucherNo(monthKey)).trim(),
+      empCode: emp && emp.code ? emp.code : code,
+      empName: empName,
+      designation: designation,
+      department: department,
+      monthKey: monthKey,
+      entryDate: entryDate,
+      category: String(payload.category || (existing && existing.category) || 'Pending Salary').trim(),
+      diffAmount: diffAmount,
+      paidAmount: settlements.length ? undefined : (existing ? existing.paidAmount : initialPaid),
+      settlements: settlements,
+      signedBy: String(payload.signedBy || (existing && existing.signedBy) || 'Sarthak ji').trim(),
+      directors: SIGNED_BY_OPTIONS.slice(),
+      remarks: String(payload.remarks || '').trim(),
+      createdAt: existing ? existing.createdAt : nowIso,
+      updatedAt: nowIso
+    });
+
+    if (state.tombstones && state.tombstones['pdiff:' + recordId]) {
+      delete state.tombstones['pdiff:' + recordId];
+    }
+
+    if (existingIdx >= 0) {
+      state.pendingDiffs[existingIdx] = rec;
+    } else {
+      state.pendingDiffs.unshift(rec);
+    }
+
+    if (!payload.skipRemoteSync) {
+      state.selectedMonth = rec.monthKey;
+      recalculateAllBalances();
+      saveToLocal();
+      renderUI();
+      pushPendingDiffRemote(rec).then(function(res) {
+        if (window.showToast) {
+          if (res && res.ok) {
+            window.showToast('✅ Pending Diff (' + formatINR(rec.diffAmount) + ') for ' + rec.empName + ' saved & synced!');
+          } else {
+            window.showToast('✅ Pending Diff (' + formatINR(rec.diffAmount) + ') saved locally & queued for sync.');
+          }
+        }
+      });
+    }
+
+    return { ok: true, record: rec };
+  }
+
+  function settlePendingDiff(id, settlePayload) {
+    settlePayload = settlePayload || {};
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id && !isPendingDiffTombstoned(p); });
+    if (!rec) return { ok: false, error: 'NOT_FOUND' };
+    normalizePendingDiffRecord(rec);
+    var payAmt = round2(Number(settlePayload.amount));
+    if (!payAmt || payAmt <= 0) return { ok: false, error: 'INVALID_AMOUNT' };
+    if (payAmt > rec.pendingBalance + 0.001) {
+      return { ok: false, error: 'EXCEEDS_BALANCE', available: rec.pendingBalance };
+    }
+    var nowIso = new Date().toISOString();
+    var payDate = (settlePayload.date && /^\d{4}-\d{2}-\d{2}$/.test(String(settlePayload.date).trim()))
+      ? String(settlePayload.date).trim()
+      : nowIso.slice(0, 10);
+    if (!Array.isArray(rec.settlements)) rec.settlements = [];
+    if (rec.settlements.length === 0 && (Number(rec.paidAmount) || 0) > 0) {
+      rec.settlements.push({
+        id: 'pds_init_' + Date.now(),
+        date: rec.entryDate,
+        amount: round2(rec.paidAmount),
+        mode: 'Previous Payment',
+        voucherNo: rec.voucherNo,
+        signedBy: rec.signedBy,
+        remarks: 'Previous recorded payout',
+        createdAt: rec.createdAt || nowIso
+      });
+    }
+    var settlementItem = {
+      id: 'pds_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      date: payDate,
+      amount: payAmt,
+      mode: String(settlePayload.mode || 'Cash Adv Voucher').trim(),
+      voucherNo: String(settlePayload.voucherNo || rec.voucherNo || generatePendingDiffVoucherNo(rec.monthKey)).trim(),
+      signedBy: String(settlePayload.signedBy || rec.signedBy || 'Sarthak ji').trim(),
+      remarks: String(settlePayload.remarks || 'Cash Adv Voucher settlement').trim(),
+      createdAt: nowIso
+    };
+    rec.settlements.push(settlementItem);
+    rec.signedBy = settlementItem.signedBy;
+    rec.updatedAt = nowIso;
+    normalizePendingDiffRecord(rec);
+
+    recalculateAllBalances();
+    saveToLocal();
+    renderUI();
+
+    pushPendingDiffRemote(rec).then(function(res) {
+      if (window.showToast) {
+        if (res && res.ok) {
+          window.showToast('✅ Cash Adv Voucher payout (' + formatINR(payAmt) + ') for ' + rec.empName + ' synced!');
+        } else {
+          window.showToast('✅ Payout (' + formatINR(payAmt) + ') saved locally.');
+        }
+      }
+    });
+    return { ok: true, record: rec, settlement: settlementItem };
+  }
+
+  function deletePendingDiff(id) {
+    if (!id) return false;
+    var idx = (state.pendingDiffs || []).findIndex(function(p) { return p && p.id === id; });
+    if (idx < 0) return false;
+    state.pendingDiffs.splice(idx, 1);
+    var nowIso = new Date().toISOString();
+    state.tombstones['pdiff:' + id] = nowIso;
+
+    recalculateAllBalances();
+    saveToLocal();
+    renderUI();
+
+    deletePendingDiffRemote(id).then(function(res) {
+      if (window.showToast) {
+        if (res && res.ok) {
+          window.showToast('🗑 Pending Diff entry deleted across all browsers.');
+        } else {
+          window.showToast('🗑 Pending Diff entry deleted locally.');
+        }
+      }
+    });
+    return true;
+  }
+
+  function confirmDeletePendingDiff(id) {
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id; });
+    if (!rec) return;
+    if (confirm('Delete Pending Diff entry (' + rec.voucherNo + ') of ' + formatINR(rec.diffAmount) + ' for ' + rec.empName + ' (' + rec.empCode + ')?')) {
+      deletePendingDiff(id);
+    }
+  }
+
+  function renderPendingDiffsTab(analytics) {
+    var query = state.searchQuery.toLowerCase().trim();
+    var allClean = (state.pendingDiffs || []).filter(function(p) { return p && !isPendingDiffTombstoned(p); });
+    var filtered = allClean.filter(function(p) {
+      if (state.pendingDiffStatusFilter !== 'ALL' && p.status !== state.pendingDiffStatusFilter) return false;
+      if (state.pendingDiffCategoryFilter !== 'ALL' && p.category !== state.pendingDiffCategoryFilter) return false;
+      if (state.filterTablesByMonth && getPendingDiffMonthKey(p) !== state.selectedMonth) return false;
+      if (state.selectedDateFilter && String(p.entryDate || '').slice(0, 10) !== state.selectedDateFilter) return false;
+      if (!query) return true;
+      return String(p.empCode || '').toLowerCase().includes(query) ||
+             String(p.empName || '').toLowerCase().includes(query) ||
+             String(p.voucherNo || '').toLowerCase().includes(query) ||
+             String(p.category || '').toLowerCase().includes(query) ||
+             String(p.department || '').toLowerCase().includes(query) ||
+             String(p.signedBy || '').toLowerCase().includes(query) ||
+             String(p.remarks || '').toLowerCase().includes(query);
+    }).slice().sort(function(a, b) {
+      return String(b.entryDate || b.updatedAt || '').localeCompare(String(a.entryDate || a.updatedAt || ''));
+    });
+
+    var monthlyBuckets = getPendingDiffMonthlySummary();
+    var out = '';
+
+    // Inline Month-Wise Summary Strip
+    out += '<div style="padding:12px 14px;background:#fff7ed;border-bottom:1px solid #fed7aa;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">';
+    out += '  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+    out += '    <span style="font-size:11px;font-weight:850;color:#7c2d12">⏳ ' + esc(analytics.selected.label) + ' Pending Diff:</span>';
+    out += '    <span style="font-size:11px;color:#334155">Total: <strong>' + formatINR(analytics.selected.pendingDiffTotal || 0) + '</strong></span>';
+    out += '    <span style="font-size:11px;color:#15803d">Cash Paid: <strong>' + formatINR(analytics.selected.pendingDiffPaid || 0) + '</strong></span>';
+    out += '    <span style="font-size:11px;color:#dc2626">Remaining: <strong>' + formatINR(analytics.selected.pendingDiffBalance || 0) + '</strong></span>';
+    out += '    <span style="color:#cbd5e1">|</span>';
+    out += '    <span style="font-size:10.5px;color:#9a3412">Pichla Mahina (' + esc(analytics.previous.label) + '): <strong>' + formatINR(analytics.previous.pendingDiffTotal || 0) + '</strong> (Bal: <strong>' + formatINR(analytics.previous.pendingDiffBalance || 0) + '</strong>)</span>';
+    out += '  </div>';
+    out += '  <div style="display:flex;gap:6px;flex-wrap:wrap">';
+    monthlyBuckets.slice(0, 6).forEach(function(mb) {
+      var activeChip = state.filterTablesByMonth && state.selectedMonth === mb.monthKey;
+      out += '    <button type="button" onclick="ATPLAdvanceManager.setSelectedMonth(\'' + esc(mb.monthKey) + '\')" style="padding:3px 9px;border-radius:999px;border:1px solid ' + (activeChip ? '#7c2d12' : '#fdba74') + ';background:' + (activeChip ? '#7c2d12' : '#fff') + ';color:' + (activeChip ? '#fff' : '#9a3412') + ';font-size:10px;font-weight:800;cursor:pointer">' + esc(mb.label) + ': ' + formatINR(mb.totalDiff) + '</button>';
+    });
+    out += '  </div>';
+    out += '</div>';
+
+    if (!filtered.length) {
+      out += '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">';
+      out += '  <div style="font-size:36px;margin-bottom:8px;opacity:0.45">🧾</div>';
+      out += '  <div style="font-size:14px;font-weight:700;color:#334155">Koi Pending Diff Amount Record Nahi Mila</div>';
+      out += '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Emp Code daal kar Pending Salary / Pending Advance / Diff Amount add karein aur Directors ke sign ke saath Cash Adv Voucher print/download karein.</div>';
+      out += '  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
+      out += '    <button type="button" onclick="ATPLAdvanceManager.openPendingDiffModal()" style="padding:8px 16px;background:#7c2d12;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">+ Add Pending Diff / Cash Adv Voucher</button>';
+      out += '    <button type="button" onclick="ATPLAdvanceManager.openPendingDiffFeedModal()" style="padding:8px 16px;background:#fff7ed;color:#9a3412;border:1px solid #fdba74;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">📋 Bulk Month-Wise Entry</button>';
+      out += '  </div>';
+      out += '</div>';
+    } else {
+      out += '<div style="overflow-x:auto">';
+      out += '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;background:#fff">';
+      out += '  <thead>';
+      out += '    <tr style="background:#fff;border-bottom:1px solid #eef2f7;color:#64748b;font-size:9.5px;text-transform:uppercase;letter-spacing:0.7px;font-weight:800">';
+      out += '      <th style="padding:10px 12px">Voucher No / Month</th>';
+      out += '      <th style="padding:10px 12px">Date</th>';
+      out += '      <th style="padding:10px 12px">Emp Code</th>';
+      out += '      <th style="padding:10px 12px">Employee / Dept</th>';
+      out += '      <th style="padding:10px 12px">Type</th>';
+      out += '      <th style="padding:10px 12px;text-align:right">Diff Amount (₹)</th>';
+      out += '      <th style="padding:10px 12px;text-align:right">Paid (₹)</th>';
+      out += '      <th style="padding:10px 12px;text-align:right">Pending Bal (₹)</th>';
+      out += '      <th style="padding:10px 12px">Director Sign</th>';
+      out += '      <th style="padding:10px 12px;text-align:center">Status</th>';
+      out += '      <th style="padding:10px 12px;text-align:center">Actions</th>';
+      out += '    </tr>';
+      out += '  </thead>';
+      out += '  <tbody>';
+
+      filtered.forEach(function(p) {
+        var pillStyle = p.status === 'SETTLED'
+          ? 'background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0'
+          : p.status === 'PARTIAL'
+            ? 'background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe'
+            : 'background:#fffbeb;color:#b45309;border:1px solid #fde68a';
+        var catStyle = String(p.category || '').toLowerCase().indexOf('advance') >= 0
+          ? 'background:#f0fdfa;color:#0f766e;border:1px solid #99f6e4'
+          : 'background:#eef2ff;color:#312e81;border:1px solid #c7d2fe';
+        out += '    <tr style="border-bottom:1px solid #f3f4f6" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+        out += '      <td style="padding:10px 12px"><div style="font-weight:800;color:#7c2d12;font-family:monospace;font-size:11px">' + esc(p.voucherNo) + '</div><div style="font-size:10px;color:#64748b">' + esc(formatMonthKeyLabel(p.monthKey)) + '</div></td>';
+        out += '      <td style="padding:10px 12px;color:#64748b;font-size:11px;white-space:nowrap">' + esc(p.entryDate) + '</td>';
+        out += '      <td style="padding:10px 12px;font-weight:800;color:#312e81;font-family:monospace">' + esc(p.empCode) + '</td>';
+        out += '      <td style="padding:10px 12px"><div style="font-weight:750;color:#111827">' + esc(p.empName) + '</div><div style="font-size:10px;color:#64748b">' + esc(p.department || p.designation || '-') + (p.remarks ? ' · ' + esc(p.remarks) : '') + '</div></td>';
+        out += '      <td style="padding:10px 12px;white-space:nowrap"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:9.5px;font-weight:800;' + catStyle + '">' + esc(p.category) + '</span></td>';
+        out += '      <td style="padding:10px 12px;text-align:right;font-weight:800;color:#111827">' + formatINR(p.diffAmount) + '</td>';
+        out += '      <td style="padding:10px 12px;text-align:right;font-weight:700;color:#15803d">' + formatINR(p.paidAmount) + '</td>';
+        out += '      <td style="padding:10px 12px;text-align:right;font-weight:850;color:' + (p.pendingBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(p.pendingBalance) + '</td>';
+        out += '      <td style="padding:10px 12px;font-size:11px;font-weight:700;color:#334155">' + esc(p.signedBy) + '<div style="font-size:9px;color:#94a3b8">Directors Panel</div></td>';
+        out += '      <td style="padding:10px 12px;text-align:center"><span style="display:inline-block;padding:3px 8px;border-radius:999px;font-size:9px;font-weight:850;' + pillStyle + '">' + esc(p.status) + '</span></td>';
+        out += '      <td style="padding:10px 12px;text-align:center;white-space:nowrap">';
+        out += '        <button type="button" onclick="ATPLAdvanceManager.openPendingDiffVoucherModal(\'' + esc(p.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Cash Adv Voucher Print / Download with Directors Sign">🧾 Cash Adv Voucher</button>';
+        if (p.pendingBalance > 0) {
+          out += '        <button type="button" onclick="ATPLAdvanceManager.openSettlePendingDiffModal(\'' + esc(p.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Pay / Settle Pending Diff">💸 Settle</button>';
+        }
+        out += '        <button type="button" onclick="ATPLAdvanceManager.openPendingDiffModal(\'' + esc(p.empCode) + '\',\'' + esc(p.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #d1d5db;background:#fff;color:#d97706;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700;margin-right:4px" title="Edit">✏️</button>';
+        out += '        <button type="button" onclick="ATPLAdvanceManager.confirmDeletePendingDiff(\'' + esc(p.id) + '\')" style="height:26px;padding:0 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer;font-size:10px;font-weight:700" title="Delete">🗑</button>';
+        out += '      </td>';
+        out += '    </tr>';
+      });
+
+      out += '  </tbody>';
+      out += '</table>';
+      out += '</div>';
+    }
+
+    if (monthlyBuckets.length > 0) {
+      out += '<div style="padding:14px;background:#f8fafc;border-top:1px solid #e5e7eb">';
+      out += '  <div style="font-size:10.5px;font-weight:850;color:#334155;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px">📅 Month-Wise Pending Diff Summary Record</div>';
+      out += '  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden">';
+      out += '    <thead><tr style="background:#f1f5f9;color:#475569;font-size:9.5px;text-transform:uppercase;font-weight:800"><th style="padding:8px 10px">Month</th><th style="padding:8px 10px;text-align:center">Vouchers</th><th style="padding:8px 10px;text-align:right">Pending Salary</th><th style="padding:8px 10px;text-align:right">Pending Advance</th><th style="padding:8px 10px;text-align:right">Other Diff</th><th style="padding:8px 10px;text-align:right">Total Diff</th><th style="padding:8px 10px;text-align:right">Cash Paid</th><th style="padding:8px 10px;text-align:right">Remaining Bal</th></tr></thead>';
+      out += '    <tbody>';
+      monthlyBuckets.forEach(function(mb) {
+        out += '      <tr style="border-top:1px solid #f1f5f9">';
+        out += '        <td style="padding:8px 10px;font-weight:800;color:#312e81">' + esc(mb.label) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:center;color:#64748b;font-weight:700">' + mb.count + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right">' + formatINR(mb.salaryDiffTotal) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right">' + formatINR(mb.advanceDiffTotal) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right">' + formatINR(mb.otherDiffTotal) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right;font-weight:800">' + formatINR(mb.totalDiff) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right;font-weight:700;color:#15803d">' + formatINR(mb.totalPaid) + '</td>';
+        out += '        <td style="padding:8px 10px;text-align:right;font-weight:850;color:' + (mb.totalBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(mb.totalBalance) + '</td>';
+        out += '      </tr>';
+      });
+      out += '    </tbody></table></div>';
+      out += '</div>';
+    }
+
+    return out;
+  }
+
+  function openPendingDiffModal(prefillCode, editId) {
+    state.openHistoryEmpCode = null;
+    var existing = editId ? (state.pendingDiffs || []).find(function(p) { return p && p.id === editId; }) : null;
+    state.editingPendingDiffId = existing ? existing.id : null;
+
+    var codeVal = existing ? existing.empCode : (prefillCode || '');
+    var emp = codeVal ? findEmployeeByCode(codeVal) : null;
+    var today = new Date().toISOString().slice(0, 10);
+    var mKey = existing ? existing.monthKey : (state.selectedMonth || today.slice(0, 7));
+    var entryDate = existing ? existing.entryDate : (mKey === today.slice(0, 7) ? today : (mKey + '-01'));
+    var voucherNo = existing ? existing.voucherNo : generatePendingDiffVoucherNo(mKey);
+    var empNameVal = existing ? existing.empName : (emp ? emp.name : '');
+    var desigVal = existing ? (existing.designation || '') : (emp ? (emp.desig || '') : '');
+    var deptVal = existing ? (existing.department || '') : (emp ? (emp.dept || '') : '');
+
+    var modal = getOrCreateModal();
+    var c = '';
+    c += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.48);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    c += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:620px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+
+    c += '    <div style="padding:16px 22px;border-bottom:1px solid #fed7aa;display:flex;justify-content:space-between;align-items:center;background:#fff7ed">';
+    c += '      <div>';
+    c += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#9a3412;text-transform:uppercase">PENDING DIFF AMOUNT · CASH ADV VOUCHER</div>';
+    c += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">' + (existing ? '✏️ Edit Pending Diff / Cash Adv Voucher' : '⏳ Pending Diff Salary / Adv Entry') + '</h3>';
+    c += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Emp Code dalte hi Name, Dept, Desig auto-fill hoga · Directors sign ke saath Cash Adv Voucher banega</div>';
+    c += '      </div>';
+    c += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #fdba74;background:#fff;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
+    c += '    </div>';
+
+    c += '    <div style="padding:18px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;background:#ffffff">';
+    c += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    c += '        <div style="position:relative">';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Employee Code *</label>';
+    c += '          <input type="text" id="advPdCode" value="' + esc(codeVal) + '" placeholder="Enter Emp Code (e.g. 25924)" oninput="ATPLAdvanceManager.onPendingDiffCodeInput(this.value)" autocomplete="off" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:800;font-family:monospace">';
+    c += '          <div id="advPdSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#ffffff;border:1px solid #cbd5e1;border-radius:8px;margin-top:4px;max-height:190px;overflow-y:auto;z-index:200;box-shadow:0 12px 28px rgba(15,23,42,0.18)"></div>';
+    c += '        </div>';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Cash Adv Voucher No *</label>';
+    c += '          <input type="text" id="advPdVoucherNo" value="' + esc(voucherNo) + '" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:800;font-family:monospace;color:#7c2d12">';
+    c += '        </div>';
+    c += '      </div>';
+
+    c += '      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px">';
+    c += '        <div><div style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase">Employee Name</div><input type="text" id="advPdEmpName" value="' + esc(empNameVal) + '" placeholder="Auto-filled..." style="width:100%;margin-top:3px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-weight:750;color:#111827;background:#fff"></div>';
+    c += '        <div><div style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase">Designation</div><input type="text" id="advPdDesig" value="' + esc(desigVal) + '" placeholder="-" style="width:100%;margin-top:3px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;font-weight:600;color:#334155;background:#fff"></div>';
+    c += '        <div><div style="font-size:9px;color:#64748b;font-weight:800;text-transform:uppercase">Department</div><input type="text" id="advPdDept" value="' + esc(deptVal) + '" placeholder="-" style="width:100%;margin-top:3px;padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:11.5px;font-weight:600;color:#334155;background:#fff"></div>';
+    c += '      </div>';
+
+    c += '      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Pending Type *</label>';
+    c += '          <select id="advPdCategory" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:700">';
+    PENDING_DIFF_CATEGORIES.forEach(function(cat) {
+      c += '            <option value="' + esc(cat) + '"' + (existing && existing.category === cat ? ' selected' : '') + '>' + esc(cat) + '</option>';
+    });
+    c += '          </select>';
+    c += '        </div>';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Month (Mahina) *</label>';
+    c += '          <input type="month" id="advPdMonth" value="' + esc(mKey) + '" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:700">';
+    c += '        </div>';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Voucher Date *</label>';
+    c += '          <input type="date" id="advPdDate" value="' + esc(entryDate) + '" onchange="var pm=document.getElementById(\'advPdMonth\');if(pm&&this.value)pm.value=this.value.slice(0,7)" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:700">';
+    c += '        </div>';
+    c += '      </div>';
+
+    c += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Pending Diff Amount (₹) *</label>';
+    c += '          <input type="number" id="advPdAmount" min="1" step="any" value="' + (existing ? existing.diffAmount : '') + '" placeholder="e.g. 2500" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;font-weight:850;color:#111827">';
+    c += '        </div>';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Cash Paid Now (Optional ₹)</label>';
+    c += '          <input type="number" id="advPdPaidNow" min="0" step="any" value="' + (existing ? existing.paidAmount : '0') + '"' + (existing ? ' readonly title="Use Settle button on row for additional payments"' : '') + ' placeholder="0 = Keep Pending" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:700;background:' + (existing ? '#f1f5f9' : '#fff') + '">';
+    c += '        </div>';
+    c += '      </div>';
+
+    c += '      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:12px">';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Approved By (Director Sign) *</label>';
+    c += '          <select id="advPdSignedBy" style="width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:750">';
+    SIGNED_BY_OPTIONS.forEach(function(nm) {
+      var sel = existing ? (existing.signedBy === nm) : (nm === 'Sarthak ji');
+      c += '            <option value="' + esc(nm) + '"' + (sel ? ' selected' : '') + '>' + esc(nm) + ' (Director)</option>';
+    });
+    c += '          </select>';
+    c += '        </div>';
+    c += '        <div>';
+    c += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Reason / Diff Details</label>';
+    c += '          <input type="text" id="advPdRemarks" value="' + esc(existing ? (existing.remarks || '') : '') + '" placeholder="e.g. Oct Salary 3 Days Diff / Cash Adv Voucher" style="width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:12px">';
+    c += '        </div>';
+    c += '      </div>';
+
+    c += '      <div style="padding:9px 12px;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:8px;font-size:10.5px;color:#0f766e;font-weight:700">';
+    c += '        ✍ Cash Adv Voucher par Sabhi Directors ke Signature Block (Sarthak ji, Manish ji, Ayush ji) aur Selected Approving Director highlight rahega.';
+    c += '      </div>';
+    c += '      <div id="advPdError" style="display:none;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:700"></div>';
+    c += '    </div>';
+
+    c += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;background:#f8fafc">';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:9px 15px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.submitPendingDiffForm(false)" style="padding:9px 16px;background:#7c2d12;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">💾 Save &amp; Sync</button>';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.submitPendingDiffForm(true)" style="padding:9px 18px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">🧾 Save &amp; Cash Adv Voucher</button>';
+    c += '    </div>';
+
+    c += '  </div>';
+    c += '</div>';
+    modal.innerHTML = c;
+  }
+
+  function onPendingDiffCodeInput(val) {
+    var raw = String(val || '').trim();
+    var nameEl = document.getElementById('advPdEmpName');
+    var desigEl = document.getElementById('advPdDesig');
+    var deptEl = document.getElementById('advPdDept');
+    var suggBox = document.getElementById('advPdSuggestions');
+
+    if (!raw) {
+      if (nameEl) nameEl.value = '';
+      if (desigEl) desigEl.value = '';
+      if (deptEl) deptEl.value = '';
+      if (suggBox) suggBox.style.display = 'none';
+      return;
+    }
+
+    var emp = findEmployeeByCode(raw);
+    if (emp) {
+      if (nameEl) nameEl.value = emp.name || '';
+      if (desigEl) desigEl.value = emp.desig || '';
+      if (deptEl) deptEl.value = emp.dept || '';
+    }
+
+    if (suggBox) {
+      var allEm = getMasterEmployees();
+      var norm = raw.toLowerCase();
+      var matches = allEm.filter(function(e) {
+        if (!e) return false;
+        var code = String(e.emp_id || e.code || '').toLowerCase();
+        var name = String(e.name || '').toLowerCase();
+        return code.includes(norm) || name.includes(norm);
+      }).slice(0, 6);
+
+      if (matches.length > 0 && (!emp || normalizeCode(raw) !== normalizeCode(emp.code))) {
+        var sHtml = '';
+        matches.forEach(function(m) {
+          var mCode = String(m.emp_id || m.code);
+          sHtml += '<div onclick="ATPLAdvanceManager.selectPendingDiffSuggestion(\'' + esc(mCode) + '\')" style="padding:9px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#fff" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+          sHtml += '  <div><strong style="color:#312e81;font-family:monospace">' + esc(mCode) + '</strong> — <span style="font-weight:750;color:#0f172a">' + esc(m.name || '') + '</span></div>';
+          sHtml += '  <div style="font-size:10px;color:#64748b">' + esc(m.dept || '') + '</div>';
+          sHtml += '</div>';
+        });
+        suggBox.innerHTML = sHtml;
+        suggBox.style.display = 'block';
+      } else {
+        suggBox.style.display = 'none';
+      }
+    }
+  }
+
+  function selectPendingDiffSuggestion(code) {
+    var inp = document.getElementById('advPdCode');
+    if (inp) {
+      inp.value = code;
+      onPendingDiffCodeInput(code);
+    }
+    var suggBox = document.getElementById('advPdSuggestions');
+    if (suggBox) suggBox.style.display = 'none';
+  }
+
+  function submitPendingDiffForm(openVoucherAfter) {
+    var code = (document.getElementById('advPdCode') || {}).value;
+    var voucherNo = (document.getElementById('advPdVoucherNo') || {}).value;
+    var empName = (document.getElementById('advPdEmpName') || {}).value;
+    var designation = (document.getElementById('advPdDesig') || {}).value;
+    var department = (document.getElementById('advPdDept') || {}).value;
+    var category = (document.getElementById('advPdCategory') || {}).value;
+    var monthKey = (document.getElementById('advPdMonth') || {}).value;
+    var entryDate = (document.getElementById('advPdDate') || {}).value;
+    var diffAmount = (document.getElementById('advPdAmount') || {}).value;
+    var paidNow = (document.getElementById('advPdPaidNow') || {}).value;
+    var signedBy = (document.getElementById('advPdSignedBy') || {}).value;
+    var remarks = (document.getElementById('advPdRemarks') || {}).value;
+    var errEl = document.getElementById('advPdError');
+
+    if (errEl) errEl.style.display = 'none';
+    if (!code || !String(code).trim()) {
+      if (errEl) { errEl.textContent = 'Please enter Employee Code.'; errEl.style.display = 'block'; }
+      return { ok: false, error: 'INVALID_CODE' };
+    }
+    if (!diffAmount || Number(diffAmount) <= 0) {
+      if (errEl) { errEl.textContent = 'Please enter a positive Pending Diff Amount.'; errEl.style.display = 'block'; }
+      return { ok: false, error: 'INVALID_AMOUNT' };
+    }
+
+    var res = addOrUpdatePendingDiff({
+      id: state.editingPendingDiffId || undefined,
+      voucherNo: voucherNo,
+      empCode: String(code).trim(),
+      empName: empName,
+      designation: designation,
+      department: department,
+      category: category,
+      monthKey: monthKey,
+      entryDate: entryDate,
+      diffAmount: Number(diffAmount),
+      paidAmount: Number(paidNow) || 0,
+      signedBy: signedBy,
+      remarks: remarks
+    });
+
+    if (res && res.ok) {
+      state.editingPendingDiffId = null;
+      state.activeTab = 'pending_diff';
+      renderUI();
+      if (openVoucherAfter) {
+        openPendingDiffVoucherModal(res.record.id);
+      } else {
+        closeModal();
+      }
+    }
+    return res;
+  }
+
+  function makeEmptyPendingDiffFeedRow() {
+    return { empCode: '', empName: '', category: 'Pending Salary', diffAmount: '', paidAmount: '', signedBy: 'Sarthak ji', remarks: '' };
+  }
+
+  function renderPendingDiffFeedRowsHtml() {
+    var rows = state.pendingDiffFeedRows || [];
+    var html = '';
+    rows.forEach(function(r, idx) {
+      html += '<tr style="border-bottom:1px solid #f1f5f9">';
+      html += '  <td style="padding:6px 8px;color:#94a3b8;font-size:10px;font-weight:700">' + (idx + 1) + '</td>';
+      html += '  <td style="padding:6px 8px"><input type="text" value="' + esc(r.empCode) + '" placeholder="Code" oninput="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'empCode\',this.value)" style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-family:monospace;font-weight:700"></td>';
+      html += '  <td style="padding:6px 8px"><input type="text" id="advPdFeedName_' + idx + '" value="' + esc(r.empName) + '" placeholder="Auto / Name" oninput="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'empName\',this.value)" style="width:145px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:600"></td>';
+      html += '  <td style="padding:6px 8px"><select onchange="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'category\',this.value)" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px">';
+      PENDING_DIFF_CATEGORIES.forEach(function(cat) {
+        html += '<option value="' + esc(cat) + '"' + (r.category === cat ? ' selected' : '') + '>' + esc(cat) + '</option>';
+      });
+      html += '  </select></td>';
+      html += '  <td style="padding:6px 8px"><input type="number" min="0" value="' + esc(r.diffAmount) + '" placeholder="0" oninput="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'diffAmount\',this.value)" style="width:95px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:700;text-align:right"></td>';
+      html += '  <td style="padding:6px 8px"><input type="number" min="0" value="' + esc(r.paidAmount) + '" placeholder="0" oninput="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'paidAmount\',this.value)" style="width:90px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;font-weight:700;text-align:right"></td>';
+      html += '  <td style="padding:6px 8px"><select onchange="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'signedBy\',this.value)" style="padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px">';
+      SIGNED_BY_OPTIONS.forEach(function(nm) {
+        html += '<option value="' + esc(nm) + '"' + (r.signedBy === nm ? ' selected' : '') + '>' + esc(nm) + '</option>';
+      });
+      html += '  </select></td>';
+      html += '  <td style="padding:6px 8px"><input type="text" value="' + esc(r.remarks) + '" placeholder="Remarks" oninput="ATPLAdvanceManager.updatePendingDiffFeedCell(' + idx + ',\'remarks\',this.value)" style="width:125px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"></td>';
+      html += '  <td style="padding:6px 8px;text-align:center"><button type="button" onclick="ATPLAdvanceManager.removePendingDiffFeedRow(' + idx + ')" style="border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;padding:4px 7px;font-size:10px;cursor:pointer">✕</button></td>';
+      html += '</tr>';
+    });
+    return html;
+  }
+
+  function openPendingDiffFeedModal(targetMonth) {
+    state.openHistoryEmpCode = null;
+    var mKey = /^\d{4}-\d{2}$/.test(String(targetMonth || '')) ? String(targetMonth) : (state.selectedMonth || new Date().toISOString().slice(0, 7));
+    var defaultDate = mKey + '-01';
+    if (!Array.isArray(state.pendingDiffFeedRows) || !state.pendingDiffFeedRows.length) {
+      state.pendingDiffFeedRows = [makeEmptyPendingDiffFeedRow(), makeEmptyPendingDiffFeedRow(), makeEmptyPendingDiffFeedRow()];
+    }
+    var modal = getOrCreateModal();
+    var c = '';
+    c += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    c += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:990px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+    c += '    <div style="padding:16px 22px;border-bottom:1px solid #fed7aa;display:flex;justify-content:space-between;align-items:center;background:#fff7ed">';
+    c += '      <div>';
+    c += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#9a3412;text-transform:uppercase">BULK MONTH-WISE PENDING DIFF FEED</div>';
+    c += '        <h3 style="margin:2px 0 0;font-size:18px;font-weight:850;color:#111827">⏳ Bulk Pending Diff Salary / Adv Entry</h3>';
+    c += '        <div style="font-size:11px;color:#475569;margin-top:2px">Emp Code dalte hi Name auto-fill hoga aur har row ka Cash Adv Voucher banega</div>';
+    c += '      </div>';
+    c += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #fdba74;background:#fff;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px">✕</button>';
+    c += '    </div>';
+    c += '    <div style="padding:12px 22px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">';
+    c += '      <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Target Month *</label><input type="month" id="advPdFeedMonth" value="' + esc(mKey) + '" onchange="var d=document.getElementById(\'advPdFeedDate\');if(d&&this.value)d.value=this.value+\'-01\'" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;background:#fff"></div>';
+    c += '      <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Voucher Date *</label><input type="date" id="advPdFeedDate" value="' + esc(defaultDate) + '" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;background:#fff"></div>';
+    c += '      <div style="margin-left:auto;display:flex;gap:8px"><button type="button" onclick="ATPLAdvanceManager.addPendingDiffFeedRows(1)" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">+ Row</button><button type="button" onclick="ATPLAdvanceManager.addPendingDiffFeedRows(5)" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">+ 5 Rows</button></div>';
+    c += '    </div>';
+    c += '    <div style="padding:14px 22px;overflow:auto;flex:1;background:#fff">';
+    c += '      <table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:left">';
+    c += '        <thead><tr style="background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800"><th style="padding:8px">#</th><th style="padding:8px">Emp Code *</th><th style="padding:8px">Employee Name</th><th style="padding:8px">Type</th><th style="padding:8px;text-align:right">Diff Amount</th><th style="padding:8px;text-align:right">Paid Now</th><th style="padding:8px">Director Sign</th><th style="padding:8px">Remarks</th><th style="padding:8px;text-align:center">Del</th></tr></thead>';
+    c += '        <tbody id="advPdFeedRowsBody">' + renderPendingDiffFeedRowsHtml() + '</tbody>';
+    c += '      </table>';
+    c += '      <div style="margin-top:12px;padding:10px 12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px">';
+    c += '        <div style="font-size:10px;font-weight:800;color:#475569;margin-bottom:4px">📋 Quick Paste (EmpCode, DiffAmount, Type[Salary/Advance], PaidNow, Remarks)</div>';
+    c += '        <div style="display:flex;gap:8px;align-items:flex-start"><textarea id="advPdFeedPasteBox" rows="2" placeholder="Example:\n25924, 1850, Pending Salary, 0, Oct Att Diff\n26002, 2500, Pending Advance, 2500, Cash Voucher" style="flex:1;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-family:monospace"></textarea><button type="button" onclick="ATPLAdvanceManager.parsePendingDiffFeedPaste()" style="height:40px;padding:0 14px;background:#7c2d12;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">Load Rows</button></div>';
+    c += '      </div>';
+    c += '      <div id="advPdFeedError" style="display:none;margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:700"></div>';
+    c += '    </div>';
+    c += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;background:#f8fafc">';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:9px 16px;background:#fff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.submitPendingDiffFeed()" style="padding:9px 20px;background:#7c2d12;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">💾 Save All &amp; Sync</button>';
+    c += '    </div>';
+    c += '  </div>';
+    c += '</div>';
+    modal.innerHTML = c;
+  }
+
+  function updatePendingDiffFeedCell(idx, field, value) {
+    if (!state.pendingDiffFeedRows || !state.pendingDiffFeedRows[idx]) return;
+    state.pendingDiffFeedRows[idx][field] = value;
+    if (field === 'empCode') {
+      var emp = findEmployeeByCode(value);
+      if (emp && emp.name) {
+        state.pendingDiffFeedRows[idx].empName = emp.name;
+        var inp = document.getElementById('advPdFeedName_' + idx);
+        if (inp) inp.value = emp.name;
+      }
+    }
+  }
+
+  function addPendingDiffFeedRows(count) {
+    if (!Array.isArray(state.pendingDiffFeedRows)) state.pendingDiffFeedRows = [];
+    for (var i = 0; i < (count || 1); i++) state.pendingDiffFeedRows.push(makeEmptyPendingDiffFeedRow());
+    var tb = document.getElementById('advPdFeedRowsBody');
+    if (tb) tb.innerHTML = renderPendingDiffFeedRowsHtml();
+  }
+
+  function removePendingDiffFeedRow(idx) {
+    if (!Array.isArray(state.pendingDiffFeedRows)) return;
+    state.pendingDiffFeedRows.splice(idx, 1);
+    if (!state.pendingDiffFeedRows.length) state.pendingDiffFeedRows.push(makeEmptyPendingDiffFeedRow());
+    var tb = document.getElementById('advPdFeedRowsBody');
+    if (tb) tb.innerHTML = renderPendingDiffFeedRowsHtml();
+  }
+
+  function parsePendingDiffFeedPaste() {
+    var box = document.getElementById('advPdFeedPasteBox');
+    var raw = box ? String(box.value || '').trim() : '';
+    if (!raw) return;
+    var parsed = [];
+    raw.split(/\r?\n/).forEach(function(line) {
+      var parts = line.split(/\t|,/).map(function(s) { return s.trim(); });
+      if (!parts[0]) return;
+      var code = parts[0];
+      var emp = findEmployeeByCode(code);
+      var catRaw = String(parts[2] || '').toLowerCase();
+      var cat = catRaw.indexOf('adv') >= 0 ? 'Pending Advance' : (catRaw.indexOf('diff') >= 0 ? 'Diff Amount' : 'Pending Salary');
+      parsed.push({
+        empCode: code,
+        empName: (emp && emp.name) || '',
+        category: cat,
+        diffAmount: parts[1] ? String(parseMoney(parts[1]) || '') : '',
+        paidAmount: parts[3] ? String(parseMoney(parts[3]) || '') : '',
+        signedBy: 'Sarthak ji',
+        remarks: parts[4] || ''
+      });
+    });
+    if (parsed.length) {
+      state.pendingDiffFeedRows = parsed;
+      var tb = document.getElementById('advPdFeedRowsBody');
+      if (tb) tb.innerHTML = renderPendingDiffFeedRowsHtml();
+      if (box) box.value = '';
+    }
+  }
+
+  function submitPendingDiffFeedBatch(rows, entryDate, targetMonth) {
+    var errEl = document.getElementById('advPdFeedError');
+    var cleanDate = /^\d{4}-\d{2}-\d{2}$/.test(String(entryDate || '').trim())
+      ? String(entryDate).trim()
+      : (targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) ? (targetMonth + '-01') : new Date().toISOString().slice(0, 10));
+    var mKey = /^\d{4}-\d{2}$/.test(String(targetMonth || '')) ? String(targetMonth) : cleanDate.slice(0, 7);
+    var created = [];
+    (rows || []).forEach(function(r) {
+      if (!r) return;
+      var code = String(r.empCode || '').trim();
+      var amt = round2(Number(r.diffAmount) || 0);
+      if (!code || amt <= 0) return;
+      var res = addOrUpdatePendingDiff({
+        empCode: code,
+        empName: r.empName,
+        category: r.category || 'Pending Salary',
+        monthKey: mKey,
+        entryDate: cleanDate,
+        diffAmount: amt,
+        paidAmount: round2(Number(r.paidAmount) || 0),
+        signedBy: r.signedBy || 'Sarthak ji',
+        remarks: r.remarks || ('Month Feed (' + formatMonthKeyLabel(mKey) + ')'),
+        skipRemoteSync: true
+      });
+      if (res && res.ok && res.record) created.push(res.record);
+    });
+    if (!created.length) {
+      if (errEl) {
+        errEl.textContent = 'Please enter at least one valid row with Emp Code and Pending Diff Amount.';
+        errEl.style.display = 'block';
+      }
+      return { ok: false, count: 0 };
+    }
+    state.selectedMonth = mKey;
+    state.activeTab = 'pending_diff';
+    state.pendingDiffFeedRows = [];
+    recalculateAllBalances();
+    saveToLocal();
+    renderUI();
+    pushAuthoritativeToCloud().then(function(res) {
+      broadcastSync('pending_diffs_updated', { count: created.length });
+      if (window.showToast) {
+        window.showToast('✅ Saved ' + created.length + ' Pending Diff entry(s) & ' + (res && res.ok ? 'synced!' : 'saved locally!'));
+      }
+    });
+    return { ok: true, count: created.length, records: created };
+  }
+
+  function submitPendingDiffFeed() {
+    var mVal = (document.getElementById('advPdFeedMonth') || {}).value;
+    var dVal = (document.getElementById('advPdFeedDate') || {}).value;
+    var res = submitPendingDiffFeedBatch(state.pendingDiffFeedRows, dVal, mVal);
+    if (res && res.ok) closeModal();
+    return res;
+  }
+
+  function openSettlePendingDiffModal(id) {
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id; });
+    if (!rec) return;
+    var today = new Date().toISOString().slice(0, 10);
+    var modal = getOrCreateModal();
+    var c = '';
+    c += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.48);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    c += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:480px;width:100%;box-shadow:0 20px 40px rgba(15,23,42,0.2);overflow:hidden">';
+    c += '    <div style="padding:16px 20px;border-bottom:1px solid #ccfbf1;display:flex;justify-content:space-between;align-items:center;background:#f0fdfa">';
+    c += '      <div><div style="font-size:9px;font-weight:900;color:#0f766e;text-transform:uppercase">CASH ADV VOUCHER PAYOUT</div><h3 style="margin:2px 0 0;font-size:17px;font-weight:850;color:#111827">💸 Settle Pending Diff Amount</h3></div>';
+    c += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #99f6e4;background:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer">✕</button>';
+    c += '    </div>';
+    c += '    <div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">';
+    c += '      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">';
+    c += '        <div><div style="font-weight:800;color:#312e81">' + esc(rec.empName) + ' (' + esc(rec.empCode) + ')</div><div style="font-size:10.5px;color:#64748b">' + esc(rec.voucherNo) + ' · ' + esc(rec.category) + '</div></div>';
+    c += '        <div style="text-align:right"><div style="font-size:9.5px;color:#64748b;font-weight:800">Pending Bal</div><div style="font-size:15px;font-weight:850;color:#dc2626">' + formatINR(rec.pendingBalance) + '</div></div>';
+    c += '      </div>';
+    c += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    c += '        <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Payout Date *</label><input type="date" id="advPdSettleDate" value="' + today + '" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px"></div>';
+    c += '        <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Cash Adv Voucher Amount *</label><input type="number" id="advPdSettleAmt" value="' + rec.pendingBalance + '" min="1" step="any" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;font-weight:800"></div>';
+    c += '      </div>';
+    c += '      <div style="display:grid;grid-template-columns:1fr 1.3fr;gap:10px">';
+    c += '        <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Signed By (Director) *</label><select id="advPdSettleSign" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:700">';
+    SIGNED_BY_OPTIONS.forEach(function(nm) {
+      c += '<option value="' + esc(nm) + '"' + (rec.signedBy === nm ? ' selected' : '') + '>' + esc(nm) + '</option>';
+    });
+    c += '</select></div>';
+    c += '        <div><label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Remarks</label><input type="text" id="advPdSettleRemarks" placeholder="e.g. Paid via Cash Adv Voucher" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:12px"></div>';
+    c += '      </div>';
+    c += '      <div id="advPdSettleErr" style="display:none;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-size:11px;font-weight:700"></div>';
+    c += '    </div>';
+    c += '    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;background:#f8fafc">';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 14px;background:#fff;border:1px solid #d1d5db;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    c += '      <button type="button" onclick="ATPLAdvanceManager.submitSettlePendingDiff(\'' + esc(rec.id) + '\')" style="padding:8px 18px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">✅ Pay &amp; Print Cash Adv Voucher</button>';
+    c += '    </div>';
+    c += '  </div>';
+    c += '</div>';
+    modal.innerHTML = c;
+  }
+
+  function submitSettlePendingDiff(id) {
+    var dVal = (document.getElementById('advPdSettleDate') || {}).value;
+    var aVal = (document.getElementById('advPdSettleAmt') || {}).value;
+    var sVal = (document.getElementById('advPdSettleSign') || {}).value;
+    var rVal = (document.getElementById('advPdSettleRemarks') || {}).value;
+    var errEl = document.getElementById('advPdSettleErr');
+    var res = settlePendingDiff(id, { date: dVal, amount: Number(aVal), signedBy: sVal, remarks: rVal });
+    if (res && res.ok) {
+      openPendingDiffVoucherModal(id);
+    } else if (errEl) {
+      errEl.textContent = (res && res.error === 'EXCEEDS_BALANCE')
+        ? ('Amount cannot exceed pending balance (' + formatINR(res.available) + ').')
+        : 'Please enter a valid payout amount.';
+      errEl.style.display = 'block';
+    }
+    return res;
+  }
+
+  function buildPendingDiffVoucherDocHtml(rec, mode) {
+    if (!rec) return '';
+    normalizePendingDiffRecord(rec);
+    var amtWords = numberToIndianWords(rec.diffAmount) + ' Rupees Only';
+    var dateDisplay = formatDisplayDateDDMMYYYY(rec.entryDate);
+    var monthDisplay = formatMonthKeyLabel(rec.monthKey);
+    var docTitle = 'Cash Adv Voucher - ' + rec.voucherNo + ' - ' + rec.empName;
+
+    var settleRows = '';
+    if (Array.isArray(rec.settlements) && rec.settlements.length > 0) {
+      settleRows = '<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:11px">' +
+        '<thead><tr style="background:#f8fafc"><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:left">Pay Date</th><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:left">Mode</th><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:left">Director Sign</th><th style="border:1px solid #cbd5e1;padding:5px 8px;text-align:right">Paid Amount</th></tr></thead><tbody>';
+      rec.settlements.forEach(function(st) {
+        settleRows += '<tr><td style="border:1px solid #cbd5e1;padding:5px 8px">' + esc(formatDisplayDateDDMMYYYY(st.date)) + '</td><td style="border:1px solid #cbd5e1;padding:5px 8px">' + esc(st.mode || 'Cash Adv Voucher') + '</td><td style="border:1px solid #cbd5e1;padding:5px 8px">' + esc(st.signedBy || rec.signedBy) + '</td><td style="border:1px solid #cbd5e1;padding:5px 8px;text-align:right;font-weight:700">' + formatINR(st.amount) + '</td></tr>';
+      });
+      settleRows += '</tbody></table>';
+    }
+
+    var directorsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:26px"><tr>';
+    directorsHtml += '<td style="width:24%;text-align:center;vertical-align:bottom;padding:8px 6px"><div style="border-top:1px solid #334155;padding-top:5px;font-size:11px;font-weight:800;color:#111827">' + esc(rec.empName) + '</div><div style="font-size:10px;color:#475569">Receiver Sign (' + esc(rec.empCode) + ')</div></td>';
+    SIGNED_BY_OPTIONS.forEach(function(dirName) {
+      var isSelected = rec.signedBy === dirName;
+      directorsHtml += '<td style="width:25.3%;text-align:center;vertical-align:bottom;padding:8px 6px">' +
+        '<div style="font-size:10px;font-weight:800;color:' + (isSelected ? '#0f766e' : '#64748b') + ';margin-bottom:22px">' + (isSelected ? ('✔ Approved (' + esc(dirName) + ')') : '&nbsp;') + '</div>' +
+        '<div style="border-top:1px solid #334155;padding-top:5px;font-size:11px;font-weight:800;color:#111827">' + esc(dirName) + '</div>' +
+        '<div style="font-size:9.5px;color:#475569">Director · Arora Textiles Pvt. Ltd.</div>' +
+      '</td>';
+    });
+    directorsHtml += '</tr></table>';
+
+    var bodyHtml = '<div style="border:2px solid #1e293b;padding:20px 22px;background:#fff;color:#111827;font-family:Segoe UI,Arial,sans-serif">' +
+      '<div style="text-align:center;border-bottom:2px solid #1e293b;padding-bottom:10px;margin-bottom:14px">' +
+      '  <div style="font-size:18px;font-weight:900;letter-spacing:1px;color:#0f172a">ARORA TEXTILES PRIVATE LIMITED</div>' +
+      '  <div style="font-size:11px;font-weight:700;color:#475569;margin-top:2px">CASH ADVANCE / PENDING DIFF VOUCHER</div>' +
+      '</div>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px">' +
+      '  <tr>' +
+      '    <td style="padding:4px 0"><strong>Voucher No:</strong> <span style="font-family:monospace;font-weight:800">' + esc(rec.voucherNo) + '</span></td>' +
+      '    <td style="padding:4px 0;text-align:right"><strong>Date:</strong> ' + esc(dateDisplay) + '</td>' +
+      '  </tr>' +
+      '  <tr>' +
+      '    <td style="padding:4px 0"><strong>Month (Period):</strong> ' + esc(monthDisplay) + '</td>' +
+      '    <td style="padding:4px 0;text-align:right"><strong>Category:</strong> ' + esc(rec.category) + '</td>' +
+      '  </tr>' +
+      '</table>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">' +
+      '  <tr><td style="border:1px solid #cbd5e1;padding:7px 10px;background:#f8fafc;width:28%;font-weight:700">Employee Code</td><td style="border:1px solid #cbd5e1;padding:7px 10px;font-family:monospace;font-weight:800">' + esc(rec.empCode) + '</td><td style="border:1px solid #cbd5e1;padding:7px 10px;background:#f8fafc;width:20%;font-weight:700">Department</td><td style="border:1px solid #cbd5e1;padding:7px 10px">' + esc(rec.department || '-') + '</td></tr>' +
+      '  <tr><td style="border:1px solid #cbd5e1;padding:7px 10px;background:#f8fafc;font-weight:700">Payee Name</td><td style="border:1px solid #cbd5e1;padding:7px 10px;font-weight:800">' + esc(rec.empName) + '</td><td style="border:1px solid #cbd5e1;padding:7px 10px;background:#f8fafc;font-weight:700">Designation</td><td style="border:1px solid #cbd5e1;padding:7px 10px">' + esc(rec.designation || '-') + '</td></tr>' +
+      '  <tr><td style="border:1px solid #cbd5e1;padding:7px 10px;background:#f8fafc;font-weight:700">Particulars / Reason</td><td colspan="3" style="border:1px solid #cbd5e1;padding:7px 10px">' + esc(rec.remarks || (rec.category + ' for ' + monthDisplay)) + '</td></tr>' +
+      '</table>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px">' +
+      '  <tr style="background:#f8fafc"><th style="border:1px solid #cbd5e1;padding:7px 10px;text-align:left">Description</th><th style="border:1px solid #cbd5e1;padding:7px 10px;text-align:right">Amount (₹)</th></tr>' +
+      '  <tr><td style="border:1px solid #cbd5e1;padding:7px 10px">Total Pending Diff Amount (' + esc(rec.category) + ' · ' + esc(monthDisplay) + ')</td><td style="border:1px solid #cbd5e1;padding:7px 10px;text-align:right;font-weight:800">' + formatINR(rec.diffAmount) + '</td></tr>' +
+      '  <tr><td style="border:1px solid #cbd5e1;padding:7px 10px">Cash Adv Paid / Disbursed</td><td style="border:1px solid #cbd5e1;padding:7px 10px;text-align:right;font-weight:700;color:#15803d">' + formatINR(rec.paidAmount) + '</td></tr>' +
+      '  <tr style="background:#fffbeb"><td style="border:1px solid #cbd5e1;padding:7px 10px;font-weight:800">Remaining Pending Diff Balance</td><td style="border:1px solid #cbd5e1;padding:7px 10px;text-align:right;font-weight:900;color:' + (rec.pendingBalance > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(rec.pendingBalance) + ' (' + esc(rec.status) + ')</td></tr>' +
+      '</table>' +
+      '<div style="font-size:11.5px;padding:6px 10px;background:#f8fafc;border:1px solid #cbd5e1"><strong>Amount in Words:</strong> ' + esc(amtWords) + '</div>' +
+      settleRows +
+      '<div style="margin-top:14px;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.6px">Authorized Directors Signatory &amp; Approval</div>' +
+      directorsHtml +
+    '</div>';
+
+    if (mode === 'fragment') return bodyHtml;
+    var ns = mode === 'word' ? ' xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"' : '';
+    return '<!DOCTYPE html><html' + ns + '><head><meta charset="utf-8"><title>' + esc(docTitle) + '</title>' +
+      '<style>@page{size:A4;margin:14mm;}body{font-family:Segoe UI,Arial,sans-serif;margin:0;padding:12px;color:#111827;background:#fff;}</style>' +
+      '</head><body>' + bodyHtml + '</body></html>';
+  }
+
+  function openPendingDiffVoucherModal(id) {
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id; });
+    if (!rec) return;
+    var modal = getOrCreateModal();
+    var previewHtml = buildPendingDiffVoucherDocHtml(rec, 'fragment');
+    var c = '';
+    c += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    c += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:780px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.25);overflow:hidden">';
+    c += '    <div style="padding:14px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">';
+    c += '      <div><div style="font-size:9px;font-weight:900;color:#0f766e;text-transform:uppercase">ATPL CASH ADV VOUCHER · DIRECTORS AUTHORIZED</div><h3 style="margin:2px 0 0;font-size:17px;font-weight:850;color:#111827">🧾 ' + esc(rec.voucherNo) + ' — ' + esc(rec.empName) + '</h3></div>';
+    c += '      <div style="display:flex;gap:8px;align-items:center">';
+    c += '        <button type="button" onclick="ATPLAdvanceManager.printPendingDiffVoucher(\'' + esc(rec.id) + '\')" style="padding:7px 14px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🖨 Print / PDF</button>';
+    c += '        <button type="button" onclick="ATPLAdvanceManager.downloadPendingDiffVoucherDoc(\'' + esc(rec.id) + '\')" style="padding:7px 14px;background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">⬇ Download .doc</button>';
+    c += '        <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #d1d5db;background:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer">✕</button>';
+    c += '      </div>';
+    c += '    </div>';
+    c += '    <div style="padding:18px 22px;overflow:auto;flex:1;background:#f1f5f9">' + previewHtml + '</div>';
+    c += '    <div style="padding:12px 20px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:8px;background:#fff">';
+    if (rec.pendingBalance > 0) {
+      c += '      <button type="button" onclick="ATPLAdvanceManager.openSettlePendingDiffModal(\'' + esc(rec.id) + '\')" style="padding:8px 14px;background:#b45309;color:#fff;border:none;border-radius:8px;font-size:11.5px;font-weight:800;cursor:pointer">💸 Pay / Settle Amount</button>';
+    }
+    c += '      <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 16px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:11.5px;font-weight:800;cursor:pointer">Close</button>';
+    c += '    </div>';
+    c += '  </div>';
+    c += '</div>';
+    modal.innerHTML = c;
+  }
+
+  function downloadPendingDiffVoucherDoc(id) {
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id; });
+    if (!rec) return false;
+    var html = buildPendingDiffVoucherDocHtml(rec, 'word');
+    var safeName = String(rec.voucherNo + '_' + rec.empCode + '_' + rec.empName).replace(/[^a-zA-Z0-9_-]+/g, '_');
+    var filename = 'Cash_Adv_Voucher_' + safeName + '.doc';
+    try {
+      if (typeof window.Blob === 'function' && window.URL && typeof window.URL.createObjectURL === 'function' && document && document.createElement) {
+        var blob = new window.Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { try { window.URL.revokeObjectURL(url); } catch (_) {} }, 1500);
+      }
+      if (window.showToast) window.showToast('⬇ Downloaded ' + filename);
+      return { ok: true, filename: filename, html: html };
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function printPendingDiffVoucher(id) {
+    var rec = (state.pendingDiffs || []).find(function(p) { return p && p.id === id; });
+    if (!rec) return false;
+    var docHtml = buildPendingDiffVoucherDocHtml(rec, 'print');
+    try {
+      var old = document.getElementById('atplPendingDiffPrintFrame');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      var iframe = document.createElement('iframe');
+      iframe.id = 'atplPendingDiffPrintFrame';
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+      document.body.appendChild(iframe);
+      var cw = iframe.contentWindow;
+      var cdoc = cw ? cw.document : iframe.contentDocument;
+      if (cdoc) {
+        cdoc.open();
+        cdoc.write(docHtml);
+        cdoc.close();
+      }
+      setTimeout(function() {
+        try { if (cw) { cw.focus(); cw.print(); } } catch (_) {}
+      }, 150);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── 8. EXPORT CSV ──
   function exportDataCSV() {
     if (!state.advances.length) {
@@ -3660,6 +4910,8 @@
     },
     getAllAdvances: function() { return state.advances; },
     getAllDeductions: function() { return state.deductions; },
+    getAllPendingDiffs: function() { return state.pendingDiffs; },
+    getPendingDiffMonthlySummary: getPendingDiffMonthlySummary,
     getEmployeeOutstandingBalance: getEmployeeOutstandingBalance,
     getEmployeeHistoryData: getEmployeeHistoryData,
     getMonthAnalytics: getMonthAnalytics,
@@ -3671,6 +4923,27 @@
     deductAdvanceManually: deductAdvanceManually,
     deleteDeduction: deleteDeduction,
     confirmDeleteDeduction: confirmDeleteDeduction,
+    addOrUpdatePendingDiff: addOrUpdatePendingDiff,
+    settlePendingDiff: settlePendingDiff,
+    deletePendingDiff: deletePendingDiff,
+    confirmDeletePendingDiff: confirmDeletePendingDiff,
+    buildPendingDiffVoucherDocHtml: buildPendingDiffVoucherDocHtml,
+    openPendingDiffModal: openPendingDiffModal,
+    openPendingDiffFeedModal: openPendingDiffFeedModal,
+    openPendingDiffVoucherModal: openPendingDiffVoucherModal,
+    openSettlePendingDiffModal: openSettlePendingDiffModal,
+    onPendingDiffCodeInput: onPendingDiffCodeInput,
+    selectPendingDiffSuggestion: selectPendingDiffSuggestion,
+    submitPendingDiffForm: submitPendingDiffForm,
+    updatePendingDiffFeedCell: updatePendingDiffFeedCell,
+    addPendingDiffFeedRows: addPendingDiffFeedRows,
+    removePendingDiffFeedRow: removePendingDiffFeedRow,
+    parsePendingDiffFeedPaste: parsePendingDiffFeedPaste,
+    submitPendingDiffFeedBatch: submitPendingDiffFeedBatch,
+    submitPendingDiffFeed: submitPendingDiffFeed,
+    submitSettlePendingDiff: submitSettlePendingDiff,
+    downloadPendingDiffVoucherDoc: downloadPendingDiffVoucherDoc,
+    printPendingDiffVoucher: printPendingDiffVoucher,
     processSalaryFile: processSalaryFile,
     processAllSalaryFiles: processAllSalaryFiles,
     renderUI: renderUI,
@@ -3725,6 +4998,14 @@
       state.deductionSourceFilter = src || 'ALL';
       renderUI();
     },
+    setPendingDiffStatusFilter: function(st) {
+      state.pendingDiffStatusFilter = st || 'ALL';
+      renderUI();
+    },
+    setPendingDiffCategoryFilter: function(cat) {
+      state.pendingDiffCategoryFilter = cat || 'ALL';
+      renderUI();
+    },
     setHistoryFilter: function(src) {
       state.historySourceFilter = src || 'ALL';
       if (state.openHistoryEmpCode) {
@@ -3765,7 +5046,7 @@
       if (btn) btn.innerHTML = '<span>🔄</span> Sync';
       if (res && res.ok) {
         if (window.showToast) {
-          window.showToast('✅ Synchronized ' + state.advances.length + ' advances and ' + state.deductions.length + ' deductions from cloud!');
+          window.showToast('✅ Synchronized ' + state.advances.length + ' advances, ' + state.deductions.length + ' deductions & ' + state.pendingDiffs.length + ' pending diffs from cloud!');
         }
       } else {
         if (window.showToast) {

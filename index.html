@@ -9341,6 +9341,126 @@ var EMP_MASTER_DATA = [{"emp_id": "00135", "name": "SAMPAT LAL", "father": "SOHA
 // Ensure EMP_MASTER_DATA exists (fallback empty)
 if(typeof EMP_MASTER_DATA === 'undefined') var EMP_MASTER_DATA = [];
 
+// Capture immutable inline seed lookup BEFORE localStorage/sync mutates EMP_MASTER_DATA
+(function(){
+  if (typeof window === 'undefined' || window.__ATPL_SEED_EMP_MAP__) return;
+  var m = {};
+  if (Array.isArray(EMP_MASTER_DATA)) {
+    for (var i = 0; i < EMP_MASTER_DATA.length; i++) {
+      var r = EMP_MASTER_DATA[i];
+      if (!r || !r.emp_id) continue;
+      var k = String(r.emp_id).toUpperCase().trim().replace(/^0+/, '') || String(r.emp_id).toUpperCase().trim();
+      if (k && !m[k]) {
+        m[k] = {
+          pf_no: String(r.pf_no || '').trim(),
+          esi_no: String(r.esi_no || '').trim(),
+          account_no: String(r.account_no || '').trim()
+        };
+      }
+    }
+  }
+  window.__ATPL_SEED_EMP_MAP__ = m;
+})();
+
+function atplSanitizeEmployeePfAccount(emp, seedMapOverride) {
+  if (!emp || typeof emp !== 'object') return emp;
+  var norm = function(v) { return String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase().trim(); };
+  var cleanNum = function(v) {
+    if (typeof cleanAccountNo === 'function') return cleanAccountNo(v);
+    return norm(v).replace(/[\-_]/g, '');
+  };
+  var isNA = function(v) {
+    var s = norm(v);
+    return !s || s === 'NA' || s === 'N/A' || s === 'NIL' || s === 'NONE' || s === '-' || s === '—';
+  };
+  var isUAN = function(v) { return /^10\d{10}$/.test(norm(v)); };
+  var isIFSC = function(v) { return /^[A-Z]{4}0[A-Z0-9]{6}$/.test(norm(v)); };
+  var isPaymentsBankAc = function(rec) {
+    var ifscStr = norm(rec.ifsc);
+    var bankStr = String(rec.bank_name || '').toUpperCase();
+    return /^AIRP/.test(ifscStr) || /AIRTEL/.test(bankStr) || /^PYTM/.test(ifscStr) || /^JIOP/.test(ifscStr);
+  };
+
+  var seedLookup = seedMapOverride || (typeof window !== 'undefined' && window.__ATPL_SEED_EMP_MAP__) || {};
+  var rawId = String(emp.emp_id || emp.empCode || emp.employee_code || emp.code || '').toUpperCase().trim();
+  var keyId = rawId.replace(/^0+/, '') || rawId;
+  var seed = seedLookup[keyId] || seedLookup[rawId] || null;
+
+  var pf = norm(emp.pf_no);
+  if (isNA(pf)) pf = 'NA';
+  var ac = cleanNum(emp.account_no);
+  if (isNA(ac)) ac = '';
+  var aad = norm(emp.aadhaar_no).replace(/\D/g, '');
+  var ph = norm(emp.phone_no).replace(/\D/g, '');
+  var esi = norm(emp.esi_no);
+  var ifscVal = norm(emp.ifsc);
+  var payBank = isPaymentsBankAc(emp);
+
+  // 1. Misplaced IFSC code in pf_no or account_no
+  if (pf !== 'NA' && isIFSC(pf)) {
+    if (!ifscVal) { emp.ifsc = pf; ifscVal = pf; }
+    pf = 'NA';
+  }
+  if (ac && isIFSC(ac)) {
+    if (!ifscVal) { emp.ifsc = ac; ifscVal = ac; }
+    ac = '';
+  }
+
+  // 2. Aadhaar wrongly placed into account_no or pf_no
+  if (ac && aad && ac === aad) ac = '';
+  if (pf !== 'NA' && !isUAN(pf) && aad && pf === aad) pf = 'NA';
+
+  // 3. Phone number wrongly placed into non-PaymentsBank account_no or pf_no
+  if (ac && ph && ac === ph && !payBank) ac = '';
+
+  // 4. Swapped PF(Bank A/C) <-> A/C(UAN)
+  if (pf !== 'NA' && !isUAN(pf) && ac && isUAN(ac)) {
+    var tmp = pf;
+    pf = ac;
+    ac = tmp;
+  }
+
+  // 5. Real bank account sitting in pf_no while account_no was missing/cleared
+  if (!ac && pf !== 'NA' && !isUAN(pf) && !isIFSC(pf) && (!aad || pf !== aad) && (!esi || isNA(esi) || pf !== esi)) {
+    var looksLikeValidAc = /^\d{8,22}$/.test(pf) && (!(ph && pf === ph) || payBank);
+    if (looksLikeValidAc) {
+      ac = pf;
+      pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && (!ph || norm(seed.pf_no) !== ph)) ? norm(seed.pf_no) : 'NA';
+    }
+  }
+
+  // 6. Resolve exact pf_no === account_no collisions
+  if (pf !== 'NA' && ac && pf === ac) {
+    if (isUAN(pf)) {
+      var seedAc = seed ? cleanNum(seed.account_no) : '';
+      ac = (seedAc && !isNA(seedAc) && seedAc !== pf && (!aad || seedAc !== aad)) ? seedAc : '';
+    } else {
+      var seedPf = seed ? norm(seed.pf_no) : '';
+      pf = (seedPf && !isNA(seedPf) && seedPf !== ac && (!ph || seedPf !== ph)) ? seedPf : 'NA';
+    }
+  }
+
+  // 7. Phone / ESI left in pf_no
+  if (pf !== 'NA' && !isUAN(pf) && ph && pf === ph) {
+    pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && norm(seed.pf_no) !== ph) ? norm(seed.pf_no) : 'NA';
+  }
+  if (pf !== 'NA' && !isUAN(pf) && !isNA(esi) && pf === esi) {
+    pf = 'NA';
+  }
+  if (ac && aad && ac === aad) ac = '';
+  if (ac && ph && ac === ph && !payBank) ac = '';
+  if (pf !== 'NA' && ac && pf === ac) {
+    if (isUAN(pf)) ac = ''; else pf = 'NA';
+  }
+
+  emp.pf_no = pf;
+  emp.account_no = ac;
+  return emp;
+}
+if (typeof window !== 'undefined') {
+  window.atplSanitizeEmployeePfAccount = atplSanitizeEmployeePfAccount;
+}
+
 var EM = {
   data: EMP_MASTER_DATA,  // working copy
   filtered: [],
@@ -9473,9 +9593,26 @@ function emInit() {
       }
     }
 
+    // Clean any legacy PF / Bank Account collisions before caching & rendering
+    if (Array.isArray(EM.data) && EM.data.length > 0) {
+      var sanitizedDirty = false;
+      EM.data.forEach(function(e){
+        if (!e) return;
+        var beforePf = e.pf_no, beforeAc = e.account_no;
+        atplSanitizeEmployeePfAccount(e);
+        if (e.pf_no !== beforePf || e.account_no !== beforeAc) sanitizedDirty = true;
+      });
+      if (sanitizedDirty) {
+        try {
+          localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
+        } catch(_) {}
+      }
+    }
+
     // Single Source of Truth: sync authoritative Employee Master from server or static data
     var applySyncedRecords = function(recs, fromStaticCdn) {
       if (!Array.isArray(recs)) return;
+      recs.forEach(function(e){ if (e) atplSanitizeEmployeePfAccount(e); });
       var isCleared = (localStorage.getItem('ATPL_EMP_MASTER_CLEARED_V1') === 'true' || localStorage.getItem('AroraTextilesEmployeeMasterV3') === '[]');
       if (fromStaticCdn && ((EM && Array.isArray(EM.data) && EM.data.length > 0) || isCleared)) {
         return;
@@ -9547,11 +9684,12 @@ function emInit() {
     try {
       localStorage.setItem('AroraTextilesEmployeeMasterV3', JSON.stringify(EM.data));
     } catch(_) {}
-    // Ensure bank/ifsc/account fields exist
+    // Ensure bank/ifsc/account fields exist and remain distinct from PF
     EM.data.forEach(function(e){
       if(!e.bank_name) e.bank_name = '';
       if(!e.ifsc)      e.ifsc = '';
       if(!e.account_no) e.account_no = '';
+      atplSanitizeEmployeePfAccount(e);
     });
     EM.filtered = EM.data.slice();
     emBuildDeptFilter();
@@ -10105,6 +10243,18 @@ function emSaveModal() {
     else newEmp[f.key] = val.toUpperCase();
   });
   if(!valid){ alert('Mandatory fields fill karo!'); return; }
+  var pfChk = String(newEmp.pf_no || '').replace(/\s+/g, '').toUpperCase();
+  var acChk = String(newEmp.account_no || '').replace(/\s+/g, '').toUpperCase();
+  if (pfChk && pfChk !== 'NA' && acChk && pfChk === acChk) {
+    var pfInput = document.getElementById('emf_pf_no');
+    var acInput = document.getElementById('emf_account_no');
+    if (pfInput) pfInput.style.borderColor = '#dc2626';
+    if (acInput) acInput.style.borderColor = '#dc2626';
+    alert('⚠️ PF / UAN Number aur Bank Account Number ek jaise (same) nahi ho sakte! Kripya dono alag-alag sahi field mein daalein.');
+    if (pfInput) pfInput.focus();
+    return;
+  }
+  atplSanitizeEmployeePfAccount(newEmp);
 
   if(EM.editIdx >= 0) {
     EM.data[EM.editIdx] = Object.assign(EM.data[EM.editIdx], newEmp);
@@ -11371,12 +11521,16 @@ function matchColumnHeader(header, counts) {
   }
   if (/permanent\s*state/.test(s)) return 'permanent_state';
 
+  // Check PF / UAN & ESI BEFORE Bank Account (prevents "P.F. A/C No" or "ESI A/C" matching account|ac)
+  if (/\b(?:pf|p\s*f|epf|uan|provident\s*fund)\b/i.test(s)) return 'pf_no';
+  if (/\b(?:esi|e\s*s\s*i|esic|e\s*s\s*i\s*c|ip\s*no|ip\s*number)\b/i.test(s) && !/aadhaar|aadhar|adhar|uid/i.test(s)) return 'esi_no';
+
   // Check IFSC FIRST (before anything with "code")
   if (/(?:^|\s)(?:ifsc|ifs|rtgs|neft)(?:\s|$)/i.test(s) || /ifsc/i.test(raw)) return 'ifsc';
 
   // Check Bank Account (supports A.C, A/C, A.C NO, ACC NO, etc.)
   if (/(?:^|\s)(?:account|ac|acc|khata)(?:\s|$)/i.test(s) || /\b(?:a\s+c)\b/i.test(s) || /a[\/.]c/i.test(raw.toLowerCase()) || /account\s*no/i.test(s) || /bank\s*a/i.test(s) || /(?:^|\s)a\.c\b/i.test(raw) || /accnt/i.test(s)) {
-    if (!/pf|esi|uan/i.test(s)) return 'account_no';
+    if (!/\b(?:pf|p\s*f|epf|esi|esic|uan)\b/i.test(s)) return 'account_no';
   }
 
   // Check Bank Name
@@ -11437,10 +11591,10 @@ function matchColumnHeader(header, counts) {
   // Check PAN
   if (/\b(?:pan|pan\s*no|pan\s*number)\b/i.test(s)) return 'pan_no';
 
-  // Check PF / UAN
+  // Check PF / UAN fallback
   if (/\b(?:pf|uan|pf\s*no|uan\s*no)\b/i.test(s)) return 'pf_no';
 
-  // Check ESI / IP
+  // Check ESI / IP fallback
   if (/\b(?:esi|esic|ip\s*no|ip\s*number)\b/i.test(s)) return 'esi_no';
 
   // Check Salary fields (comprehensive pattern matching for Basic, HRA, Gross)
@@ -11541,10 +11695,11 @@ function auditAndCleanEmployee(emp, rawCols) {
     if (!x) return false;
     var s = cleanAccountNo(x);
     if (/^\d{8,22}$/.test(s)) {
-      if (emp.phone_no && s === emp.phone_no) return false;
-      if (emp.aadhaar_no && s === emp.aadhaar_no) return false;
+      if (emp.phone_no && s === emp.phone_no && !(/^AIRP/i.test(cleanIfsc(emp.ifsc)) || /AIRTEL/i.test(String(emp.bank_name || '')))) return false;
+      if (emp.aadhaar_no && s === String(emp.aadhaar_no).replace(/\D/g, '')) return false;
       if (emp.pf_no && s === emp.pf_no) return false;
       if (emp.esi_no && s === emp.esi_no) return false;
+      if (/^10\d{10}$/.test(s)) return false; // 12-digit UAN (starts with 10) is NEVER a bank account
       return true;
     }
     return false;
@@ -11561,17 +11716,15 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   }
 
-  // B. Aadhaar & PF/UAN
+  // B. Aadhaar & PF/UAN (strictly require 10-prefix for 12-digit UAN so IPPB/Canara bank A/C is never placed in pf_no)
   if (Array.isArray(rawCols)) {
     for (var a = 0; a < rawCols.length; a++) {
       var d12 = String(rawCols[a] || "").replace(/\D/g, "");
       if (d12.length === 12 && d12 !== emp.phone_no) {
-        if (/^10/.test(d12)) {
-          if (!emp.pf_no) emp.pf_no = d12;
-          else if (!emp.aadhaar_no && emp.pf_no !== d12) emp.aadhaar_no = d12;
+        if (/^10\d{10}$/.test(d12)) {
+          if (!emp.pf_no || emp.pf_no === 'NA') emp.pf_no = d12;
         } else {
-          if (!emp.aadhaar_no) emp.aadhaar_no = d12;
-          else if (!emp.pf_no && emp.aadhaar_no !== d12) emp.pf_no = d12;
+          if (!emp.aadhaar_no && d12 !== cleanAccountNo(emp.account_no)) emp.aadhaar_no = d12;
         }
       }
     }
@@ -11789,6 +11942,9 @@ function auditAndCleanEmployee(emp, rawCols) {
     }
   }
 
+  if (typeof atplSanitizeEmployeePfAccount === 'function') {
+    atplSanitizeEmployeePfAccount(emp);
+  }
   return emp;
 }
 window.auditAndCleanEmployee = auditAndCleanEmployee;
@@ -11842,9 +11998,23 @@ function emSaveModal() {
   newEmp._em_updated_at = Date.now();
   if(!valid){ alert('Employee Code aur Name mandatory hain!'); return; }
 
+  var pfValChk = String(newEmp.pf_no || '').replace(/\s+/g, '').toUpperCase();
+  var acValChk = String(newEmp.account_no || '').replace(/\s+/g, '').toUpperCase();
+  if (pfValChk && pfValChk !== 'NA' && acValChk && pfValChk === acValChk) {
+    var pfEl = getEmfElement('pf_no');
+    var acEl = getEmfElement('account_no');
+    if (pfEl) pfEl.style.border = '2px solid #dc2626';
+    if (acEl) acEl.style.border = '2px solid #dc2626';
+    alert('⚠️ PF / UAN Number aur Bank Account Number same nahi ho sakte! Kripya dono alag-alag sahi column mein check karein.');
+    if (pfEl) pfEl.focus();
+    return;
+  }
+  if (typeof atplSanitizeEmployeePfAccount === 'function') atplSanitizeEmployeePfAccount(newEmp);
+
   var savedEmp;
   if(EM.editIdx >= 0) {
     EM.data[EM.editIdx] = Object.assign({}, EM.data[EM.editIdx], newEmp);
+    if (typeof atplSanitizeEmployeePfAccount === 'function') atplSanitizeEmployeePfAccount(EM.data[EM.editIdx]);
     savedEmp = EM.data[EM.editIdx];
   } else {
     EM.data.push(newEmp);
@@ -12194,20 +12364,37 @@ function emImportExcelFile(input) {
 
       var header=best.rows[best.headerRow]||[];
       var map={};
+      var usedCols={};
+      var normHeaders=header.map(function(cell){ return normalize(cell); });
+      var isIncompatibleHeader=function(key,h){
+        if(key==='account_no') return /\b(pf|p f|epf|uan|esi|esic|aadhaar|aadhar)\b/.test(h);
+        if(key==='pf_no') return /\b(bank|ifsc|branch|esi|esic|aadhaar|aadhar)\b/.test(h) || (/\b(account|acc)\b/.test(h) && !/\b(pf|p f|epf|uan)\b/.test(h));
+        if(key==='esi_no') return /\b(pf|p f|epf|uan|bank|ifsc|aadhaar|aadhar)\b/.test(h);
+        if(key==='bank_name') return /\b(account|acc|ifsc|pf|esi|uan)\b/.test(h);
+        return false;
+      };
+      // Pass 1: exact alias matches with exclusive column ownership
       keys.forEach(function(key){
-        var exact=-1, partial=-1;
-        for(var c=0;c<header.length;c++){
-          var h=normalize(header[c]);
-          if(!h) continue;
-          if(aliases[key].indexOf(h)>=0){exact=c;break;}
-          if(partial<0){
-            for(var ai=0;ai<aliases[key].length;ai++){
-              var al=aliases[key][ai];
-              if(al.length>=5 && (h.indexOf(al)>=0 || al.indexOf(h)>=0)){partial=c;break;}
-            }
+        map[key]=-1;
+        for(var c=0;c<normHeaders.length;c++){
+          if(usedCols[c]) continue;
+          var h=normHeaders[c];
+          if(!h || isIncompatibleHeader(key,h)) continue;
+          if(aliases[key].indexOf(h)>=0){map[key]=c;usedCols[c]=true;break;}
+        }
+      });
+      // Pass 2: safe forward substring match only (header contains alias, never reverse)
+      keys.forEach(function(key){
+        if(map[key]>=0) return;
+        for(var c=0;c<normHeaders.length;c++){
+          if(usedCols[c]) continue;
+          var h=normHeaders[c];
+          if(!h || isIncompatibleHeader(key,h)) continue;
+          for(var ai=0;ai<aliases[key].length;ai++){
+            var al=aliases[key][ai];
+            if(al.length>=5 && h.indexOf(al)>=0){map[key]=c;usedCols[c]=true;return;}
           }
         }
-        map[key]=exact>=0?exact:partial;
       });
 
       // Safe positional fallback only when the header strongly resembles the
@@ -12221,7 +12408,7 @@ function emImportExcelFile(input) {
         }
       });
       if(positionalMatches>=6){
-        expected.forEach(function(k,i){ if(map[k]<0 && i<header.length) map[k]=i; });
+        expected.forEach(function(k,i){ if(map[k]<0 && i<header.length && !usedCols[i]){ map[k]=i; usedCols[i]=true; } });
       }
 
       var parseDate=function(v){
@@ -12251,6 +12438,8 @@ function emImportExcelFile(input) {
           if(col.type==='number') emp[col.key]=parseFloat(val.replace(/,/g,''))||0;
           else emp[col.key]=val.toUpperCase();
         });
+        if(typeof auditAndCleanEmployee==='function') emp=auditAndCleanEmployee(emp,r);
+        else if(typeof atplSanitizeEmployeePfAccount==='function') emp=atplSanitizeEmployeePfAccount(emp);
         return emp;
       };
       var imported=dataRows.map(makeEmp).filter(function(e){return e.emp_id || e.name;});
@@ -12505,7 +12694,7 @@ function emParseBulkPaste() {
           var nc = neighbors[ni];
           if (!isDateVal(nc)) {
             var ncl = cleanAccountNo(nc);
-            if (/^\d{8,22}$/.test(ncl) && ncl !== emp.phone_no && ncl !== emp.aadhaar_no && ncl !== emp.emp_id) {
+            if (/^\d{8,22}$/.test(ncl) && ncl !== emp.phone_no && ncl !== emp.aadhaar_no && ncl !== emp.emp_id && ncl !== emp.pf_no && ncl !== emp.esi_no && !/^10\d{10}$/.test(ncl)) {
               acCand = nc;
               break;
             }
@@ -12517,7 +12706,7 @@ function emParseBulkPaste() {
         acCand = clean.find(function(c){
           if (isDateVal(c)) return false;
           var cl = cleanAccountNo(c);
-          return /^\d{8,22}$/.test(cl) && cl !== emp.phone_no && cl !== emp.aadhaar_no && cl !== emp.emp_id;
+          return /^\d{8,22}$/.test(cl) && cl !== emp.phone_no && cl !== emp.aadhaar_no && cl !== emp.emp_id && cl !== emp.pf_no && cl !== emp.esi_no && !/^10\d{10}$/.test(cl);
         });
       }
       if (acCand) emp.account_no = cleanAccountNo(acCand);
@@ -12530,10 +12719,14 @@ function emParseBulkPaste() {
       clean.forEach(function(val){
         if (isDateVal(val)) return;
         var rawNum = val.replace(/,/g, "");
-        if (/^\d{8,22}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no && rawNum !== emp.account_no) {
-          if (!emp.account_no && rawNum.length >= 8) emp.account_no = rawNum;
-          else if (!emp.esi_no && (rawNum.length === 10 || rawNum.length === 17)) emp.esi_no = rawNum;
-          else if (!emp.pf_no && rawNum.length === 12) emp.pf_no = rawNum;
+        if (/^\d{8,22}$/.test(rawNum) && rawNum !== emp.phone_no && rawNum !== emp.aadhaar_no && rawNum !== emp.account_no && rawNum !== emp.pf_no && rawNum !== emp.esi_no) {
+          if (rawNum.length === 12 && /^10\d{10}$/.test(rawNum)) {
+            if (!emp.pf_no || emp.pf_no === 'NA') emp.pf_no = rawNum;
+          } else if (!emp.account_no && rawNum.length >= 8) {
+            emp.account_no = rawNum;
+          } else if (!emp.esi_no && (rawNum.length === 10 || rawNum.length === 17)) {
+            emp.esi_no = rawNum;
+          }
         }
       });
 
@@ -12563,7 +12756,7 @@ function emParseBulkPaste() {
         var salNums = [];
         clean.forEach(function(val){
           var num = parseFloat(val.replace(/,/g, ""));
-          if (!isNaN(num) && num >= 100 && num <= 500000 && val !== emp.phone_no && val !== emp.aadhaar_no && val !== emp.account_no && val !== emp.emp_id) {
+          if (!isNaN(num) && num >= 100 && num <= 500000 && val !== emp.phone_no && val !== emp.aadhaar_no && val !== emp.account_no && val !== emp.pf_no && val !== emp.esi_no && val !== emp.emp_id) {
             salNums.push(num);
           }
         });
@@ -12624,6 +12817,9 @@ function emSaveBulk() {
   }
   var added = 0, updated = 0;
   EM_BULK_ROWS.forEach(function(emp) {
+    if (typeof window.atplSanitizeEmployeePfAccount === 'function') {
+      emp = window.atplSanitizeEmployeePfAccount(emp);
+    }
     if (typeof aroraMergeEmployee === 'function') {
       var s = aroraMergeEmployee(emp);
       if (s === 'NEW') added++; else if (s === 'UPDATED') updated++;
@@ -12635,6 +12831,9 @@ function emSaveBulk() {
         Object.keys(emp).forEach(function(k){
           if(emp[k] !== '' && emp[k] !== null && emp[k] !== undefined) merged[k] = emp[k];
         });
+        if (typeof window.atplSanitizeEmployeePfAccount === 'function') {
+          merged = window.atplSanitizeEmployeePfAccount(merged);
+        }
         window.EM.data[idx] = merged;
         updated++;
       } else {
@@ -14419,35 +14618,67 @@ function aroraFindHeader(rows){
 
 function aroraMapHeaders(header){
   var map={};
+  var usedCols={};
   var districtCount=0, stateCount=0, grossCount=0;
+  var normList=[];
   for(var i=0;i<header.length;i++){
-    var h=aroraNormHeader(header[i]);if(!h)continue;
+    var h=aroraNormHeader(header[i]);
+    normList.push(h);
+    if(!h)continue;
     // Disambiguate duplicate header names from ATPL Excel format
     if(h==='district'){
       districtCount++;
-      if(districtCount===1){map['present_district']=i;continue;}
-      else{map['permanent_district']=i;continue;}
+      if(districtCount===1){map['present_district']=i;usedCols[i]=true;continue;}
+      else{map['permanent_district']=i;usedCols[i]=true;continue;}
     }
     if(h==='state'){
       stateCount++;
-      if(stateCount===1){map['present_state']=i;continue;}
-      else{map['permanent_state']=i;continue;}
+      if(stateCount===1){map['present_state']=i;usedCols[i]=true;continue;}
+      else{map['permanent_state']=i;usedCols[i]=true;continue;}
     }
     if(h==='gross total salary'||h==='gross total sala'){
       grossCount++;
-      if(grossCount===1){map['gross']=i;continue;}
-      else{map['new_gross']=i;continue;}
+      if(grossCount===1){map['gross']=i;usedCols[i]=true;continue;}
+      else{map['new_gross']=i;usedCols[i]=true;continue;}
     }
-
-    Object.keys(ARORA_IMPORT_ALIASES).forEach(function(k){
-      if(map[k]!==undefined)return;
-      ARORA_IMPORT_ALIASES[k].forEach(function(a){
-        var aa=aroraNormHeader(a);
-        if(h===aa){map[k]=i;return;}
-        if(map[k]===undefined && aa.length>=4 && (h.indexOf(aa)>=0||aa.indexOf(h)>=0)){map[k]=i;}
-      });
-    });
   }
+  var isIncompatible=function(k,h){
+    if(k==='account_no') return /\b(pf|p f|epf|uan|esi|esic|aadhaar|aadhar)\b/.test(h);
+    if(k==='pf_no') return /\b(bank|ifsc|branch|esi|esic|aadhaar|aadhar)\b/.test(h) || (/\b(account|a c|ac|acc)\b/.test(h) && !/\b(pf|p f|epf|uan)\b/.test(h));
+    if(k==='esi_no') return /\b(pf|p f|epf|uan|bank|ifsc|aadhaar|aadhar)\b/.test(h);
+    if(k==='bank_name') return /\b(account|a c|ac|acc|ifsc|pf|esi|uan)\b/.test(h);
+    return false;
+  };
+  var allKeys=Object.keys(ARORA_IMPORT_ALIASES);
+  // Pass 1: exact alias matches across all unmapped keys first
+  allKeys.forEach(function(k){
+    if(map[k]!==undefined) return;
+    for(var i=0;i<normList.length;i++){
+      if(usedCols[i]) continue;
+      var h=normList[i];
+      if(!h || isIncompatible(k,h)) continue;
+      for(var ai=0;ai<ARORA_IMPORT_ALIASES[k].length;ai++){
+        if(h===aroraNormHeader(ARORA_IMPORT_ALIASES[k][ai])){
+          map[k]=i; usedCols[i]=true; return;
+        }
+      }
+    }
+  });
+  // Pass 2: safe forward substring match only (header contains alias; never reverse alias.indexOf(h))
+  allKeys.forEach(function(k){
+    if(map[k]!==undefined) return;
+    for(var i=0;i<normList.length;i++){
+      if(usedCols[i]) continue;
+      var h=normList[i];
+      if(!h || isIncompatible(k,h)) continue;
+      for(var ai=0;ai<ARORA_IMPORT_ALIASES[k].length;ai++){
+        var aa=aroraNormHeader(ARORA_IMPORT_ALIASES[k][ai]);
+        if(aa.length>=4 && h.indexOf(aa)>=0){
+          map[k]=i; usedCols[i]=true; return;
+        }
+      }
+    }
+  });
   return map;
 }
 
@@ -14487,12 +14718,14 @@ function aroraRowsToEmployees(rows,headerRow){
 function aroraMergeEmployee(e){
   var code=String(e.emp_id||'').trim();
   if(!code)return 'SKIPPED';
+  if(typeof atplSanitizeEmployeePfAccount==='function') atplSanitizeEmployeePfAccount(e);
   var idx=EM.data.findIndex(function(x){return String(x.emp_id||'').trim()===code;});
   if(idx>=0){
     /* Do not wipe existing values with blank Excel cells. */
     EM.data[idx]=Object.assign({},EM.data[idx],Object.keys(e).reduce(function(a,k){
       if(e[k]!=='' && e[k]!==null && e[k]!==undefined)a[k]=e[k]; return a;
     },{}));
+    if(typeof atplSanitizeEmployeePfAccount==='function') atplSanitizeEmployeePfAccount(EM.data[idx]);
     return 'UPDATED';
   }
   EM.data.push(e); return 'NEW';

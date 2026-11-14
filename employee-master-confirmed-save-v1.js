@@ -127,9 +127,21 @@ async function confirmedSingleSave(){
   if(typeof g.validateSingle==='function'&&!g.validateSingle())return;
   var entered=fieldsToEmployee();
   if(!entered){alert('Employee Code aur Name mandatory hain!');return}
+  var pfNorm = text(entered.pf_no).replace(/\s+/g,'').toUpperCase();
+  var acNorm = text(entered.account_no).replace(/\s+/g,'').toUpperCase();
+  if(pfNorm && pfNorm!=='NA' && acNorm && pfNorm===acNorm){
+    var pfEl=g.document.getElementById('emf_pf_no')||(typeof g.getEmfElement==='function'?g.getEmfElement('pf_no'):null);
+    var acEl=g.document.getElementById('emf_account_no')||(typeof g.getEmfElement==='function'?g.getEmfElement('account_no'):null);
+    if(pfEl) pfEl.style.border='2px solid #dc2626';
+    if(acEl) acEl.style.border='2px solid #dc2626';
+    alert('⚠️ PF / UAN Number aur Bank Account Number ek jaise (same) nahi ho sakte! Kripya dono alag-alag sahi field mein check karein.');
+    if(pfEl) pfEl.focus();
+    return;
+  }
   var edit=Number(g.EM.editIdx);
   var original=edit>=0&&g.EM.data[edit]?copy(g.EM.data[edit]):null;
   var candidate=Object.assign({},original||{},entered);
+  if(typeof g.atplSanitizeEmployeePfAccount==='function') g.atplSanitizeEmployeePfAccount(candidate);
   var c=cloud();
   busy=true;setButtonBusy(true);paint('saving','Saving to shared cloud…',null);
   try{
@@ -198,10 +210,12 @@ async function confirmedBulkSave(){
   var c=cloud();
   var rowsToSave=g.EM_BULK_ROWS.slice();
   rowsToSave.forEach(function(emp){
+    if(typeof g.atplSanitizeEmployeePfAccount==='function') g.atplSanitizeEmployeePfAccount(emp);
     var k=empKey(emp),ix=g.EM.data.findIndex(function(y){return empKey(y)===k || String(y.emp_id)===String(emp.emp_id)});
     if(ix>=0){
       var merged=Object.assign({},g.EM.data[ix]);
       Object.keys(emp).forEach(function(f){var v=emp[f];if(v!==undefined&&v!==null&&String(v).trim()!=='')merged[f]=v;});
+      if(typeof g.atplSanitizeEmployeePfAccount==='function') g.atplSanitizeEmployeePfAccount(merged);
       g.EM.data[ix]=merged;
     } else {
       g.EM.data.push(copy(emp));

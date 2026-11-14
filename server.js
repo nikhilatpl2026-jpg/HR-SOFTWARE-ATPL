@@ -175,7 +175,133 @@ let syncEmployeeMaster = readJsonFile('employee_master.json', []);
 let syncDolRecords = readJsonFile('dol_records.json', {}); // id -> DOL challan
 let syncAdvances = readJsonFile('advances.json', {}); // id -> advance record
 let syncAdvanceDeductions = readJsonFile('advance_deductions.json', {}); // id -> deduction record
+let syncPendingDiffs = readJsonFile('pending_diff_vouchers.json', {}); // id -> pending diff amount / cash adv voucher record
+let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {}); // id -> deleted_at ISO
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
+
+if (syncPendingDiffs && typeof syncPendingDiffs === 'object' && syncPendingDiffTombstones && typeof syncPendingDiffTombstones === 'object') {
+  Object.keys(syncPendingDiffTombstones).forEach(tid => {
+    if (syncPendingDiffTombstones[tid] && syncPendingDiffs[tid]) {
+      const tTs = Date.parse(syncPendingDiffTombstones[tid]) || 0;
+      const rTs = Date.parse(syncPendingDiffs[tid].updatedAt || syncPendingDiffs[tid].createdAt || 0) || 0;
+      if (tTs >= rTs) delete syncPendingDiffs[tid];
+    }
+  });
+}
+
+const SEED_EMP_PF_MAP = (() => {
+  const m = {};
+  try {
+    const htmlPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(htmlPath)) {
+      const html = fs.readFileSync(htmlPath, 'utf8');
+      const match = html.match(/var\s+EMP_MASTER_DATA\s*=\s*(\[[\s\S]*?\]);/);
+      if (match) {
+        const list = JSON.parse(match[1]);
+        if (Array.isArray(list)) {
+          list.forEach(r => {
+            if (!r || !r.emp_id) return;
+            const rawId = String(r.emp_id).toUpperCase().trim();
+            const keyId = rawId.replace(/^0+/, '') || rawId;
+            if (keyId && !m[keyId]) {
+              m[keyId] = {
+                pf_no: String(r.pf_no || '').trim(),
+                esi_no: String(r.esi_no || '').trim(),
+                account_no: String(r.account_no || '').trim()
+              };
+            }
+          });
+        }
+      }
+    }
+  } catch (_) {}
+  return m;
+})();
+
+function sanitizeEmployeeMasterRecord(emp) {
+  if (!emp || typeof emp !== 'object') return emp;
+  const norm = v => String(v == null ? '' : v).replace(/\s+/g, '').toUpperCase().trim();
+  const cleanAc = v => norm(v).replace(/["'=]/g, '').replace(/[\-_]/g, '').replace(/\.0+$/, '');
+  const isNA = v => {
+    const s = norm(v);
+    return !s || s === 'NA' || s === 'N/A' || s === 'NIL' || s === 'NONE' || s === '-' || s === '—';
+  };
+  const isUAN = v => /^10\d{10}$/.test(norm(v));
+  const isIFSC = v => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(norm(v));
+  let ifscStr = norm(emp.ifsc);
+  const bankStr = String(emp.bank_name || '').toUpperCase();
+  const payBank = /^AIRP/.test(ifscStr) || /AIRTEL/.test(bankStr) || /^PYTM/.test(ifscStr) || /^JIOP/.test(ifscStr);
+
+  const rawId = String(emp.emp_id || emp.id || emp.code || emp.emp_code || '').toUpperCase().trim();
+  const keyId = rawId.replace(/^0+/, '') || rawId;
+  const seed = SEED_EMP_PF_MAP[keyId] || SEED_EMP_PF_MAP[rawId] || null;
+
+  let pf = norm(emp.pf_no);
+  if (isNA(pf)) pf = 'NA';
+  let ac = cleanAc(emp.account_no);
+  if (isNA(ac)) ac = '';
+  const aad = norm(emp.aadhaar_no).replace(/\D/g, '');
+  const ph = norm(emp.phone_no).replace(/\D/g, '');
+  const esi = norm(emp.esi_no);
+
+  if (pf !== 'NA' && isIFSC(pf)) {
+    if (!ifscStr) { emp.ifsc = pf; ifscStr = pf; }
+    pf = 'NA';
+  }
+  if (ac && isIFSC(ac)) {
+    if (!ifscStr) { emp.ifsc = ac; ifscStr = ac; }
+    ac = '';
+  }
+  if (ac && aad && ac === aad) ac = '';
+  if (pf !== 'NA' && !isUAN(pf) && aad && pf === aad) pf = 'NA';
+  if (ac && ph && ac === ph && !payBank) ac = '';
+
+  if (pf !== 'NA' && !isUAN(pf) && ac && isUAN(ac)) {
+    const tmp = pf; pf = ac; ac = tmp;
+  }
+  if (!ac && pf !== 'NA' && !isUAN(pf) && !isIFSC(pf) && (!aad || pf !== aad) && (!esi || isNA(esi) || pf !== esi)) {
+    if (/^\d{8,22}$/.test(pf) && (!(ph && pf === ph) || payBank)) {
+      ac = pf;
+      pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && (!ph || norm(seed.pf_no) !== ph)) ? norm(seed.pf_no) : 'NA';
+    }
+  }
+  if (pf !== 'NA' && ac && pf === ac) {
+    if (isUAN(pf)) {
+      const seedAc = seed ? cleanAc(seed.account_no) : '';
+      ac = (seedAc && !isNA(seedAc) && seedAc !== pf && (!aad || seedAc !== aad)) ? seedAc : '';
+    } else {
+      const seedPf = seed ? norm(seed.pf_no) : '';
+      pf = (seedPf && !isNA(seedPf) && seedPf !== ac && (!ph || seedPf !== ph)) ? seedPf : 'NA';
+    }
+  }
+  if (pf !== 'NA' && !isUAN(pf) && ph && pf === ph) {
+    pf = (seed && !isNA(seed.pf_no) && norm(seed.pf_no) !== ac && norm(seed.pf_no) !== ph) ? norm(seed.pf_no) : 'NA';
+  }
+  if (pf !== 'NA' && !isUAN(pf) && !isNA(esi) && pf === esi) pf = 'NA';
+  if (ac && aad && ac === aad) ac = '';
+  if (ac && ph && ac === ph && !payBank) ac = '';
+  if (pf !== 'NA' && ac && pf === ac) {
+    if (isUAN(pf)) ac = ''; else pf = 'NA';
+  }
+
+  emp.pf_no = pf;
+  emp.account_no = ac;
+  return emp;
+}
+
+if (Array.isArray(syncEmployeeMaster)) {
+  let changedOnBoot = false;
+  syncEmployeeMaster = syncEmployeeMaster.map(rec => {
+    if (!rec || typeof rec !== 'object') return rec;
+    const prevPf = rec.pf_no, prevAc = rec.account_no;
+    sanitizeEmployeeMasterRecord(rec);
+    if (rec.pf_no !== prevPf || rec.account_no !== prevAc) changedOnBoot = true;
+    return rec;
+  });
+  if (changedOnBoot && process.env.NODE_ENV !== 'test') {
+    writeJsonFile('employee_master.json', syncEmployeeMaster);
+  }
+}
 
 // Merge all existing legacy tombstones into central filesDb.tombstones
 if (syncSalaryTombstones && typeof syncSalaryTombstones === 'object') {
@@ -1307,6 +1433,8 @@ app.get('/api/sync/state', (req, res) => {
     dol_records: Object.values(syncDolRecords),
     advances: Object.values(syncAdvances),
     advance_deductions: Object.values(syncAdvanceDeductions),
+    pending_diffs: Object.values(syncPendingDiffs),
+    pending_diff_tombstones: syncPendingDiffTombstones,
     files: formattedFiles,
     files_count: allFiles.length,
     tombstones: filesDb.tombstones,
@@ -1679,6 +1807,8 @@ function forwardAdvanceSyncToCloud() {
     const payload = {
       advances: Object.values(syncAdvances),
       deductions: Object.values(syncAdvanceDeductions),
+      pendingDiffs: Object.values(syncPendingDiffs),
+      pendingDiffTombstones: syncPendingDiffTombstones,
       updatedAt: new Date().toISOString()
     };
     const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
@@ -1795,6 +1925,93 @@ app.delete('/api/sync/advance-deduction/:id', (req, res) => {
     writeJsonFile('advance_deductions.json', syncAdvanceDeductions);
     writeJsonFile('advances.json', syncAdvances);
     broadcastEvent('advance_deduction_deleted', { id: id, deleted_at: new Date().toISOString() });
+    forwardAdvanceSyncToCloud();
+    return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Pending Diff Amount & Cash Adv Voucher Endpoints ──
+app.get('/api/sync/pending-diffs', (req, res) => {
+  return res.json({
+    ok: true,
+    records: Object.values(syncPendingDiffs),
+    tombstones: syncPendingDiffTombstones
+  });
+});
+
+app.post('/api/sync/pending-diff', (req, res) => {
+  try {
+    const record = req.body || {};
+    if (!record || !record.id) return res.status(400).json({ ok: false, error: 'Record ID required' });
+    const tomb = syncPendingDiffTombstones[record.id];
+    const recTs = Date.parse(record.updatedAt || record.createdAt || 0) || Date.now();
+    if (tomb && Date.parse(tomb) > recTs) {
+      return res.json({ ok: true, ignored: 'tombstoned', id: record.id });
+    }
+    delete syncPendingDiffTombstones[record.id];
+    const existing = syncPendingDiffs[record.id];
+    const existTs = existing ? (Date.parse(existing.updatedAt || existing.createdAt || 0) || 0) : 0;
+    if (!existing || recTs >= existTs) {
+      syncPendingDiffs[record.id] = record;
+    }
+    incrementVersion();
+    writeJsonFile('pending_diff_vouchers.json', syncPendingDiffs);
+    writeJsonFile('pending_diff_tombstones.json', syncPendingDiffTombstones);
+    broadcastEvent('pending_diff_saved', syncPendingDiffs[record.id]);
+    forwardAdvanceSyncToCloud();
+    return res.json({ ok: true, saved: true, id: record.id, record: syncPendingDiffs[record.id] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/sync/pending-diffs/bulk', (req, res) => {
+  try {
+    const { records, tombstones } = req.body || {};
+    if (!Array.isArray(records)) return res.status(400).json({ ok: false, error: 'Records array required' });
+    if (tombstones && typeof tombstones === 'object') {
+      Object.entries(tombstones).forEach(([k, v]) => {
+        if (k && v) {
+          const cleanK = String(k).replace(/^pdiff:/, '');
+          syncPendingDiffTombstones[cleanK] = v;
+          delete syncPendingDiffs[cleanK];
+        }
+      });
+    }
+    records.forEach(r => {
+      if (!r || !r.id) return;
+      const rTs = Date.parse(r.updatedAt || r.createdAt || 0) || Date.now();
+      const tomb = syncPendingDiffTombstones[r.id];
+      if (tomb && Date.parse(tomb) >= rTs) return;
+      const existing = syncPendingDiffs[r.id];
+      const existTs = existing ? (Date.parse(existing.updatedAt || existing.createdAt || 0) || 0) : 0;
+      if (!existing || rTs >= existTs) {
+        syncPendingDiffs[r.id] = r;
+      }
+    });
+    incrementVersion();
+    writeJsonFile('pending_diff_vouchers.json', syncPendingDiffs);
+    writeJsonFile('pending_diff_tombstones.json', syncPendingDiffTombstones);
+    broadcastEvent('pending_diffs_updated', { count: Object.keys(syncPendingDiffs).length });
+    forwardAdvanceSyncToCloud();
+    return res.json({ ok: true, count: Object.keys(syncPendingDiffs).length });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/pending-diff/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    delete syncPendingDiffs[id];
+    const deletedAt = new Date().toISOString();
+    syncPendingDiffTombstones[id] = deletedAt;
+    incrementVersion();
+    writeJsonFile('pending_diff_vouchers.json', syncPendingDiffs);
+    writeJsonFile('pending_diff_tombstones.json', syncPendingDiffTombstones);
+    broadcastEvent('pending_diff_deleted', { id: id, deleted_at: deletedAt });
     forwardAdvanceSyncToCloud();
     return res.json({ ok: true, deleted: true, id });
   } catch (err) {
@@ -2134,6 +2351,7 @@ app.post('/api/sync/employee-master', (req, res) => {
         }
         const cleaned = Object.assign({}, r);
         cleaned.emp_id = k;
+        sanitizeEmployeeMasterRecord(cleaned);
         newMap[k] = cleaned;
       });
       if (tombstonesChanged) {
@@ -2141,7 +2359,7 @@ app.post('/api/sync/employee-master', (req, res) => {
       }
       syncEmployeeMaster = Object.values(newMap);
       writeJsonFile("employee_master.json", syncEmployeeMaster);
-      broadcastEvent('employee_master_updated', { records: syncEmployeeMaster, updated: records, mode: 'replace', count: syncEmployeeMaster.length });
+      broadcastEvent('employee_master_updated', { records: syncEmployeeMaster, updated: syncEmployeeMaster, mode: 'replace', count: syncEmployeeMaster.length });
       broadcastEvent('drive_trigger', { action: 'employee_updated', details: { records: syncEmployeeMaster, count: syncEmployeeMaster.length }, timestamp: Date.now() });
       syncToGoogleAppsScript('saveEmployeeMaster', { records: syncEmployeeMaster });
       return res.json({ ok: true, saved: true, count: syncEmployeeMaster.length, replaced: true });
@@ -2170,6 +2388,7 @@ app.post('/api/sync/employee-master', (req, res) => {
         if (r[p] !== undefined && r[p] !== null) merged[p] = r[p];
       });
       merged.emp_id = k;
+      sanitizeEmployeeMasterRecord(merged);
       emMap[k] = merged;
     });
 
