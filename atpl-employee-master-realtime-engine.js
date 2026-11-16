@@ -76,8 +76,10 @@
   var lastCloudVersion = 0;
   var lastLocalMutationTime = 0;
   var isHydrating = false;
+  var hydratePromise = null;
   var isPollingRemote = false;
   var ghWriteDebounceTimer = null;
+  var pendingPushTombstones = false;
   var ghPushChain = Promise.resolve();
   var cachedGhSha = { master: '', tombstones: '' };
   var lastDirectStatusCall = { key: '', status: '', dol: '', ts: 0 };
@@ -182,12 +184,29 @@
     } catch (_) {}
   }
 
-  function isTombstoned(id, tombMap) {
+  function parseTombTime(val) {
+    if (!val) return 0;
+    if (typeof val === 'number') return isFinite(val) ? val : 0;
+    if (val === true) return 0;
+    var ms = Date.parse(String(val));
+    return isFinite(ms) ? ms : 0;
+  }
+
+  function isTombstoned(id, tombMap, rec) {
     if (!id) return false;
     var tombs = tombMap || getLocalTombstones();
     var raw = normalizeId(id);
     var clean = normalizeKey(id);
-    return !!(tombs[raw] || tombs[clean] || tombs[raw.toLowerCase()] || tombs[clean.toLowerCase()]);
+    var tVal = tombs[raw] || tombs[clean] || tombs[raw.toLowerCase()] || tombs[clean.toLowerCase()];
+    if (!tVal) return false;
+    if (rec && typeof rec === 'object') {
+      var recTs = Math.max(Number(rec._em_updated_at || 0), Number(rec._status_updated_at || 0));
+      var tombTs = parseTombTime(tVal);
+      if (recTs > 0 && recTs > tombTs) {
+        return false;
+      }
+    }
+    return true;
   }
 
   // ── Persistent Pending Mutation Log (survives refresh & in-flight polls) ──
@@ -407,7 +426,7 @@
       if (!row || typeof row !== 'object') return;
       var id = normalizeId(row.emp_id || row.empCode || row.employee_code || row.id || row.code);
       if (!id || id.indexOf('__ATPL_SYS__') === 0) return;
-      if (isTombstoned(id, activeTombs)) return;
+      if (isTombstoned(id, activeTombs, row)) return;
       var k = normalizeKey(id).toLowerCase();
       if (!k) return;
 
@@ -1092,7 +1111,29 @@
         var check = await fetchGitHubFile('tombstones_employees.json');
         if (check && check.sha) cachedGhSha.tombstones = check.sha;
       }
-      var list = Object.keys(tombMap || {});
+      var activeKeys = {};
+      var curList = (root.EM && Array.isArray(root.EM.data)) ? root.EM.data : [];
+      curList.forEach(function(r) {
+        if (!r) return;
+        var rid = normalizeId(r.emp_id || r.id || r.code);
+        var rclean = normalizeKey(rid);
+        var rts = Math.max(Number(r._em_updated_at || 0), Number(r._status_updated_at || 0));
+        if (rid) activeKeys[rid] = rts;
+        if (rclean) activeKeys[rclean] = rts;
+      });
+      var deduped = {};
+      Object.keys(tombMap || {}).forEach(function(k) {
+        if (!k || k === '__ALL_CLEARED__') return;
+        var nid = normalizeId(k);
+        var nclean = normalizeKey(nid);
+        var tTs = parseTombTime(tombMap[k]);
+        if (Object.prototype.hasOwnProperty.call(activeKeys, nid) || Object.prototype.hasOwnProperty.call(activeKeys, nclean)) {
+          var aTs = Math.max(activeKeys[nid] || 0, activeKeys[nclean] || 0);
+          if (aTs === 0 || aTs >= tTs) return;
+        }
+        deduped[nid] = true;
+      });
+      var list = Object.keys(deduped);
       var b64 = utf8ToB64(JSON.stringify(list));
       var res = await ghFetch(url, {
         method: 'PUT',
@@ -1188,13 +1229,16 @@
 
   function queueCloudSync(pushTombstonesToo) {
     var pushQueuedAt = Date.now();
+    if (pushTombstonesToo) pendingPushTombstones = true;
     if (ghWriteDebounceTimer) clearTimeout(ghWriteDebounceTimer);
     ghWriteDebounceTimer = setTimeout(function() {
+      var shouldPushTombs = pendingPushTombstones;
+      pendingPushTombstones = false;
       ghPushChain = ghPushChain.then(async function() {
         var listToSave = (root.EM && Array.isArray(root.EM.data)) ? root.EM.data.slice() : [];
         var tombsMap = getLocalTombstones();
         var ghOk = await pushGitHubMasterWithMergeRetry('sync: update employee master (' + listToSave.length + ' records)', 0);
-        if (pushTombstonesToo) {
+        if (shouldPushTombs) {
           await pushGitHubTombstones(tombsMap, 0);
         }
         var driveOk = await pushDriveVault(listToSave, tombsMap);
@@ -1208,23 +1252,55 @@
   }
 
   // ── Tombstone Merge Helper ──
-  function applyRemoteTombstones(remoteTombs) {
+  function applyRemoteTombstones(remoteTombs, activeMasterRows) {
     var tombs = getLocalTombstones();
     var changed = false;
+    var LEGACY_ISO = '1970-01-01T00:00:01.000Z';
     if (Array.isArray(remoteTombs)) {
       remoteTombs.forEach(function(id) {
         if (!id || id === '__ALL_CLEARED__') return;
         var raw = normalizeId(id);
         var clean = normalizeKey(id);
-        if (raw && !tombs[raw]) { tombs[raw] = new Date().toISOString(); changed = true; }
-        if (clean && !tombs[clean]) { tombs[clean] = tombs[raw]; changed = true; }
+        if (raw && !tombs[raw]) { tombs[raw] = LEGACY_ISO; changed = true; }
+        if (clean && !tombs[clean]) { tombs[clean] = LEGACY_ISO; changed = true; }
       });
     } else if (remoteTombs && typeof remoteTombs === 'object') {
       Object.keys(remoteTombs).forEach(function(k) {
+        if (!k || k === '__ALL_CLEARED__') return;
         var raw = normalizeId(k);
         var clean = normalizeKey(k);
-        if (raw && !tombs[raw]) { tombs[raw] = remoteTombs[k]; changed = true; }
-        if (clean && !tombs[clean]) { tombs[clean] = remoteTombs[k]; changed = true; }
+        var rTs = parseTombTime(remoteTombs[k]);
+        if (raw && (!tombs[raw] || rTs > parseTombTime(tombs[raw]))) { tombs[raw] = remoteTombs[k]; changed = true; }
+        if (clean && (!tombs[clean] || rTs > parseTombTime(tombs[clean]))) { tombs[clean] = remoteTombs[k]; changed = true; }
+      });
+    }
+    // Prune stale local tombstones for records present in authoritative remote master with newer timestamp
+    if (Array.isArray(activeMasterRows) && activeMasterRows.length) {
+      var ghSet = null;
+      if (Array.isArray(remoteTombs)) {
+        ghSet = {};
+        remoteTombs.forEach(function(id) {
+          var r = normalizeId(id);
+          var c = normalizeKey(id);
+          if (r) ghSet[r] = true;
+          if (c) ghSet[c] = true;
+        });
+      }
+      activeMasterRows.forEach(function(rec) {
+        if (!rec) return;
+        var raw = normalizeId(rec.emp_id || rec.id || rec.code);
+        var clean = normalizeKey(raw);
+        if (!raw) return;
+        var recTs = Math.max(Number(rec._em_updated_at || 0), Number(rec._status_updated_at || 0));
+        var inGhTombs = ghSet ? (ghSet[raw] || ghSet[clean]) : false;
+        [raw, clean, raw.toLowerCase(), clean.toLowerCase()].forEach(function(tk) {
+          if (!tk || !tombs[tk]) return;
+          var tTs = parseTombTime(tombs[tk]);
+          if ((recTs > 0 && recTs > tTs) || (ghSet && !inGhTombs && tTs <= Date.now())) {
+            delete tombs[tk];
+            changed = true;
+          }
+        });
       });
     }
     if (changed) saveLocalTombstones(tombs);
@@ -1233,8 +1309,9 @@
 
   // ── Master State Hydration (Cold-Start Authoritative Sync) ──
   async function hydrateMasterState() {
-    if (isHydrating) return;
+    if (hydratePromise) return hydratePromise;
     isHydrating = true;
+    hydratePromise = (async function() {
     try {
       var localRows = [];
       try {
@@ -1262,18 +1339,18 @@
       }
       var ghTombs = await fetchGitHubFile('tombstones_employees.json');
       if (ghTombs && ghTombs.data) {
-        if (Array.isArray(ghTombs.data) && ghTombs.data.indexOf('__ALL_CLEARED__') !== -1) {
+        if (Array.isArray(ghTombs.data) && ghTombs.data.indexOf('__ALL_CLEARED__') !== -1 && (!remoteRows || !remoteRows.length)) {
           isCleared = true;
           remoteRows = [];
         } else {
-          tombs = applyRemoteTombstones(ghTombs.data);
+          tombs = applyRemoteTombstones(ghTombs.data, remoteRows);
         }
       }
 
       // 3. Also check Google Drive Vault (redundancy if GitHub failed or Drive is newer)
       var vault = await fetchDriveVault();
       if (vault && Array.isArray(vault.employees) && vault.employees.length > 0) {
-        if (vault.tombstones) tombs = applyRemoteTombstones(vault.tombstones);
+        if (vault.tombstones) tombs = applyRemoteTombstones(vault.tombstones, remoteRows || vault.employees);
         if (!remoteRows || !remoteRows.length) {
           remoteRows = vault.employees;
         } else {
@@ -1310,7 +1387,10 @@
       }
     } finally {
       isHydrating = false;
+      hydratePromise = null;
     }
+    })();
+    return hydratePromise;
   }
 
   // ── Public Engine API ──
@@ -1451,9 +1531,28 @@
 
       if (!stamped.length) return { ok: true, verified: true, count: 0 };
 
+      var preTombs = getLocalTombstones();
+      var wasCleared = false;
+      try { wasCleared = root.localStorage.getItem(STORAGE_KEY_CLEARED) === 'true'; } catch (_) {}
+      var opsBefore = readPendingOps();
+      var hadTombCleanup = wasCleared || !!opsBefore.__CLEAR_ALL__ || stamped.length > 10;
+      if (opsBefore.__CLEAR_ALL__) {
+        delete opsBefore.__CLEAR_ALL__;
+        writePendingOps(opsBefore);
+      }
+      if (!hadTombCleanup) {
+        for (var ti = 0; ti < stamped.length; ti++) {
+          var sid = normalizeId(stamped[ti].emp_id);
+          var sclean = normalizeKey(sid);
+          if (preTombs[sid] || preTombs[sclean] || preTombs[sid.toLowerCase()] || preTombs[sclean.toLowerCase()]) {
+            hadTombCleanup = true;
+            break;
+          }
+        }
+      }
       handleIncomingSyncEvent({ action: 'upsert', records: stamped, timestamp: now, senderId: clientId });
       broadcastSyncEvent({ action: 'upsert', records: stamped, timestamp: now });
-      queueCloudSync(false);
+      queueCloudSync(hadTombCleanup);
 
       try {
         if (typeof fetch === 'function' && root.location && !/(^|\.)github\.io$/i.test(root.location.hostname || '')) {
@@ -1520,22 +1619,33 @@
       if (!force && ((root.document && root.document.hidden) || Date.now() - lastLocalMutationTime < 2500)) return;
       isPollingRemote = true;
       try {
-        var curSha = await fetchGitHubCommitHead('data/employee_master.json');
-        if (curSha && curSha !== lastKnownCommitSha) {
-          lastKnownCommitSha = curSha;
-          var remoteFile = await fetchGitHubFile('employee_master.json', curSha);
-          var ghTombs = await fetchGitHubFile('tombstones_employees.json');
+        var heads = await Promise.all([
+          fetchGitHubCommitHead('data/employee_master.json'),
+          fetchGitHubCommitHead('data/tombstones_employees.json')
+        ]);
+        var curSha = heads[0];
+        var curTombSha = heads[1];
+        if ((curSha && curSha !== lastKnownCommitSha) || (curTombSha && curTombSha !== lastKnownTombCommitSha)) {
+          if (curSha) lastKnownCommitSha = curSha;
+          if (curTombSha) lastKnownTombCommitSha = curTombSha;
+          var fetched = await Promise.all([
+            fetchGitHubFile('employee_master.json', curSha || 'main'),
+            fetchGitHubFile('tombstones_employees.json', curTombSha || 'main')
+          ]);
+          var remoteFile = fetched[0];
+          var ghTombs = fetched[1];
+          var remoteArr = (remoteFile && Array.isArray(remoteFile.data)) ? remoteFile.data : null;
           var tombs = getLocalTombstones();
           if (ghTombs && ghTombs.data) {
-            if (Array.isArray(ghTombs.data) && ghTombs.data.indexOf('__ALL_CLEARED__') !== -1) {
+            if (Array.isArray(ghTombs.data) && ghTombs.data.indexOf('__ALL_CLEARED__') !== -1 && (!remoteArr || !remoteArr.length)) {
               applyDataAndRefreshIfChanged([], true);
               return;
             }
-            tombs = applyRemoteTombstones(ghTombs.data);
+            tombs = applyRemoteTombstones(ghTombs.data, remoteArr);
           }
-          if (remoteFile && Array.isArray(remoteFile.data)) {
+          if (remoteArr) {
             var currentList = (root.EM && Array.isArray(root.EM.data)) ? root.EM.data : [];
-            var merged = mergeEmployeeLists(currentList, remoteFile.data, tombs, true);
+            var merged = mergeEmployeeLists(currentList, remoteArr, tombs, true);
             applyDataAndRefreshIfChanged(merged, merged.length === 0);
           }
         }
@@ -1552,19 +1662,35 @@
     var origSaveModal = root.emSaveModal;
     if (typeof origSaveModal === 'function' && !origSaveModal.__atplRealtime) {
       var wrappedSaveModal = async function() {
+        var preEditIdx = (root.EM && typeof root.EM.editIdx === 'number') ? root.EM.editIdx : -1;
+        var preEditId = (preEditIdx >= 0 && root.EM && Array.isArray(root.EM.data) && root.EM.data[preEditIdx])
+          ? normalizeId(root.EM.data[preEditIdx].emp_id || root.EM.data[preEditIdx].code)
+          : '';
+        var domIdEl = root.document && root.document.getElementById ? root.document.getElementById('emf_emp_id') : null;
+        var domEmpId = domIdEl && domIdEl.value ? normalizeId(domIdEl.value) : '';
         var originalResult = await origSaveModal.apply(this, arguments);
         var candidate = null;
         if (typeof root.fieldsToEmployee === 'function') candidate = root.fieldsToEmployee();
+        var targetId = normalizeId((candidate && candidate.emp_id) || domEmpId || preEditId);
+        if (root.EM && Array.isArray(root.EM.data)) {
+          var matchedRec = null;
+          if (targetId) {
+            matchedRec = root.EM.data.find(function(x) {
+              return normalizeId(x && (x.emp_id || x.id || x.code)) === targetId;
+            }) || null;
+          }
+          if (!matchedRec && preEditIdx >= 0 && root.EM.data[preEditIdx]) {
+            matchedRec = root.EM.data[preEditIdx];
+          }
+          if (matchedRec) {
+            await Engine.saveEmployees([matchedRec]);
+            return originalResult;
+          }
+        }
         if (candidate && candidate.emp_id) {
           await Engine.saveEmployees([candidate]);
-        } else if (root.EM && Array.isArray(root.EM.data)) {
-          // Only push the edited employee if editIdx is valid, else latest added
-          var idx = root.EM.editIdx;
-          if (idx >= 0 && root.EM.data[idx]) {
-            await Engine.saveEmployees([root.EM.data[idx]]);
-          } else if (root.EM.data.length) {
-            await Engine.saveEmployees([root.EM.data[root.EM.data.length - 1]]);
-          }
+        } else if (root.EM && Array.isArray(root.EM.data) && root.EM.data.length) {
+          await Engine.saveEmployees([root.EM.data[root.EM.data.length - 1]]);
         }
         return originalResult;
       };
