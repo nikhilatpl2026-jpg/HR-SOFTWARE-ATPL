@@ -287,4 +287,82 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     assert.equal(mockWindow.ATPLAdvanceManager.getAllDeductions().some(d => d.empCode === '25924'), false);
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 4000, 'Other employee advance must stay intact');
   });
+
+  await t.test('6. Top All-Files Dropdown Selection & Single-File Advance Deduction + Deductions Table Filtering', () => {
+    const { mockWindow, container } = makeMockWindow([
+      { emp_id: '25924', name: 'Ram Kumar Sharma', dept: 'Spinning', gross: 24000 },
+      { emp_id: '26002', name: 'Lokesh Verma', dept: 'Dyeing', gross: 18000 }
+    ]);
+    const fileApril = {
+      name: 'April_Salary_2026.xlsx',
+      sheets: {
+        'Salary Sheet': [
+          ['Emp Code', 'Employee Name', 'Gross', 'Advance Deduction', 'Net Payable'],
+          ['25924', 'Ram Kumar Sharma', '24000', '2000', '22000']
+        ]
+      }
+    };
+    const fileMay = {
+      name: 'May_Custom_Upload.xlsx',
+      sheets: {
+        'Sheet1': [
+          ['Emp Code', 'Employee Name', 'Adv Cut'],
+          ['26002', 'Lokesh Verma', '1500']
+        ]
+      }
+    };
+    mockWindow.FILES = [fileApril];
+    mockWindow.getAllLoadedSalaryFiles = () => [fileApril, fileMay];
+
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(advanceJsContent, ctx);
+
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_ram_drop',
+      empCode: '25924',
+      amount: 10000,
+      advanceDate: '2026-04-01'
+    });
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_lokesh_drop',
+      empCode: '26002',
+      amount: 5000,
+      advanceDate: '2026-05-01'
+    });
+
+    // Top dropdown must list both files from All Files
+    assert(container.innerHTML.includes('id="advFileSelect"'), 'Top file selector dropdown must render');
+    assert(container.innerHTML.includes('April_Salary_2026.xlsx'), 'Dropdown must list April_Salary_2026.xlsx');
+    assert(container.innerHTML.includes('May_Custom_Upload.xlsx'), 'Dropdown must list May_Custom_Upload.xlsx');
+    assert.equal(mockWindow.ATPLAdvanceManager.getUploadedSalaryFiles().length, 2);
+
+    // Select ONLY May_Custom_Upload.xlsx and deduct
+    mockWindow.ATPLAdvanceManager.setSelectedFile('May_Custom_Upload.xlsx');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'May_Custom_Upload.xlsx');
+    const mayCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
+    assert.equal(mayCount, 1, 'Must deduct only from selected May_Custom_Upload.xlsx');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 3500);
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 10000, 'Unselected April file must not be deducted yet');
+
+    // Deductions tab filters table rows to selected file, and ALL shows everything
+    mockWindow.ATPLAdvanceManager.setTab('deductions');
+    let tbody = container.innerHTML.split('<tbody>')[1] || '';
+    assert(tbody.includes('May_Custom_Upload.xlsx'));
+    assert(!tbody.includes('April_Salary_2026.xlsx'));
+
+    // Now select April_Salary_2026.xlsx and deduct
+    mockWindow.ATPLAdvanceManager.setSelectedFile('April_Salary_2026.xlsx');
+    const aprCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
+    assert.equal(aprCount, 1, 'Must deduct from selected April_Salary_2026.xlsx');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8000);
+    tbody = container.innerHTML.split('<tbody>')[1] || '';
+    assert(tbody.includes('April_Salary_2026.xlsx'));
+    assert(!tbody.includes('May_Custom_Upload.xlsx'));
+
+    // Reset to ALL
+    mockWindow.ATPLAdvanceManager.setSelectedFile('ALL');
+    tbody = container.innerHTML.split('<tbody>')[1] || '';
+    assert(tbody.includes('April_Salary_2026.xlsx'));
+    assert(tbody.includes('May_Custom_Upload.xlsx'));
+  });
 });
