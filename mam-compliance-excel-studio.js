@@ -149,14 +149,63 @@
   const CODE_HEADERS = ['code', 'emp code', 'employee code', 'employee id', 'emp id', 'id', 'card no', 'ecode', 'e code', 'staff code', 'worker code'];
   const GENERIC_NAME_HEADERS = ['name', 'emp name', 'employee name', 'name of employee', 'employee', 'worker name'];
   const NAME_HEADERS = GENERIC_NAME_HEADERS.concat(['staff name']);
+  const CATEGORY_HEADERS = ['category', 'category 02', 'catgrory 02', 'category 01', 'catgrory 01', 'card', 'card no', 'card number', 'dept', 'department', 'group'];
   const AMOUNT_HEADERS = ['manual amount', 'manual amt', 'mam amount', 'amount', 'total', 'total amount', 'salary', 'salary amount', 'net payable', 'payment', 'net amount'];
+
+  function parseCardNumber(val) {
+    const raw = text(val);
+    if (!raw) return '';
+    let m = raw.match(/^(?:new\s*)?card(?:\s*no\.?)?[-\s.]*0*(\d{1,3})(?:\b|\s|$)/i);
+    if (m) return String(Number(m[1]));
+    m = raw.match(/^c[-\s.]*0*(\d{1,3})$/i);
+    if (m) return String(Number(m[1]));
+    m = raw.match(/\bcard(?:\s*no\.?)?[-\s.]*0*(\d{1,3})\b/i);
+    if (m) return String(Number(m[1]));
+    return '';
+  }
+
+  function buildMasterCardMap(employees) {
+    const counts = {};
+    const display = {};
+    (employees || []).forEach(e => {
+      if (!e) return;
+      [e.cat2, e.cat1].forEach(raw => {
+        const c = text(raw).toUpperCase();
+        const cn = parseCardNumber(c);
+        if (!cn) return;
+        counts[cn] = counts[cn] || {};
+        counts[cn][c] = (counts[cn][c] || 0) + 1;
+      });
+    });
+    Object.keys(counts).forEach(cn => {
+      const variants = Object.keys(counts[cn]).sort((a, b) => {
+        // Prefer clean Card formats like "CARD NO.7" over extra suffix if counts tie, else most common
+        const diff = (counts[cn][b] || 0) - (counts[cn][a] || 0);
+        if (diff !== 0) return diff;
+        return a.length - b.length;
+      });
+      if (variants.length) display[cn] = variants[0];
+    });
+    return display;
+  }
+
+  function canonicalizeCardCategory(rawCat, masterCardMap) {
+    const raw = text(rawCat).toUpperCase();
+    if (!raw) return '';
+    const cn = parseCardNumber(raw);
+    if (!cn) return raw;
+    if (masterCardMap && masterCardMap[cn]) return masterCardMap[cn];
+    if (/^(?:NEW\s*)?CARD/i.test(raw)) return raw;
+    return 'CARD NO.' + cn;
+  }
 
   function parseMamMatrix(rows, sheetName, fileName) {
     rows = Array.isArray(rows) ? rows : [];
     const sheet = text(sheetName) || 'Sheet1';
     const file = text(fileName) || 'Mam_Sheet';
-    let ci = -1, ni = -1, ai = -1;
+    let ci = -1, ni = -1, ai = -1, catIdx = -1;
     let currentCategory = sheet;
+    let sectionHeaderCount = 0;
     let firstHeaderIdx = -1;
 
     for (let i = 0; i < Math.min(40, rows.length); i++) {
@@ -167,11 +216,14 @@
       if (foundC >= 0 && foundA >= 0) {
         ci = foundC;
         ai = foundA;
+        sectionHeaderCount = 1;
         const foundN = h.findIndex((x, idx) => idx !== ci && idx !== ai && GENERIC_NAME_HEADERS.includes(x));
         if (foundN >= 0) {
           ni = foundN;
+          const foundCat = h.findIndex((x, idx) => idx !== ci && idx !== ni && idx !== ai && CATEGORY_HEADERS.includes(x));
+          if (foundCat >= 0) catIdx = foundCat;
         } else {
-          // Pick middle non-empty column between ci and ai, or next column (grouped Mam format: Code | Card No.6 | Total)
+          // Pick middle non-empty column between ci and ai, or next column (grouped Mam format: Code | Card No.6 | Total or Code | Staff Name | Total)
           for (let c = 0; c < r.length; c++) {
             if (c !== ci && c !== ai && text(r[c]) !== '') { ni = c; break; }
           }
@@ -180,6 +232,8 @@
           if (headerNameTxt && !GENERIC_NAME_HEADERS.includes(norm(headerNameTxt))) {
             currentCategory = headerNameTxt;
           }
+          const foundCat = h.findIndex((x, idx) => idx !== ci && idx !== ni && idx !== ai && CATEGORY_HEADERS.includes(x));
+          if (foundCat >= 0) catIdx = foundCat;
         }
         firstHeaderIdx = i;
         break;
@@ -209,8 +263,9 @@
       const nCode = norm(rawCode);
       const nName = norm(rawName);
 
-      // Grouped section header row e.g. ['Code', 'Card-9', 'Total'] or ['Code', 'Staff Name', '']
+      // Grouped section header row e.g. ['Code', 'Card-9', 'Total'] or ['Code', 'C7', 'Total'] or ['Code', 'Staff Name', '']
       if (CODE_HEADERS.includes(nCode)) {
+        sectionHeaderCount++;
         if (rawName && !GENERIC_NAME_HEADERS.includes(nName)) currentCategory = rawName;
         continue;
       }
@@ -223,11 +278,17 @@
       const amt = num(rawAmt);
       if (amt === null && !rawCode) continue;
 
+      const colCat = catIdx >= 0 ? text(a[catIdx]) : '';
+      const resolvedCat = colCat || currentCategory || sheet;
+      const isCardSection = !!parseCardNumber(resolvedCat);
+      const explicitFromSheet = !!(colCat || isCardSection || (sectionHeaderCount > 1 && !NAME_HEADERS.includes(norm(resolvedCat))));
+
       out.push({
         code: cleanCode(rawCode),
         name: rawName,
         manualAmount: amt === null ? 0 : round2(amt),
-        category: currentCategory || sheet,
+        category: resolvedCat,
+        hasExplicitCategory: explicitFromSheet,
         source: file + ' · ' + sheet + ' · Row ' + (r + 1),
         sourceRow: r + 1
       });
@@ -239,19 +300,19 @@
     return out;
   }
 
-  // Reference (Lokesh) parser for optional formula/profile learning
+  // Reference / Last Month Compliance parser: learns exact PF & ESIC deduction rules per employee
   function parseReferenceMatrix(rows, sheetName, fileName) {
     rows = Array.isArray(rows) ? rows : [];
     let hi = -1;
-    for (let i = 0; i < Math.min(20, rows.length); i++) {
+    for (let i = 0; i < Math.min(25, rows.length); i++) {
       const h = (rows[i] || []).map(norm);
       if (h.some(x => ['employee id', 'emp id', 'emp code', 'code'].includes(x)) &&
           h.some(x => ['name of employee', 'employee name', 'name'].includes(x)) &&
-          h.some(x => ['paid days', 'working days'].includes(x))) {
+          h.some(x => ['paid days', 'working days', 'pf 12', 'pf', 'esic 0 75', 'esic'].includes(x))) {
         hi = i; break;
       }
     }
-    if (hi < 0) throw new Error('Reference sheet me Employee ID, Name of employee, Paid Days columns nahi mile.');
+    if (hi < 0) throw new Error('Reference sheet me Employee ID, Name of employee, Paid Days / PF / ESIC columns nahi mile.');
     const hdr = (rows[hi] || []).map(norm);
     const col = (...aliases) => hdr.findIndex(h => aliases.includes(h));
     const idx = {
@@ -267,14 +328,25 @@
       monthDays: col('month of days', 'month days'),
       paidDays: col('paid days', 'working days'),
       ot: col('over time hours', 'overtime hours', 'ot hours'),
-      totalGross: col('total gross salary'),
+      earnBasic: col('earn basic', 'earned basic'),
+      totalGross: col('total gross salary', 'total gross'),
       manual: col('manual amount', 'mam amount'),
-      pf: col('pf 12', 'pf@12%', 'pf employee'),
-      esic: col('esic 0 75', 'esic @0.75%', 'esi 0 75'),
+      pfRule: col('pf rule', 'pf mode'),
+      pf: col('pf 12', 'pf 12%', 'pf', 'pf employee', 'pf ded'),
+      esiRule: col('esic rule', 'esi rule', 'esic mode'),
+      esic: col('esic 0 75', 'esi 0 75', 'esic', 'esi', 'esic employee'),
       adv: col('advance deduction', 'advance'),
       remarks: col('remarks', 'remark')
     };
-    const profiles = { byCode: {}, byName: {}, count: 0, sourceFile: fileName || '', month: detectMonthFromText(fileName || sheetName || '') };
+    const detectedMonth = detectMonthFromText(fileName || '') || detectMonthFromText(sheetName || '');
+    const profiles = {
+      byCode: {},
+      byName: {},
+      list: [],
+      count: 0,
+      sourceFile: fileName || sheetName || '',
+      month: detectedMonth
+    };
     for (let r = hi + 1; r < rows.length; r++) {
       const a = rows[r] || [];
       const empId = cleanCode(idx.id >= 0 ? a[idx.id] : '');
@@ -284,33 +356,57 @@
       const gross = num(idx.gross >= 0 ? a[idx.gross] : 0) || 0;
       const md = num(idx.monthDays >= 0 ? a[idx.monthDays] : 31) || 31;
       const paid = num(idx.paidDays >= 0 ? a[idx.paidDays] : 0) || 0;
-      const eb = md ? round0(basic * paid / md) : 0;
+      const explicitEb = num(idx.earnBasic >= 0 ? a[idx.earnBasic] : null);
+      const eb = (explicitEb !== null && explicitEb >= 0) ? round0(explicitEb) : (md ? round0(basic * paid / md) : 0);
+      const tg = num(idx.totalGross >= 0 ? a[idx.totalGross] : 0) || 0;
       const pf = num(idx.pf >= 0 ? a[idx.pf] : 0) || 0;
       const esic = num(idx.esic >= 0 ? a[idx.esic] : 0) || 0;
       const pfNo = text(idx.pfNo >= 0 ? a[idx.pfNo] : '');
-      const esiNo = text(idx.esic >= 0 ? a[idx.esic] : '');
+      const esiNo = text(idx.esiNo >= 0 ? a[idx.esiNo] : '');
+      const explicitPfRule = text(idx.pfRule >= 0 ? a[idx.pfRule] : '').toUpperCase();
+      const explicitEsiRule = text(idx.esiRule >= 0 ? a[idx.esiRule] : '').toUpperCase();
+
       const capPf = round0(Math.min(15000, eb) * 0.12);
       const fullPf = round0(eb * 0.12);
+      const grossPf = round0(tg * 0.12);
       let pfMode = 'AUTO';
-      if (validId(pfNo) && eb > 0 && pf === 0) pfMode = 'NONE';
-      else if (pf > 0 && eb > 15000 && Math.abs(pf - capPf) <= 2 && Math.abs(pf - fullPf) > 10) pfMode = 'CAP_15000';
-      else if (pf > 0) pfMode = 'FULL_12';
+      if (['FULL_12', 'CAP_15000', 'GROSS_12', 'NONE'].includes(explicitPfRule)) {
+        pfMode = explicitPfRule;
+      } else if (paid > 0 && eb > 0) {
+        if (pf === 0) pfMode = 'NONE';
+        else if (eb > 15000 && Math.abs(pf - capPf) <= 3 && Math.abs(pf - fullPf) > 10) pfMode = 'CAP_15000';
+        else if (tg > eb && Math.abs(pf - grossPf) <= 3 && Math.abs(pf - fullPf) > 10) pfMode = 'GROSS_12';
+        else if (pf > 0) pfMode = 'FULL_12';
+      }
+
+      const ebEsi = round0(eb * 0.0075);
+      const tgEsi = round0(tg * 0.0075);
       let esiMode = 'AUTO';
-      if (validId(idx.esiNo >= 0 ? a[idx.esiNo] : '') && eb > 0 && esic === 0) esiMode = 'NONE';
-      else if (esic > 0) esiMode = 'EARN_BASIC';
+      if (['EARN_BASIC', 'TOTAL_GROSS', 'NONE'].includes(explicitEsiRule)) {
+        esiMode = explicitEsiRule;
+      } else if (paid > 0 && eb > 0) {
+        if (esic === 0) esiMode = 'NONE';
+        else if (tg > eb && Math.abs(esic - tgEsi) <= 3 && Math.abs(esic - ebEsi) > 3) esiMode = 'TOTAL_GROSS';
+        else if (esic > 0) esiMode = 'EARN_BASIC';
+      }
+
       const p = {
         empId,
         name: empName,
         father: text(idx.father >= 0 ? a[idx.father] : ''),
         pfNo,
-        esiNo: text(idx.esiNo >= 0 ? a[idx.esiNo] : ''),
+        esiNo,
         gender: text(idx.gender >= 0 ? a[idx.gender] : ''),
         category: text(idx.cat >= 0 ? a[idx.cat] : ''),
         basic,
         gross,
         paidDays: paid,
         otHours: num(idx.ot >= 0 ? a[idx.ot] : 0) || 0,
+        earnBasic: eb,
+        totalGross: tg,
         manualAmount: num(idx.manual >= 0 ? a[idx.manual] : null),
+        prevPf: round0(pf),
+        prevEsi: round0(esic),
         pfMode,
         esiMode,
         remarks: text(idx.remarks >= 0 ? a[idx.remarks] : '')
@@ -322,8 +418,183 @@
       }
       const nk = nameKey(empName);
       if (nk && !profiles.byName[nk]) profiles.byName[nk] = p;
+      profiles.list.push(p);
     }
     return profiles;
+  }
+
+  function buildProfilesFromComplianceSheet(sheetRecord) {
+    if (!sheetRecord || !Array.isArray(sheetRecord.rows)) return null;
+    const s = settingsOf(sheetRecord.settings);
+    const profiles = {
+      byCode: {},
+      byName: {},
+      list: [],
+      count: 0,
+      sourceFile: sheetRecord.mamFile || ('Saved · ' + monthLabel(sheetRecord.month || sheetRecord.id)),
+      month: text(sheetRecord.month || sheetRecord.id)
+    };
+    sheetRecord.rows.forEach(r => {
+      if (!r || !cleanCode(r.empId)) return;
+      const eb = Number(r.earnBasic) || 0;
+      const tg = Number(r.totalGross) || 0;
+      const paid = Number(r.paidDays) || 0;
+      const pf = Number(r.pfEmployee) || 0;
+      const esic = Number(r.esiEmployee) || 0;
+
+      let pfMode = text(r.pfMode).toUpperCase() || 'AUTO';
+      if (pfMode === 'AUTO' && paid > 0 && eb > 0) {
+        if (pf === 0) pfMode = 'NONE';
+        else {
+          const capPf = round0(Math.min(s.pfCap || 15000, eb) * s.pfRate);
+          const fullPf = round0(eb * s.pfRate);
+          const grossPf = round0(tg * s.pfRate);
+          if (eb > (s.pfCap || 15000) && Math.abs(pf - capPf) <= 3 && Math.abs(pf - fullPf) > 10) pfMode = 'CAP_15000';
+          else if (tg > eb && Math.abs(pf - grossPf) <= 3 && Math.abs(pf - fullPf) > 10) pfMode = 'GROSS_12';
+          else pfMode = 'FULL_12';
+        }
+      }
+
+      let esiMode = text(r.esiMode).toUpperCase() || 'AUTO';
+      if (esiMode === 'AUTO' && paid > 0 && eb > 0) {
+        if (esic === 0) esiMode = 'NONE';
+        else if (tg > eb && Math.abs(esic - round0(tg * s.esiRate)) <= 3 && Math.abs(esic - round0(eb * s.esiRate)) > 3) esiMode = 'TOTAL_GROSS';
+        else esiMode = 'EARN_BASIC';
+      }
+
+      const p = {
+        empId: cleanCode(r.empId),
+        name: text(r.name),
+        father: text(r.father),
+        pfNo: text(r.pfNo),
+        esiNo: text(r.esiNo),
+        gender: text(r.gender),
+        category: text(r.category),
+        basic: Number(r.basic) || 0,
+        gross: Number(r.gross) || 0,
+        paidDays: paid,
+        otHours: Number(r.overtimeHours) || 0,
+        earnBasic: eb,
+        totalGross: tg,
+        manualAmount: Number(r.manualAmount) || 0,
+        prevPf: round0(pf),
+        prevEsi: round0(esic),
+        pfMode,
+        esiMode,
+        remarks: text(r.remarks)
+      };
+      const ck = codeKey(p.empId);
+      if (ck && !profiles.byCode[ck]) {
+        profiles.byCode[ck] = p;
+        profiles.count++;
+      }
+      const nk = nameKey(p.name);
+      if (nk && !profiles.byName[nk]) profiles.byName[nk] = p;
+      profiles.list.push(p);
+    });
+    return profiles;
+  }
+
+  function computeLastMonthAudit(currentRows, prevProfiles) {
+    const cur = Array.isArray(currentRows) ? currentRows : [];
+    const curCodes = new Set();
+    const curNames = new Set();
+    const zeroDayCurrent = [];
+    const matched = [];
+    const cardShifts = [];
+
+    cur.forEach(r => {
+      const ck = codeKey(r.empId);
+      const nk = nameKey(r.name);
+      if (ck) curCodes.add(ck);
+      if (nk) curNames.add(nk);
+      if (r.cardShiftedFrom) {
+        cardShifts.push({
+          empId: r.empId,
+          name: r.name,
+          fromCard: r.cardShiftedFrom,
+          toCard: r.category,
+          paidDays: r.paidDays,
+          pfEmployee: r.pfEmployee || 0,
+          esiEmployee: r.esiEmployee || 0
+        });
+      }
+      if ((r.paidDays <= 0 || r.earnBasic <= 0 || norm(r.remarks) === 'off roll') &&
+          ((r.prevPfEmployee || 0) > 0 || (r.prevEsiEmployee || 0) > 0 || validId(r.pfNo) || validId(r.esiNo))) {
+        zeroDayCurrent.push({
+          empId: r.empId,
+          name: r.name,
+          category: r.category,
+          prevPf: r.prevPfEmployee || 0,
+          prevEsi: r.prevEsiEmployee || 0,
+          currPf: r.pfEmployee || 0,
+          currEsi: r.esiEmployee || 0,
+          paidDays: r.paidDays || 0,
+          reason: '0 Paid Days / Off Roll in Mam Sheet — ₹0 PF & ₹0 ESIC'
+        });
+      }
+    });
+
+    const skippedAbsent = [];
+    if (prevProfiles) {
+      const list = Array.isArray(prevProfiles.list) && prevProfiles.list.length
+        ? prevProfiles.list
+        : Object.values(prevProfiles.byCode || {});
+      list.forEach(p => {
+        if (!p) return;
+        const ck = codeKey(p.empId);
+        const nk = nameKey(p.name);
+        const isPresent = (ck && curCodes.has(ck)) || (nk && curNames.has(nk));
+        if (!isPresent) {
+          skippedAbsent.push({
+            empId: p.empId,
+            name: p.name,
+            category: p.category || '',
+            pfNo: p.pfNo || 'NA',
+            esiNo: p.esiNo || 'NA',
+            prevPf: Number(p.prevPf) || 0,
+            prevEsi: Number(p.prevEsi) || 0,
+            currPf: 0,
+            currEsi: 0,
+            pfMode: p.pfMode || 'AUTO',
+            esiMode: p.esiMode || 'AUTO',
+            reason: (Number(p.prevPf) > 0 || Number(p.prevEsi) > 0)
+              ? 'Not in Mam Sheet (Left / Absent) — ₹0 PF & ₹0 ESIC'
+              : 'Not in Mam Sheet (Absent) — ₹0'
+          });
+        } else {
+          const curRow = cur.find(r => (ck && codeKey(r.empId) === ck) || (nk && nameKey(r.name) === nk));
+          if (curRow) {
+            matched.push({
+              empId: curRow.empId,
+              name: curRow.name,
+              category: curRow.category,
+              prevPf: Number(p.prevPf) || 0,
+              currPf: curRow.pfEmployee || 0,
+              prevEsi: Number(p.prevEsi) || 0,
+              currEsi: curRow.esiEmployee || 0,
+              pfMode: curRow.pfMode,
+              esiMode: curRow.esiMode,
+              paidDays: curRow.paidDays
+            });
+          }
+        }
+      });
+    }
+
+    return {
+      sourceFile: (prevProfiles && prevProfiles.sourceFile) || '',
+      sourceMonth: (prevProfiles && prevProfiles.month) || '',
+      matchedCount: matched.length,
+      skippedAbsentCount: skippedAbsent.length,
+      skippedWithPrevDeductionCount: skippedAbsent.filter(x => x.prevPf > 0 || x.prevEsi > 0).length,
+      zeroDayCurrentCount: zeroDayCurrent.length,
+      cardShiftCount: cardShifts.length,
+      matched,
+      skippedAbsent,
+      zeroDayCurrent,
+      cardShifts
+    };
   }
 
   function indexEmployeeMaster(employees) {
@@ -415,15 +686,19 @@
       row.diffAmount = s.clampNegativeDiff ? Math.max(0, rawDiff) : rawDiff;
     }
 
-    // PF@12%
+    // PF@12% (Strictly ₹0 if paidDays <= 0, earnBasic <= 0, gross <= 0, or NONE)
     const hasPf = validId(row.pfNo);
     const effectivePfMode = row.pfMode && row.pfMode !== 'AUTO' ? row.pfMode : (hasPf ? s.pfDefaultMode : 'NONE');
-    if (effectivePfMode === 'NONE' || !hasPf || row.earnBasic <= 0) {
+    if (effectivePfMode === 'NONE' || !hasPf || row.paidDays <= 0 || row.earnBasic <= 0 || row.gross <= 0) {
       row.pfWage = 0;
       row.pfEmployee = 0;
       row.pfEmployer = 0;
     } else if (effectivePfMode === 'CAP_15000') {
       row.pfWage = Math.min(s.pfCap || 15000, row.earnBasic);
+      row.pfEmployee = round0(row.pfWage * s.pfRate);
+      row.pfEmployer = round0(row.pfWage * s.pfEmployerRate);
+    } else if (effectivePfMode === 'GROSS_12') {
+      row.pfWage = row.totalGross;
       row.pfEmployee = round0(row.pfWage * s.pfRate);
       row.pfEmployer = round0(row.pfWage * s.pfEmployerRate);
     } else {
@@ -432,10 +707,10 @@
       row.pfEmployer = round0(row.pfWage * s.pfEmployerRate);
     }
 
-    // ESIC@0.75% (Lokesh verified 86/86: Math.round(EarnBasic * 0.0075) when ESI NO is valid)
+    // ESIC@0.75% (Strictly ₹0 if paidDays <= 0, earnBasic <= 0, gross <= 0, or NONE)
     const hasEsi = validId(row.esiNo);
     const effectiveEsiMode = row.esiMode && row.esiMode !== 'AUTO' ? row.esiMode : (hasEsi ? s.esiBase : 'NONE');
-    if (effectiveEsiMode === 'NONE' || !hasEsi || row.earnBasic <= 0) {
+    if (effectiveEsiMode === 'NONE' || !hasEsi || row.paidDays <= 0 || row.earnBasic <= 0 || row.gross <= 0) {
       row.esiWage = 0;
       row.esiEmployee = 0;
       row.esiEmployer = 0;
@@ -455,10 +730,11 @@
     // Audit flags for easy filtering
     const flags = [];
     if (!row.masterMatched) flags.push('Missing in Employee Master');
-    if (!row.gross || !row.basic) flags.push('Basic/Gross 0 (Off Roll)');
+    if (!row.gross || !row.basic || row.paidDays <= 0) flags.push('Basic/Gross/Days 0 (Off Roll)');
     if (hasPf && row.pfEmployee === 0 && row.earnBasic > 0) flags.push('PF Exempt');
     if (row.manualAmount !== null && row.totalGross > row.manualAmount) flags.push('Total Gross > Manual');
     if (row.isDuplicate) flags.push('Duplicate Code in Mam');
+    if (row.cardShiftedFrom) flags.push('Card Shifted: ' + row.cardShiftedFrom + ' → ' + row.category);
     row.flags = flags;
     row.status = flags.length ? 'REVIEW' : 'READY';
     return row;
@@ -468,6 +744,7 @@
     const opts = options || {};
     const s = settingsOf(opts.settings);
     const master = indexEmployeeMaster(employees);
+    const masterCardMap = buildMasterCardMap(employees);
     const profiles = opts.profiles || { byCode: {}, byName: {} };
     const advanceMap = opts.advanceMap || {};
 
@@ -477,6 +754,7 @@
       if (ck) codeCounts[ck] = (codeCounts[ck] || 0) + 1;
     });
 
+    // Strictly iterate ONLY Mam sheet employees — any employee from last month who is absent this month is NEVER added.
     return (mamRows || []).map((m, idx) => {
       const rawCk = codeKey(m.code);
       const nk = nameKey(m.name);
@@ -496,7 +774,29 @@
 
       const pfNo = text(emp && (emp.pf_no || emp.pfNo)) || text(prof && prof.pfNo) || 'NA';
       const esiNo = text(emp && (emp.esi_no || emp.esiNo)) || text(prof && prof.esiNo) || 'NA';
-      const category = text(emp && (emp.cat2 || emp.cat1)) || text(prof && prof.category) || text(m.category) || 'OTHER';
+
+      // Card shift rule: If Mam sheet places employee under an explicit Card / section (e.g. C7 / Card No.7),
+      // shift employee directly to that Card instead of forcing Employee Master's old Card (e.g. CARD NO. 1).
+      const masterCatRaw = text(emp && (emp.cat2 || emp.cat1)).toUpperCase();
+      const profCatRaw = text(prof && prof.category).toUpperCase();
+      const mamCatRaw = text(m.category);
+      const mamCardNum = parseCardNumber(mamCatRaw);
+      const mamCatNormalized = canonicalizeCardCategory(mamCatRaw, masterCardMap);
+      const mamExplicitCard = !!(mamCatRaw && (m.hasExplicitCategory || mamCardNum));
+
+      let category = '';
+      let mamCategoryLocked = false;
+      let cardShiftedFrom = '';
+      if (mamExplicitCard && mamCatNormalized) {
+        category = mamCatNormalized;
+        mamCategoryLocked = true;
+        if (masterCatRaw && canonicalizeCardCategory(masterCatRaw, masterCardMap) !== category) {
+          cardShiftedFrom = masterCatRaw;
+        }
+      } else {
+        category = masterCatRaw || profCatRaw || mamCatNormalized || 'OTHER';
+      }
+
       const designation = text(emp && (emp.desig || emp.designation)) || '';
       const department = text(emp && (emp.dept || emp.department)) || '';
       const father = text(emp && (emp.father || emp.fathers_name)) || text(prof && prof.father) || '';
@@ -525,7 +825,9 @@
         department,
         designation,
         category: category.toUpperCase(),
-        mamCategory: text(m.category),
+        mamCategory: mamCatRaw,
+        mamCategoryLocked,
+        cardShiftedFrom,
         basic,
         gross,
         monthDays: s.monthDays,
@@ -539,6 +841,10 @@
         diffAmount: 0,
         pfMode: (prof && prof.pfMode) || 'AUTO',
         esiMode: (prof && prof.esiMode) || 'AUTO',
+        prevPfEmployee: prof ? (Number(prof.prevPf) || 0) : 0,
+        prevEsiEmployee: prof ? (Number(prof.prevEsi) || 0) : 0,
+        prevPfMode: (prof && prof.pfMode) || '',
+        prevEsiMode: (prof && prof.esiMode) || '',
         pfWage: 0,
         pfEmployee: 0,
         pfEmployer: 0,
@@ -595,15 +901,133 @@
     return name;
   }
 
-  // Builds a rich multi-tab Excel workbook with LIVE Excel formulas on Main Sheet
+  function autoFitColsFromAoa(aoa, minW, maxW) {
+    const lo = minW || 9;
+    const hi = maxW || 34;
+    const widths = [];
+    (aoa || []).forEach(row => {
+      (row || []).forEach((val, idx) => {
+        const len = text(val).length + 3;
+        if (!widths[idx] || len > widths[idx]) widths[idx] = len;
+      });
+    });
+    return widths.map((w, idx) => ({ wch: idx === 0 ? Math.max(7, Math.min(12, w)) : Math.max(lo, Math.min(hi, w)) }));
+  }
+
+  function applyNumericFormatsAndFormulaRow(ws, aoa, numColIndices, formulaCols, textColIndices) {
+    if (!ws || !Array.isArray(aoa) || !aoa.length) return;
+    const totalRowIdx = aoa.length;
+    const lastDataRow = aoa.length - 1;
+    for (let r = 2; r <= lastDataRow; r++) {
+      (numColIndices || []).forEach(cIdx => {
+        const addr = String.fromCharCode(65 + cIdx) + r;
+        if (ws[addr] && ws[addr].t === 'n') ws[addr].z = '#,##0';
+      });
+      (textColIndices || []).forEach(cIdx => {
+        const addr = String.fromCharCode(65 + cIdx) + r;
+        if (ws[addr]) { ws[addr].t = 's'; ws[addr].z = '@'; }
+      });
+    }
+    if (lastDataRow >= 2 && Array.isArray(formulaCols)) {
+      formulaCols.forEach(colLetter => {
+        const addr = colLetter + totalRowIdx;
+        const cIdx = colLetter.charCodeAt(0) - 65;
+        const val = Number((aoa[aoa.length - 1] || [])[cIdx]) || 0;
+        ws[addr] = { t: 'n', f: `SUM(${colLetter}2:${colLetter}${lastDataRow})`, v: val, z: '#,##0' };
+      });
+    }
+  }
+
+  function wireComplianceFormulasForSheet(ws, rows, s) {
+    const bonusFactor = s.bonusMode === 'BASIC_833' ? (s.bonusRate / 100) : 0;
+    const grossBonusFactor = s.bonusMode === 'GROSS_10' ? 0.10 : 0;
+    const otDiv = s.otDivisor || 104;
+    const totals = computeTotals(rows);
+    const totalRowIdx = rows.length + 2;
+
+    rows.forEach((r, i) => {
+      const xlRow = i + 2; // Row 1 is headers
+      const setFormula = (colLetter, formula, val) => {
+        const addr = colLetter + xlRow;
+        ws[addr] = { t: 'n', f: formula, v: Number(val) || 0, z: '#,##0' };
+      };
+      setFormula('L', `MAX(0,K${xlRow}-M${xlRow})`, r.absent);
+      setFormula('O', `IF(M${xlRow}>0,ROUND(I${xlRow}*M${xlRow}/K${xlRow},0),0)`, r.earnBasic);
+      setFormula('P', `IF(M${xlRow}>0,ROUND(J${xlRow}*M${xlRow}/K${xlRow},0),0)`, r.grossEarned);
+
+      let tgFormula = `IF(OR(M${xlRow}<=0,J${xlRow}<=0),0,ROUND(P${xlRow}`;
+      if (bonusFactor > 0) tgFormula += `+O${xlRow}*${bonusFactor}`;
+      else if (grossBonusFactor > 0) tgFormula += `+P${xlRow}*${grossBonusFactor}`;
+      tgFormula += `+(J${xlRow}/${otDiv})*N${xlRow},0))`;
+      setFormula('Q', tgFormula, r.totalGross);
+
+      setFormula('S', s.clampNegativeDiff ? `MAX(0,R${xlRow}-Q${xlRow})` : `(R${xlRow}-Q${xlRow})`, r.diffAmount);
+
+      const hasPf = validId(r.pfNo);
+      const effPfMode = r.pfMode && r.pfMode !== 'AUTO' ? r.pfMode : (hasPf ? s.pfDefaultMode : 'NONE');
+      if (effPfMode === 'NONE' || !hasPf || r.paidDays <= 0 || r.earnBasic <= 0 || r.gross <= 0) {
+        setFormula('T', '0', 0);
+      } else if (effPfMode === 'CAP_15000') {
+        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(MIN(${s.pfCap || 15000},O${xlRow})*${s.pfRate},0))`, r.pfEmployee);
+      } else if (effPfMode === 'GROSS_12') {
+        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(Q${xlRow}*${s.pfRate},0))`, r.pfEmployee);
+      } else {
+        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(O${xlRow}*${s.pfRate},0))`, r.pfEmployee);
+      }
+
+      const hasEsi = validId(r.esiNo);
+      const effEsiMode = r.esiMode && r.esiMode !== 'AUTO' ? r.esiMode : (hasEsi ? s.esiBase : 'NONE');
+      if (effEsiMode === 'NONE' || !hasEsi || r.paidDays <= 0 || r.earnBasic <= 0 || r.gross <= 0) {
+        setFormula('U', '0', 0);
+      } else if (effEsiMode === 'TOTAL_GROSS') {
+        setFormula('U', `IF(M${xlRow}<=0,0,ROUND(Q${xlRow}*${s.esiRate},0))`, r.esiEmployee);
+      } else {
+        setFormula('U', `IF(M${xlRow}<=0,0,ROUND(O${xlRow}*${s.esiRate},0))`, r.esiEmployee);
+      }
+
+      setFormula('W', `T${xlRow}+U${xlRow}+V${xlRow}`, r.totalDeduction);
+      setFormula('X', r.paymentHold ? '0' : `MAX(0,Q${xlRow}-W${xlRow})`, r.netPayable);
+
+      ['I', 'J', 'K', 'M', 'N', 'R', 'V'].forEach(colL => {
+        const cell = ws[colL + xlRow];
+        if (cell && cell.t === 'n') cell.z = '#,##0';
+      });
+      ['B', 'E', 'F'].forEach(c => {
+        const cell = ws[c + xlRow];
+        if (cell) { cell.t = 's'; cell.z = '@'; }
+      });
+    });
+
+    if (rows.length > 0) {
+      const lastRow = rows.length + 1;
+      const keyMap = {
+        I: 'basic', J: 'gross', O: 'earnBasic', P: 'grossEarned',
+        Q: 'totalGross', R: 'manualAmount', S: 'diffAmount', T: 'pfEmployee',
+        U: 'esiEmployee', V: 'advance', W: 'totalDeduction', X: 'netPayable'
+      };
+      Object.keys(keyMap).forEach(colLetter => {
+        ws[colLetter + totalRowIdx] = {
+          t: 'n',
+          f: `SUM(${colLetter}2:${colLetter}${lastRow})`,
+          v: totals[keyMap[colLetter]] || 0,
+          z: '#,##0'
+        };
+      });
+      ws['!autofilter'] = { ref: `A1:Y${lastRow}` };
+    }
+    ws['!rows'] = [{ hpt: 28 }].concat(rows.map(() => ({ hpt: 20 }))).concat([{ hpt: 24 }]);
+  }
+
+  // Builds a rich multi-tab Excel workbook with LIVE Excel formulas on Main Sheet & Category Tabs
   function buildComplianceWorkbook(XLSX, rows, settings, meta) {
     const s = settingsOf(settings);
     const m = meta || {};
     const wb = XLSX.utils.book_new();
     const used = new Set();
     const list = Array.isArray(rows) ? rows : [];
+    const metaMap = wb.__atplMeta = {};
 
-    // 1. Main Sheet with real Excel formulas
+    // 1. Main Sheet with real Excel formulas (Row 1 = Headers, Row 2..N+1 = Employees, Row N+2 = GRAND TOTAL)
     const mainAoa = [MAIN_HEADERS.slice()];
     list.forEach((r, i) => {
       mainAoa.push([
@@ -636,7 +1060,6 @@
     });
 
     const totals = computeTotals(list);
-    const totalRowIdx = list.length + 2; // 1-based Excel row for Grand Total
     mainAoa.push([
       '', '', 'GRAND TOTAL', '', '', '', '', '',
       totals.basic, totals.gross, '', '', '', '',
@@ -647,92 +1070,36 @@
     ]);
 
     const wsMain = XLSX.utils.aoa_to_sheet(mainAoa);
-    const bonusFactor = s.bonusMode === 'BASIC_833' ? (s.bonusRate / 100) : 0;
-    const grossBonusFactor = s.bonusMode === 'GROSS_10' ? 0.10 : 0;
-    const otDiv = s.otDivisor || 104;
+    wireComplianceFormulasForSheet(wsMain, list, s);
+    wsMain['!cols'] = autoFitColsFromAoa(mainAoa, 11, 28);
+    wsMain['!cols'][0] = { wch: 7 };
+    wsMain['!cols'][2] = { wch: Math.max(24, wsMain['!cols'][2].wch) };
+    const mainSheetName = safeSheetName('Main Sheet', used);
+    XLSX.utils.book_append_sheet(wb, wsMain, mainSheetName);
+    metaMap[mainSheetName] = {
+      type: 'SALARY_MAIN',
+      hasHeader: true,
+      hasTotalRow: true,
+      freezeCols: 3,
+      numCols: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+      dedCols: [19, 20, 21, 22],
+      netCols: [23],
+      alertRows: list.map((r, i) => (norm(r.remarks) === 'off roll' || r.paidDays <= 0) ? (i + 2) : -1).filter(n => n > 0)
+    };
 
-    list.forEach((r, i) => {
-      const xlRow = i + 2; // Row 1 is headers
-      const setFormula = (colLetter, formula, val) => {
-        const addr = colLetter + xlRow;
-        wsMain[addr] = { t: 'n', f: formula, v: Number(val) || 0, z: '#,##0' };
-      };
-      setFormula('L', `MAX(0,K${xlRow}-M${xlRow})`, r.absent);
-      setFormula('O', `IF(M${xlRow}>0,ROUND(I${xlRow}*M${xlRow}/K${xlRow},0),0)`, r.earnBasic);
-      setFormula('P', `IF(M${xlRow}>0,ROUND(J${xlRow}*M${xlRow}/K${xlRow},0),0)`, r.grossEarned);
-
-      let tgFormula = `IF(OR(M${xlRow}<=0,J${xlRow}<=0),0,ROUND(P${xlRow}`;
-      if (bonusFactor > 0) tgFormula += `+O${xlRow}*${bonusFactor}`;
-      else if (grossBonusFactor > 0) tgFormula += `+P${xlRow}*${grossBonusFactor}`;
-      tgFormula += `+(J${xlRow}/${otDiv})*N${xlRow},0))`;
-      setFormula('Q', tgFormula, r.totalGross);
-
-      setFormula('S', s.clampNegativeDiff ? `MAX(0,R${xlRow}-Q${xlRow})` : `(R${xlRow}-Q${xlRow})`, r.diffAmount);
-
-      const hasPf = validId(r.pfNo);
-      const effPfMode = r.pfMode && r.pfMode !== 'AUTO' ? r.pfMode : (hasPf ? s.pfDefaultMode : 'NONE');
-      if (effPfMode === 'NONE' || !hasPf) {
-        setFormula('T', '0', 0);
-      } else if (effPfMode === 'CAP_15000') {
-        setFormula('T', `ROUND(MIN(${s.pfCap || 15000},O${xlRow})*${s.pfRate},0)`, r.pfEmployee);
-      } else {
-        setFormula('T', `ROUND(O${xlRow}*${s.pfRate},0)`, r.pfEmployee);
-      }
-
-      const hasEsi = validId(r.esiNo);
-      const effEsiMode = r.esiMode && r.esiMode !== 'AUTO' ? r.esiMode : (hasEsi ? s.esiBase : 'NONE');
-      if (effEsiMode === 'NONE' || !hasEsi) {
-        setFormula('U', '0', 0);
-      } else if (effEsiMode === 'TOTAL_GROSS') {
-        setFormula('U', `ROUND(Q${xlRow}*${s.esiRate},0)`, r.esiEmployee);
-      } else {
-        setFormula('U', `ROUND(O${xlRow}*${s.esiRate},0)`, r.esiEmployee);
-      }
-
-      setFormula('W', `T${xlRow}+U${xlRow}+V${xlRow}`, r.totalDeduction);
-      setFormula('X', r.paymentHold ? '0' : `MAX(0,Q${xlRow}-W${xlRow})`, r.netPayable);
-
-      // Force text format on Employee ID, PF NO, ESI NO
-      ['B', 'E', 'F'].forEach(c => {
-        const cell = wsMain[c + xlRow];
-        if (cell) { cell.t = 's'; cell.z = '@'; }
-      });
-    });
-
-    if (list.length > 0) {
-      const lastRow = list.length + 1;
-      ['I', 'J', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X'].forEach(colLetter => {
-        const keyMap = {
-          I: 'basic', J: 'gross', O: 'earnBasic', P: 'grossEarned',
-          Q: 'totalGross', R: 'manualAmount', S: 'diffAmount', T: 'pfEmployee',
-          U: 'esiEmployee', V: 'advance', W: 'totalDeduction', X: 'netPayable'
-        };
-        wsMain[colLetter + totalRowIdx] = {
-          t: 'n',
-          f: `SUM(${colLetter}2:${colLetter}${lastRow})`,
-          v: totals[keyMap[colLetter]] || 0,
-          z: '#,##0'
-        };
-      });
-      wsMain['!autofilter'] = { ref: `A1:Y${lastRow}` };
-    }
-    wsMain['!cols'] = MAIN_HEADERS.map((h, idx) => ({
-      wch: idx === 0 ? 7 : idx === 2 ? 26 : idx === 3 ? 22 : [4, 5, 7].includes(idx) ? 16 : 13
-    }));
-    XLSX.utils.book_append_sheet(wb, wsMain, safeSheetName('Main Sheet', used));
-
-    // 2. Category Summary + Category Tabs
+    // 2. Category Summary
     const catGroups = {};
     list.forEach(r => {
       const k = text(r.category) || 'OTHER';
       (catGroups[k] = catGroups[k] || []).push(r);
     });
+    const sortedCats = Object.keys(catGroups).sort();
     const catSummaryAoa = [[
       'S.No.', 'Category', 'Employees', 'Onroll', 'Off Roll', 'Earn Basic',
       'Total Gross', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC@0.75%',
       'Advance', 'Total Deduction', 'Net Payable'
     ]];
-    Object.keys(catGroups).sort().forEach((cat, idx) => {
+    sortedCats.forEach((cat, idx) => {
       const t = computeTotals(catGroups[cat]);
       catSummaryAoa.push([
         idx + 1, cat, t.count, t.onroll, t.offroll, t.earnBasic,
@@ -746,8 +1113,22 @@
       totals.advance, totals.totalDeduction, totals.netPayable
     ]);
     const wsCatSum = XLSX.utils.aoa_to_sheet(catSummaryAoa);
-    wsCatSum['!cols'] = catSummaryAoa[0].map((_, i) => ({ wch: i === 1 ? 24 : 13 }));
-    XLSX.utils.book_append_sheet(wb, wsCatSum, safeSheetName('Category Summary', used));
+    applyNumericFormatsAndFormulaRow(wsCatSum, catSummaryAoa, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], ['C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'], []);
+    wsCatSum['!cols'] = autoFitColsFromAoa(catSummaryAoa, 12, 28);
+    wsCatSum['!rows'] = [{ hpt: 28 }].concat(sortedCats.map(() => ({ hpt: 20 }))).concat([{ hpt: 24 }]);
+    wsCatSum['!autofilter'] = sortedCats.length ? { ref: `A1:N${sortedCats.length + 1}` } : undefined;
+    const catSumName = safeSheetName('Category Summary', used);
+    XLSX.utils.book_append_sheet(wb, wsCatSum, catSumName);
+    metaMap[catSumName] = {
+      type: 'SUMMARY',
+      hasHeader: true,
+      hasTotalRow: true,
+      freezeCols: 2,
+      numCols: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+      dedCols: [9, 10, 11, 12],
+      netCols: [13],
+      alertRows: []
+    };
 
     // 3. Employee Master & Designation Sheet
     const masterAoa = [[
@@ -762,75 +1143,183 @@
         text(r.category), text(r.bankName), text(r.ifsc), text(r.accountNo), r.netPayable, text(r.remarks)
       ]);
     });
+    masterAoa.push(['', 'TOTAL', '', '', '', '', '', '', '', '', '', '', '', '', '', totals.netPayable, '']);
     const wsMaster = XLSX.utils.aoa_to_sheet(masterAoa);
-    wsMaster['!cols'] = masterAoa[0].map((_, i) => ({ wch: i === 2 ? 25 : [3, 9, 10, 11, 12, 14].includes(i) ? 18 : 13 }));
-    XLSX.utils.book_append_sheet(wb, wsMaster, safeSheetName('Master & Designation', used));
+    applyNumericFormatsAndFormulaRow(wsMaster, masterAoa, [15], ['P'], [1, 6, 7, 13, 14]);
+    wsMaster['!cols'] = autoFitColsFromAoa(masterAoa, 12, 28);
+    wsMaster['!rows'] = [{ hpt: 28 }].concat(list.map(() => ({ hpt: 20 }))).concat([{ hpt: 24 }]);
+    const masterName = safeSheetName('Master & Designation', used);
+    XLSX.utils.book_append_sheet(wb, wsMaster, masterName);
+    metaMap[masterName] = {
+      type: 'MASTER',
+      hasHeader: true,
+      hasTotalRow: true,
+      freezeCols: 3,
+      numCols: [15],
+      dedCols: [],
+      netCols: [15],
+      alertRows: []
+    };
 
-    // 4. PF & ESIC Statutory Summary
+    // 4. PF & ESIC Statutory Summary (with Last Month comparison & Rule tracking)
     const statAoa = [[
       'S.No.', 'Employee ID', 'Name of employee', 'PF NO', 'ESI NO',
-      'PF Wages', 'PF Employee (12%)', 'PF Employer (13%)',
-      'ESIC Wages', 'ESIC Employee (0.75%)', 'ESIC Employer (3.25%)',
+      'PF Rule', 'PF Wages', 'PF Employee (12%)', 'PF Employer (13%)', 'Prev PF (Last Mo)',
+      'ESIC Rule', 'ESIC Wages', 'ESIC Employee (0.75%)', 'ESIC Employer (3.25%)', 'Prev ESIC (Last Mo)',
       'Total PF + ESIC Contribution', 'Remarks'
     ]];
     list.forEach((r, i) => {
       statAoa.push([
         i + 1, text(r.empId), text(r.name), text(r.pfNo), text(r.esiNo),
-        r.pfWage || 0, r.pfEmployee || 0, r.pfEmployer || 0,
-        r.esiWage || 0, r.esiEmployee || 0, r.esiEmployer || 0,
+        text(r.pfMode || 'AUTO'), r.pfWage || 0, r.pfEmployee || 0, r.pfEmployer || 0, Number(r.prevPfEmployee) || 0,
+        text(r.esiMode || 'AUTO'), r.esiWage || 0, r.esiEmployee || 0, r.esiEmployer || 0, Number(r.prevEsiEmployee) || 0,
         (r.pfEmployee || 0) + (r.pfEmployer || 0) + (r.esiEmployee || 0) + (r.esiEmployer || 0),
         text(r.remarks)
       ]);
     });
     statAoa.push([
-      '', 'TOTAL', '', '', '',
+      '', 'TOTAL', '', '', '', '',
       round0(list.reduce((a, b) => a + (b.pfWage || 0), 0)),
       totals.pfEmployee, totals.pfEmployer,
+      round0(list.reduce((a, b) => a + (Number(b.prevPfEmployee) || 0), 0)),
+      '',
       round0(list.reduce((a, b) => a + (b.esiWage || 0), 0)),
       totals.esiEmployee, totals.esiEmployer,
+      round0(list.reduce((a, b) => a + (Number(b.prevEsiEmployee) || 0), 0)),
       totals.pfEmployee + totals.pfEmployer + totals.esiEmployee + totals.esiEmployer,
       ''
     ]);
     const wsStat = XLSX.utils.aoa_to_sheet(statAoa);
-    wsStat['!cols'] = statAoa[0].map((_, i) => ({ wch: i === 2 ? 24 : 16 }));
-    XLSX.utils.book_append_sheet(wb, wsStat, safeSheetName('PF & ESIC Summary', used));
+    applyNumericFormatsAndFormulaRow(wsStat, statAoa, [6, 7, 8, 9, 11, 12, 13, 14, 15], ['G', 'H', 'I', 'J', 'L', 'M', 'N', 'O', 'P'], [1, 3, 4]);
+    wsStat['!cols'] = autoFitColsFromAoa(statAoa, 12, 28);
+    wsStat['!rows'] = [{ hpt: 28 }].concat(list.map(() => ({ hpt: 20 }))).concat([{ hpt: 24 }]);
+    wsStat['!autofilter'] = list.length ? { ref: `A1:Q${list.length + 1}` } : undefined;
+    const statName = safeSheetName('PF & ESIC Summary', used);
+    XLSX.utils.book_append_sheet(wb, wsStat, statName);
+    metaMap[statName] = {
+      type: 'STATUTORY',
+      hasHeader: true,
+      hasTotalRow: true,
+      freezeCols: 3,
+      numCols: [6, 7, 8, 9, 11, 12, 13, 14, 15],
+      dedCols: [7, 12],
+      netCols: [15],
+      alertRows: list.map((r, i) => (norm(r.remarks) === 'off roll' || r.paidDays <= 0) ? (i + 2) : -1).filter(n => n > 0)
+    };
 
-    // 5. Individual Category tabs (when reasonable count <= 30)
-    Object.keys(catGroups).sort().slice(0, 30).forEach(cat => {
+    // 5. Last Month Audit & Card Shift Log (Skipped/Absent employees strictly ₹0, plus Card 01 -> C7 shifts)
+    const audit = m.lastMonthAudit || computeLastMonthAudit(list, m.prevProfiles || null);
+    const auditAoa = [
+      ['Type / Status', 'Employee ID', 'Name of employee', 'Master / Prev Info', 'Current Card / Rule', 'Last Month PF', 'This Month PF', 'Last Month ESIC', 'This Month ESIC', 'Audit Note']
+    ];
+    const auditAlertRows = [];
+    (audit.skippedAbsent || []).forEach(x => {
+      auditAoa.push([
+        'ABSENT / LEFT (NOT IN MAM)', text(x.empId), text(x.name), text(x.category || 'Prev Sheet'), 'NOT IN MAM SHEET',
+        x.prevPf || 0, 0, x.prevEsi || 0, 0, text(x.reason)
+      ]);
+      auditAlertRows.push(auditAoa.length);
+    });
+    (audit.zeroDayCurrent || []).forEach(x => {
+      auditAoa.push([
+        'OFF ROLL / 0 DAYS', text(x.empId), text(x.name), text(x.category), '0 Paid Days',
+        x.prevPf || 0, 0, x.prevEsi || 0, 0, text(x.reason)
+      ]);
+      auditAlertRows.push(auditAoa.length);
+    });
+    (audit.cardShifts || []).forEach(x => {
+      auditAoa.push([
+        'CARD SHIFTED (MAM)', text(x.empId), text(x.name), text(x.fromCard), text(x.toCard),
+        0, x.pfEmployee || 0, 0, x.esiEmployee || 0, `Master: ${x.fromCard} -> Salary Card: ${x.toCard}`
+      ]);
+    });
+    if (auditAoa.length === 1) {
+      auditAoa.push(['INFO', '—', 'No absent/left skips or card shifts detected', '—', '—', 0, 0, 0, 0, 'All previous statutory records matched']);
+    }
+    const wsAudit = XLSX.utils.aoa_to_sheet(auditAoa);
+    wsAudit['!cols'] = autoFitColsFromAoa(auditAoa, 14, 38);
+    wsAudit['!rows'] = [{ hpt: 28 }].concat(auditAoa.slice(1).map(() => ({ hpt: 21 })));
+    const auditSheetName = safeSheetName('Last Month & Card Audit', used);
+    XLSX.utils.book_append_sheet(wb, wsAudit, auditSheetName);
+    metaMap[auditSheetName] = {
+      type: 'AUDIT',
+      hasHeader: true,
+      hasTotalRow: false,
+      freezeCols: 3,
+      numCols: [5, 6, 7, 8],
+      dedCols: [5, 7],
+      netCols: [6, 8],
+      alertRows: auditAlertRows
+    };
+
+    // 6. Individual Category tabs (with Grand Total row & live SUM formulas, when count <= 30)
+    sortedCats.slice(0, 30).forEach(cat => {
       const grp = catGroups[cat];
+      const ct = computeTotals(grp);
       const catAoa = [MAIN_HEADERS.slice()];
       grp.forEach((r, i) => {
         catAoa.push([
-          i + 1, text(r.empId), text(r.name), text(r.father), text(r.pfNo), text(r.esiNo),
-          text(r.gender), text(r.category), r.basic, r.gross, r.monthDays, r.absent,
-          r.paidDays, r.overtimeHours, r.earnBasic, r.grossEarned, r.totalGross,
-          r.manualAmount, r.diffAmount, r.pfEmployee, r.esiEmployee, r.advance,
-          r.totalDeduction, r.netPayable, text(r.remarks)
+          i + 1, text(r.empId), text(r.name), text(r.father), text(r.pfNo) || 'NA', text(r.esiNo) || 'NA',
+          text(r.gender), text(r.category), Number(r.basic) || 0, Number(r.gross) || 0,
+          Number(r.monthDays) || s.monthDays, Number(r.absent) || 0, Number(r.paidDays) || 0,
+          Number(r.overtimeHours) || 0, Number(r.earnBasic) || 0, Number(r.grossEarned) || 0,
+          Number(r.totalGross) || 0, Number(r.manualAmount) || 0, Number(r.diffAmount) || 0,
+          Number(r.pfEmployee) || 0, Number(r.esiEmployee) || 0, Number(r.advance) || 0,
+          Number(r.totalDeduction) || 0, Number(r.netPayable) || 0,
+          text(r.remarks) || (r.paidDays > 0 ? 'onroll' : 'off roll')
         ]);
       });
+      catAoa.push([
+        '', '', `${cat} TOTAL`, '', '', '', '', '',
+        ct.basic, ct.gross, '', '', '', '',
+        ct.earnBasic, ct.grossEarned, ct.totalGross,
+        ct.manualAmount, ct.diffAmount, ct.pfEmployee,
+        ct.esiEmployee, ct.advance, ct.totalDeduction,
+        ct.netPayable, ''
+      ]);
       const wsC = XLSX.utils.aoa_to_sheet(catAoa);
-      wsC['!cols'] = wsMain['!cols'];
-      XLSX.utils.book_append_sheet(wb, wsC, safeSheetName(cat, used));
+      wireComplianceFormulasForSheet(wsC, grp, s);
+      wsC['!cols'] = autoFitColsFromAoa(catAoa, 11, 28);
+      wsC['!cols'][0] = { wch: 7 };
+      wsC['!cols'][2] = { wch: Math.max(24, wsC['!cols'][2].wch) };
+      const catTabName = safeSheetName(cat, used);
+      XLSX.utils.book_append_sheet(wb, wsC, catTabName);
+      metaMap[catTabName] = {
+        type: 'SALARY_MAIN',
+        hasHeader: true,
+        hasTotalRow: true,
+        freezeCols: 3,
+        numCols: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
+        dedCols: [19, 20, 21, 22],
+        netCols: [23],
+        alertRows: grp.map((r, i) => (norm(r.remarks) === 'off roll' || r.paidDays <= 0) ? (i + 2) : -1).filter(n => n > 0)
+      };
     });
 
-    // 6. Formula & Sync Notes
+    // 7. Formula & Sync Notes
     const notesAoa = [
       ['ATPL Mam -> Compliance Workbook Summary', ''],
       ['Payroll Month', monthLabel(s.month)],
       ['Mam File Source', text(m.mamFile)],
+      ['Previous Month Source', text(audit.sourceFile || 'Auto / Built-in')],
       ['Last Synced At', text(m.updatedAt) || new Date().toISOString()],
       ['Total Employees', totals.count],
+      ['Absent / Left Skipped (₹0 PF/ESIC)', audit.skippedAbsentCount || 0],
+      ['Card Shifts Applied (Master -> Mam)', audit.cardShiftCount || 0],
       ['Earn Basic Formula', 'ROUND(Basic * Paid Days / Month Of Days, 0)'],
       ['Gross Earned Formula', 'ROUND(Gross Total Salary * Paid Days / Month Of Days, 0)'],
       ['Total Gross Formula', `ROUND(Gross Earned + Earn Basic * ${s.bonusRate}% + (Gross / ${s.otDivisor}) * OT Hours, 0)`],
       ['Diff Amount Formula', s.clampNegativeDiff ? 'MAX(0, Manual Amount - Total Gross)' : 'Manual Amount - Total Gross'],
-      ['PF@12% Formula', `ROUND(Earn Basic * ${(s.pfRate * 100).toFixed(2)}%, 0) when PF NO valid`],
-      ['ESIC@0.75% Formula', `ROUND(Earn Basic * ${(s.esiRate * 100).toFixed(2)}%, 0) when ESI NO valid`],
+      ['PF@12% Formula', `ROUND(Earn Basic * ${(s.pfRate * 100).toFixed(2)}%, 0) when PF NO valid & Paid Days > 0`],
+      ['ESIC@0.75% Formula', `ROUND(Earn Basic * ${(s.esiRate * 100).toFixed(2)}%, 0) when ESI NO valid & Paid Days > 0`],
       ['Net Payable Formula', 'Total Gross - (PF@12% + ESIC@0.75% + Advance Deduction)']
     ];
     const wsNotes = XLSX.utils.aoa_to_sheet(notesAoa);
-    wsNotes['!cols'] = [{ wch: 28 }, { wch: 64 }];
-    XLSX.utils.book_append_sheet(wb, wsNotes, safeSheetName('Formula Notes', used));
+    wsNotes['!cols'] = [{ wch: 34 }, { wch: 68 }];
+    wsNotes['!rows'] = [{ hpt: 28 }].concat(notesAoa.slice(1).map(() => ({ hpt: 20 })));
+    const notesName = safeSheetName('Formula Notes', used);
+    XLSX.utils.book_append_sheet(wb, wsNotes, notesName);
+    metaMap[notesName] = { type: 'NOTES', hasHeader: true, hasTotalRow: false, freezeCols: 1, numCols: [], dedCols: [], netCols: [], alertRows: [] };
 
     wb.Props = {
       Title: 'ATPL Compliance Salary Sheet - ' + monthLabel(s.month),
@@ -839,6 +1328,157 @@
       CreatedDate: new Date()
     };
     return wb;
+  }
+
+  // Post-processes SheetJS CE workbook XML using XLSX.CFB to inject rich MS Excel styling:
+  // Navy headers, borders on all cells, zebra rows, #,##0 currency alignment, highlighted Net Payable & Deductions, Total row fills, frozen panes & landscape print setup.
+  function styleComplianceWorkbookBytes(XLSX, wb) {
+    const rawArr = XLSX.write(wb, { type: 'array', bookType: 'xlsx', compression: false });
+    if (!XLSX.CFB || typeof XLSX.CFB.read !== 'function') {
+      return new Uint8Array(rawArr);
+    }
+    const zip = XLSX.CFB.read(new Uint8Array(rawArr), { type: 'array' });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    const customStylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="7">
+    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FF065F46"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FF9A3412"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FF1E3A8A"/><name val="Calibri"/></font>
+    <font><b/><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
+    <font><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
+  </fonts>
+  <fills count="9">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF1E3A8A"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFECFDF5"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF7ED"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFDBEAFE"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFEF2F2"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>
+  </fills>
+  <borders count="6">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+    <border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF1E40AF"/></left><right style="thin"><color rgb="FF1E40AF"/></right><top style="thin"><color rgb="FF0F172A"/></top><bottom style="medium"><color rgb="FF0F172A"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FFA7F3D0"/></left><right style="thin"><color rgb="FFA7F3D0"/></right><top style="thin"><color rgb="FFA7F3D0"/></top><bottom style="thin"><color rgb="FFA7F3D0"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FFFED7AA"/></left><right style="thin"><color rgb="FFFED7AA"/></right><top style="thin"><color rgb="FFFED7AA"/></top><bottom style="thin"><color rgb="FFFED7AA"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF93C5FD"/></left><right style="thin"><color rgb="FF93C5FD"/></right><top style="thin"><color rgb="FF1E3A8A"/></top><bottom style="double"><color rgb="FF1E3A8A"/></bottom><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="12">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="0" fillId="8" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="0" fillId="3" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="2" fillId="4" borderId="3" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="3" fillId="5" borderId="4" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="6" borderId="5" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="4" fillId="6" borderId="5" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="5" fillId="7" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+  </cellXfs>
+</styleSheet>`;
+
+    const findZipEntry = target => {
+      if (Array.isArray(zip.FullPaths)) {
+        const idx = zip.FullPaths.findIndex(p => String(p || '').endsWith('/' + target) || String(p || '') === target);
+        if (idx >= 0 && zip.FileIndex[idx]) return zip.FileIndex[idx];
+      }
+      const base = target.split('/').pop();
+      return zip.FileIndex.find(f => f && (f.name === target || f.name === '/' + target || f.name === base));
+    };
+    const stylesEntry = findZipEntry('xl/styles.xml');
+    if (stylesEntry) {
+      const styleBytes = encoder.encode(customStylesXml);
+      stylesEntry.content = styleBytes;
+      stylesEntry.size = styleBytes.length;
+    }
+
+    const colLettersToIdx = ref => {
+      const m = /^([A-Z]+)(\d+)$/.exec(ref || '');
+      if (!m) return { col: 0, row: 1 };
+      let col = 0;
+      for (let i = 0; i < m[1].length; i++) col = col * 26 + (m[1].charCodeAt(i) - 64);
+      return { col: col - 1, row: Number(m[2]) };
+    };
+
+    const metaMap = wb.__atplMeta || {};
+    (wb.SheetNames || []).forEach((sheetName, sIdx) => {
+      const sheetPath = `xl/worksheets/sheet${sIdx + 1}.xml`;
+      const entry = findZipEntry(sheetPath);
+      if (!entry || !entry.content) return;
+      const ws = wb.Sheets[sheetName];
+      const mInfo = metaMap[sheetName] || { hasHeader: true, hasTotalRow: false, freezeCols: 1, numCols: [], dedCols: [], netCols: [], alertRows: [] };
+      const numSet = new Set(mInfo.numCols || []);
+      const dedSet = new Set(mInfo.dedCols || []);
+      const netSet = new Set(mInfo.netCols || []);
+      const alertSet = new Set(mInfo.alertRows || []);
+      const refRange = ws && ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { e: { r: 0 } };
+      const lastRow1 = refRange.e.r + 1;
+
+      let xml = decoder.decode(new Uint8Array(entry.content));
+
+      // Inject frozen pane view (Row 1 + freezeCols frozen)
+      if (mInfo.hasHeader) {
+        const xSplit = Math.max(0, Number(mInfo.freezeCols) || 0);
+        const topLeftCol = String.fromCharCode(65 + xSplit);
+        const freezeTag = xSplit > 0
+          ? `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" workbookViewId="0"><pane xSplit="${xSplit}" ySplit="1" topLeftCell="${topLeftCol}2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`
+          : `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
+        if (/<sheetViews>[\s\S]*?<\/sheetViews>/.test(xml)) {
+          xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, freezeTag);
+        } else {
+          xml = xml.replace(/<sheetFormatPr/, freezeTag + '<sheetFormatPr');
+        }
+      }
+
+      // Style every cell cleanly based on row & column role
+      xml = xml.replace(/<c\s+([^>]*)>/g, (full, attrs) => {
+        const rm = /r="([A-Z]+\d+)"/.exec(attrs);
+        if (!rm) return full;
+        const pos = colLettersToIdx(rm[1]);
+        const isHdr = mInfo.hasHeader && pos.row === 1;
+        const isTot = mInfo.hasTotalRow && pos.row === lastRow1 && lastRow1 > 1;
+        const isAlert = alertSet.has(pos.row);
+        const isZebra = pos.row % 2 === 1;
+        const isNum = numSet.has(pos.col);
+        const isDed = dedSet.has(pos.col);
+        const isNet = netSet.has(pos.col);
+
+        let styleId = 2;
+        if (isHdr) styleId = 1;
+        else if (isTot) styleId = isNum ? 9 : 8;
+        else if (isAlert) styleId = isNum ? 11 : 10;
+        else if (isNet) styleId = 6;
+        else if (isDed) styleId = 7;
+        else if (isNum) styleId = isZebra ? 5 : 4;
+        else styleId = isZebra ? 3 : 2;
+
+        const cleanAttrs = attrs.replace(/\s*s="\d+"/g, '').trim();
+        return `<c ${cleanAttrs} s="${styleId}">`;
+      });
+
+      // Add landscape fit-to-1-page-wide print setup
+      if (!/<pageSetup\b/.test(xml) && /<\/worksheet>/.test(xml)) {
+        xml = xml.replace(/<\/worksheet>/, '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>');
+      }
+
+      const outBytes = encoder.encode(xml);
+      entry.content = outBytes;
+      entry.size = outBytes.length;
+    });
+
+    const outZip = XLSX.CFB.write(zip, { fileType: 'zip', type: 'array', compression: true });
+    return new Uint8Array(outZip);
   }
 
   const API = {
@@ -860,15 +1500,21 @@
     monthLabel,
     settingsOf,
     parseCsvText,
+    parseCardNumber,
+    buildMasterCardMap,
+    canonicalizeCardCategory,
     parseMamMatrix,
     parseReferenceMatrix,
+    buildProfilesFromComplianceSheet,
+    computeLastMonthAudit,
     indexEmployeeMaster,
     calculateTotalGross,
     deriveDaysAndOt,
     recalculateRow,
     generateComplianceRows,
     computeTotals,
-    buildComplianceWorkbook
+    buildComplianceWorkbook,
+    styleComplianceWorkbookBytes
   };
 
   if (typeof module !== 'undefined' && module.exports) {
@@ -910,7 +1556,7 @@
     { key: 'totalGross', label: 'Total Gross salary', col: 'R', width: 118, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'totalGross', formula: (r, s) => `=ROUND(GrossEarned + EarnBasic*${s.bonusRate}% + (Gross/${s.otDivisor})*OT, 0)` },
     { key: 'manualAmount', label: 'Manual Amount', col: 'S', width: 112, edit: 'number', align: 'right', money: true, numeric: true, sortable: true, totalKey: 'manualAmount' },
     { key: 'diffAmount', label: 'Diff. Amount', col: 'T', width: 96, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'diffAmount', formula: r => `=MAX(0, ${r.manualAmount || 0} - ${r.totalGross})` },
-    { key: 'pfMode', label: 'PF Rule', col: 'U', width: 96, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'NONE'], optional: true, sortable: true },
+    { key: 'pfMode', label: 'PF Rule', col: 'U', width: 102, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'NONE'], optional: true, sortable: true },
     { key: 'pfEmployee', label: 'PF@12%', col: 'V', width: 88, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'pfEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.pfRate * 100).toFixed(2)}%, 0)` },
     { key: 'esiMode', label: 'ESIC Rule', col: 'W', width: 104, edit: 'select', options: ['AUTO', 'EARN_BASIC', 'TOTAL_GROSS', 'NONE'], optional: true, sortable: true },
     { key: 'esiEmployee', label: 'ESIC @0.75%', col: 'X', width: 92, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'esiEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.esiRate * 100).toFixed(2)}%, 0)` },
@@ -1259,9 +1905,128 @@
     });
   }
 
+  function getAllLoadedSalaryFiles() {
+    const out = [];
+    const seen = new Set();
+    const pushFile = f => {
+      if (!f || !f.name || seen.has(f.name)) return;
+      seen.add(f.name);
+      out.push(f);
+    };
+    try { if (Array.isArray(root.FILES)) root.FILES.forEach(pushFile); } catch (_) {}
+    try { if (typeof FILES !== 'undefined' && Array.isArray(FILES)) FILES.forEach(pushFile); } catch (_) {}
+    return out;
+  }
+
+  function extractMatrixFromLoadedFile(f) {
+    const out = [];
+    if (!f) return out;
+    if (f.sheets && typeof f.sheets === 'object' && !Array.isArray(f.sheets)) {
+      Object.keys(f.sheets).forEach(sn => {
+        try {
+          const rows = f.sheets[sn];
+          if (Array.isArray(rows) && rows.length) out.push({ name: sn, rows });
+        } catch (_) {}
+      });
+    } else if (f.wb && Array.isArray(f.wb.SheetNames) && root.XLSX && root.XLSX.utils) {
+      f.wb.SheetNames.forEach(sn => {
+        try {
+          const rows = root.XLSX.utils.sheet_to_json(f.wb.Sheets[sn], { header: 1, defval: '', raw: true });
+          if (Array.isArray(rows) && rows.length) out.push({ name: sn, rows });
+        } catch (_) {}
+      });
+    }
+    return out;
+  }
+
+  function findPreviousMonthProfiles(targetMonth) {
+    const target = text(targetMonth);
+    const savedKeys = Object.keys(state.sheets || {}).filter(k => k && k !== target && state.sheets[k] && Array.isArray(state.sheets[k].rows) && state.sheets[k].rows.length);
+    const earlierSaved = savedKeys.filter(k => !target || k < target).sort().reverse();
+    const fallbackSaved = savedKeys.sort().reverse();
+    const chosenSavedKey = earlierSaved[0] || fallbackSaved[0];
+    if (chosenSavedKey) {
+      return buildProfilesFromComplianceSheet(state.sheets[chosenSavedKey]);
+    }
+
+    // Check already-loaded workbooks in All Files whose month < targetMonth (or compliance format)
+    const files = getAllLoadedSalaryFiles();
+    let best = null;
+    for (const f of files) {
+      const fMonth = detectMonthFromText(f.name);
+      if (target && fMonth && fMonth >= target) continue;
+      const sheets = extractMatrixFromLoadedFile(f);
+      for (const sh of sheets) {
+        try {
+          const p = parseReferenceMatrix(sh.rows, sh.name, f.name);
+          if (p && p.count > 0) {
+            if (!best || (p.month && (!best.month || p.month > best.month)) || p.count > best.count) {
+              best = p;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    if (best && best.count > 0) return best;
+
+    if (state.profiles && state.profiles.count > 0) {
+      return state.profiles;
+    }
+    return null;
+  }
+
+  function applyLastMonthPfEsicToActiveSheet() {
+    const sh = activeSheet();
+    if (!sh || !Array.isArray(sh.rows) || !sh.rows.length) {
+      setNotice('Pehle is month ki Mam sheet upload karein.', 'warn');
+      return;
+    }
+    const prevProfiles = findPreviousMonthProfiles(sh.month || sh.id);
+    if (!prevProfiles || !prevProfiles.count) {
+      setNotice('Last month ki salary/compliance sheet nahi mili. Formulas Drawer -> Import Ref se pichle mahine ki sheet upload karein ya pichla month save rakhein.', 'warn');
+      return;
+    }
+
+    pushUndoSnapshot();
+    const s = settingsOf(sh.settings);
+    let updated = 0;
+    let exemptCount = 0;
+    let cappedCount = 0;
+    let zeroDayCount = 0;
+
+    sh.rows.forEach(r => {
+      const ck = codeKey(r.empId);
+      const nk = nameKey(r.name);
+      const prof = (ck && prevProfiles.byCode && prevProfiles.byCode[ck]) || (nk && prevProfiles.byName && prevProfiles.byName[nk]) || null;
+      if (prof) {
+        r.prevPfEmployee = Number(prof.prevPf) || 0;
+        r.prevEsiEmployee = Number(prof.prevEsi) || 0;
+        r.prevPfMode = prof.pfMode || '';
+        r.prevEsiMode = prof.esiMode || '';
+        if (prof.pfMode && prof.pfMode !== 'AUTO') r.pfMode = prof.pfMode;
+        if (prof.esiMode && prof.esiMode !== 'AUTO') r.esiMode = prof.esiMode;
+        updated++;
+      }
+      recalculateRow(r, s);
+      if (r.pfMode === 'NONE' && (r.paidDays > 0 && r.earnBasic > 0)) exemptCount++;
+      if (r.pfMode === 'CAP_15000') cappedCount++;
+      if (r.paidDays <= 0 || r.earnBasic <= 0) zeroDayCount++;
+    });
+
+    const audit = computeLastMonthAudit(sh.rows, prevProfiles);
+    sh.lastMonthAudit = audit;
+    sh.prevSource = prevProfiles.sourceFile || '';
+    render();
+    scheduleSyncActiveSheet();
+    setNotice(
+      `Last Month PF/ESIC applied from ${prevProfiles.sourceFile || monthLabel(prevProfiles.month)}: ${updated} matched (${exemptCount} exempt, ${cappedCount} ₹15k cap), ${audit.skippedAbsentCount} absent/left employees strictly ₹0 (sheet me add nahi hue), ${zeroDayCount} off-roll ₹0.`,
+      'ok'
+    );
+  }
+
   async function handleMamUpload(file) {
     if (!file) return;
-    setNotice('Mam sheet parse ho rahi hai & Employee Master se PF, ESIC, Category, Designation match ho rahe hain…', 'info');
+    setNotice('Mam sheet parse ho rahi hai & Employee Master + Last Month PF/ESIC rules match ho rahe hain…', 'info');
     try {
       const sheets = await readUploadedWorkbook(file);
       let parsedRows = [];
@@ -1283,11 +2048,13 @@
       const currentSettings = settingsOf(Object.assign({}, activeSheet() ? activeSheet().settings : {}, { month: detectedMonth, monthDays: daysInMonth(detectedMonth) }));
       const emps = getEmployeeMasterList();
       const advanceMap = getAdvanceBalanceMap();
+      const prevProfiles = findPreviousMonthProfiles(detectedMonth);
       const rows = generateComplianceRows(parsedRows, emps, {
         settings: currentSettings,
-        profiles: state.profiles,
+        profiles: prevProfiles || state.profiles,
         advanceMap
       });
+      const lastMonthAudit = computeLastMonthAudit(rows, prevProfiles);
 
       const sheetId = detectedMonth;
       const now = new Date().toISOString();
@@ -1299,6 +2066,8 @@
         mamSheet: usedSheet,
         settings: currentSettings,
         rows,
+        lastMonthAudit,
+        prevSource: prevProfiles ? (prevProfiles.sourceFile || monthLabel(prevProfiles.month)) : '',
         createdAt: now,
         updatedAt: now,
         updatedBy: currentUserLabel()
@@ -1319,8 +2088,12 @@
       pushSheetRemote(record);
 
       const t = computeTotals(rows);
+      const extras = [];
+      if (lastMonthAudit.cardShiftCount > 0) extras.push(`${lastMonthAudit.cardShiftCount} Card shifts applied`);
+      if (lastMonthAudit.skippedAbsentCount > 0) extras.push(`${lastMonthAudit.skippedAbsentCount} last-month absent/left skipped (₹0 PF/ESIC)`);
+      const extraTxt = extras.length ? (' · ' + extras.join(' · ')) : '';
       setNotice(
-        `${file.name} loaded: ${rows.length} employees (${t.onroll} onroll, ${t.offroll} off roll) auto-enriched from ${emps.length} Employee Master records & synced across browsers.`,
+        `${file.name} loaded: ${rows.length} employees (${t.onroll} onroll, ${t.offroll} off roll) auto-enriched from ${emps.length} Employee Master records${extraTxt} & synced across browsers.`,
         'ok'
       );
     } catch (err) {
@@ -1424,7 +2197,9 @@
       if (state.statusFilter === 'MISSING_STAT' && (validId(r.pfNo) || validId(r.esiNo))) return false;
       if (state.statusFilter === 'DIFF_ALERT' && (r.diffAmount || 0) <= 500 && !(r.flags || []).length) return false;
       if (q) {
-        const hay = norm([r.empId, r.name, r.father, r.pfNo, r.esiNo, r.category, r.designation, r.department, r.remarks].join(' '));
+        const cn = parseCardNumber(r.category);
+        const cardAliases = cn ? ('c' + cn + ' card ' + cn + ' cardno' + cn) : '';
+        const hay = norm([r.empId, r.name, r.father, r.pfNo, r.esiNo, r.category, r.cardShiftedFrom, cardAliases, r.designation, r.department, r.remarks].join(' '));
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -1518,6 +2293,7 @@
       }
     } else {
       row[field] = text(rawVal);
+      if (field === 'category') row.mamCategoryLocked = true;
       // If user edited empId, try auto-enriching from Employee Master if fields are blank
       if (field === 'empId') {
         const master = indexEmployeeMaster(getEmployeeMasterList());
@@ -1769,7 +2545,9 @@
     if (!sh) return;
     pushUndoSnapshot();
     const s = settingsOf(sh.settings);
-    const master = indexEmployeeMaster(getEmployeeMasterList());
+    const emps = getEmployeeMasterList();
+    const master = indexEmployeeMaster(emps);
+    const masterCardMap = buildMasterCardMap(emps);
     const advMap = pullAdvances ? getAdvanceBalanceMap() : {};
     let updatedCount = 0;
 
@@ -1787,7 +2565,15 @@
         r.gender = text(emp.gender) || r.gender;
         r.designation = text(emp.desig) || r.designation;
         r.department = text(emp.dept) || r.department;
-        r.category = (text(emp.cat2 || emp.cat1) || r.category || 'OTHER').toUpperCase();
+        const masterCat = text(emp.cat2 || emp.cat1).toUpperCase();
+        // If employee shifted Card in Mam Sheet (e.g. Master CARD NO. 1 -> Mam C7 / CARD NO.7), preserve shifted Card!
+        if (r.mamCategoryLocked) {
+          if (masterCat && canonicalizeCardCategory(masterCat, masterCardMap) !== r.category) {
+            r.cardShiftedFrom = masterCat;
+          }
+        } else {
+          r.category = (masterCat || r.category || 'OTHER').toUpperCase();
+        }
         r.dob = text(emp.dob) || r.dob;
         r.doj = text(emp.doj) || r.doj;
         r.bankName = text(emp.bank_name) || r.bankName;
@@ -1813,8 +2599,8 @@
     scheduleSyncActiveSheet();
     setNotice(
       pullAdvances
-        ? `Employee Master (${updatedCount} matched) & Advance Ledger se sheet recalculate aur sync ho gayi.`
-        : `Employee Master se ${updatedCount} employees refresh aur recalculate ho gaye.`,
+        ? `Employee Master (${updatedCount} matched, Mam Card shifts preserved) & Advance Ledger se sheet recalculate aur sync ho gayi.`
+        : `Employee Master se ${updatedCount} employees refresh aur recalculate ho gaye (Mam Card shifts preserved).`,
       'ok'
     );
   }
@@ -1857,13 +2643,29 @@
       return;
     }
     try {
+      const prevProfiles = findPreviousMonthProfiles(sh.month || sh.id);
       const wb = buildComplianceWorkbook(root.XLSX, sh.rows, sh.settings, {
         mamFile: sh.mamFile,
-        updatedAt: sh.updatedAt
+        updatedAt: sh.updatedAt,
+        lastMonthAudit: sh.lastMonthAudit,
+        prevProfiles
       });
       const fname = `ATPL_ESI_PF_Compliance_${sh.month || todayMonth()}.xlsx`;
-      root.XLSX.writeFile(wb, fname, { compression: true });
-      setNotice(`Excel downloaded: ${fname} (live formulas + Category Summary + Master & Designation + PF/ESIC Summary included).`, 'ok');
+      if (root.XLSX.CFB && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+        const bytes = styleComplianceWorkbookBytes(root.XLSX, wb);
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+      } else {
+        root.XLSX.writeFile(wb, fname, { compression: true });
+      }
+      setNotice(`Formatted Excel downloaded: ${fname} (Styled Headers, Borders, Frozen Panes, Live Formulas, Category Tabs & Last Month Audit included).`, 'ok');
     } catch (err) {
       setNotice('Excel export error: ' + (err && err.message ? err.message : err), 'err');
     }
@@ -2057,7 +2859,8 @@
 
     if (col.edit) {
       const val = row[col.key] === null || row[col.key] === undefined ? '' : row[col.key];
-      return `<td class="${cls}" style="${stickyStyle}width:${col.width}px">
+      const shiftHint = (col.key === 'category' && row.cardShiftedFrom) ? ` title="Card shifted from ${esc(row.cardShiftedFrom)} -> ${esc(row.category)} (Mam Sheet priority)"` : '';
+      return `<td class="${cls}" style="${stickyStyle}width:${col.width}px"${shiftHint}>
         <input data-field="${col.key}" type="${col.edit}" ${col.edit === 'number' ? 'step="any"' : ''} class="mcs-cell-input ${col.align === 'right' ? 'num' : ''}" value="${esc(val)}">
       </td>`;
     }
@@ -2157,12 +2960,14 @@
     }
 
     if (tab === 'PF_ESIC') {
-      const hdrs = ['S.No.', 'Employee ID', 'Name of employee', 'PF NO', 'ESI NO', 'PF Wages', 'PF Emp (12%)', 'PF Empr (13%)', 'ESIC Wages', 'ESIC Emp (0.75%)', 'ESIC Empr (3.25%)', 'Total PF+ESIC', 'Remarks'];
-      if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 2 ? 200 : i === 0 ? 54 : 122}px">`).join('');
-      if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${i >= 5 && i <= 11 ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
-      const statRows = allRows.filter(r => (r.pfEmployee || 0) > 0 || (r.esiEmployee || 0) > 0 || validId(r.pfNo) || validId(r.esiNo));
+      const hdrs = ['S.No.', 'Employee ID', 'Name of employee', 'PF NO', 'ESI NO', 'PF Rule', 'PF Wages', 'PF Emp (12%)', 'Prev PF', 'ESIC Rule', 'ESIC Wages', 'ESIC Emp (0.75%)', 'Prev ESIC', 'Total PF+ESIC', 'Remarks'];
+      if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 2 ? 195 : i === 0 ? 54 : [5, 9].includes(i) ? 98 : 114}px">`).join('');
+      if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${[6, 7, 8, 10, 11, 12, 13].includes(i) ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
+      const statRows = allRows.filter(r => (r.pfEmployee || 0) > 0 || (r.esiEmployee || 0) > 0 || (r.prevPfEmployee || 0) > 0 || (r.prevEsiEmployee || 0) > 0 || validId(r.pfNo) || validId(r.esiNo));
       const pfW = round0(statRows.reduce((a, b) => a + (b.pfWage || 0), 0));
       const esiW = round0(statRows.reduce((a, b) => a + (b.esiWage || 0), 0));
+      const prevPfTot = round0(statRows.reduce((a, b) => a + (Number(b.prevPfEmployee) || 0), 0));
+      const prevEsiTot = round0(statRows.reduce((a, b) => a + (Number(b.prevEsiEmployee) || 0), 0));
       const st = computeTotals(statRows);
       if (tbody) {
         tbody.innerHTML = statRows.slice(0, 500).map((r, idx) => {
@@ -2173,12 +2978,14 @@
             <td style="padding:0 8px;font-weight:600">${esc(r.name)}</td>
             <td style="padding:0 8px" class="num">${esc(r.pfNo)}</td>
             <td style="padding:0 8px" class="num">${esc(r.esiNo)}</td>
+            <td style="padding:0 8px;font-weight:600;color:#1d4ed8">${esc(r.pfMode || 'AUTO')}</td>
             <td class="mcs-formula-cell num">${inr(r.pfWage || 0)}</td>
-            <td class="mcs-formula-cell num">${inr(r.pfEmployee || 0)}</td>
-            <td class="mcs-formula-cell num">${inr(r.pfEmployer || 0)}</td>
+            <td class="mcs-formula-cell num" style="font-weight:700">${inr(r.pfEmployee || 0)}</td>
+            <td class="mcs-formula-cell num" style="color:#64748b">${inr(r.prevPfEmployee || 0)}</td>
+            <td style="padding:0 8px;font-weight:600;color:#1d4ed8">${esc(r.esiMode || 'AUTO')}</td>
             <td class="mcs-formula-cell num">${inr(r.esiWage || 0)}</td>
-            <td class="mcs-formula-cell num">${inr(r.esiEmployee || 0)}</td>
-            <td class="mcs-formula-cell num">${inr(r.esiEmployer || 0)}</td>
+            <td class="mcs-formula-cell num" style="font-weight:700">${inr(r.esiEmployee || 0)}</td>
+            <td class="mcs-formula-cell num" style="color:#64748b">${inr(r.prevEsiEmployee || 0)}</td>
             <td class="mcs-formula-cell num" style="font-weight:700">${inr(totalC)}</td>
             <td style="padding:0 8px">${esc(r.remarks)}</td>
           </tr>`;
@@ -2186,10 +2993,54 @@
       }
       if (tfoot) {
         tfoot.innerHTML = `<tr>
-          <td></td><td style="text-align:left">TOTAL</td><td style="text-align:left">${statRows.length} Statutory</td><td></td><td></td>
-          <td class="num">${inr(pfW)}</td><td class="num">${inr(st.pfEmployee)}</td><td class="num">${inr(st.pfEmployer)}</td>
-          <td class="num">${inr(esiW)}</td><td class="num">${inr(st.esiEmployee)}</td><td class="num">${inr(st.esiEmployer)}</td>
+          <td></td><td style="text-align:left">TOTAL</td><td style="text-align:left">${statRows.length} Statutory</td><td></td><td></td><td></td>
+          <td class="num">${inr(pfW)}</td><td class="num">${inr(st.pfEmployee)}</td><td class="num">${inr(prevPfTot)}</td><td></td>
+          <td class="num">${inr(esiW)}</td><td class="num">${inr(st.esiEmployee)}</td><td class="num">${inr(prevEsiTot)}</td>
           <td class="num">${inr(st.pfEmployee + st.pfEmployer + st.esiEmployee + st.esiEmployer)}</td><td></td>
+        </tr>`;
+      }
+      return;
+    }
+
+    if (tab === 'LAST_MONTH') {
+      const sh = activeSheet();
+      const prevProfiles = findPreviousMonthProfiles(sh && (sh.month || sh.id));
+      const audit = (sh && sh.lastMonthAudit) || computeLastMonthAudit(allRows, prevProfiles);
+      const hdrs = ['Audit Type', 'Employee ID', 'Name of employee', 'Master / Prev', 'Current Card / Status', 'Last Month PF', 'This Month PF', 'Last Month ESIC', 'This Month ESIC', 'Audit Reason'];
+      if (colgroup) colgroup.innerHTML = hdrs.map((_, i) => `<col style="width:${i === 9 ? 280 : i === 2 ? 190 : i === 0 ? 185 : 118}px">`).join('');
+      if (thead) thead.innerHTML = `<tr>${hdrs.map((h, i) => `<th style="${[5, 6, 7, 8].includes(i) ? 'text-align:right' : ''}">${esc(h)}</th>`).join('')}</tr>`;
+      const items = [];
+      (audit.skippedAbsent || []).forEach(x => {
+        items.push({ type: 'ABSENT / LEFT (NOT IN MAM)', cls: 'mcs-row-warn', empId: x.empId, name: x.name, prev: x.category || 'Prev Month', curr: 'NOT IN MAM (₹0)', prevPf: x.prevPf, currPf: 0, prevEsi: x.prevEsi, currEsi: 0, reason: x.reason });
+      });
+      (audit.zeroDayCurrent || []).forEach(x => {
+        items.push({ type: 'OFF ROLL / 0 PAID DAYS', cls: 'mcs-row-off', empId: x.empId, name: x.name, prev: x.category, curr: '0 Paid Days (₹0)', prevPf: x.prevPf, currPf: 0, prevEsi: x.prevEsi, currEsi: 0, reason: x.reason });
+      });
+      (audit.cardShifts || []).forEach(x => {
+        items.push({ type: 'CARD SHIFTED', cls: '', empId: x.empId, name: x.name, prev: x.fromCard, curr: x.toCard, prevPf: 0, currPf: x.pfEmployee, prevEsi: 0, currEsi: x.esiEmployee, reason: `Master: ${x.fromCard} -> Mam Salary Card: ${x.toCard}` });
+      });
+      if (tbody) {
+        tbody.innerHTML = items.length ? items.slice(0, 500).map(it => `<tr class="${it.cls}">
+          <td style="padding:0 8px;font-weight:700">${esc(it.type)}</td>
+          <td style="padding:0 8px">${esc(it.empId)}</td>
+          <td style="padding:0 8px;font-weight:600">${esc(it.name)}</td>
+          <td style="padding:0 8px">${esc(it.prev)}</td>
+          <td style="padding:0 8px;font-weight:600;color:#1d4ed8">${esc(it.curr)}</td>
+          <td class="mcs-formula-cell num">${inr(it.prevPf)}</td>
+          <td class="mcs-formula-cell num" style="font-weight:700">${inr(it.currPf)}</td>
+          <td class="mcs-formula-cell num">${inr(it.prevEsi)}</td>
+          <td class="mcs-formula-cell num" style="font-weight:700">${inr(it.currEsi)}</td>
+          <td style="padding:0 8px">${esc(it.reason)}</td>
+        </tr>`).join('') : `<tr><td colspan="10" style="padding:18px;text-align:center;color:#64748b">Koi absent/left skip ya card shift pending nahi hai. (${audit.matchedCount || 0} employees previous month se matched).</td></tr>`;
+      }
+      if (tfoot) {
+        tfoot.innerHTML = `<tr>
+          <td colspan="5" style="text-align:left">AUDIT SUMMARY · Skipped Absent: ${audit.skippedAbsentCount || 0} (Strictly ₹0) · 0-Day Off Roll: ${audit.zeroDayCurrentCount || 0} · Card Shifts: ${audit.cardShiftCount || 0}</td>
+          <td class="num">${inr(items.reduce((a, b) => a + (b.prevPf || 0), 0))}</td>
+          <td class="num">${inr(items.reduce((a, b) => a + (b.currPf || 0), 0))}</td>
+          <td class="num">${inr(items.reduce((a, b) => a + (b.prevEsi || 0), 0))}</td>
+          <td class="num">${inr(items.reduce((a, b) => a + (b.currEsi || 0), 0))}</td>
+          <td></td>
         </tr>`;
       }
       return;
@@ -2991,7 +3842,7 @@
 
         <div class="mcs-toolbar">
           <div class="mcs-toolbar-left">
-            <input id="mcsSearch" class="mcs-input" style="width:200px" placeholder="Search Emp ID, Name, PF, ESI...">
+            <input id="mcsSearch" class="mcs-input" style="width:210px" placeholder="Search ID, Name, PF, ESI, C7...">
             <select id="mcsCatFilter" class="mcs-select"></select>
             <div class="mcs-seg" role="group" aria-label="Filter rows by status">
               <button type="button" class="mcs-seg-btn active" data-status="ALL">All</button>
@@ -3012,6 +3863,7 @@
               <div id="mcsColPicker" class="mcs-colpop"></div>
             </div>
             <button type="button" id="mcsFindReplaceBtn" class="mcs-btn" title="Find &amp; Replace (Ctrl+H)">⇄ Find/Replace</button>
+            <button type="button" id="mcsLastMonthBtn" class="mcs-btn" title="Auto-apply last month PF & ESIC logic (absent/left stay ₹0)">⏮ Last Month PF/ESIC</button>
             <button type="button" id="mcsSyncMasterBtn" class="mcs-btn">Sync Master</button>
             <button type="button" id="mcsSyncAdvBtn" class="mcs-btn">Sync Advances</button>
             <button type="button" id="mcsFormulaBtn" class="mcs-btn">Formulas &amp; Rules</button>
@@ -3051,6 +3903,7 @@
               <option value="AUTO">AUTO</option>
               <option value="FULL_12">FULL_12</option>
               <option value="CAP_15000">CAP_15000</option>
+              <option value="GROSS_12">GROSS_12</option>
               <option value="NONE">NONE</option>
             </select>
             <select id="mcsBulkEsi" class="mcs-select" style="height:28px">
@@ -3166,6 +4019,7 @@
             <button type="button" class="mcs-sheet-tab active" data-tab="MAIN">Main Sheet</button>
             <button type="button" class="mcs-sheet-tab" data-tab="CATEGORY">Category Summary</button>
             <button type="button" class="mcs-sheet-tab" data-tab="PF_ESIC">PF &amp; ESIC Summary</button>
+            <button type="button" class="mcs-sheet-tab" data-tab="LAST_MONTH">Last Month &amp; Card Audit</button>
             <button type="button" class="mcs-sheet-tab" data-tab="MASTER">Master &amp; Bank</button>
           </div>
         </div>
@@ -3318,6 +4172,7 @@
     if ($('mcsBulkDelBtn')) $('mcsBulkDelBtn').onclick = () => applyBulkAction('delete');
     if ($('mcsBulkClearBtn')) $('mcsBulkClearBtn').onclick = () => { state.selectedUids.clear(); render(); };
 
+    if ($('mcsLastMonthBtn')) $('mcsLastMonthBtn').onclick = applyLastMonthPfEsicToActiveSheet;
     if ($('mcsSyncMasterBtn')) $('mcsSyncMasterBtn').onclick = () => refreshFromMasterAndAdvance(false);
     if ($('mcsSyncAdvBtn')) $('mcsSyncAdvBtn').onclick = () => refreshFromMasterAndAdvance(true);
     if ($('mcsFormulaBtn')) $('mcsFormulaBtn').onclick = () => {
