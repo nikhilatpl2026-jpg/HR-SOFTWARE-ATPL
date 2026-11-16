@@ -41,6 +41,10 @@
     selectedDateFilter: '', // optional 'YYYY-MM-DD'
     filterTablesByMonth: false,
     selectedFileName: 'ALL', // 'ALL' | specific uploaded file name from All Files
+    selectedSheetName: 'ALL', // 'ALL' | specific sheet name inside selected file
+    deductedFromLabel: '', // optional custom 'Deducted From Salary' label
+    fileSearchQuery: '',
+    isFileDropdownOpen: false,
     openHistoryEmpCode: null,
     isSyncing: false,
     selectedAdvanceForModal: null,
@@ -1019,6 +1023,17 @@
       }, 25000);
     }
 
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('click', function(e) {
+        if (!state.isFileDropdownOpen) return;
+        var wrap = document.getElementById('advFileSelect');
+        if (wrap && e && e.target && wrap.contains && wrap.contains(e.target)) return;
+        state.isFileDropdownOpen = false;
+        var menu = document.getElementById('advFileDropdownMenu');
+        if (menu) menu.style.display = 'none';
+      });
+    }
+
     if (window.ATPLCentralFileSync && typeof window.ATPLCentralFileSync.subscribe === 'function') {
       try {
         window.ATPLCentralFileSync.subscribe('salary', function() {
@@ -1266,7 +1281,9 @@
     if (isCashVoucher && !remarks && signedBy) {
       remarks = 'Cash Voucher · Signed by ' + signedBy;
     }
-    var periodLabel = formatMonthYearFromDate(dedDate);
+    var deductedFromFile = String(payload.deductedFromFile || '').trim();
+    var deductedFromSalary = String(payload.deductedFromSalary || '').trim();
+    var periodLabel = deductedFromSalary || formatMonthYearFromDate(dedDate);
 
     var remainingToCut = amount;
     var created = [];
@@ -1289,12 +1306,18 @@
         isCashVoucher: isCashVoucher,
         signedBy: signedBy,
         voucherNo: voucherNo,
-        fileName: isCashVoucher
-          ? ('Cash Voucher' + (signedBy ? ' (Signed by: ' + signedBy + ')' : ''))
-          : ('Manual Deduction (' + mode + ')'),
-        sheetName: isCashVoucher ? 'Cash Voucher' : 'Manual Entry',
+        fileName: deductedFromFile
+          ? deductedFromFile
+          : (isCashVoucher
+              ? ('Cash Voucher' + (signedBy ? ' (Signed by: ' + signedBy + ')' : ''))
+              : ('Manual Deduction (' + mode + ')')),
+        sheetName: deductedFromSalary
+          ? deductedFromSalary
+          : (isCashVoucher ? 'Cash Voucher' : 'Manual Entry'),
         columnName: isCashVoucher ? 'Cash Voucher' : mode,
         salaryMonth: periodLabel,
+        deductedFrom: deductedFromSalary || periodLabel,
+        deductedFromFile: deductedFromFile,
         remarks: remarks,
         previousBalance: outBal,
         deductedAmount: cut,
@@ -1930,14 +1953,22 @@
     var nowIso = new Date().toISOString();
     var dedDate = nowIso.slice(0, 10);
 
+    var targetSheetFilter = (opts.targetSheetName && opts.targetSheetName !== 'ALL')
+      ? String(opts.targetSheetName).trim().toLowerCase()
+      : '';
+    var customDeductedFrom = String(opts.deductedFromLabel || '').trim();
+
     for (var sIdx = 0; sIdx < candidateSheets.length; sIdx++) {
       var sEntry = candidateSheets[sIdx];
+      if (targetSheetFilter && String(sEntry.sheetName || '').trim().toLowerCase() !== targetSheetFilter) {
+        continue;
+      }
       var sheetInfo = detectAdvanceSheetInfo(sEntry.sheetName, sEntry.rows, fileName, opts);
       if (!sheetInfo.valid) continue;
       validSheetsCount++;
 
       var sheetData = sEntry.rows;
-      var salaryMonth = detectSalaryMonthFromFilename(fileName, sEntry.sheetName);
+      var salaryMonth = customDeductedFrom || detectSalaryMonthFromFilename(fileName, sEntry.sheetName);
 
       for (var r = sheetInfo.hdrIdx + 1; r < sheetData.length; r++) {
         var row = sheetData[r];
@@ -2003,6 +2034,7 @@
             columnName: sheetInfo.advHeaderDisplay,
             sheetAdvanceAmount: sheetAdvAmt,
             salaryMonth: salaryMonth,
+            deductedFrom: customDeductedFrom || salaryMonth,
             previousBalance: outBal,
             deductedAmount: deductible,
             remainingBalance: round2(outBal - deductible),
@@ -2075,6 +2107,33 @@
   }
 
   // ── 6. UI RENDERING ──
+  function buildFileDropdownListHtml(uploadedFiles, query) {
+    var q = String(query || '').trim().toLowerCase();
+    var isSpecific = !!(state.selectedFileName && state.selectedFileName !== 'ALL');
+    var listHtml = '';
+    if (!q || 'all files'.indexOf(q) >= 0) {
+      listHtml += '<div onclick="ATPLAdvanceManager.setSelectedFile(\'ALL\')" style="padding:8px 11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:750;border-bottom:1px solid #f1f5f9;background:' + (!isSpecific ? '#eef2ff' : '#fff') + ';color:' + (!isSpecific ? '#312e81' : '#1e293b') + '" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'' + (!isSpecific ? '#eef2ff' : '#fff') + '\'">';
+      listHtml += '  <span>📁 All Files (' + uploadedFiles.length + ')</span>';
+      if (!isSpecific) listHtml += '<span style="color:#4338ca;font-weight:900">✓</span>';
+      listHtml += '</div>';
+    }
+    var matchedCount = 0;
+    uploadedFiles.forEach(function(uf) {
+      var uName = String(uf.name || '');
+      if (q && uName.toLowerCase().indexOf(q) < 0) return;
+      matchedCount++;
+      var isSel = isSpecific && uName.trim().toLowerCase() === String(state.selectedFileName).trim().toLowerCase();
+      listHtml += '<div onclick="ATPLAdvanceManager.setSelectedFile(\'' + esc(uName).replace(/'/g, "\\'") + '\')" title="' + esc(uName) + '" style="padding:8px 11px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;font-weight:' + (isSel ? '800' : '600') + ';border-bottom:1px solid #f8fafc;background:' + (isSel ? '#eef2ff' : '#fff') + ';color:' + (isSel ? '#312e81' : '#1e293b') + '" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'' + (isSel ? '#eef2ff' : '#fff') + '\'">';
+      listHtml += '  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ' + esc(uName) + '</span>';
+      if (isSel) listHtml += '<span style="color:#4338ca;font-weight:900;flex-shrink:0">✓</span>';
+      listHtml += '</div>';
+    });
+    if (q && matchedCount === 0 && 'all files'.indexOf(q) < 0) {
+      listHtml += '<div style="padding:14px 12px;text-align:center;font-size:11px;color:#94a3b8">No matching file found for "' + esc(query) + '"</div>';
+    }
+    return listHtml;
+  }
+
   function renderUI() {
     var container = document.getElementById('advanceModuleContainer');
     if (!container) return;
@@ -2183,23 +2242,57 @@
     html += '      <span>✂️</span> Manual Deduction';
     html += '    </button>';
     var uploadedFiles = getUploadedSalaryFiles();
+    var selectedFileObj = null;
     if (state.selectedFileName && state.selectedFileName !== 'ALL' && uploadedFiles.length > 0) {
-      var selMatch = uploadedFiles.some(function(uf) {
+      selectedFileObj = uploadedFiles.find(function(uf) {
         return uf && String(uf.name || '').trim().toLowerCase() === String(state.selectedFileName).trim().toLowerCase();
-      });
-      if (!selMatch) state.selectedFileName = 'ALL';
+      }) || null;
+      if (!selectedFileObj) {
+        state.selectedFileName = 'ALL';
+        state.selectedSheetName = 'ALL';
+      }
     }
     var isSpecificFile = !!(state.selectedFileName && state.selectedFileName !== 'ALL');
-    html += '    <div style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #c7d2fe;border-radius:8px;background:#eef2ff;padding:0 4px 0 8px">';
+    var fileSheets = selectedFileObj ? extractWorkbookSheets(selectedFileObj) : [];
+    if (state.selectedSheetName && state.selectedSheetName !== 'ALL') {
+      var hasSheetMatch = fileSheets.some(function(s) {
+        return String(s.sheetName || '').trim().toLowerCase() === String(state.selectedSheetName).trim().toLowerCase();
+      });
+      if (!hasSheetMatch) state.selectedSheetName = 'ALL';
+    }
+    var autoSalaryPlaceholder = selectedFileObj
+      ? detectSalaryMonthFromFilename(selectedFileObj.name, state.selectedSheetName !== 'ALL' ? state.selectedSheetName : '')
+      : 'Deducted from (e.g. Oct 2026)';
+
+    html += '    <div id="advFileSelect" style="position:relative;display:inline-flex;align-items:center;gap:5px;min-height:34px;border:1px solid #c7d2fe;border-radius:8px;background:#eef2ff;padding:3px 5px 3px 8px;flex-wrap:wrap">';
     html += '      <span style="font-size:10px;font-weight:800;color:#312e81;white-space:nowrap">📂 File:</span>';
-    html += '      <select id="advFileSelect" onchange="ATPLAdvanceManager.setSelectedFile(this.value)" title="All Files me upload ki gayi file select karein" style="height:26px;max-width:200px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:0 6px;font-size:10.5px;font-weight:700;color:#1e293b;cursor:pointer;outline:none">';
-    html += '        <option value="ALL"' + (!isSpecificFile ? ' selected' : '') + '>All Files (' + uploadedFiles.length + ')</option>';
-    uploadedFiles.forEach(function(uf) {
-      var uName = String(uf.name || '');
-      var isSel = isSpecificFile && uName.trim().toLowerCase() === String(state.selectedFileName).trim().toLowerCase();
-      html += '        <option value="' + esc(uName) + '"' + (isSel ? ' selected' : '') + '>' + esc(uName) + '</option>';
+    html += '      <div style="position:relative;display:inline-block">';
+    html += '        <button type="button" id="advFileDropdownBtn" onclick="ATPLAdvanceManager.toggleFileDropdown(event)" title="Search aur Select karein All Files me se" style="display:inline-flex;align-items:center;justify-content:space-between;gap:6px;height:26px;max-width:210px;min-width:135px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:0 8px;font-size:10.5px;font-weight:700;color:#1e293b;cursor:pointer">';
+    html += '          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (isSpecificFile ? ('📄 ' + esc(state.selectedFileName)) : ('All Files (' + uploadedFiles.length + ')')) + '</span>';
+    html += '          <span style="font-size:9px;color:#64748b;flex-shrink:0">▾</span>';
+    html += '        </button>';
+    html += '        <div id="advFileDropdownMenu" onclick="event.stopPropagation()" style="display:' + (state.isFileDropdownOpen ? 'block' : 'none') + ';position:absolute;top:100%;left:0;margin-top:4px;width:275px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,0.18);z-index:999;overflow:hidden">';
+    html += '          <div style="padding:7px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;gap:5px">';
+    html += '            <input type="text" id="advFileSearchInput" value="' + esc(state.fileSearchQuery || '') + '" placeholder="🔍 Search file in All Files..." oninput="ATPLAdvanceManager.filterFileDropdown(this.value)" style="flex:1;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;outline:none;color:#0f172a;background:#fff">';
+    html += '            <button type="button" id="advFileSearchClearBtn" onclick="ATPLAdvanceManager.filterFileDropdown(\'\')" style="display:' + (state.fileSearchQuery ? 'inline-flex' : 'none') + ';align-items:center;justify-content:center;width:24px;height:26px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#64748b;font-size:10px;font-weight:800;cursor:pointer" title="Clear search">✕</button>';
+    html += '          </div>';
+    html += '          <div id="advFileDropdownList" style="max-height:220px;overflow-y:auto">';
+    html +=              buildFileDropdownListHtml(uploadedFiles, state.fileSearchQuery);
+    html += '          </div>';
+    html += '        </div>';
+    html += '      </div>';
+
+    html += '      <span style="font-size:10px;font-weight:800;color:#312e81;white-space:nowrap">📑 Deducted From:</span>';
+    html += '      <select id="advSalarySheetSelect" onchange="ATPLAdvanceManager.setSelectedSheet(this.value)" title="Select karein konsi salary sheet se cut karna hai" style="height:26px;max-width:165px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:0 6px;font-size:10.5px;font-weight:700;color:#1e293b;cursor:pointer;outline:none">';
+    html += '        <option value="ALL"' + (!state.selectedSheetName || state.selectedSheetName === 'ALL' ? ' selected' : '') + '>All Salary Sheets (Auto)</option>';
+    fileSheets.forEach(function(fsItem) {
+      var sn = String(fsItem.sheetName || '');
+      var isShSel = state.selectedSheetName && sn.trim().toLowerCase() === String(state.selectedSheetName).trim().toLowerCase();
+      html += '        <option value="' + esc(sn) + '"' + (isShSel ? ' selected' : '') + '>📑 ' + esc(sn) + '</option>';
     });
     html += '      </select>';
+    html += '      <input type="text" id="advDeductedFromInput" value="' + esc(state.deductedFromLabel || '') + '" oninput="ATPLAdvanceManager.setDeductedFromLabel(this.value)" placeholder="' + esc(autoSalaryPlaceholder) + '" title="Optional: Konsi salary se deducted hua (e.g. Oct 2026 Salary)" style="height:26px;width:140px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:0 7px;font-size:10.5px;font-weight:600;color:#1e293b;outline:none">';
+
     html += '      <button id="advDeductFileBtn" onclick="ATPLAdvanceManager.triggerDeductionScan()" style="display:inline-flex;align-items:center;gap:4px;height:26px;border:none;border-radius:6px;background:#312e81;color:#fff;padding:0 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap" title="' + (isSpecificFile ? ('Selected file (' + esc(state.selectedFileName) + ') se Advance Deduct karein') : 'Sabhi uploaded files se Advance Deduct / Scan karein') + '">';
     html += '        <span>⚡</span> ' + (isSpecificFile ? 'Deduct Adv' : 'Re-Scan Sheets');
     html += '      </button>';
@@ -2549,9 +2642,12 @@
         sourceHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || 'Voucher settled') + '</div>';
       } else if (sType === 'manual') {
         sourceHtml += '<div style="font-weight:700;color:#111827">' + esc(d.deductionMode || d.columnName || 'Manual Deduction') + (d.signedBy ? ' · Signed by: ' + esc(d.signedBy) : '') + '</div>';
+        if (d.deductedFromFile || d.deductedFrom) {
+          sourceHtml += '<div style="font-size:10px;color:#4338ca;font-weight:700">Deducted From: ' + esc(d.deductedFrom || d.salaryMonth || '') + (d.deductedFromFile ? (' · 📄 ' + esc(d.deductedFromFile)) : '') + '</div>';
+        }
         sourceHtml += '<div style="font-size:10px;color:#64748b">' + esc(d.remarks || 'No remarks') + '</div>';
       } else {
-        sourceHtml += '<div style="font-weight:700;color:#111827">' + esc(d.salaryMonth || 'Salary Sheet') + '</div>';
+        sourceHtml += '<div style="font-weight:700;color:#111827"><span style="color:#4338ca;font-size:10px;font-weight:800">Deducted From:</span> ' + esc(d.deductedFrom || d.salaryMonth || 'Salary Sheet') + '</div>';
         sourceHtml += '<div style="font-size:10px;color:#64748b">📄 ' + esc(d.fileName || '') + (d.sheetName ? ' · 📑 ' + esc(d.sheetName) : '') + (d.columnName ? ' · 🧾 Col: ' + esc(d.columnName) : '') + '</div>';
       }
 
@@ -3021,6 +3117,27 @@
     });
     content += '      </div>';
 
+    var manFiles = getUploadedSalaryFiles();
+    var preSelManFile = (state.selectedFileName && state.selectedFileName !== 'ALL') ? state.selectedFileName : '';
+    var preSelManSalary = preSelManFile ? (state.deductedFromLabel || detectSalaryMonthFromFilename(preSelManFile, '')) : (state.deductedFromLabel || '');
+    content += '      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">';
+    content += '        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">';
+    content += '          <label style="font-size:10px;font-weight:800;color:#312e81;text-transform:uppercase;letter-spacing:0.7px">Deducted From (Salary / File)</label>';
+    content += '          <input type="text" id="advManFileSearch" placeholder="🔍 Search file..." oninput="ATPLAdvanceManager.filterManualFileSelect(this.value)" style="height:26px;width:165px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;background:#fff;outline:none">';
+    content += '        </div>';
+    content += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    content += '          <select id="advManDeductedFromFile" onchange="ATPLAdvanceManager.onManualFileSelectChange(this.value)" style="width:100%;padding:8px 10px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:11.5px;font-weight:600;outline:none">';
+    content += '            <option value="">-- Direct / No Salary File --</option>';
+    manFiles.forEach(function(mf) {
+      var mfn = String(mf.name || '');
+      var isManSel = preSelManFile && mfn.trim().toLowerCase() === preSelManFile.trim().toLowerCase();
+      content += '            <option value="' + esc(mfn) + '"' + (isManSel ? ' selected' : '') + '>📄 ' + esc(mfn) + '</option>';
+    });
+    content += '          </select>';
+    content += '          <input type="text" id="advManDeductedFromSalary" value="' + esc(preSelManSalary) + '" placeholder="Deducted from salary (e.g. Oct 2026)" style="width:100%;padding:8px 10px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:11.5px;font-weight:600;outline:none">';
+    content += '        </div>';
+    content += '      </div>';
+
     content += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     content += '        <div>';
     content += '          <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Deduction Mode</label>';
@@ -3165,6 +3282,8 @@
     var amount = (document.getElementById('advManAmount') || {}).value;
     var mode = (document.getElementById('advManMode') || {}).value;
     var remarks = (document.getElementById('advManRemarks') || {}).value;
+    var deductedFromFile = (document.getElementById('advManDeductedFromFile') || {}).value || '';
+    var deductedFromSalary = (document.getElementById('advManDeductedFromSalary') || {}).value || '';
 
     if (!code || !String(code).trim()) {
       alert('Please enter Employee Code.');
@@ -3181,7 +3300,9 @@
       deductionDate: date,
       amount: Number(amount),
       mode: mode,
-      remarks: remarks
+      remarks: remarks,
+      deductedFromFile: String(deductedFromFile).trim(),
+      deductedFromSalary: String(deductedFromSalary).trim()
     });
 
     if (res && res.ok) {
@@ -5092,9 +5213,67 @@
     printPendingDiffVoucher: printPendingDiffVoucher,
     getUploadedSalaryFiles: getUploadedSalaryFiles,
     getSelectedFile: function() { return state.selectedFileName || 'ALL'; },
+    getSelectedSheet: function() { return state.selectedSheetName || 'ALL'; },
     setSelectedFile: function(fileName) {
       state.selectedFileName = fileName ? String(fileName) : 'ALL';
+      state.selectedSheetName = 'ALL';
+      state.isFileDropdownOpen = false;
       renderUI();
+    },
+    setSelectedSheet: function(sheetName) {
+      state.selectedSheetName = sheetName ? String(sheetName) : 'ALL';
+      renderUI();
+    },
+    setDeductedFromLabel: function(label) {
+      state.deductedFromLabel = label != null ? String(label) : '';
+    },
+    toggleFileDropdown: function(ev) {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      state.isFileDropdownOpen = !state.isFileDropdownOpen;
+      var menu = document.getElementById('advFileDropdownMenu');
+      if (menu) {
+        menu.style.display = state.isFileDropdownOpen ? 'block' : 'none';
+        if (state.isFileDropdownOpen) {
+          var inp = document.getElementById('advFileSearchInput');
+          if (inp) setTimeout(function() { inp.focus(); }, 10);
+        }
+      } else {
+        renderUI();
+      }
+    },
+    filterFileDropdown: function(query) {
+      state.fileSearchQuery = String(query || '');
+      var listEl = document.getElementById('advFileDropdownList');
+      var clearBtn = document.getElementById('advFileSearchClearBtn');
+      var inp = document.getElementById('advFileSearchInput');
+      if (inp && inp.value !== state.fileSearchQuery) inp.value = state.fileSearchQuery;
+      if (clearBtn) clearBtn.style.display = state.fileSearchQuery ? 'inline-flex' : 'none';
+      if (listEl) {
+        listEl.innerHTML = buildFileDropdownListHtml(getUploadedSalaryFiles(), state.fileSearchQuery);
+      } else {
+        renderUI();
+      }
+    },
+    filterManualFileSelect: function(query) {
+      var sel = document.getElementById('advManDeductedFromFile');
+      if (!sel) return;
+      var q = String(query || '').trim().toLowerCase();
+      var currentVal = sel.value || '';
+      var files = getUploadedSalaryFiles();
+      var optsHtml = '<option value="">-- Direct / No Salary File --</option>';
+      files.forEach(function(mf) {
+        var mfn = String(mf.name || '');
+        if (q && mfn.toLowerCase().indexOf(q) < 0 && mfn !== currentVal) return;
+        optsHtml += '<option value="' + esc(mfn) + '"' + (mfn === currentVal ? ' selected' : '') + '>📄 ' + esc(mfn) + '</option>';
+      });
+      sel.innerHTML = optsHtml;
+    },
+    onManualFileSelectChange: function(fileName) {
+      var salInp = document.getElementById('advManDeductedFromSalary');
+      if (!salInp) return;
+      if (fileName) {
+        salInp.value = detectSalaryMonthFromFilename(fileName, '');
+      }
     },
     processSalaryFile: processSalaryFile,
     processAllSalaryFiles: processAllSalaryFiles,
@@ -5219,7 +5398,11 @@
           if (window.showToast) window.showToast('⚠️ Selected file "' + sel + '" All Files mein nahi mili.');
           return 0;
         }
-        var res = processSalaryFile(target, { explicitFileSelection: true });
+        var res = processSalaryFile(target, {
+          explicitFileSelection: true,
+          targetSheetName: state.selectedSheetName || 'ALL',
+          deductedFromLabel: state.deductedFromLabel || ''
+        });
         if (res.processed === 0) {
           if (window.showToast) {
             if (res.validSheetsCount === 0) {

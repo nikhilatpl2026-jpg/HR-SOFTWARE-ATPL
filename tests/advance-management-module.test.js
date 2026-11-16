@@ -364,5 +364,50 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     tbody = container.innerHTML.split('<tbody>')[1] || '';
     assert(tbody.includes('April_Salary_2026.xlsx'));
     assert(tbody.includes('May_Custom_Upload.xlsx'));
+
+    // Verify search input & Deducted From controls exist in dropdown UI
+    assert(container.innerHTML.includes('id="advFileSearchInput"'), 'Dropdown must have search input');
+    assert(container.innerHTML.includes('id="advSalarySheetSelect"'), 'Must have Deducted From sheet selector');
+    assert(container.innerHTML.includes('id="advDeductedFromInput"'), 'Must have Deducted From salary label input');
+
+    // Test multi-sheet workbook with explicit sheet selection + Deducted From label
+    const multiSheetFile = {
+      name: 'June_Payroll_2026.xlsx',
+      sheets: {
+        'Staff Salary': [
+          ['Emp Code', 'Employee Name', 'Gross', 'Advance Deduction', 'Net Pay'],
+          ['25924', 'Ram Kumar Sharma', '24000', '1000', '23000']
+        ],
+        'Manisha Mam': [
+          ['Emp Code', 'Employee Name', 'Gross', 'Advance Deduction', 'Net Pay'],
+          ['26002', 'Lokesh Verma', '18000', '500', '17500']
+        ]
+      }
+    };
+    mockWindow.getAllLoadedSalaryFiles = () => [fileApril, fileMay, multiSheetFile];
+    mockWindow.ATPLAdvanceManager.setSelectedFile('June_Payroll_2026.xlsx');
+    mockWindow.ATPLAdvanceManager.setSelectedSheet('Manisha Mam');
+    mockWindow.ATPLAdvanceManager.setDeductedFromLabel('June 2026 (Manisha Mam Salary)');
+    const juneCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
+    assert.equal(juneCount, 1, 'Must deduct ONLY from selected sheet Manisha Mam');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 3000);
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8000, 'Staff Salary sheet must remain untouched when Manisha Mam sheet selected');
+    const juneDed = mockWindow.ATPLAdvanceManager.getAllDeductions().find(d => d.fileName === 'June_Payroll_2026.xlsx');
+    assert.equal(juneDed.deductedFrom, 'June 2026 (Manisha Mam Salary)');
+
+    // Test Manual Deduction with Deducted From Salary/File
+    const manSalRes = mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '25924',
+      amount: 1000,
+      deductionDate: '2026-06-30',
+      mode: 'Manual Salary Adjustment',
+      deductedFromFile: 'June_Payroll_2026.xlsx',
+      deductedFromSalary: 'June 2026 Staff Salary',
+      remarks: 'Cut from June Staff Salary'
+    });
+    assert.equal(manSalRes.ok, true);
+    assert.equal(manSalRes.deductions[0].deductedFrom, 'June 2026 Staff Salary');
+    assert.equal(manSalRes.deductions[0].deductedFromFile, 'June_Payroll_2026.xlsx');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 7000);
   });
 });
