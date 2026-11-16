@@ -330,6 +330,15 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
       advanceDate: '2026-05-01'
     });
 
+    // Default selection must be NONE (Manual Cut)
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE', 'Default selected file must be NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE', 'Default selected sheet must be NONE');
+    assert(container.innerHTML.includes('None (Manual Cut)'), 'Dropdown must include None (Manual Cut) option');
+    assert(container.innerHTML.includes('Manual Cut'), 'Button must show Manual Cut in None mode');
+    assert.equal(mockWindow.ATPLAdvanceManager.triggerDeductionScan(), 0, 'Scanning while NONE must not auto-deduct any salary file');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 10000);
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 5000);
+
     // Top dropdown must list both files from All Files
     assert(container.innerHTML.includes('id="advFileSelect"'), 'Top file selector dropdown must render');
     assert(container.innerHTML.includes('April_Salary_2026.xlsx'), 'Dropdown must list April_Salary_2026.xlsx');
@@ -358,6 +367,14 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     tbody = container.innerHTML.split('<tbody>')[1] || '';
     assert(tbody.includes('April_Salary_2026.xlsx'));
     assert(!tbody.includes('May_Custom_Upload.xlsx'));
+
+    // Reset to NONE (must show all deductions without filtering by "none")
+    mockWindow.ATPLAdvanceManager.setSelectedFile('NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE');
+    tbody = container.innerHTML.split('<tbody>')[1] || '';
+    assert(tbody.includes('April_Salary_2026.xlsx'));
+    assert(tbody.includes('May_Custom_Upload.xlsx'));
 
     // Reset to ALL
     mockWindow.ATPLAdvanceManager.setSelectedFile('ALL');
@@ -409,5 +426,10 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     assert.equal(manSalRes.deductions[0].deductedFrom, 'June 2026 Staff Salary');
     assert.equal(manSalRes.deductions[0].deductedFromFile, 'June_Payroll_2026.xlsx');
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 7000);
+
+    // Switching Deducted From sheet selector to NONE resets both file & sheet to NONE
+    mockWindow.ATPLAdvanceManager.setSelectedSheet('NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE');
   });
 });
