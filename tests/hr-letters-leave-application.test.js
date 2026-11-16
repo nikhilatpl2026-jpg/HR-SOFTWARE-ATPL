@@ -177,3 +177,65 @@ test('ERP navigation, permission guard, and server leave-letter sync endpoints a
   assert.ok(srvJs.includes('/api/sync/leave-letters'));
   assert.ok(srvJs.includes('/api/sync/leave-letter'));
 });
+
+
+test('Bank Account Opening Letter (SBI) option, exact Hindi template, letterhead top spacer, blank & filled fields, and English-to-Hindi conversion', () => {
+  const { mgr } = bootLettersModule([
+    {
+      emp_id: '00135',
+      name: 'SAMPAT LAL',
+      father: 'SOHAN LAL',
+      aadhaar_no: '1234 5678 9012',
+      pan_no: 'abcde1234f',
+      address: 'Gram Khara, Bikaner\nRajasthan'
+    }
+  ]);
+
+  assert.ok(mgr.LETTER_TYPES.some((t) => t.id === 'BANK'));
+  mgr.setFormField('letterType', 'BANK');
+
+  // Leave Letter uses slightly smaller 12px sizing for 70-80% A4 fill
+  mgr.setFormField('letterType', 'LEAVE');
+  const leaveHtml = mgr.buildLetterInnerHtml();
+  assert.ok(leaveHtml.includes('font-size:12px'));
+
+  // Switch back to Bank Letter and verify blank template with 5 blank letterhead spacer lines
+  mgr.setFormField('letterType', 'BANK');
+  mgr.setFormField('letterDate', '');
+  const blankBankHtml = mgr.buildLetterInnerHtml();
+  assert.ok(blankBankHtml.includes('atpl-letterhead-spacer'));
+  assert.equal((blankBankHtml.match(/height:22px;line-height:22px/g) || []).length, 5);
+  assert.ok(blankBankHtml.includes('ARORA TEXTILES PRIVATE LIMITED'));
+  assert.ok(blankBankHtml.includes('खारा, बीकानेर, राजस्थान'));
+  assert.ok(blankBankHtml.includes('भारतीय स्टेट बैंक (SBI)'));
+  assert.ok(blankBankHtml.includes('विषय: बैंक खाता खुलवाने हेतु अनुरोध पत्र।'));
+  assert.ok(blankBankHtml.includes('बचत खाता (Savings Account)'));
+  assert.ok(blankBankHtml.includes('1.&nbsp;&nbsp;कर्मचारी का नाम:'));
+  assert.ok(blankBankHtml.includes('5.&nbsp;&nbsp;स्थायी पता:'));
+  assert.ok(blankBankHtml.includes('अधिकृत हस्ताक्षरकर्ता:'));
+  assert.ok(blankBankHtml.includes('कंपनी की मोहर एवं हस्ताक्षर'));
+  assert.ok(blankBankHtml.includes('__________________________'));
+
+  // Auto-fill from Employee Master converts English names/address to Hindi
+  mgr.setFormField('empCode', '00135');
+  mgr.setFormField('letterDate', '2026-11-16');
+  mgr.setFormField('signatoryName', 'Sarthak Arora');
+  mgr.setFormField('signatoryDesignation', 'Director');
+  const filledBankHtml = mgr.buildLetterInnerHtml();
+  assert.ok(filledBankHtml.includes('संपत लाल'));
+  assert.ok(filledBankHtml.includes('सोहन लाल'));
+  assert.ok(filledBankHtml.includes('1234 5678 9012'));
+  assert.ok(filledBankHtml.includes('ABCDE1234F'));
+  assert.ok(filledBankHtml.includes('ग्राम खारा, बीकानेर'));
+  assert.ok(filledBankHtml.includes('राजस्थान'));
+  assert.ok(filledBankHtml.includes('16/11/2026'));
+
+  // Saving & exporting Bank Letter to Word (.doc) preserves Hindi & can reload/delete
+  const savedBank = mgr.saveCurrentLetter();
+  assert.equal(savedBank.letterType, 'BANK');
+  assert.equal(savedBank.empName, 'संपत लाल');
+  const bankDoc = mgr.buildDownloadDocumentHtml(savedBank, 'word');
+  assert.ok(bankDoc.includes('संपत लाल'));
+  assert.ok(bankDoc.includes('atpl-letterhead-spacer'));
+  assert.equal(mgr.deleteRecord(savedBank.id), true);
+});

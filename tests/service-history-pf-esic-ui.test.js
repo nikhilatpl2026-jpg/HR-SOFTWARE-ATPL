@@ -175,4 +175,66 @@ test('Service History Module - PF No, ESIC No, Monthly Deductions & UI Upgrade',
     assert.equal(res.totals.pfTotal, 1440);
     assert.equal(res.totals.esicTotal, 135);
   });
+  await t.test('3. Reads flexible filenames (2-digit year, spaces), ATPLCentralFileSync.fileMap, merged 2-row headers, multi-tab PF/ESIC consolidation & leading-zero IDs (Sampat Lal)', () => {
+    const master = [
+      {
+        emp_id: '00135',
+        name: 'SAMPAT LAL',
+        father: 'SOHAN LAL',
+        dept: 'PRODUCTION',
+        desig: 'PRODUCTION',
+        pf_no: '100330064649',
+        esi_no: '2706516566',
+        gross: 27660,
+        basic: 19915
+      }
+    ];
+    const files = [
+      // Flexible filename with words between month and year + multi-tab where Fourmala Sheet has Gross/Manual and PF ESIC sheet has deductions
+      {
+        name: 'Final March Salary 2026.xlsx',
+        sheets: {
+          'Fourmala Sheet': [
+            ['Emp Code', 'Employee Name', 'Gross', 'Manual Amount', 'Net Payable'],
+            ['135', 'SAMPAT  LAL', '27660', '25652', '25652']
+          ],
+          'Compliance PF Sheet': [
+            ['', '', 'Statutory Deductions', ''],
+            ['S.No', 'Employee Name', 'PF @ 12%', 'ESIC @0.75%'],
+            ['1', 'SAMPAT LAL', '-1800', '-208']
+          ]
+        }
+      },
+      // 2-digit year filename (Apr-25) with 2-row merged header & ATPL/135 code format
+      {
+        name: 'Salary_Apr-25.xlsx',
+        sheets: {
+          'Sheet1': [
+            ['', '', '', 'Deductions', ''],
+            ['Emp ID', 'Name of employee', 'Total Gross salary', 'PF', 'ESIC'],
+            ['ATPL/00135', 'SAMPAT LAL', '27660', '1800', '208']
+          ]
+        }
+      }
+    ];
+
+    const { mockWindow } = makeDomCtx(master, []);
+    // Simulate Google Drive / UnifiedSyncEngine storing files only in ATPLCentralFileSync.fileMap
+    mockWindow.ATPLCentralFileSync = {
+      fileMap: new Map(files.map((f) => [f.name, f]))
+    };
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(shCode, ctx);
+
+    const res = mockWindow.ATPLServiceHistoryV1.scan('Sampat  Lal');
+    assert.equal(res.employeeCode, '00135');
+    assert.equal(res.profile.pfNo, '100330064649');
+    assert.equal(res.profile.esicNo, '2706516566');
+    assert.equal(res.totals.monthsFound, 2);
+    assert.equal(res.totals.pfTotal, 3600);
+    assert.equal(res.totals.pfMonths, 2);
+    assert.equal(res.totals.esicTotal, 416);
+    assert.equal(res.totals.esicMonths, 2);
+    assert.equal(res.totals.grossTotal, 55320);
+  });
 });

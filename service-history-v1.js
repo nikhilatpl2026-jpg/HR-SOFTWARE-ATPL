@@ -1,40 +1,70 @@
 (function(g) {
   'use strict';
-  if (!g || g.__ATPL_SERVICE_HISTORY_V1__ === '2.0.0') return;
-  g.__ATPL_SERVICE_HISTORY_V1__ = '2.0.0';
+  if (!g || g.__ATPL_SERVICE_HISTORY_V1__ === '2.1.0') return;
+  g.__ATPL_SERVICE_HISTORY_V1__ = '2.1.0';
 
   var P = 'page-servicehistory';
   var N = 'atpl-sh-nav';
   var M = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-  // Normalized header aliases (all lowercase alphanumeric space-separated to match norm())
+  // Normalized header aliases (ordered from most specific to generic)
   var A = {
-    code: ['employee code', 'emp code', 'employee id', 'emp id', 'code', 'employee no', 'emp no', 'staff code', 'worker code', 'card no', 'token no'],
-    manual: ['manual amount', 'manual amt', 'mam amount', 'manual salary', 'manual net', 'actual paid'],
-    gross: ['gross salary', 'gross total salary', 'gross', 'total gross salary', 'gross amount', 'gross wages', 'total earning', 'total earnings', 'gross pay'],
-    basic: ['basic salary', 'basic wages', 'basic pay', 'basic'],
-    hra: ['hra', 'house rent allowance', 'hra allowance'],
+    code: [
+      'employee code', 'emp code', 'employee id', 'emp id', 'empcode', 'empid',
+      'e code', 'ecode', 'emp no', 'empno', 'employee no', 'employee number',
+      'staff code', 'staff id', 'worker code', 'worker id', 'worker no',
+      'card no', 'token no', 'badli no', 'member id', 'id no', 'code'
+    ],
+    manual: [
+      'manual amount', 'manual amt', 'mam amount', 'manual salary', 'manual net',
+      'actual paid', 'manual pay', 'cash amount', 'cash amt', 'manual'
+    ],
+    gross: [
+      'gross salary', 'gross total salary', 'total gross salary', 'total gross',
+      'earned gross salary', 'gross earned salary', 'gross earning salary', 'earned gross',
+      'gross amount', 'gross amt', 'gross wages', 'gross wage', 'gross pay',
+      'total earnings', 'total earning', 'gross'
+    ],
+    basic: [
+      'basic salary', 'basic wages', 'basic wage', 'basic pay', 'earned basic',
+      'actual basic', 'basic amt', 'basic amount', 'basic da', 'earn basic da', 'basic'
+    ],
+    hra: ['hra', 'h r a', 'house rent allowance', 'house rent', 'earned hra', 'hra allowance'],
     pf: [
-      'employee pf', 'emp pf', 'pf employee', 'pf deduction', 'pf ded', 'pf 12', 'pf 12 0',
-      'pf amt', 'pf amount', 'epf', 'epf 12', 'epf deduction', 'epf employee', 'provident fund', 'pf'
+      'employee pf', 'emp pf', 'pf employee', 'pf emp', 'pf emp share', 'employee pf share',
+      'pf deduction', 'pf ded', 'ded pf', 'deduction pf', 'pf deductions',
+      'pf 12', 'pf12', 'pf 12 0', 'p f 12', 'pf amt', 'pf amount', 'pf cut',
+      'epf employee', 'emp epf', 'epf deduction', 'epf ded', 'epf 12', 'epf12',
+      'epf amt', 'epf amount', 'provident fund', 'p f', 'epf', 'pf'
     ],
     esic: [
-      'employee esic', 'emp esic', 'esic employee', 'esic deduction', 'esic ded',
-      'esic 0 75', 'esic 075', 'esic 75', 'esi 0 75', 'esi 075',
-      'employee esi', 'esi employee', 'esi deduction', 'esi ded',
-      'esic amt', 'esic amount', 'esi amt', 'esi amount', 'esic', 'esi'
+      'employee esic', 'emp esic', 'esic employee', 'esic emp', 'esic emp share', 'employee esic share',
+      'employee esi', 'emp esi', 'esi employee', 'esi emp', 'esi emp share',
+      'esic deduction', 'esic ded', 'ded esic', 'esic deductions', 'esi deduction', 'esi ded',
+      'esic 0 75', 'esic0 75', 'esic 075', 'esic 75', 'esi 0 75', 'esi0 75', 'esi 075', 'esi 75',
+      'esic amt', 'esic amount', 'esicamt', 'esi amt', 'esi amount', 'esiamt',
+      'esic cut', 'ip ded', 'e s i c', 'e s i', 'esic', 'esi'
     ],
-    net: ['net pay', 'net payable', 'net salary', 'net payment', 'take home', 'take home pay'],
+    net: [
+      'net salary payable', 'net payable', 'net pay', 'net salary', 'net payment',
+      'net amount payable', 'net amount', 'net paid', 'take home pay', 'take home',
+      'in hand', 'total payable', 'payable amount', 'net sal'
+    ],
     earn: ['other earnings', 'other earning', 'allowances', 'allowance'],
-    adv: ['advance', 'adv', 'advance deduction', 'adv deduction', 'advance ded', 'adv ded'],
+    adv: [
+      'advance deduction', 'adv deduction', 'advance ded', 'adv ded',
+      'advance recovery', 'adv recovery', 'salary advance', 'advance', 'adv'
+    ],
     ded: ['other deductions', 'other deduction', 'total deduction', 'total deductions'],
     pfno: [
-      'pf no', 'pf number', 'pf account no', 'pf account number', 'pf a c no', 'pf ac no',
-      'epf no', 'epf number', 'epf account no', 'uan no', 'uan number', 'uan', 'pf uan', 'pf no uan'
+      'pf no uan', 'pf uan', 'pf no', 'pf number', 'pf account no', 'pf account number',
+      'pf a c no', 'pf ac no', 'epf no', 'epf number', 'epf account no', 'pf member id',
+      'uan no', 'uan number', 'universal account number', 'uan'
     ],
     esicno: [
-      'esic no', 'esic number', 'esi no', 'esi number', 'ip no', 'ip number',
-      'esic ip', 'esic ip no', 'insurance no', 'insurance number', 'esic a c no'
+      'esic no', 'esic number', 'esi no', 'esi number', 'esic ip no', 'esic ip number',
+      'esic ip', 'ip no', 'ip number', 'insurance no', 'insurance number',
+      'esic a c no', 'esi a c no'
     ]
   };
 
@@ -55,19 +85,22 @@
   }
 
   function norm(v) {
+    if (v instanceof Date) return '';
     return String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   }
 
   function key(v) {
-    var s = String(v == null ? '' : v).trim().replace(/\.0+$/, '').replace(/\s/g, '').toUpperCase();
+    if (v instanceof Date) return '';
+    var s = String(v == null ? '' : v).trim().replace(/\.0+$/, '').replace(/\s+/g, '').toUpperCase();
     return /^\d+$/.test(s) ? (s.replace(/^0+/, '') || '0') : s;
   }
 
   function num(v) {
+    if (v instanceof Date) return null;
     if (typeof v === 'number' && isFinite(v)) return v;
     if (v == null || String(v).trim() === '') return null;
     var s = String(v).replace(/[₹,\s]/g, '').replace(/^\((.*)\)$/, '-$1');
-    if (/^[-–—]+$/.test(s) || /^n\/?a$/i.test(s)) return null;
+    if (/^[-–—]+$/.test(s) || /^n\/?a$/i.test(s) || /^nil$/i.test(s) || /^#+$/.test(s)) return null;
     var n = Number(s);
     return Number.isFinite(n) ? n : null;
   }
@@ -81,20 +114,75 @@
     return '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   }
 
-  function month(s) {
-    s = String(s || '').toLowerCase().replace(/[_]+/g, ' ');
-    var m = s.match(/\b(20\d{2})[-_. ](0?[1-9]|1[0-2])\b/) || s.match(/\b(0?[1-9]|1[0-2])[-_. ](20\d{2})\b/);
-    if (m) return m[1].length === 4 ? m[1] + '-' + String(+m[2]).padStart(2, '0') : m[2] + '-' + String(+m[1]).padStart(2, '0');
-    var names = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-    var short = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'];
-    m = s.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[ _.-]*(20\d{2})\b/);
+  function parseMonthFromText(raw) {
+    if (!raw) return '';
+    var s = String(raw).toLowerCase().replace(/[_.,/()'’`-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s) return '';
+
+    // 1. Numeric YYYY MM or MM YYYY
+    var m = s.match(/\b(20\d{2})\s+(0?[1-9]|1[0-2])\b/) || s.match(/\b(0?[1-9]|1[0-2])\s+(20\d{2})\b/);
     if (m) {
-      var i = names.indexOf(m[1]);
-      if (i < 0) {
-        var si = short.indexOf(m[1]);
-        i = si >= 9 ? si - 1 : si;
+      return m[1].length === 4
+        ? m[1] + '-' + String(+m[2]).padStart(2, '0')
+        : m[2] + '-' + String(+m[1]).padStart(2, '0');
+    }
+
+    // 2. Named months (full + short) anywhere in text, with 4-digit or 2-digit year
+    var monthDefs = [
+      ['january', 1], ['february', 2], ['march', 3], ['april', 4],
+      ['june', 6], ['july', 7], ['august', 8], ['september', 9],
+      ['october', 10], ['november', 11], ['december', 12],
+      ['sept', 9], ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4],
+      ['may', 5], ['jun', 6], ['jul', 7], ['aug', 8], ['sep', 9],
+      ['oct', 10], ['nov', 11], ['dec', 12]
+    ];
+
+    var foundMonthNum = 0;
+    for (var i = 0; i < monthDefs.length; i++) {
+      var nm = monthDefs[i][0];
+      var re = new RegExp('(?:^|\\b)' + nm + '(?:\\b|(?=\\d))');
+      if (re.test(s)) {
+        foundMonthNum = monthDefs[i][1];
+        break;
       }
-      if (i >= 0) return m[2] + '-' + String(i + 1).padStart(2, '0');
+    }
+
+    if (foundMonthNum > 0) {
+      var yr4 = s.match(/\b(20[1-3]\d)\b/) || s.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december|sept|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(20[1-3]\d)\b/);
+      if (yr4) {
+        return yr4[1] + '-' + String(foundMonthNum).padStart(2, '0');
+      }
+      var yr2 = s.match(/(?:^|\s|january|february|march|april|may|june|july|august|september|october|november|december|sept|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(2[0-9]|3[0-5])\b/);
+      if (yr2) {
+        return '20' + yr2[1] + '-' + String(foundMonthNum).padStart(2, '0');
+      }
+    }
+
+    // 3. Numeric MM YY (e.g. 03 26)
+    var m2 = s.match(/\b(0?[1-9]|1[0-2])\s+(2[0-9]|3[0-5])\b/);
+    if (m2) {
+      return '20' + m2[2] + '-' + String(+m2[1]).padStart(2, '0');
+    }
+
+    return '';
+  }
+
+  function month(s, fileSheets) {
+    var p = parseMonthFromText(s);
+    if (p) return p;
+    if (Array.isArray(fileSheets)) {
+      for (var i = 0; i < fileSheets.length; i++) {
+        var sh = fileSheets[i];
+        if (!sh) continue;
+        p = parseMonthFromText(sh.name);
+        if (p) return p;
+        var rows = sh.rows || [];
+        for (var r = 0; r < Math.min(10, rows.length); r++) {
+          var rowTxt = Array.isArray(rows[r]) ? rows[r].join(' ') : String(rows[r] || '');
+          p = parseMonthFromText(rowTxt);
+          if (p) return p;
+        }
+      }
     }
     return '';
   }
@@ -107,151 +195,295 @@
       if (Array.isArray(g.EMP_MASTER_DATA) && g.EMP_MASTER_DATA.length) return g.EMP_MASTER_DATA;
     } catch (_) {}
     try {
-      var raw = g.localStorage && g.localStorage.getItem('AroraTextilesEmployeeMasterV3');
+      var raw = g.localStorage && (
+        g.localStorage.getItem('AroraTextilesEmployeeMasterV3') ||
+        g.localStorage.getItem('ATPL_EmployeeMaster_V3') ||
+        g.localStorage.getItem('EM_DATA')
+      );
       if (raw) {
         var parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed;
+        if (parsed && Array.isArray(parsed.data)) return parsed.data;
+        if (parsed && Array.isArray(parsed.employees)) return parsed.employees;
       }
     } catch (_) {}
     return [];
   }
 
   function cleanStatId(val) {
+    if (val instanceof Date) {
+      return String(val.getDate()).padStart(2, '0') + '/' + String(val.getMonth() + 1).padStart(2, '0') + '/' + val.getFullYear();
+    }
     var s = String(val == null ? '' : val).trim();
     if (!s || s === '-' || s === '--' || /^n\/?a$/i.test(s) || /^nil$/i.test(s)) return '';
     return s.replace(/\.0+$/, '');
   }
 
+  function formatMasterObj(e) {
+    return {
+      code: String(e.emp_id || e.code || e.emp_code || e.id || '').trim(),
+      name: String(e.name || e.emp_name || '').trim(),
+      father: String(e.father || e.father_name || '').trim(),
+      dept: String(e.dept || e.department || '').trim(),
+      desig: String(e.desig || e.designation || '').trim(),
+      cat1: String(e.cat1 || e.category || '').trim(),
+      doj: String(e.doj || '').trim(),
+      status: String(e.status || '').trim(),
+      pfNo: cleanStatId(e.pf_no || e.pfno || e.pf_number || e.uan || e.uan_no),
+      esicNo: cleanStatId(e.esi_no || e.esic_no || e.esicno || e.esic_number || e.ip_no),
+      gross: num(e.gross),
+      basic: num(e.basic),
+      hra: num(e.hra),
+      bankName: String(e.bank_name || '').trim(),
+      accountNo: String(e.account_no || '').trim()
+    };
+  }
+
   function lookupMasterEmployee(query) {
     var qNorm = key(query);
-    var qLower = String(query || '').trim().toLowerCase();
-    if (!qNorm && !qLower) return null;
+    var qWords = norm(query);
+    if (!qNorm && !qWords) return null;
     var list = getMasterList();
-    var nameMatch = null;
+    var exactNameMatch = null;
+    var statMatch = null;
+    var partialMatches = [];
+
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       if (!e) continue;
       var c = String(e.emp_id || e.code || e.emp_code || e.id || '').trim();
       var nm = String(e.name || e.emp_name || '').trim();
+      var pf = cleanStatId(e.pf_no || e.pfno || e.pf_number || e.uan || e.uan_no);
+      var es = cleanStatId(e.esi_no || e.esic_no || e.esicno || e.esic_number || e.ip_no);
+
       if (qNorm && key(c) === qNorm) {
-        return {
-          code: c,
-          name: nm,
-          father: String(e.father || e.father_name || '').trim(),
-          dept: String(e.dept || e.department || '').trim(),
-          desig: String(e.desig || e.designation || '').trim(),
-          cat1: String(e.cat1 || e.category || '').trim(),
-          doj: String(e.doj || '').trim(),
-          status: String(e.status || '').trim(),
-          pfNo: cleanStatId(e.pf_no || e.pfno || e.pf_number || e.uan || e.uan_no),
-          esicNo: cleanStatId(e.esi_no || e.esic_no || e.esicno || e.esic_number || e.ip_no),
-          gross: num(e.gross),
-          basic: num(e.basic),
-          hra: num(e.hra),
-          bankName: String(e.bank_name || '').trim(),
-          accountNo: String(e.account_no || '').trim()
-        };
+        return formatMasterObj(e);
       }
-      if (!nameMatch && qLower && nm.toLowerCase() === qLower) {
-        nameMatch = e;
+      if (!exactNameMatch && qWords && norm(nm) === qWords) {
+        exactNameMatch = e;
+      }
+      if (!statMatch && qNorm && ((pf && key(pf) === qNorm) || (es && key(es) === qNorm))) {
+        statMatch = e;
+      }
+      if (qWords && qWords.length >= 3 && norm(nm).indexOf(qWords) >= 0) {
+        partialMatches.push(e);
       }
     }
-    if (nameMatch) {
-      return lookupMasterEmployee(nameMatch.emp_id || nameMatch.code || nameMatch.emp_code);
-    }
+
+    if (exactNameMatch) return formatMasterObj(exactNameMatch);
+    if (statMatch) return formatMasterObj(statMatch);
+    if (partialMatches.length === 1) return formatMasterObj(partialMatches[0]);
     return null;
   }
 
+  function isUsableSalaryFile(f) {
+    if (!f || typeof f !== 'object') return false;
+    var nm = String(f.name || f.filename || f.id || '').toLowerCase().trim();
+    if (!nm) return false;
+    if (/\.(json|pdf|doc|docx|png|jpg|jpeg|txt)$/i.test(nm)) return false;
+    if (nm.indexOf('advance_management') >= 0 || nm.indexOf('atpl_employee_advances') >= 0) return false;
+    if (f.isDocument === true && !f.wb && !f.sheets) return false;
+    if (f.module && ['hr_doc', 'challan', 'pf', 'esic'].indexOf(String(f.module).toLowerCase()) >= 0) return false;
+    return true;
+  }
+
+  function fileRichness(f) {
+    if (!f) return 0;
+    if (f.wb && f.wb.SheetNames && f.wb.SheetNames.length) return 4;
+    if (f.sheets && ((Array.isArray(f.sheets) && f.sheets.length) || (!Array.isArray(f.sheets) && Object.keys(f.sheets).length))) return 3;
+    if (f.buf) return 2;
+    if (f.base64 || f.original_b64 || f.file_data) return 1;
+    return 0;
+  }
+
   function getFiles() {
-    var a = [];
+    var sources = [];
     try {
-      if (g.ATPLCentralFileSync && g.ATPLCentralFileSync.getModuleFiles) {
-        a = g.ATPLCentralFileSync.getModuleFiles('salary') || [];
+      if (g.ATPLCentralFileSync && typeof g.ATPLCentralFileSync.getModuleFiles === 'function') {
+        sources.push(g.ATPLCentralFileSync.getModuleFiles('salary') || []);
       }
-    } catch (e) {}
-    if (!a.length && Array.isArray(g.FILES)) a = g.FILES;
-    var seen = {};
-    return a.filter(function(f) {
-      var k = String((f && (f.name || f.id)) || '').toLowerCase();
-      if (!k || seen[k]) return false;
-      seen[k] = 1;
-      return true;
+    } catch (_) {}
+    if (Array.isArray(g.FILES)) sources.push(g.FILES);
+    try {
+      if (g.ATPLCentralFileSync && g.ATPLCentralFileSync.fileMap && typeof g.ATPLCentralFileSync.fileMap.values === 'function') {
+        sources.push(Array.from(g.ATPLCentralFileSync.fileMap.values()));
+      }
+    } catch (_) {}
+
+    var byKey = {};
+    var order = [];
+    sources.forEach(function(arr) {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function(f) {
+        if (!isUsableSalaryFile(f)) return;
+        var k = String(f.name || f.filename || f.id || '').trim().toLowerCase();
+        if (!k) return;
+        if (!byKey[k]) {
+          byKey[k] = f;
+          order.push(k);
+        } else if (fileRichness(f) > fileRichness(byKey[k])) {
+          byKey[k] = f;
+        }
+      });
     });
+
+    return order.map(function(k) { return byKey[k]; });
+  }
+
+  function b64ToUint8(b64) {
+    var clean = String(b64 || '').replace(/^data:[^;]+;base64,/, '').trim();
+    if (!clean) return null;
+    try {
+      if (typeof atob === 'function') {
+        var bin = atob(clean);
+        var u8 = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        return u8;
+      }
+      if (typeof Buffer !== 'undefined') {
+        return new Uint8Array(Buffer.from(clean, 'base64'));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function decodeWorkbookIfMissing(f) {
+    if (!f || f.wb) return f && f.wb;
+    try {
+      var buf = f.buf;
+      if (!buf && (f.base64 || f.original_b64 || f.file_data)) {
+        buf = b64ToUint8(f.base64 || f.original_b64 || f.file_data);
+      } else if (typeof buf === 'string') {
+        buf = b64ToUint8(buf);
+      }
+      if (!buf) return null;
+      if (typeof g.parseWB === 'function') {
+        var wb1 = g.parseWB(buf);
+        if (wb1 && Array.isArray(wb1.SheetNames) && wb1.SheetNames.length) {
+          f.wb = wb1;
+          return wb1;
+        }
+      }
+      if (g.XLSX && typeof g.XLSX.read === 'function') {
+        var u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+        var wb2 = g.XLSX.read(u8, { type: 'array', cellDates: true });
+        if (wb2 && Array.isArray(wb2.SheetNames) && wb2.SheetNames.length) {
+          f.wb = wb2;
+          return wb2;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   function sheets(f) {
     var out = [];
+    var wb = f && f.wb;
+
+    // 1. Prefer f.wb with raw: true so narrow Excel columns ("###") and UAN/ESIC ("1.01E+11") never corrupt
     try {
-      if (f.wb && g.XLSX && f.wb.SheetNames) {
-        f.wb.SheetNames.forEach(function(n) {
-          out.push({
-            name: n,
-            rows: g.XLSX.utils.sheet_to_json(f.wb.Sheets[n], { header: 1, raw: false, defval: '' })
-          });
+      if (wb && g.XLSX && wb.SheetNames && wb.Sheets) {
+        wb.SheetNames.forEach(function(n) {
+          var ws = wb.Sheets[n];
+          if (!ws) return;
+          var rows = g.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+          if (Array.isArray(rows) && rows.length) {
+            out.push({ name: n, rows: rows });
+          }
         });
-        return out;
+        if (out.length) return out;
       }
-    } catch (e) {}
-    var s = f.sheets;
+    } catch (_) {}
+
+    // 2. Fallback to pre-extracted f.sheets (handles arrays, objects, or lazy getters)
+    var s = f && f.sheets;
     if (Array.isArray(s)) {
-      return s.map(function(x) {
-        return { name: x.name || 'Sheet', rows: x.rows || x.data || [] };
+      s.forEach(function(x) {
+        if (!x) return;
+        var rows = x.rows || x.data || [];
+        if (Array.isArray(rows) && rows.length) out.push({ name: x.name || 'Sheet', rows: rows });
       });
-    }
-    if (s && typeof s === 'object') {
+      if (out.length) return out;
+    } else if (s && typeof s === 'object') {
       Object.keys(s).forEach(function(n) {
         var x = s[n];
-        out.push({ name: n, rows: Array.isArray(x) ? x : (x.rows || x.data || []) });
+        var rows = Array.isArray(x) ? x : ((x && (x.rows || x.data)) || []);
+        if (Array.isArray(rows) && rows.length) out.push({ name: n, rows: rows });
       });
+      if (out.length) return out;
     }
+
+    // 3. Lazy decode from f.buf / f.base64 if neither wb nor sheets was populated yet
+    if (f && !wb) {
+      wb = decodeWorkbookIfMissing(f);
+      if (wb && g.XLSX && wb.SheetNames && wb.Sheets) {
+        try {
+          wb.SheetNames.forEach(function(n) {
+            var ws = wb.Sheets[n];
+            if (!ws) return;
+            var rows = g.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+            if (Array.isArray(rows) && rows.length) out.push({ name: n, rows: rows });
+          });
+        } catch (_) {}
+      }
+    }
+
     return out;
   }
 
   function sheetPriority(name) {
     var nl = norm(name);
     if (nl.indexOf('fourmala') >= 0 || nl.indexOf('formula') >= 0) return 100;
-    if (nl.indexOf('manisha') >= 0) return 95;
+    if (nl.indexOf('manisha') >= 0 || nl.indexOf('manisah') >= 0) return 95;
     if (nl === 'salary sheet' || nl === 'main sheet' || nl === 'salaries') return 90;
-    if (nl.indexOf('salary') >= 0 || nl.indexOf('payroll') >= 0) return 80;
-    if (nl === 'staff' || nl === 'non staff') return 70;
-    if (nl === 'sheet1' || nl === 'data') return 50;
-    if (nl.indexOf('category') >= 0 || nl.indexOf('summary') >= 0 || nl.indexOf('department') >= 0) return 10;
+    if (nl.indexOf('salary') >= 0 || nl.indexOf('payroll') >= 0 || nl.indexOf('wages') >= 0) return 80;
+    if (nl.indexOf('pf') >= 0 || nl.indexOf('esic') >= 0 || nl.indexOf('statutory') >= 0 || nl.indexOf('compliance') >= 0) return 75;
+    if (nl === 'staff' || nl === 'non staff' || nl.indexOf('worker') >= 0) return 70;
+    if (nl === 'sheet1' || nl === 'sheet 1' || nl === 'data') return 50;
+    if (nl.indexOf('category') >= 0 || nl.indexOf('summary') >= 0 || nl.indexOf('department') >= 0 ||
+        nl.indexOf('bank') >= 0 || nl.indexOf('hdfc') >= 0 || nl.indexOf('sbi') >= 0 ||
+        nl.indexOf('neft') >= 0 || nl.indexOf('attendance') >= 0 || nl.indexOf('attandance') >= 0 ||
+        nl === 'advance' || nl === 'adv') return 5;
     return 40;
   }
 
   function indices(h, aliases, fieldKey) {
     var out = [];
-    h.forEach(function(v, i) {
-      var nv = norm(v);
-      if (!nv) return;
-      if (aliases.indexOf(nv) >= 0) out.push(i);
-    });
+    var seen = {};
+    var normalizedH = h.map(function(v) { return norm(v); });
+
+    for (var ai = 0; ai < aliases.length; ai++) {
+      var alias = aliases[ai];
+      for (var ci = 0; ci < normalizedH.length; ci++) {
+        if (seen[ci]) continue;
+        if (normalizedH[ci] === alias) {
+          seen[ci] = true;
+          out.push(ci);
+        }
+      }
+    }
     if (out.length) return out;
 
     // Safe semantic fallbacks for statutory deduction & ID columns
     if (fieldKey === 'pf') {
-      h.forEach(function(v, i) {
-        var nv = norm(v);
+      normalizedH.forEach(function(nv, i) {
         if (!nv) return;
-        if (/\b(employer|er|no|number|account|acc|ac|uan|share)\b/.test(nv)) return;
-        if (/\b(pf|epf)\b/.test(nv)) out.push(i);
+        if (/\b(employer|er|3 67|8 33|13|13 0|13 61|admin|edli|no|number|num|account|acc|ac|uan|eps|wage|wages|base|gross|basic)\b/.test(nv)) return;
+        if (/\b(pf|p f|epf|pf12|epf12|provident)\b/.test(nv)) out.push(i);
       });
     } else if (fieldKey === 'esic') {
-      h.forEach(function(v, i) {
-        var nv = norm(v);
+      normalizedH.forEach(function(nv, i) {
         if (!nv) return;
-        if (/\b(employer|er|no|number|ip|account|acc|ac|share)\b/.test(nv)) return;
-        if (/\b(esic|esi)\b/.test(nv)) out.push(i);
+        if (/\b(employer|er|3 25|325|4 75|no|number|num|ip|account|acc|ac|wage|wages|base|gross|basic)\b/.test(nv)) return;
+        if (/\b(esic|esi|e s i c|e s i|esic0|esi0)\b/.test(nv)) out.push(i);
       });
     } else if (fieldKey === 'pfno') {
-      h.forEach(function(v, i) {
-        var nv = norm(v);
+      normalizedH.forEach(function(nv, i) {
         if (!nv) return;
-        if (/\b(uan|pf no|pf number|pf account|epf no|epf number)\b/.test(nv)) out.push(i);
+        if (/\b(uan|pf no|pf number|pf account|epf no|epf number|pf member)\b/.test(nv)) out.push(i);
       });
     } else if (fieldKey === 'esicno') {
-      h.forEach(function(v, i) {
-        var nv = norm(v);
+      normalizedH.forEach(function(nv, i) {
         if (!nv) return;
         if (/\b(esic no|esic number|esi no|esi number|ip no|ip number|esic ip)\b/.test(nv)) out.push(i);
       });
@@ -259,83 +491,240 @@
     return out;
   }
 
-  function parse(f, sh, p, emp) {
-    var rows = sh.rows || [];
-    var hi = -1;
-    var ix = {};
-    var nameIdx = -1;
-    var nameHeads = ['employee name', 'name of employee', 'name of employe', 'emp name', 'name'];
-    var numericKeys = ['manual', 'gross', 'basic', 'hra', 'pf', 'esic', 'net', 'earn', 'adv', 'ded'];
+  function buildMergedRow(rows, r) {
+    var row = rows[r] || [];
+    if (r <= 0) return row;
+    var prev = rows[r - 1];
+    if (!Array.isArray(prev)) return row;
+    var prevStr = prev.map(function(x) { return norm(x); }).join(' ');
+    if (!/\b(earning|earnings|deduction|deductions|salary|statutory|pf|esic|employee)\b/.test(prevStr)) {
+      return row;
+    }
+    var maxLen = Math.max(prev.length, row.length);
+    var merged = [];
+    var lastPrefix = '';
+    for (var c = 0; c < maxLen; c++) {
+      var top = String(prev[c] == null ? '' : prev[c]).trim();
+      if (top) lastPrefix = top;
+      var bot = String(row[c] == null ? '' : row[c]).trim();
+      if (bot) {
+        merged[c] = (lastPrefix && norm(bot).indexOf(norm(lastPrefix)) < 0 && !/^(emp|employee|code|id|name|s no|sr no)/i.test(bot))
+          ? (lastPrefix + ' ' + bot)
+          : bot;
+      } else {
+        merged[c] = top;
+      }
+    }
+    return merged;
+  }
 
-    for (var r = 0; r < Math.min(35, rows.length); r++) {
-      var h = rows[r] || [];
+  function detectHeaderRow(rows) {
+    var nameHeads = ['employee name', 'employee s name', 'name of employee', 'name of employe', 'emp name', 'emp s name', 'empname', 'worker name', 'worker s name', 'staff name', 'name of worker', 'name of staff', 'full name', 'name', 'karamchari'];
+    var serialHeads = ['s no', 'sr no', 'serial no', 'serial number', 'sno', 'sr number', 'sl no', 'sr'];
+    var best = null;
+    var maxScan = Math.min(35, rows.length);
+
+    for (var r = 0; r < maxScan; r++) {
+      var rawH = rows[r] || [];
+      if (!Array.isArray(rawH) || rawH.length < 2) continue;
+      var mergedH = buildMergedRow(rows, r);
+
       var ni = -1;
-      for (var j = 0; j < h.length; j++) {
-        if (nameHeads.indexOf(norm(h[j])) >= 0) {
+      for (var j = 0; j < rawH.length; j++) {
+        if (nameHeads.indexOf(norm(rawH[j])) >= 0) {
           ni = j;
           break;
         }
       }
-      var explicitCodeCols = indices(h, A.code, 'code');
+
+      var explicitCodeCols = indices(rawH, A.code, 'code');
       var codeCol = -1;
-      if (ni > 0) {
-        var codeHead = norm(h[ni - 1]);
-        if (['s no', 'sr no', 'serial no', 'serial number', 'sno', 'sr number'].indexOf(codeHead) < 0) {
+      if (explicitCodeCols.length >= 1) {
+        codeCol = explicitCodeCols[0];
+      } else if (ni > 0) {
+        var prevHead = norm(rawH[ni - 1]);
+        var nonCodeHeads = ['department', 'dept', 'designation', 'desig', 'category', 'date', 'month', 'branch', 'unit', 'father name', 'fathers name'];
+        if (prevHead && serialHeads.indexOf(prevHead) < 0 && nonCodeHeads.indexOf(prevHead) < 0) {
           codeCol = ni - 1;
         }
       }
-      if (codeCol < 0 && explicitCodeCols.length === 1) {
-        codeCol = explicitCodeCols[0];
-      }
-      if (codeCol >= 0 && (ni >= 0 || explicitCodeCols.length === 1)) {
-        hi = r;
-        nameIdx = ni;
-        ix.code = [codeCol];
-        Object.keys(A).forEach(function(k) {
-          if (k !== 'code') ix[k] = indices(h, A[k], k);
-        });
-        break;
+
+      var ix = { code: codeCol >= 0 ? [codeCol] : [] };
+      var fieldHits = 0;
+      Object.keys(A).forEach(function(k) {
+        if (k === 'code') return;
+        var cols = indices(rawH, A[k], k);
+        if (!cols.length && mergedH !== rawH) {
+          cols = indices(mergedH, A[k], k);
+        }
+        ix[k] = cols;
+        if (cols.length) fieldHits++;
+      });
+
+      if (codeCol < 0 && (ni < 0 || fieldHits === 0)) continue;
+      if (fieldHits === 0 && (explicitCodeCols.length === 0 || ni < 0)) continue;
+
+      var score = (explicitCodeCols.length ? 20 : (codeCol >= 0 ? 5 : 0)) + (ni >= 0 ? 10 : 0) + (fieldHits * 5) + (ix.pf.length ? 8 : 0) + (ix.esic.length ? 8 : 0) + (ix.gross.length ? 5 : 0) + (ix.manual.length ? 5 : 0);
+      if (!best || score > best.score) {
+        best = { hi: r, nameIdx: ni, ix: ix, score: score, headerRow: rawH };
       }
     }
 
-    if (hi < 0) return { recognized: false, rows: [] };
+    return best;
+  }
 
-    var found = [];
-    for (var i = hi + 1; i < rows.length; i++) {
-      var row = rows[i] || [];
-      if (key(row[ix.code[0]]) !== key(emp)) continue;
+  function codeMatches(cellVal, targetEmpKey) {
+    if (!targetEmpKey) return false;
+    var ck = key(cellVal);
+    if (!ck) return false;
+    if (ck === targetEmpKey) return true;
+    if (/^\d+$/.test(targetEmpKey)) {
+      var m = ck.match(/^[A-Z\/_-]+0*(\d+)$/);
+      if (m && (m[1].replace(/^0+/, '') || '0') === targetEmpKey) return true;
+    }
+    return false;
+  }
+
+  function parse(f, sh, p, emp, masterEmp, allowNameFallback) {
+    var rows = sh.rows || [];
+    var numericKeys = ['manual', 'gross', 'basic', 'hra', 'pf', 'esic', 'net', 'earn', 'adv', 'ded'];
+    var hdr = detectHeaderRow(rows);
+    if (!hdr) return { recognized: false, rows: [] };
+
+    var hi = hdr.hi;
+    var ix = hdr.ix;
+    var nameIdx = hdr.nameIdx;
+    var headerArr = hdr.headerRow || rows[hi] || [];
+    var empKey = key(emp);
+    var targetNameNorm = (masterEmp && masterEmp.name) ? norm(masterEmp.name) : (!/^\d+$/.test(String(emp || '').trim()) ? norm(emp) : '');
+
+    function extractRowRec(row, rowIdx, matchedBy) {
+      var rawCode = ix.code.length ? cleanStatId(row[ix.code[0]]) : '';
+      if (!rawCode && matchedBy !== 'name') return null;
+      var codeNorm = norm(rawCode);
+      if (codeNorm === 'total' || codeNorm === 'grand total' || codeNorm === 'sub total' || codeNorm === 'subtotal') return null;
+
       var rec = {
         period: p,
         file: f.name || f.id || 'Unnamed',
         sheet: sh.name || 'Sheet',
         priority: sheetPriority(sh.name || ''),
-        row: i + 1,
-        code: String(row[ix.code[0]]).trim(),
-        empName: nameIdx >= 0 ? String(row[nameIdx] || '').trim() : '',
+        row: rowIdx + 1,
+        code: rawCode || emp,
+        empName: nameIdx >= 0 ? cleanStatId(row[nameIdx]) : '',
+        matchedBy: matchedBy,
         values: {},
         headers: {},
         issues: []
       };
+
       Object.keys(ix).forEach(function(k) {
         var cols = ix[k];
-        if (cols.length > 1) {
-          // For pf/esic/pfno/esicno take the first matching column cleanly instead of failing whole sheet unless truly ambiguous
-          if (k === 'manual' || k === 'gross' || k === 'net') {
-            rec.issues.push('Multiple ' + k + ' columns: ' + cols.map(function(c) { return String((rows[hi] || [])[c]); }).join(', '));
-            return;
+        if (!cols || !cols.length) return;
+        var colIdx = cols[0];
+        var val = numericKeys.indexOf(k) >= 0 ? num(row[colIdx]) : cleanStatId(row[colIdx]);
+        if ((val == null || val === '') && cols.length > 1) {
+          for (var c2 = 1; c2 < cols.length; c2++) {
+            var altVal = numericKeys.indexOf(k) >= 0 ? num(row[cols[c2]]) : cleanStatId(row[cols[c2]]);
+            if (altVal != null && altVal !== '') {
+              colIdx = cols[c2];
+              val = altVal;
+              break;
+            }
           }
         }
-        if (cols.length >= 1) {
-          var colIdx = cols[0];
-          rec.headers[k] = String((rows[hi] || [])[colIdx] || '');
-          rec.values[k] = numericKeys.indexOf(k) >= 0
-            ? num(row[colIdx])
-            : cleanStatId(row[colIdx]);
+        if ((k === 'pf' || k === 'esic') && typeof val === 'number' && val < 0) {
+          val = Math.abs(val);
+        }
+        rec.headers[k] = String(headerArr[colIdx] || '');
+        rec.values[k] = val;
+      });
+
+      return rec;
+    }
+
+    var found = [];
+    if (ix.code.length) {
+      for (var i = hi + 1; i < rows.length; i++) {
+        var row = rows[i] || [];
+        if (!codeMatches(row[ix.code[0]], empKey)) continue;
+        var rec = extractRowRec(row, i, 'code');
+        if (rec) found.push(rec);
+      }
+    }
+
+    // Name fallback ONLY if code match found nothing in this sheet and we have a multi-char target name
+    if (!found.length && allowNameFallback && targetNameNorm && nameIdx >= 0 && targetNameNorm.length >= 4) {
+      var nameHits = [];
+      for (var j = hi + 1; j < rows.length; j++) {
+        var r2 = rows[j] || [];
+        var rName = norm(r2[nameIdx]);
+        if (!rName) continue;
+        var rNameClean = rName.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
+        var tNameClean = targetNameNorm.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
+        if (rName === targetNameNorm || (tNameClean.length >= 4 && rNameClean === tNameClean)) {
+          var nRec = extractRowRec(r2, j, 'name');
+          if (nRec) nameHits.push(nRec);
+        }
+      }
+      if (nameHits.length === 1) {
+        found.push(nameHits[0]);
+      }
+    }
+
+    return { recognized: true, rows: found };
+  }
+
+  function matchScore(r) {
+    if (!r) return -1;
+    return (r.priority || 0) +
+      (r.values.manual != null ? 20 : 0) +
+      (r.values.pf != null && r.values.pf > 0 ? 15 : (r.values.pf != null ? 5 : 0)) +
+      (r.values.esic != null && r.values.esic > 0 ? 15 : (r.values.esic != null ? 5 : 0)) +
+      (r.values.gross != null ? 8 : 0) +
+      (r.values.net != null ? 6 : 0);
+  }
+
+  function consolidateMatches(matches) {
+    if (!matches || !matches.length) return null;
+    matches.sort(function(a, b) { return matchScore(b) - matchScore(a); });
+    var primary = matches[0];
+    if (matches.length === 1) return primary;
+
+    var mergedValues = Object.assign({}, primary.values);
+    var mergedHeaders = Object.assign({}, primary.headers);
+    var empName = primary.empName;
+    var extraSources = [];
+
+    var mergeFields = ['pf', 'esic', 'pfno', 'esicno', 'manual', 'gross', 'basic', 'hra', 'net', 'earn', 'adv', 'ded'];
+    for (var i = 1; i < matches.length; i++) {
+      var sec = matches[i];
+      if (!sec) continue;
+      var usedSec = false;
+      if (!empName && sec.empName) {
+        empName = sec.empName;
+        usedSec = true;
+      }
+      mergeFields.forEach(function(k) {
+        var cur = mergedValues[k];
+        var alt = sec.values ? sec.values[k] : undefined;
+        var isMissing = (cur == null || cur === '' || ((k === 'pf' || k === 'esic') && cur === 0));
+        var altValid = (alt != null && alt !== '' && !((k === 'pf' || k === 'esic') && alt === 0));
+        if (isMissing && altValid) {
+          mergedValues[k] = alt;
+          if (sec.headers && sec.headers[k]) mergedHeaders[k] = sec.headers[k] + ' (' + sec.sheet + ')';
+          usedSec = true;
         }
       });
-      found.push(rec);
+      if (usedSec) extraSources.push(sec.file + ' / ' + sec.sheet);
     }
-    return { recognized: true, rows: found };
+
+    return Object.assign({}, primary, {
+      empName: empName,
+      values: mergedValues,
+      headers: mergedHeaders,
+      mergedFrom: extraSources
+    });
   }
 
   function scan(rawQuery) {
@@ -345,17 +734,21 @@
 
     var fs = getFiles();
     var map = {};
+    var undatedFiles = [];
     var now = new Date();
     var end = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     var startMonth = '2026-01';
     var endMonth = end;
 
     fs.forEach(function(f) {
-      var p = month(f.name || f.filename);
+      var shList = sheets(f);
+      var p = month(f.name || f.filename || f.id, shList);
       if (p) {
         if (p < startMonth) startMonth = p;
         if (p > endMonth) endMonth = p;
-        (map[p] || (map[p] = [])).push(f);
+        (map[p] || (map[p] = [])).push({ file: f, sheets: shList });
+      } else {
+        undatedFiles.push({ file: f, sheets: shList });
       }
     });
 
@@ -370,10 +763,15 @@
       d.setMonth(d.getMonth() + 1);
       guard++;
     }
+    if (undatedFiles.length) {
+      map['UNDATED'] = undatedFiles;
+      months.push('UNDATED');
+    }
 
     var sheetPfNo = '';
     var sheetEsicNo = '';
     var sheetEmpName = '';
+    var discoveredCode = '';
     var totals = {
       monthsFound: 0,
       pfTotal: 0,
@@ -388,56 +786,41 @@
       dedTotal: 0
     };
 
+    var allowNameFallback = true;
+
     var monthResults = months.map(function(p) {
-      var files = map[p] || [];
-      var fileNames = files.map(function(f) { return f.name || f.filename || f.id || 'Unnamed file'; });
+      var entries = map[p] || [];
+      var fileNames = entries.map(function(x) { return x.file.name || x.file.filename || x.file.id || 'Unnamed file'; });
 
       function result(status, reason, records) {
         return { period: p, status: status, reason: reason, records: records || [], files: fileNames };
       }
 
-      if (!files.length) {
+      if (!entries.length) {
         return result('SALARY FILE UNAVAILABLE', 'No saved salary file with a recognizable month in its filename.');
       }
 
       var matches = [];
       var recognized = 0;
       var unread = [];
-      files.forEach(function(f) {
-        var ss = sheets(f);
+      entries.forEach(function(entry) {
+        var f = entry.file;
+        var ss = entry.sheets || sheets(f);
         if (!ss.length) {
           unread.push(f.name || 'Unnamed file');
           return;
         }
-        var fileMatches = [];
         ss.forEach(function(sh) {
-          var z = parse(f, sh, p, emp);
+          var z = parse(f, sh, p, emp, masterEmp, allowNameFallback);
           if (z.recognized) recognized++;
           else unread.push((f.name || 'File') + ' / ' + sh.name);
-          fileMatches = fileMatches.concat(z.rows);
+          matches = matches.concat(z.rows);
         });
-        // If multiple tabs inside the same workbook matched (e.g. Formula Sheet + Category summary), pick highest priority tab
-        if (fileMatches.length > 1) {
-          fileMatches.sort(function(a, b) {
-            var scoreA = (a.priority || 0) + (a.values.manual != null ? 20 : 0) + (a.values.pf != null ? 10 : 0) + (a.values.esic != null ? 10 : 0);
-            var scoreB = (b.priority || 0) + (b.values.manual != null ? 20 : 0) + (b.values.pf != null ? 10 : 0) + (b.values.esic != null ? 10 : 0);
-            return scoreB - scoreA;
-          });
-          fileMatches = [fileMatches[0]];
-        }
-        matches = matches.concat(fileMatches);
       });
 
       if (matches.length >= 1) {
-        // Pick primary match if two files exist for the same month, preserving alternates for audit note
-        if (matches.length > 1) {
-          matches.sort(function(a, b) {
-            var scoreA = (a.priority || 0) + (a.values.manual != null ? 20 : 0) + (a.values.pf != null ? 10 : 0);
-            var scoreB = (b.priority || 0) + (b.values.manual != null ? 20 : 0) + (b.values.pf != null ? 10 : 0);
-            return scoreB - scoreA;
-          });
-        }
-        var r = matches[0];
+        var r = consolidateMatches(matches);
+        if (!discoveredCode && r.code) discoveredCode = r.code;
         if (!sheetEmpName && r.empName) sheetEmpName = r.empName;
         if (!sheetPfNo && r.values.pfno) sheetPfNo = r.values.pfno;
         if (!sheetEsicNo && r.values.esicno) sheetEsicNo = r.values.esicno;
@@ -458,14 +841,29 @@
         if (r.values.adv != null) totals.advTotal = round2(totals.advTotal + r.values.adv);
         if (r.values.ded != null) totals.dedTotal = round2(totals.dedTotal + r.values.ded);
 
-        if (r.issues.length) return result('DATA NOT VERIFIED', r.issues.join('; '), matches);
+        var displayMatches = [r].concat(matches.filter(function(m) { return m !== r; }));
+        if (r.issues.length) return result('DATA NOT VERIFIED', r.issues.join('; '), displayMatches);
+
+        var hasOtherPayOrStat = (r.values.gross != null && r.values.gross > 0) ||
+                                (r.values.net != null && r.values.net > 0) ||
+                                (r.values.pf != null && r.values.pf > 0) ||
+                                (r.values.esic != null && r.values.esic > 0);
+
         if (matches.length > 1) {
-          return result('RECORD FOUND', 'Matched across ' + matches.length + ' files (showing primary salary sheet).', matches);
+          return result('RECORD FOUND', 'Matched across ' + matches.length + ' sheets/files (consolidated primary + statutory values).', displayMatches);
         }
-        if (!Object.prototype.hasOwnProperty.call(r.values, 'manual')) return result('MANUAL AMOUNT MISSING', 'Employee row found, but no recognized Manual Amount column exists.', [r]);
-        if (r.values.manual === null) return result('MANUAL AMOUNT MISSING', 'Manual Amount cell is blank or non-numeric; blank is not zero.', [r]);
-        if (r.values.manual === 0) return result('MANUAL AMOUNT ZERO', 'Manual Amount cell contains numeric zero.', [r]);
-        return result('RECORD FOUND', 'Exact Employee Code matched.', [r]);
+        if (!Object.prototype.hasOwnProperty.call(r.values, 'manual')) {
+          return hasOtherPayOrStat
+            ? result('RECORD FOUND', 'Salary & statutory columns matched.', [r])
+            : result('MANUAL AMOUNT MISSING', 'Employee row found, but no recognized Manual Amount column exists.', [r]);
+        }
+        if (r.values.manual === null && !hasOtherPayOrStat) {
+          return result('MANUAL AMOUNT MISSING', 'Manual Amount cell is blank or non-numeric; blank is not zero.', [r]);
+        }
+        if (r.values.manual === 0 && !hasOtherPayOrStat) {
+          return result('MANUAL AMOUNT ZERO', 'Manual Amount cell contains numeric zero.', [r]);
+        }
+        return result('RECORD FOUND', 'Exact Employee record matched.', [r]);
       }
 
       if (!recognized && unread.length) {
@@ -474,8 +872,9 @@
       return result('EMPLOYEE CODE NOT FOUND', 'Recognized sheets scanned; Employee Code not present.');
     });
 
+    var finalCode = (masterEmp && masterEmp.code) || discoveredCode || emp;
     var profile = {
-      code: emp,
+      code: finalCode,
       name: (masterEmp && masterEmp.name) || sheetEmpName || '',
       father: (masterEmp && masterEmp.father) || '',
       dept: (masterEmp && masterEmp.dept) || '',
@@ -492,7 +891,7 @@
     };
 
     return {
-      employeeCode: emp,
+      employeeCode: finalCode,
       profile: profile,
       filesScanned: fs.length,
       totals: totals,
@@ -501,6 +900,7 @@
   }
 
   function label(p) {
+    if (p === 'UNDATED') return 'Other / Undated';
     var a = p.split('-');
     return (M[+a[1] - 1] || p) + ' ' + (a[0] || '');
   }
@@ -602,81 +1002,53 @@
 
     var p = r.profile || {};
     var t = r.totals || {};
+
     var h = '';
 
-    // 1. Employee Statutory & Identity Panel (Single elevation, zero pills, hairline dividers)
+    var metaBits = [];
+    if (p.father) metaBits.push('S/o ' + p.father);
+    if (p.dept) metaBits.push(p.dept);
+    if (p.desig) metaBits.push(p.desig);
+    if (p.doj) metaBits.push('DOJ: ' + p.doj);
+    if (p.empStatus) metaBits.push(p.empStatus);
+
     h += '<section class="sh-profile">';
     h += '  <div class="sh-profile-top">';
-    h += '    <div class="sh-identity">';
-    h += '      <div class="sh-name-row">';
-    h += '        <h3 class="sh-emp-name">' + esc(p.name || ('Employee ' + r.employeeCode)) + '</h3>';
-    h += '        <span class="sh-emp-code tabular">' + esc(r.employeeCode) + '</span>';
-    h += '      </div>';
-    var metaParts = [];
-    if (p.dept) metaParts.push(esc(p.dept));
-    if (p.desig) metaParts.push(esc(p.desig));
-    if (p.doj) metaParts.push('DOJ: ' + esc(p.doj));
-    if (p.father) metaParts.push('S/O ' + esc(p.father));
-    if (!metaParts.length) metaParts.push(p.inMaster ? 'Verified in Employee Master' : 'Matched from Salary Sheets');
-    h += '      <div class="sh-meta-line">' + metaParts.join(' <span aria-hidden="true">·</span> ') + '</div>';
+    h += '    <div>';
+    h += '      <div class="sh-name-row"><h2 class="sh-emp-name">' + esc(p.name || 'Employee #' + r.employeeCode) + '</h2><span class="sh-emp-code">#' + esc(r.employeeCode) + '</span></div>';
+    h += '      <div class="sh-meta-line">' + esc(metaBits.join(' · ') || (p.inMaster ? 'Employee Master linked' : 'Matched from uploaded salary sheets')) + '</div>';
     h += '    </div>';
-    h += '    <div class="sh-profile-actions">';
-    h += '      <button type="button" id="atpl-sh-export" class="sh-btn-secondary">⬇ Export CSV</button>';
-    h += '    </div>';
+    h += '    <button type="button" id="atpl-sh-export" class="sh-btn-secondary">Export CSV</button>';
     h += '  </div>';
 
     h += '  <div class="sh-statutory-grid">';
     h += '    <div class="sh-stat-cell">';
     h += '      <span class="sh-lbl">PF / UAN Number</span>';
-    h += '      <div class="sh-stat-val-row">';
-    h += '        <strong class="tabular">' + esc(p.pfNo || 'Not Available') + '</strong>';
-    if (p.pfNo) h += '<button type="button" class="sh-copy-btn" data-copy="' + esc(p.pfNo) + '" data-label="PF No">Copy</button>';
-    h += '      </div>';
-    h += '      <span class="sh-sub-hint">' + esc(p.pfNoSource ? ('Source: ' + p.pfNoSource) : 'Not enrolled / blank in master & sheets') + '</span>';
+    h += '      <div class="sh-stat-val-row"><strong class="tabular">' + esc(p.pfNo || 'Not Available') + '</strong>' + (p.pfNo ? '<button type="button" class="sh-copy-btn" data-copy="' + esc(p.pfNo) + '" data-label="PF / UAN">Copy</button>' : '') + '</div>';
+    h += '      <small class="sh-sub-hint">' + esc(p.pfNoSource ? 'Source: ' + p.pfNoSource : 'Not found in Master or sheets') + '</small>';
     h += '    </div>';
 
     h += '    <div class="sh-stat-cell">';
     h += '      <span class="sh-lbl">ESIC / IP Number</span>';
-    h += '      <div class="sh-stat-val-row">';
-    h += '        <strong class="tabular">' + esc(p.esicNo || 'Not Available') + '</strong>';
-    if (p.esicNo) h += '<button type="button" class="sh-copy-btn" data-copy="' + esc(p.esicNo) + '" data-label="ESIC No">Copy</button>';
-    h += '      </div>';
-    h += '      <span class="sh-sub-hint">' + esc(p.esicNoSource ? ('Source: ' + p.esicNoSource) : 'Not enrolled / blank in master & sheets') + '</span>';
+    h += '      <div class="sh-stat-val-row"><strong class="tabular">' + esc(p.esicNo || 'Not Available') + '</strong>' + (p.esicNo ? '<button type="button" class="sh-copy-btn" data-copy="' + esc(p.esicNo) + '" data-label="ESIC No">Copy</button>' : '') + '</div>';
+    h += '      <small class="sh-sub-hint">' + esc(p.esicNoSource ? 'Source: ' + p.esicNoSource : 'Not found in Master or sheets') + '</small>';
     h += '    </div>';
 
     h += '    <div class="sh-stat-cell">';
     h += '      <span class="sh-lbl">Master Gross / Basic</span>';
-    h += '      <div class="sh-stat-val-row"><strong class="tabular">' + (p.masterGross != null ? money(p.masterGross) : '—') + '</strong></div>';
-    h += '      <span class="sh-sub-hint">Basic: ' + (p.masterBasic != null ? money(p.masterBasic) : '—') + (p.empStatus ? (' · Status: ' + esc(p.empStatus)) : '') + '</span>';
+    h += '      <div class="sh-stat-val-row"><strong class="tabular">' + (p.masterGross != null ? money(p.masterGross) : '—') + (p.masterBasic != null ? ' / ' + money(p.masterBasic) : '') + '</strong></div>';
+    h += '      <small class="sh-sub-hint">Files scanned: <span class="tabular">' + r.filesScanned + '</span> · Active months: <span class="tabular">' + (t.monthsFound || 0) + '</span></small>';
     h += '    </div>';
     h += '  </div>';
     h += '</section>';
 
-    // 2. 4-Column Tabular KPI Strip
-    h += '<div class="sh-kpi-grid">';
-    h += '  <div class="sh-kpi">';
-    h += '    <span class="sh-lbl">Total PF Deducted (Emp)</span>';
-    h += '    <b class="tabular sh-kpi-pf">' + money(t.pfTotal) + '</b>';
-    h += '    <span class="sh-sub-hint">' + (t.pfMonths || 0) + ' month(s) PF cut</span>';
-    h += '  </div>';
-    h += '  <div class="sh-kpi">';
-    h += '    <span class="sh-lbl">Total ESIC Deducted (Emp)</span>';
-    h += '    <b class="tabular sh-kpi-esic">' + money(t.esicTotal) + '</b>';
-    h += '    <span class="sh-sub-hint">' + (t.esicMonths || 0) + ' month(s) ESIC cut</span>';
-    h += '  </div>';
-    h += '  <div class="sh-kpi">';
-    h += '    <span class="sh-lbl">Total Manual / Gross</span>';
-    h += '    <b class="tabular">' + money(t.manualTotal) + '</b>';
-    h += '    <span class="sh-sub-hint">Gross total: ' + money(t.grossTotal) + '</span>';
-    h += '  </div>';
-    h += '  <div class="sh-kpi">';
-    h += '    <span class="sh-lbl">Months Verified</span>';
-    h += '    <b class="tabular">' + (t.monthsFound || 0) + ' / ' + r.months.length + '</b>';
-    h += '    <span class="sh-sub-hint">' + r.filesScanned + ' saved salary files scanned</span>';
-    h += '  </div>';
-    h += '</div>';
+    h += '<section class="sh-kpi-grid">';
+    h += '  <div class="sh-kpi"><span class="sh-lbl">Total PF Deducted (Emp)</span><b class="tabular sh-kpi-pf">' + money(t.pfTotal || 0) + '</b><small class="sh-sub-hint">' + (t.pfMonths || 0) + ' months deducted</small></div>';
+    h += '  <div class="sh-kpi"><span class="sh-lbl">Total ESIC Deducted (Emp)</span><b class="tabular sh-kpi-esic">' + money(t.esicTotal || 0) + '</b><small class="sh-sub-hint">' + (t.esicMonths || 0) + ' months deducted</small></div>';
+    h += '  <div class="sh-kpi"><span class="sh-lbl">Total Gross / Net Paid</span><b class="tabular">' + money(t.grossTotal || 0) + '</b><small class="sh-sub-hint">Net: ' + money(t.netTotal || 0) + '</small></div>';
+    h += '  <div class="sh-kpi"><span class="sh-lbl">Total Manual Amount</span><b class="tabular">' + money(t.manualTotal || 0) + '</b><small class="sh-sub-hint">Adv Ded: ' + money(t.advTotal || 0) + '</small></div>';
+    h += '</section>';
 
-    // 3. Filter Segmented Bar & Month Ledger Table
     var foundCount = r.months.filter(function(m) { return m.records && m.records.length > 0; }).length;
     var statCount = r.months.filter(function(m) {
       var x = m.records && m.records[0];
@@ -748,13 +1120,13 @@
           h += '<tr class="sh-detail-row"><td colspan="9">';
           h += '  <div class="sh-detail-box">';
           if (!x) {
-            h += '    <div class="sh-detail-reason"><strong>' + esc(m.status) + ':</strong> ' + esc(m.reason) + '</div>';
+            h += '    <div class="sh-detail-reason"><strong>Reason:</strong> ' + esc(m.reason) + (m.files && m.files.length ? ' · <strong>Files checked:</strong> ' + esc(m.files.join(', ')) : '') + '</div>';
           } else {
             h += '    <div class="sh-fields">';
             [
-              ['PF / UAN No', v.pfno || p.pfNo || '—', 'text'],
-              ['ESIC / IP No', v.esicno || p.esicNo || '—', 'text'],
-              ['Basic Salary', v.basic, 'money'],
+              ['Manual Amount', v.manual, 'money'],
+              ['Gross Salary', v.gross, 'money'],
+              ['Basic', v.basic, 'money'],
               ['HRA', v.hra, 'money'],
               ['Employee PF Cut', v.pf, 'money'],
               ['Employee ESIC Cut', v.esic, 'money'],
@@ -767,7 +1139,8 @@
               h += '<div class="sh-fitem"><small>' + item[0] + '</small><b class="tabular">' + valStr + '</b></div>';
             });
             h += '    </div>';
-            h += '    <div class="sh-source"><strong>Source Verification:</strong> Original file: <span>' + esc(x.file) + '</span> · Sheet: <span>' + esc(x.sheet) + '</span> · Row: <span class="tabular">' + x.row + '</span> · Code: <span class="tabular">' + esc(x.code) + '</span><br><span class="sh-cols-line">Matched columns: ' + esc(Object.keys(x.headers).map(function(k) { return k + ' = ' + x.headers[k]; }).join(' · ')) + '</span></div>';
+            var mergedNote = (x.mergedFrom && x.mergedFrom.length) ? (' · Merged fields from: ' + x.mergedFrom.join(', ')) : '';
+            h += '    <div class="sh-source"><strong>Source Verification:</strong> Original file: <span>' + esc(x.file) + '</span> · Sheet: <span>' + esc(x.sheet) + '</span> · Row: <span class="tabular">' + x.row + '</span> · Code: <span class="tabular">' + esc(x.code) + '</span>' + esc(mergedNote) + '<br><span class="sh-cols-line">Matched columns: ' + esc(Object.keys(x.headers).map(function(k) { return k + ' = ' + x.headers[k]; }).join(' · ')) + '</span></div>';
 
             if (origIdx > 0 && r.months[origIdx - 1] && r.months[origIdx - 1].records && r.months[origIdx - 1].records[0]) {
               var prevM = r.months[origIdx - 1];
@@ -900,41 +1273,39 @@
       p.innerHTML =
         '<div class="sh-app">' +
         '  <header class="sh-hero">' +
-        '    <div>' +
-        '      <div class="sh-kicker">Arora Textiles · Employee Statutory &amp; Payroll Ledger</div>' +
-        '      <h2>Service History</h2>' +
-        '      <p>Employee PF No, ESIC No, month-wise PF/ESIC deductions aur verified salary breakdown</p>' +
+        '    <div class="sh-hero-txt">' +
+        '      <h1>Employee Service History &amp; PF / ESIC Ledger</h1>' +
+        '      <p>Read-only statutory profile (PF / UAN, ESIC No) &amp; month-wise salary deductions across all saved sheets.</p>' +
         '    </div>' +
-        '    <button type="button" id="atpl-sh-back">← Back to ERP</button>' +
+        '    <button type="button" id="atpl-sh-back">Back to Command Center</button>' +
         '  </header>' +
         '  <div class="sh-search">' +
         '    <div class="sh-search-field">' +
-        '      <label for="atpl-sh-code">Employee Code / Name / PF / ESIC No</label>' +
-        '      <input id="atpl-sh-code" type="search" autocomplete="off" placeholder="e.g. 25924, Ram Kumar, ya PF/ESIC number">' +
+        '      <label for="atpl-sh-code">Employee Code, Name, PF No, or ESIC No</label>' +
+        '      <input id="atpl-sh-code" type="text" autocomplete="off" placeholder="Type Emp Code (e.g. 25924) or Name...">' +
         '      <div id="atpl-sh-suggest" class="sh-suggest" style="display:none"></div>' +
         '    </div>' +
-        '    <button type="button" id="atpl-sh-search">Search Service History</button>' +
+        '    <button type="button" id="atpl-sh-search">Search Employee</button>' +
         '  </div>' +
-        '  <div id="atpl-sh-notice">Employee Master aur saved salary files scan karne ke liye code ya naam search karein.</div>' +
+        '  <div id="atpl-sh-notice">Read-only verification mode. Source workbooks are never altered.</div>' +
         '  <div id="atpl-sh-results"></div>' +
-        '  <footer>Read-only audit ledger · Original salary workbooks and Employee Master are never modified.</footer>' +
+        '  <footer>ATPL HR Payroll Suite · Read-Only Service History &amp; Statutory Audit</footer>' +
         '</div>';
-      var a = document.getElementById('page-sync');
-      ((a && a.parentNode) || document.querySelector('.content') || document.body).appendChild(p);
+      var anchor = document.getElementById('page-sync') || document.querySelector('.page');
+      if (anchor && anchor.parentNode) anchor.parentNode.appendChild(p);
     }
 
     if (!document.getElementById('atpl-sh-style')) {
       var s = document.createElement('style');
       s.id = 'atpl-sh-style';
       s.textContent = [
-        '#page-servicehistory.page.active{display:block!important;position:relative!important;box-sizing:border-box!important;width:100%!important;height:calc(100vh - 56px)!important;max-height:calc(100vh - 56px)!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;scrollbar-gutter:stable;padding:0!important;background:#f8fafc!important;font-family:"Plus Jakarta Sans","Manrope",system-ui,-apple-system,sans-serif}',
+        '#page-servicehistory{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;min-height:100%;color:#0f172a}',
         '#page-servicehistory .tabular{font-variant-numeric:tabular-nums}',
-        '#page-servicehistory .sh-app{width:100%;max-width:1440px;box-sizing:border-box;margin:0 auto;padding:24px 28px 40px;color:#0f172a}',
-        '#page-servicehistory .sh-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:20px 24px;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px}',
-        '#page-servicehistory .sh-kicker{font-size:12px;font-weight:600;color:#4f46e5;margin-bottom:4px}',
-        '#page-servicehistory .sh-hero h2{font-size:24px;line-height:1.2;font-weight:700;letter-spacing:-0.4px;margin:0 0 4px;color:#0f172a}',
-        '#page-servicehistory .sh-hero p{margin:0;color:#64748b;font-size:13px}',
-        '#page-servicehistory button{font-family:inherit;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:10px 18px;min-height:40px;font-weight:600;font-size:13px;cursor:pointer;color:#334155;white-space:nowrap;flex-shrink:0;transition:background .15s,border-color .15s,color .15s}',
+        '#page-servicehistory .sh-app{max-width:1280px;margin:0 auto;padding:24px 24px 48px}',
+        '#page-servicehistory .sh-hero{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:18px;border-bottom:1px solid #e2e8f0}',
+        '#page-servicehistory .sh-hero h1{margin:0;font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-0.3px}',
+        '#page-servicehistory .sh-hero p{margin:4px 0 0;font-size:13px;color:#64748b}',
+        '#page-servicehistory button{font-family:inherit;min-height:40px;padding:0 16px;border-radius:8px;border:1px solid #cbd5e1;background:#ffffff;font-weight:600;font-size:13px;cursor:pointer;color:#334155;white-space:nowrap;flex-shrink:0;transition:background .15s,border-color .15s,color .15s}',
         '#page-servicehistory button:hover{border-color:#94a3b8;background:#f8fafc;color:#0f172a}',
         '#page-servicehistory button:focus-visible,#page-servicehistory input:focus-visible{outline:2px solid #4338ca;outline-offset:2px}',
         '#page-servicehistory .sh-search{display:flex;align-items:flex-end;gap:12px;background:#ffffff;padding:18px 20px;margin:16px 0 12px;border:1px solid #e2e8f0;border-radius:12px}',
@@ -1064,5 +1435,5 @@
     boot();
   }
 
-  g.ATPLServiceHistoryV1 = { scan: scan, lookupMasterEmployee: lookupMasterEmployee, version: '2.0.0' };
+  g.ATPLServiceHistoryV1 = { scan: scan, lookupMasterEmployee: lookupMasterEmployee, version: '2.1.0' };
 })(window);
