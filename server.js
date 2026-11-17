@@ -182,6 +182,7 @@ let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {})
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
 let syncComplianceSheets = readJsonFile('compliance_sheets.json', {}); // id (e.g. monthKey) -> generated/edited compliance workbook snapshot
 let syncComplianceTombstones = readJsonFile('compliance_tombstones.json', {}); // id -> deleted_at ISO
+let syncSalaryPayout = readJsonFile('salary_payout.json', { monthSummaries: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} });
 
 if (syncPendingDiffs && typeof syncPendingDiffs === 'object' && syncPendingDiffTombstones && typeof syncPendingDiffTombstones === 'object') {
   Object.keys(syncPendingDiffTombstones).forEach(tid => {
@@ -2277,6 +2278,82 @@ app.delete('/api/sync/compliance-sheet/:id', (req, res) => {
     broadcastEvent('compliance_sheet_deleted', { id, deleted_at: deletedAt });
     forwardComplianceSheetsToCloud();
     return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Month-Wise Salary, Adjustment Points, Bank Returns & Multi-Part Diff Payout Sync ──
+function normalizeSalaryPayoutBucket(bucket) {
+  if (!bucket || typeof bucket !== 'object') return {};
+  return bucket;
+}
+
+function mergeSalaryPayoutState(incoming) {
+  if (!syncSalaryPayout || typeof syncSalaryPayout !== 'object') {
+    syncSalaryPayout = { monthSummaries: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} };
+  }
+  const inc = incoming && typeof incoming === 'object' ? incoming : {};
+  const tombs = normalizeSalaryPayoutBucket(syncSalaryPayout.tombstones);
+  const incTombs = normalizeSalaryPayoutBucket(inc.tombstones);
+  Object.keys(incTombs).forEach(k => {
+    if (!incTombs[k]) return;
+    const prevTs = Date.parse(tombs[k] || 0) || 0;
+    const nextTs = Date.parse(incTombs[k] || 0) || 0;
+    if (nextTs >= prevTs) tombs[k] = incTombs[k];
+  });
+  syncSalaryPayout.tombstones = tombs;
+
+  const sections = ['monthSummaries', 'empSalaries', 'points', 'returns', 'diffBatches'];
+  sections.forEach(sec => {
+    const cur = normalizeSalaryPayoutBucket(syncSalaryPayout[sec]);
+    const incSec = normalizeSalaryPayoutBucket(inc[sec]);
+    Object.keys(cur).forEach(id => {
+      const tTs = Date.parse(tombs[id] || 0) || 0;
+      const rTs = Date.parse((cur[id] && (cur[id].updatedAt || cur[id].createdAt)) || 0) || 0;
+      if (tTs && tTs >= rTs) delete cur[id];
+    });
+    Object.keys(incSec).forEach(id => {
+      const rec = incSec[id];
+      if (!rec || typeof rec !== 'object') return;
+      const rTs = Date.parse(rec.updatedAt || rec.createdAt || 0) || 0;
+      const tTs = Date.parse(tombs[id] || 0) || 0;
+      if (tTs && tTs >= rTs) return;
+      const prev = cur[id];
+      const pTs = prev ? (Date.parse(prev.updatedAt || prev.createdAt || 0) || 0) : 0;
+      if (!prev || rTs >= pTs) {
+        cur[id] = rec;
+      }
+    });
+    syncSalaryPayout[sec] = cur;
+  });
+  syncSalaryPayout.updatedAt = new Date().toISOString();
+  return syncSalaryPayout;
+}
+
+function forwardSalaryPayoutToCloud() {
+  try {
+    const b64 = Buffer.from(JSON.stringify(syncSalaryPayout)).toString('base64');
+    syncToGoogleAppsScript('uploadFile', {
+      fileName: 'ATPL_SALARY_PAYOUT_DATA.json',
+      fileBase64: b64,
+      mimeType: 'application/json'
+    });
+  } catch (_) {}
+}
+
+app.get('/api/sync/salary-payout', (req, res) => {
+  return res.json({ ok: true, data: syncSalaryPayout });
+});
+
+app.post('/api/sync/salary-payout', (req, res) => {
+  try {
+    const merged = mergeSalaryPayoutState(req.body || {});
+    incrementVersion();
+    writeJsonFile('salary_payout.json', merged);
+    broadcastEvent('salary_payout_updated', { updatedAt: merged.updatedAt });
+    forwardSalaryPayoutToCloud();
+    return res.json({ ok: true, data: merged });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
