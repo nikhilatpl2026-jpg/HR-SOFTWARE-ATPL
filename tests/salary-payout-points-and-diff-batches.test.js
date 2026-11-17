@@ -442,4 +442,92 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(nikhilB.complianceAmount, 32000, 'Edited compliance amount must sync across browsers');
     assert.equal(ramB.hasSalaryRecord, false, 'Deleted emp salary row must stay deleted via tombstone');
   });
+
+  await t.test('8. Smart Human Reader: Exact Net Payment / Net Payable, PF@12%, ESIC@0.75%, Manual, multi-tab deduplication & stale replacement', async () => {
+    const bA = createBrowser('BrowserA_Smart', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-05');
+
+    // First simulate a stale manual ₹500 target + stale extra row from an earlier wrong import
+    bA.mockWindow.ATPLSalaryPayout.saveMonthSummary({ monthKey: '2026-05', complianceTarget: 9999999, diffTarget: 500 });
+    bA.mockWindow.ATPLSalaryPayout.upsertEmpSalary({ monthKey: '2026-05', empCode: '99999', complianceAmount: 80000, sourceFile: 'OldBuggySheet.xlsx' });
+
+    // Multi-tab workbook mimicking Screenshot 1 (Fourmala Sheet + duplicate PF/Bank tabs + footer Total row)
+    bA.mockWindow.FILES.push({
+      name: 'May 2026 Salary Sheet Atpl Final.xlsx',
+      sheets: {
+        'Fourmala Sheet': [
+          ['Sr.No.', 'Emp Code', 'Emp Name', 'NET EARNING', 'PF 12%', 'ESIC 0.75%', 'Advance', 'Total Deduction', 'NET PAYMENT', 'MANUAL AMOUNT', 'DIFFERENCE AMOUNT'],
+          [1, '25924', 'Ram Kumar Sharma', 20000, 1800, 150, 0, 1950, 18050, 22200, 4150],
+          [2, '00387', 'Surendra Kumar', 26000, 1800, 0, 500, 2300, 23700, 34100, 10400],
+          [3, '26448', 'Nikhil Arora', 32000, 1800, 0, 0, 1800, 30200, 45000, 14800],
+          // Footer total row like row 340 in Excel screenshot (Sr.No = 1, blank code/name, huge totals)
+          [1, '', '', 78000, 5400, 150, 500, 6050, 71950, 101300, 29350]
+        ],
+        // Filtered/split tabs containing the same employees — MUST NEVER be double/triple counted!
+        'JISKO PF ME RAKH RAHE HE': [
+          ['Emp Code', 'Emp Name', 'PF 12%', 'NET PAYMENT', 'MANUAL AMOUNT'],
+          ['25924', 'Ram Kumar Sharma', 1800, 18050, 22200],
+          ['00387', 'Surendra Kumar', 1800, 23700, 34100]
+        ],
+        'HDFC': [
+          ['Emp Code', 'Emp Name', 'Amount'],
+          ['25924', 'Ram Kumar Sharma', 18050],
+          ['26448', 'Nikhil Arora', 30200]
+        ],
+        'BANK NON HDFC': [
+          ['Emp Code', 'Emp Name', 'Amount'],
+          ['00387', 'Surendra Kumar', 23700]
+        ]
+      }
+    });
+
+    const meta1 = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsWithMeta(
+      bA.mockWindow.FILES.find(f => f.name === 'May 2026 Salary Sheet Atpl Final.xlsx'),
+      'COMPLIANCE'
+    );
+    assert.deepEqual(Array.from(meta1.selectedSheets), ['Fourmala Sheet']);
+    assert.equal(meta1.skippedSheets.length, 3, 'Must skip duplicate PF/HDFC/Non-HDFC tabs');
+    assert.equal(meta1.totals.empCount, 3, 'Footer Total row must be ignored');
+    assert.equal(meta1.totals.complianceTotal, 71950, 'Must match exact NET PAYMENT sum without 2x/3x inflation');
+    assert.equal(meta1.totals.manualTotal, 101300);
+    assert.equal(meta1.totals.pfTotal, 5400);
+    assert.equal(meta1.totals.esicTotal, 150);
+
+    const imp1 = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('May 2026 Salary Sheet Atpl Final.xlsx', '2026-05', 'COMPLIANCE');
+    assert.equal(imp1.ok, true);
+    const ledgerMay = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-05');
+    assert.equal(ledgerMay.complianceTotal, 71950, 'Stale 9999999 target & stale 99999 row must be cleaned');
+    assert.equal(ledgerMay.manualTotal, 101300);
+    assert.equal(ledgerMay.pfTotal, 5400);
+    assert.equal(ledgerMay.esicTotal, 150);
+    assert.equal(ledgerMay.rows.some(r => r.empCode === '99999'), false, 'Stale previous import row must be removed');
+
+    // Screenshot 3 format (Mam -> Compliance): Employee ID, Name of employee, Manual Amount, Diff. Amount, PF@12%, ESIC @0.75%, Net Payable, PF @13%, ESI @3.25%, NO ACTIVE & Total row
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-06');
+    bA.mockWindow.FILES.push({
+      name: 'June_Compliance_Mam.xlsx',
+      sheets: {
+        'Compliance': [
+          ['Employee ID', 'Name of employee', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC @0.75%', 'Advance Deduction', 'Total Deduction', 'Net Payable', 'PF @13%', 'ESI @3.25%', 'Remarks'],
+          ['26510', 'MAHESHWAR PRASAD', 15709, 291, 0, 77, 0, 77, 15341, 0, 333, 'ACTIVE'],
+          ['26352', 'SANTONA BARMAN', 0, 0, 0, 0, 0, 0, 0, 0, 0, 'NO ACTIVE'],
+          ['26489', 'ASHIK SHAH', 32800, 275, 0, 0, 16900, 16900, 15625, 0, 0, 'ACTIVE'],
+          ['26166', 'KISHAN SINGH', 17800, 228, 0, 88, 0, 88, 17484, 0, 380, 'ACTIVE'],
+          ['', 'Total', 66309, 794, 0, 165, 16900, 17065, 48450, 0, 713, '']
+        ]
+      }
+    });
+
+    const impJune = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('June_Compliance_Mam.xlsx', '2026-06', 'BOTH');
+    assert.equal(impJune.ok, true);
+    assert.equal(impJune.imported, 3, 'NO ACTIVE zero rows & Total row must be skipped');
+    const ledgerJune = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-06');
+    assert.equal(ledgerJune.complianceTotal, 48450, 'Net Payable column must be read exactly');
+    assert.equal(ledgerJune.manualTotal, 66309);
+    assert.equal(ledgerJune.esicTotal, 165, 'ESIC @0.75% must be extracted, never ESI @3.25%');
+    assert.equal(ledgerJune.pfTotal, 0, 'PF@12% must be 0, never PF @13%');
+    assert.equal(ledgerJune.diffTotal, 794);
+    assert.equal(ledgerJune.advanceDedTotal, 16900);
+  });
 });
