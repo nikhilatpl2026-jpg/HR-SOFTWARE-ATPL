@@ -832,7 +832,7 @@
       ? Math.max(0, round2(diffTarget + totalPlusPoints - totalMinusPoints))
       : Math.max(diffTarget, empNetDiffSum);
 
-    var diffRemainingTotal = empNetDiffSum > 0 && lumpSumUnallocated === 0
+    var diffRemainingTotal = (empNetDiffSum > 0 && diffTarget <= empNetDiffSum && lumpSumUnallocated === 0)
       ? empDiffRemainingSum
       : Math.max(0, round2(diffTotal - totalBatchPaidAll));
 
@@ -970,6 +970,44 @@
     saveToLocal();
     renderUI();
     pushCloudNow('emp_salary_deleted');
+    return true;
+  }
+
+  function resetMonthData(monthKey) {
+    var mk = String(monthKey || state.selectedMonth).trim();
+    if (!mk) return false;
+    var nowIso = new Date().toISOString();
+    Object.keys(state.empSalaries || {}).forEach(function(id) {
+      if (state.empSalaries[id] && state.empSalaries[id].monthKey === mk) {
+        delete state.empSalaries[id];
+        state.tombstones[id] = nowIso;
+      }
+    });
+    Object.keys(state.points || {}).forEach(function(id) {
+      if (state.points[id] && state.points[id].monthKey === mk) {
+        delete state.points[id];
+        state.tombstones[id] = nowIso;
+      }
+    });
+    Object.keys(state.returns || {}).forEach(function(id) {
+      if (state.returns[id] && state.returns[id].monthKey === mk) {
+        delete state.returns[id];
+        state.tombstones[id] = nowIso;
+      }
+    });
+    Object.keys(state.diffBatches || {}).forEach(function(id) {
+      if (state.diffBatches[id] && state.diffBatches[id].monthKey === mk) {
+        delete state.diffBatches[id];
+        state.tombstones[id] = nowIso;
+      }
+    });
+    if (state.monthSummaries[mk]) {
+      delete state.monthSummaries[mk];
+      state.tombstones[mk] = nowIso;
+    }
+    saveToLocal();
+    renderUI();
+    pushCloudNow('month_reset');
     return true;
   }
 
@@ -1361,7 +1399,9 @@
   function parseNumeric(v) {
     if (typeof v === 'number' && Number.isFinite(v)) return v;
     if (typeof v !== 'string') return 0;
-    var n = Number(v.replace(/[₹,\s]/g, ''));
+    var cleaned = v.trim().replace(/\/-$/, '').replace(/[^\d.-]/g, '');
+    if (!cleaned || cleaned === '-' || cleaned === '.') return 0;
+    var n = Number(cleaned);
     return Number.isFinite(n) ? n : 0;
   }
 
@@ -1393,7 +1433,7 @@
       var combined = normRow.map(function(cell, cIdx) {
         if (!nextRow) return cell;
         var nxt = nextRow[cIdx] || '';
-        if (nxt && !/^[a-z0-9]{1,8}$/.test(nxt) && /^(12|13|0 75|75|3 25|payable|payment|payments|amount|amt|deduction|code|id|name|employee|remarks)$/.test(nxt)) {
+        if (nxt && !/^\d{3,}$/.test(nxt) && /^(12|13|0 75|75|3 25|payable|payment|payments|amount|amt|deduction|code|id|name|employee|remarks)$/.test(nxt)) {
           return (cell + ' ' + nxt).trim();
         }
         return cell;
@@ -1593,52 +1633,72 @@
     };
   }
 
-  function extractSalaryRowsWithMeta(fileObj, sheetKind) {
-    var empty = { rows: [], selectedSheets: [], skippedSheets: [], primaryColumns: {}, totals: { empCount: 0, complianceTotal: 0, manualTotal: 0, diffTotal: 0, pfTotal: 0, esicTotal: 0 } };
-    if (!fileObj || !fileObj.sheets) return empty;
+  function analyzeWorkbookTabs(fileObj, sheetKind) {
+    if (!fileObj || !fileObj.sheets) return [];
     var kind = String(sheetKind || 'BOTH').toUpperCase();
     var candidates = [];
-
     Object.keys(fileObj.sheets).forEach(function(sheetName) {
       var low = String(sheetName || '').toLowerCase();
       if (/\b(summary|abstract|chart|challan|ecr|pf summary|esic summary|attendance|absent|ot sheet|pivot|rough|working)\b/.test(low)) return;
       var parsed = parseSingleSalarySheet(fileObj.sheets[sheetName], sheetName, kind);
       if (parsed && parsed.rows.length > 0) candidates.push(parsed);
     });
-
-    if (!candidates.length) return empty;
     candidates.sort(function(a, b) { return b.score - a.score; });
+
+    var pickedMap = {};
+    candidates.forEach(function(tab, idx) {
+      if (idx === 0) {
+        tab.recommended = true;
+        tab.overlapPct = 0;
+        tab.rows.forEach(function(r) { pickedMap[normalizeCode(r.empCode)] = true; });
+        return;
+      }
+      var overlapCount = 0;
+      tab.rows.forEach(function(r) {
+        if (pickedMap[normalizeCode(r.empCode)]) overlapCount++;
+      });
+      var overlapRatio = overlapCount / Math.max(1, tab.rows.length);
+      var maxAllowedOverlap = kind === 'BATCH' ? 0.25 : 0.10;
+      tab.overlapPct = Math.round(overlapRatio * 100);
+      tab.recommended = overlapRatio < maxAllowedOverlap;
+      if (tab.recommended) {
+        tab.rows.forEach(function(r) { pickedMap[normalizeCode(r.empCode)] = true; });
+      }
+    });
+    return candidates;
+  }
+
+  function extractSalaryRowsWithMeta(fileObj, sheetKind, chosenTabNames) {
+    var empty = { rows: [], selectedSheets: [], skippedSheets: [], allTabs: [], primaryColumns: {}, totals: { empCount: 0, complianceTotal: 0, manualTotal: 0, diffTotal: 0, pfTotal: 0, esicTotal: 0 } };
+    if (!fileObj || !fileObj.sheets) return empty;
+    var kind = String(sheetKind || 'BOTH').toUpperCase();
+    var candidates = analyzeWorkbookTabs(fileObj, kind);
+    if (!candidates.length) return empty;
+
+    var hasExplicitSelection = Array.isArray(chosenTabNames) && chosenTabNames.length > 0;
+    var chosenSet = {};
+    if (hasExplicitSelection) {
+      chosenTabNames.forEach(function(n) { chosenSet[String(n)] = true; });
+    }
 
     var byKey = {};
     var selectedSheets = [];
     var skippedSheets = [];
 
-    candidates.forEach(function(tab, idx) {
-      if (idx === 0) {
-        selectedSheets.push(tab.sheetName);
-        tab.rows.forEach(function(r) {
-          byKey[normalizeCode(r.empCode)] = r;
-        });
+    candidates.forEach(function(tab) {
+      var pick = hasExplicitSelection ? !!chosenSet[tab.sheetName] : !!tab.recommended;
+      if (!pick) {
+        skippedSheets.push(tab.sheetName + (tab.overlapPct ? (' (' + tab.overlapPct + '% duplicate)') : ''));
         return;
       }
-
-      var overlapCount = 0;
-      tab.rows.forEach(function(r) {
-        if (byKey[normalizeCode(r.empCode)]) overlapCount++;
-      });
-      var overlapRatio = overlapCount / Math.max(1, tab.rows.length);
-      var maxAllowedOverlap = kind === 'BATCH' ? 0.25 : 0.10;
-
-      if (overlapRatio >= maxAllowedOverlap) {
-        skippedSheets.push(tab.sheetName + ' (' + Math.round(overlapRatio * 100) + '% duplicate)');
-        return;
-      }
-
-      // Disjoint department sheet (e.g. Staff tab alongside Workers tab) -> merge ONLY non-overlapping employees!
       selectedSheets.push(tab.sheetName);
       tab.rows.forEach(function(r) {
         var norm = normalizeCode(r.empCode);
-        if (!byKey[norm]) byKey[norm] = r;
+        if (!byKey[norm]) {
+          byKey[norm] = r;
+        } else if (kind === 'BATCH') {
+          byKey[norm] = Object.assign({}, byKey[norm], { amount: round2((Number(byKey[norm].amount) || 0) + (Number(r.amount) || 0)) });
+        }
       });
     });
 
@@ -1657,7 +1717,8 @@
       rows: finalRows,
       selectedSheets: selectedSheets,
       skippedSheets: skippedSheets,
-      primaryColumns: candidates[0].columns,
+      allTabs: candidates,
+      primaryColumns: (candidates.find(function(c) { return selectedSheets.indexOf(c.sheetName) >= 0; }) || candidates[0]).columns,
       totals: totals
     };
   }
@@ -2418,39 +2479,107 @@
     if (window.showToast) window.showToast('✅ Diff Payout Batch save & sabhi browsers me sync ho gaya!');
   }
 
-  function renderImportPreviewBox(wbObj, kind) {
+  function getActivePreviewWorkbook() {
+    if (state._pendingDirectWorkbook) return state._pendingDirectWorkbook;
+    var sel = document.getElementById('spImportFileSel');
+    if (!sel || !sel.value) return null;
+    var files = getLoadedSalaryWorkbooks();
+    return files.find(function(f) { return f && f.name === sel.value; }) || null;
+  }
+
+  function getSelectedTabNamesFromModal() {
+    var chks = document.querySelectorAll('.sp-tab-chk');
+    if (!chks || !chks.length) return null;
+    var picked = [];
+    chks.forEach(function(chk) {
+      if (chk && chk.checked && chk.value) picked.push(chk.value);
+    });
+    return picked;
+  }
+
+  function renderImportPreviewBox(wbObj, kind, explicitTabs) {
     var box = document.getElementById('spImportPreviewBox');
     if (!box) return;
     if (!wbObj) { box.innerHTML = ''; return; }
-    var meta = extractSalaryRowsWithMeta(wbObj, kind);
-    if (!meta.rows.length) {
+    var meta = extractSalaryRowsWithMeta(wbObj, kind, explicitTabs);
+    var allTabs = meta.allTabs || [];
+    if (!allTabs.length) {
       box.innerHTML = '<div style="margin-top:8px;padding:8px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11.5px;color:#b91c1c">⚠️ Is sheet me Emp Code / Net Payment / Manual / Diff columns detect nahi huye.</div>';
       return;
     }
     var cols = meta.primaryColumns || {};
     var t = meta.totals || {};
     var h = '<div style="margin-top:8px;padding:10px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:11.5px;color:#0f172a">';
-    h += '<div style="font-weight:800;color:#15803d;margin-bottom:4px">✓ Smart Human Reader Preview (' + esc(wbObj.name) + ')</div>';
-    h += '<div style="color:#334155;margin-bottom:3px"><strong>Picked Sheet(s):</strong> ' + esc(meta.selectedSheets.join(', ')) + (meta.skippedSheets.length ? (' · <span style="color:#b45309">Ignored Duplicate Tabs: ' + esc(meta.skippedSheets.slice(0, 3).join(', ')) + (meta.skippedSheets.length > 3 ? (' +' + (meta.skippedSheets.length - 3) + ' more') : '') + '</span>') : '') + '</div>';
-    h += '<div style="color:#475569;margin-bottom:5px"><strong>Columns:</strong> ' + (cols.complianceCol ? ('Compliance=' + esc(cols.complianceCol) + ' ') : '') + (cols.manualCol ? ('· Manual=' + esc(cols.manualCol) + ' ') : '') + (cols.pfCol ? ('· PF=' + esc(cols.pfCol) + ' ') : '') + (cols.esicCol ? ('· ESIC=' + esc(cols.esicCol) + ' ') : '') + (cols.diffCol ? ('· Diff=' + esc(cols.diffCol)) : '') + '</div>';
-    h += '<div style="display:flex;gap:12px;flex-wrap:wrap;font-weight:800;font-variant-numeric:tabular-nums">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px">';
+    h += '<div style="font-weight:800;color:#15803d">✓ Smart Human Reader Preview (' + esc(wbObj.name) + ')</div>';
+    if (cols.complianceCol || cols.manualCol || cols.pfCol || cols.esicCol || cols.diffCol) {
+      h += '<div style="font-size:10.5px;color:#475569">' + (cols.complianceCol ? ('Comp=' + esc(cols.complianceCol) + ' ') : '') + (cols.manualCol ? ('· Manual=' + esc(cols.manualCol) + ' ') : '') + (cols.pfCol ? ('· PF=' + esc(cols.pfCol) + ' ') : '') + (cols.esicCol ? ('· ESIC=' + esc(cols.esicCol) + ' ') : '') + (cols.diffCol ? ('· Diff=' + esc(cols.diffCol)) : '') + '</div>';
+    }
+    h += '</div>';
+
+    // Tab Picker Checkboxes so user has 100% control if Excel has multiple tabs
+    h += '<div style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;background:#fff;border:1px solid #dcfce7;border-radius:7px;padding:6px 8px">';
+    allTabs.forEach(function(tab) {
+      var isChecked = explicitTabs ? (explicitTabs.indexOf(tab.sheetName) >= 0) : !!tab.recommended;
+      var valDisp = kind === 'DIFF' ? formatINR(tab.totals.diffTotal) : formatINR(tab.totals.complianceTotal);
+      h += '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;cursor:pointer;padding:2px 0">';
+      h += '<span><input type="checkbox" class="sp-tab-chk" value="' + esc(tab.sheetName) + '"' + (isChecked ? ' checked' : '') + ' onchange="ATPLSalaryPayout.onTabSelectionChange()" style="margin-right:6px"><strong>' + esc(tab.sheetName) + '</strong> <span style="color:#64748b">(' + tab.totals.empCount + ' emp' + (tab.overlapPct > 0 && !tab.recommended ? (' · ' + tab.overlapPct + '% duplicate tab') : (tab.recommended ? ' · Recommended' : '')) + ')</span></span>';
+      h += '<span style="font-weight:700;font-variant-numeric:tabular-nums;color:' + (isChecked ? '#15803d' : '#64748b') + '">' + valDisp + '</span>';
+      h += '</label>';
+    });
+    h += '</div>';
+
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+    h += '<div style="display:flex;gap:10px;flex-wrap:wrap;font-weight:800;font-variant-numeric:tabular-nums">';
     h += '<span>Emp: ' + t.empCount + '</span>';
     h += '<span style="color:#15803d">Net Pay (Compliance): ' + formatINR(t.complianceTotal) + '</span>';
     h += '<span>Manual: ' + formatINR(t.manualTotal) + '</span>';
     h += '<span>PF: ' + formatINR(t.pfTotal) + '</span>';
     h += '<span>ESIC: ' + formatINR(t.esicTotal) + '</span>';
     if (t.diffTotal > 0) h += '<span style="color:#1d4ed8">Diff: ' + formatINR(t.diffTotal) + '</span>';
+    h += '</div>';
+    h += '<button type="button" onclick="ATPLSalaryPayout.confirmPreviewImport()" style="padding:7px 14px;border:none;background:#15803d;color:#fff;border-radius:7px;font-size:12px;font-weight:800;cursor:pointer">Confirm &amp; Import (' + t.empCount + ' Emp)</button>';
     h += '</div></div>';
     box.innerHTML = h;
   }
 
-  function previewSelectedFileImport() {
-    var sel = document.getElementById('spImportFileSel');
+  function onTabSelectionChange() {
+    var wbObj = getActivePreviewWorkbook();
     var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
-    if (!sel || !sel.value) return;
-    var files = getLoadedSalaryWorkbooks();
-    var target = files.find(function(f) { return f && f.name === sel.value; });
-    renderImportPreviewBox(target, kind);
+    var picked = getSelectedTabNamesFromModal();
+    renderImportPreviewBox(wbObj, kind, picked || []);
+  }
+
+  function previewSelectedFileImport() {
+    state._pendingDirectWorkbook = null;
+    var wbObj = getActivePreviewWorkbook();
+    var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
+    renderImportPreviewBox(wbObj, kind, null);
+  }
+
+  function confirmPreviewImport() {
+    var wbObj = getActivePreviewWorkbook();
+    if (!wbObj) {
+      if (window.showToast) window.showToast('⚠️ Pehle koi file select ya upload karein.');
+      return { ok: false, imported: 0 };
+    }
+    var mk = String((document.getElementById('spImportMonthInp') || {}).value || state.selectedMonth).trim();
+    var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
+    var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : true;
+    var picked = getSelectedTabNamesFromModal();
+    var meta = extractSalaryRowsWithMeta(wbObj, kind, picked);
+    if (!meta.rows.length) {
+      if (window.showToast) window.showToast('⚠️ Kam se kam ek valid tab select karein.');
+      return { ok: false, imported: 0 };
+    }
+    state.selectedMonth = mk;
+    var res = bulkImportMonthSalaries(mk, meta.rows, wbObj.name, kind, { replaceExisting: rep });
+    state._pendingDirectWorkbook = null;
+    closeModal();
+    if (window.showToast) {
+      window.showToast('✅ ' + res.imported + ' employees (' + formatMonthLabel(mk) + ') imported · Net Pay ' + formatINR(meta.totals.complianceTotal) + ' · PF ' + formatINR(meta.totals.pfTotal) + ' · ESIC ' + formatINR(meta.totals.esicTotal));
+    }
+    return res;
   }
 
   function openImportAndTargetsModal(defaultKind) {
@@ -2462,7 +2591,7 @@
     state._pendingDirectWorkbook = null;
 
     var h = '<div onclick="if(event.target===this)ATPLSalaryPayout.closeModal()" style="position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px">';
-    h += '  <div style="background:#fff;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 24px 60px rgba(15,23,42,0.22)">';
+    h += '  <div style="background:#fff;width:100%;max-width:720px;max-height:92vh;overflow-y:auto;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 24px 60px rgba(15,23,42,0.22)">';
     h += '    <div style="padding:15px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">';
     h += '      <div><div style="font-size:11px;font-weight:700;color:#4f46e5">' + esc(formatMonthLabel(state.selectedMonth)) + ' · Smart Excel Import &amp; Manual Entry</div><h3 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#0f172a">Upload Compliance / Diff Sheets (Net Pay, PF, ESIC, Manual)</h3></div>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px">✕</button>';
@@ -2471,10 +2600,13 @@
 
     // 1. Two Sheet Uploads (Compliance Net Payment OR Diff Sheet OR Combined)
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">';
-    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:6px">1. Salary / Bank Payment Sheet Upload Karein (.xlsx / .csv)</div>';
+    h += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+    h += '          <div style="font-size:12px;font-weight:800;color:#0f172a">1. Salary / Bank Payment Sheet Upload Karein (.xlsx / .csv)</div>';
+    h += '          <div style="display:flex;align-items:center;gap:6px"><label style="font-size:11px;font-weight:700;color:#475569">Target Month:</label><input type="month" id="spImportMonthInp" value="' + esc(state.selectedMonth) + '" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px;font-weight:700;background:#fff"></div>';
+    h += '        </div>';
     h += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
     h += '          <div><label style="font-size:11px;font-weight:700;color:#475569;margin-right:8px">Sheet Type:</label>';
-    h += '            <select id="spImportKindSel" onchange="ATPLSalaryPayout.previewSelectedFileImport()" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:700;background:#fff">';
+    h += '            <select id="spImportKindSel" onchange="ATPLSalaryPayout.onTabSelectionChange()" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:700;background:#fff">';
     h += '              <option value="COMPLIANCE"' + (kind === 'COMPLIANCE' ? ' selected' : '') + '>Compliance Salary Sheet (Net Payment + PF + ESIC + Manual)</option>';
     h += '              <option value="DIFF"' + (kind === 'DIFF' ? ' selected' : '') + '>Diff Salary Sheet</option>';
     h += '              <option value="BOTH"' + (kind === 'BOTH' ? ' selected' : '') + '>Combined Salary Sheet (Compliance + Diff + PF + ESIC Dono)</option>';
@@ -2487,7 +2619,7 @@
       h += '          <select id="spImportFileSel" onchange="ATPLSalaryPayout.previewSelectedFileImport()" style="flex:1;min-width:200px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:12px">';
       loadedFiles.forEach(function(f) { h += '<option value="' + esc(f.name) + '">' + esc(f.name) + '</option>'; });
       h += '          </select>';
-      h += '          <button type="button" onclick="ATPLSalaryPayout.runFileImport()" style="padding:8px 14px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Import Loaded File</button>';
+      h += '          <button type="button" onclick="ATPLSalaryPayout.runFileImport()" style="padding:8px 14px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Import Selected</button>';
       h += '        </div>';
     }
     h += '        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed #cbd5e1">';
@@ -2497,16 +2629,19 @@
     h += '        <div id="spImportPreviewBox"></div>';
     h += '      </div>';
 
-    // 2. Manual Month Totals
+    // 2. Manual Month Totals & Clear Month Reset
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
     h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">2. Month Total Manual Set / Reset Karein (Compliance / Diff)</div>';
     h += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
     h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance Target Override (₹ · 0 = Sheet Sum)</label><input type="number" id="spTgtComp" min="0" value="' + esc(summary.complianceTarget || '') + '" placeholder="0 = Sheet ka exact Net Pay" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
     h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Diff Target Override (₹ · 0 = Sheet Sum)</label><input type="number" id="spTgtDiff" min="0" value="' + esc(summary.diffTarget || '') + '" placeholder="0 = Sheet ka exact Diff" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
     h += '        </div>';
-    h += '        <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px">';
-    h += '          <button type="button" onclick="ATPLSalaryPayout.resetMonthTargets()" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Reset Override to 0</button>';
-    h += '          <button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:7px 14px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save Month Totals</button>';
+    h += '        <div style="margin-top:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">';
+    h += '          <button type="button" onclick="ATPLSalaryPayout.clearCurrentMonthAllData()" style="padding:7px 12px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Clear This Month Data</button>';
+    h += '          <div style="display:flex;gap:8px">';
+    h += '            <button type="button" onclick="ATPLSalaryPayout.resetMonthTargets()" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Reset Override to 0</button>';
+    h += '            <button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:7px 14px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save Month Totals</button>';
+    h += '          </div>';
     h += '        </div>';
     h += '      </div>';
 
@@ -2529,36 +2664,31 @@
   }
 
   function runFileImport() {
-    var sel = document.getElementById('spImportFileSel');
-    var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
-    var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : true;
-    if (!sel || !sel.value) return;
-    var res = importFromLoadedFile(sel.value, state.selectedMonth, kind, { replaceExisting: rep });
-    if (res.ok) closeModal();
+    return confirmPreviewImport();
   }
 
   function handleDirectExcelUpload(input) {
     var file = input && input.files && input.files[0];
     var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
-    var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : true;
     if (!file) return;
     readWorkbookFromFileInput(file, function(err, wbObj) {
       if (err || !wbObj) {
         if (window.showToast) window.showToast('⚠️ Excel read error.');
         return;
       }
-      var meta = extractSalaryRowsWithMeta(wbObj, kind);
-      renderImportPreviewBox(wbObj, kind);
-      if (!meta.rows.length) {
-        if (window.showToast) window.showToast('⚠️ Excel me Emp Code / Account aur Net Payment/Amount columns nahi mile.');
-        return;
-      }
-      var res = bulkImportMonthSalaries(state.selectedMonth, meta.rows, file.name, kind, { replaceExisting: rep });
-      closeModal();
+      state._pendingDirectWorkbook = wbObj;
+      renderImportPreviewBox(wbObj, kind, null);
       if (window.showToast) {
-        window.showToast('✅ ' + res.imported + ' employees (' + meta.selectedSheets.join(', ') + ') imported · Net Pay ' + formatINR(meta.totals.complianceTotal) + ' · PF ' + formatINR(meta.totals.pfTotal) + ' · ESIC ' + formatINR(meta.totals.esicTotal));
+        window.showToast('✓ File loaded — niche Preview check karke "Confirm & Import" dabaye!');
       }
     });
+  }
+
+  function clearCurrentMonthAllData() {
+    var mk = String((document.getElementById('spImportMonthInp') || {}).value || state.selectedMonth).trim();
+    resetMonthData(mk);
+    closeModal();
+    if (window.showToast) window.showToast('🗑️ ' + formatMonthLabel(mk) + ' ka saara test/purana data clear & sync ho gaya!');
   }
 
   function resetMonthTargets() {
@@ -2718,18 +2848,18 @@
     h += '    </div>';
     h += '  </div>';
 
-    // KPI Strip — Clean Compliance Di vs Diff Di vs Diff Leftover vs Total
+    // KPI Strip — Clear Compliance Net Payable -> Diff Total Target -> Diff Paid Lots -> Diff Baaki -> Month Grand Total
     h += '  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px">';
-    h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
-    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Total Month Salary (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div>';
-    h += '      <div style="font-size:21px;font-weight:800;color:#0f172a;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.totalMonthSalary) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.manualTotal > 0 ? ('Manual ' + formatINR(ledger.manualTotal) + ' · ') : '') + 'Comp ' + formatINR(ledger.complianceTotal) + ' · Diff ' + formatINR(ledger.diffTotal) + '</div>';
-    h += '    </div>';
-
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Compliance Me Di (Net Pay)</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:#15803d;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.complianceTotal) + '</div>';
     h += '      <div style="font-size:11px;color:' + (ledger.pendingReturnCount > 0 ? '#b45309' : '#475569') + ';margin-top:3px;font-weight:' + (ledger.pendingReturnCount > 0 ? '700' : '500') + '">' + (ledger.pendingReturnCount > 0 ? (ledger.pendingReturnCount + ' Bank Return (' + formatINR(ledger.pendingReturnTotal) + ')') : (ledger.complianceEmpCount + ' emp · PF ' + formatINR(ledger.pfTotal) + ' · ESIC ' + formatINR(ledger.esicTotal))) + '</div>';
+    h += '    </div>';
+
+    h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
+    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Sheet / Target (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div>';
+    h += '      <div style="font-size:21px;font-weight:800;color:#0f172a;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.diffTotal) + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">Points ' + (ledger.netPointsImpact >= 0 ? '+' : '-') + formatINR(Math.abs(ledger.netPointsImpact)) + (ledger.empMissedDiffSum > 0 ? (' · Missed +' + formatINR(ledger.empMissedDiffSum)) : '') + (ledger.manualTotal > 0 ? (' · Manual ' + formatINR(ledger.manualTotal)) : '') + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
@@ -2741,13 +2871,13 @@
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Baaki / Chhoota Hua</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:' + (ledger.diffRemainingTotal > 0 ? '#dc2626' : '#15803d') + ';margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.diffRemainingTotal) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.smallLeftoverRows.length > 0 ? (ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal)) : (ledger.empMissedDiffSum > 0 ? ('Late/Missed added: ' + formatINR(ledger.empMissedDiffSum)) : 'No small leftover pending')) + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.smallLeftoverRows.length > 0 ? (ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal)) : (ledger.diffRemainingTotal > 0 ? 'Balance to pay in next lots' : 'All Diff clear')) + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
-    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Emp Adjustment Points (+/-)</div>';
-    h += '      <div style="font-size:21px;font-weight:800;color:' + (ledger.netPointsImpact >= 0 ? '#15803d' : '#dc2626') + ';margin-top:4px;font-variant-numeric:tabular-nums">' + (ledger.netPointsImpact >= 0 ? '+' : '-') + formatINR(Math.abs(ledger.netPointsImpact)) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + ledger.points.length + ' points · +' + formatINR(ledger.totalPlusPoints) + ' / -' + formatINR(ledger.totalMinusPoints) + '</div>';
+    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Total Month Payout (Comp + Diff)</div>';
+    h += '      <div style="font-size:21px;font-weight:800;color:#312e81;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.totalMonthSalary) + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">Comp ' + formatINR(ledger.complianceTotal) + ' + Diff ' + formatINR(ledger.diffTotal) + '</div>';
     h += '    </div>';
     h += '  </div>';
 
@@ -3027,9 +3157,14 @@
     deleteEmpSalary: deleteEmpSalary,
     bulkImportMonthSalaries: bulkImportMonthSalaries,
     importFromLoadedFile: importFromLoadedFile,
+    analyzeWorkbookTabs: analyzeWorkbookTabs,
     extractSalaryRowsWithMeta: extractSalaryRowsWithMeta,
     extractSalaryRowsFromWorkbook: extractSalaryRowsFromWorkbook,
+    onTabSelectionChange: onTabSelectionChange,
     previewSelectedFileImport: previewSelectedFileImport,
+    confirmPreviewImport: confirmPreviewImport,
+    clearCurrentMonthAllData: clearCurrentMonthAllData,
+    resetMonthData: resetMonthData,
     resetMonthTargets: resetMonthTargets,
     addOrUpdatePoint: addOrUpdatePoint,
     togglePointStatus: togglePointStatus,

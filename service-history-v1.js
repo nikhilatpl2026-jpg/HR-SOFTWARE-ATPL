@@ -1790,6 +1790,9 @@
       var p = document.createElement('section');
       p.id = P;
       p.className = 'page';
+      p.style.overflowY = 'auto';
+      p.style.overflowX = 'hidden';
+      p.style.minHeight = '0';
       p.innerHTML =
         '<div class="sh-app">' +
         '  <header class="sh-hero">' +
@@ -1819,7 +1822,7 @@
       var s = document.createElement('style');
       s.id = 'atpl-sh-style';
       s.textContent = [
-        '#page-servicehistory{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;min-height:100%;color:#0f172a}',
+        '#page-servicehistory{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;flex:1;min-height:0!important;height:100%;max-height:100%;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch;color:#0f172a}',
         '#page-servicehistory .tabular{font-variant-numeric:tabular-nums}',
         '#page-servicehistory .sh-app{max-width:1280px;margin:0 auto;padding:24px 24px 48px}',
         '#page-servicehistory .sh-hero{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:18px;border-bottom:1px solid #e2e8f0}',

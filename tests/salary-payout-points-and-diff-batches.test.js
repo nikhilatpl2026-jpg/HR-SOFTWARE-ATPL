@@ -530,4 +530,80 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledgerJune.diffTotal, 794);
     assert.equal(ledgerJune.advanceDedTotal, 16900);
   });
+
+  await t.test('9. 2-row merged headers, Compliance 70L + Diff 5L workflow, manual tab choice & resetMonthData', async () => {
+    const bA = createBrowser('BrowserA_Flow', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-07');
+
+    // 2-row split header (e.g. Net + Payable, PF + 12%, ESIC + 0.75%) & formatted Rs strings + Multi-Tab choice (Workers 44L + Staff 26L = 70L)
+    const julyCompWb = {
+      name: 'JULY_2026_COMPLIANCE.xlsx',
+      sheets: {
+        'Workers': [
+          ['Emp', 'Name', 'Net', 'PF', 'ESIC', 'Manual'],
+          ['Code', 'Employee', 'Payable', '12%', '0.75%', 'Amount'],
+          ['25924', 'Ram Kumar Sharma', '₹ 44,00,000/-', 1800, 150, 4800000]
+        ],
+        'Staff': [
+          ['Emp Code', 'Emp Name', 'Net Payable', 'PF 12%', 'ESIC 0.75%'],
+          ['26448', 'Nikhil Arora', 2600000, 3600, 0]
+        ],
+        'HDFC': [
+          ['Emp Code', 'Emp Name', 'Amount'],
+          ['25924', 'Ram Kumar Sharma', 4400000],
+          ['26448', 'Nikhil Arora', 2600000]
+        ]
+      }
+    };
+
+    const metaComp = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsWithMeta(julyCompWb, 'COMPLIANCE');
+    assert.equal(metaComp.totals.complianceTotal, 7000000, '2-row merged Net+Payable and disjoint Workers+Staff must total exact 70,00,000 without HDFC duplicate');
+    assert.equal(metaComp.totals.pfTotal, 5400, '2-row merged PF+12% must extract cleanly');
+    assert.equal(metaComp.totals.esicTotal, 150, '2-row merged ESIC+0.75% must extract cleanly');
+
+    // Import Compliance Sheet -> Compliance KPI = 70,00,000
+    bA.mockWindow.ATPLSalaryPayout.bulkImportMonthSalaries('2026-07', metaComp.rows, julyCompWb.name, 'COMPLIANCE');
+    let ledgerJuly = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-07');
+    assert.equal(ledgerJuly.complianceTotal, 7000000);
+    assert.equal(ledgerJuly.diffTotal, 0);
+
+    // Next upload Diff Sheet (5,00,000) -> Diff KPI = 5,00,000, Total = 75,00,000
+    bA.mockWindow.FILES.push({
+      name: 'JULY_2026_DIFF.xlsx',
+      sheets: {
+        'Diff': [
+          ['Emp Code', 'Emp Name', 'Diff Amount'],
+          ['25924', 'Ram Kumar Sharma', 300000],
+          ['26448', 'Nikhil Arora', 200000]
+        ]
+      }
+    });
+    bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('JULY_2026_DIFF.xlsx', '2026-07', 'DIFF');
+    ledgerJuly = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-07');
+    assert.equal(ledgerJuly.complianceTotal, 7000000);
+    assert.equal(ledgerJuly.diffTotal, 500000);
+    assert.equal(ledgerJuly.diffRemainingTotal, 500000);
+    assert.equal(ledgerJuly.totalMonthSalary, 7500000);
+
+    // Pay Part 1 (2,00,000) & Part 2 (1,50,000) -> Diff Paid = 3,50,000, Diff Baaki = 1,50,000
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-07', partNumber: 1, status: 'DISBURSED',
+      allocations: [{ empCode: '25924', amount: 200000 }]
+    });
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-07', partNumber: 2, status: 'DISBURSED',
+      allocations: [{ empCode: '26448', amount: 150000 }]
+    });
+    ledgerJuly = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-07');
+    assert.equal(ledgerJuly.totalBatchPaid, 350000);
+    assert.equal(ledgerJuly.diffRemainingTotal, 150000);
+
+    // Reset Month Data clears everything cleanly & syncs tombstone
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.resetMonthData('2026-07'), true);
+    ledgerJuly = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-07');
+    assert.equal(ledgerJuly.complianceTotal, 0);
+    assert.equal(ledgerJuly.diffTotal, 0);
+    assert.equal(ledgerJuly.rows.length, 0);
+  });
 });

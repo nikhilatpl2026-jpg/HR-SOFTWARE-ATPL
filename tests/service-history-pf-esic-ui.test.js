@@ -475,4 +475,10 @@ test('Service History Module - PF No, ESIC No, Monthly Deductions & UI Upgrade',
     assert.equal(res.totals.pfMonths, 4);
     assert.equal(res.totals.pfTotal, 7623);
   });
+
+  await t.test('7. #page-servicehistory sets overflow-y:auto so long 36-month ledgers scroll smoothly', () => {
+    const shSrc = fs.readFileSync(path.join(rootDir, 'service-history-v1.js'), 'utf8');
+    assert.ok(shSrc.includes('overflow-y:auto!important'), 'CSS rule must override .page overflow:hidden');
+    assert.ok(shSrc.includes("p.style.overflowY = 'auto'"), 'Mounted section must allow vertical scroll');
+  });
 });
