@@ -1,7 +1,7 @@
 (function(g) {
   'use strict';
   if (!g || g.__ATPL_SERVICE_HISTORY_V1__ === '2.1.0') return;
-  g.__ATPL_SERVICE_HISTORY_V1__ = '2.1.0';
+  g.__ATPL_SERVICE_HISTORY_V1__ = '2.2.0';
 
   var P = 'page-servicehistory';
   var N = 'atpl-sh-nav';
@@ -187,6 +187,8 @@
     return '';
   }
 
+  var MASTER_CACHE = { listRef: null, len: -1, ts: 0, entries: [], byCode: {}, byName: {}, byStat: {} };
+
   function getMasterList() {
     try {
       if (g.EM && Array.isArray(g.EM.data) && g.EM.data.length) return g.EM.data;
@@ -239,44 +241,71 @@
     };
   }
 
-  function lookupMasterEmployee(query) {
-    var qNorm = key(query);
-    var qWords = norm(query);
-    if (!qNorm && !qWords) return null;
+  function getMasterIndex() {
     var list = getMasterList();
-    var exactNameMatch = null;
-    var statMatch = null;
-    var partialMatches = [];
-
+    var now = Date.now();
+    if (MASTER_CACHE.listRef === list && MASTER_CACHE.len === list.length && (now - MASTER_CACHE.ts) < 2500) {
+      return MASTER_CACHE;
+    }
+    var entries = [];
+    var byCode = {};
+    var byName = {};
+    var byStat = {};
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       if (!e) continue;
       var c = String(e.emp_id || e.code || e.emp_code || e.id || '').trim();
       var nm = String(e.name || e.emp_name || '').trim();
+      var dept = String(e.dept || e.department || '').trim();
       var pf = cleanStatId(e.pf_no || e.pfno || e.pf_number || e.uan || e.uan_no);
       var es = cleanStatId(e.esi_no || e.esic_no || e.esicno || e.esic_number || e.ip_no);
-
-      if (qNorm && key(c) === qNorm) {
-        return formatMasterObj(e);
-      }
-      if (!exactNameMatch && qWords && norm(nm) === qWords) {
-        exactNameMatch = e;
-      }
-      if (!statMatch && qNorm && ((pf && key(pf) === qNorm) || (es && key(es) === qNorm))) {
-        statMatch = e;
-      }
-      if (qWords && qWords.length >= 3 && norm(nm).indexOf(qWords) >= 0) {
-        partialMatches.push(e);
-      }
+      var ck = key(c);
+      var nw = norm(nm);
+      var pfk = pf ? key(pf) : '';
+      var esk = es ? key(es) : '';
+      if (ck && !byCode[ck]) byCode[ck] = e;
+      if (nw && !byName[nw]) byName[nw] = e;
+      if (pfk && !byStat[pfk]) byStat[pfk] = e;
+      if (esk && !byStat[esk]) byStat[esk] = e;
+      entries.push({
+        raw: e,
+        code: c,
+        name: nm,
+        dept: dept,
+        pf: pf,
+        es: es,
+        nmNorm: nw,
+        searchLower: (c + ' ' + nm + ' ' + pf + ' ' + es).toLowerCase()
+      });
     }
+    MASTER_CACHE = { listRef: list, len: list.length, ts: now, entries: entries, byCode: byCode, byName: byName, byStat: byStat };
+    return MASTER_CACHE;
+  }
 
-    if (exactNameMatch) return formatMasterObj(exactNameMatch);
-    if (statMatch) return formatMasterObj(statMatch);
-    if (partialMatches.length === 1) return formatMasterObj(partialMatches[0]);
+  function lookupMasterEmployee(query) {
+    var qNorm = key(query);
+    var qWords = norm(query);
+    if (!qNorm && !qWords) return null;
+    var idx = getMasterIndex();
+    if (qNorm && idx.byCode[qNorm]) return formatMasterObj(idx.byCode[qNorm]);
+    if (qWords && idx.byName[qWords]) return formatMasterObj(idx.byName[qWords]);
+    if (qNorm && idx.byStat[qNorm]) return formatMasterObj(idx.byStat[qNorm]);
+
+    if (qWords && qWords.length >= 3) {
+      var partialMatch = null;
+      var entries = idx.entries;
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].nmNorm.indexOf(qWords) >= 0) {
+          if (partialMatch) return null;
+          partialMatch = entries[i].raw;
+        }
+      }
+      if (partialMatch) return formatMasterObj(partialMatch);
+    }
     return null;
   }
 
-  function isUsableSalaryFile(f) {
+    function isUsableSalaryFile(f) {
     if (!f || typeof f !== 'object') return false;
     var nm = String(f.name || f.filename || f.id || '').toLowerCase().trim();
     if (!nm) return false;
@@ -585,12 +614,158 @@
     return false;
   }
 
-  function parse(f, sh, p, emp, masterEmp, allowNameFallback) {
-    var rows = sh.rows || [];
-    var numericKeys = ['manual', 'gross', 'basic', 'hra', 'pf', 'esic', 'net', 'earn', 'adv', 'ded'];
+  var FILE_INDEX_CACHE = typeof WeakMap === 'function' ? new WeakMap() : null;
+  var FILE_INDEX_FALLBACK = [];
+  var activeSearchToken = 0;
+  var scanInProgress = false;
+  var warmRunning = false;
+
+  function sheetsSignature(f) {
+    var s = f && f.sheets;
+    if (!s) return '0';
+    if (Array.isArray(s)) return 'A:' + s.length + ':' + (s[0] && (s[0].name || ''));
+    if (typeof s === 'object') {
+      var ks = Object.keys(s);
+      return 'O:' + ks.length + ':' + (ks[0] || '');
+    }
+    return '1';
+  }
+
+  function getCachedFileIndex(f) {
+    if (!f || typeof f !== 'object') return null;
+    var entry = null;
+    if (FILE_INDEX_CACHE) {
+      entry = FILE_INDEX_CACHE.get(f) || null;
+    } else {
+      for (var i = 0; i < FILE_INDEX_FALLBACK.length; i++) {
+        if (FILE_INDEX_FALLBACK[i].file === f) { entry = FILE_INDEX_FALLBACK[i].meta; break; }
+      }
+    }
+    if (!entry) return null;
+    var fname = String(f.name || f.filename || f.id || '');
+    var savedAt = String(f.savedAt || f.updatedAt || f.version || '');
+    if (
+      entry.wbRef !== (f.wb || null) ||
+      entry.sheetsRef !== (f.sheets || null) ||
+      entry.sheetsSig !== sheetsSignature(f) ||
+      entry.savedAt !== savedAt ||
+      entry.name !== fname
+    ) {
+      return null;
+    }
+    return entry.index;
+  }
+
+  function setCachedFileIndex(f, index) {
+    if (!f || typeof f !== 'object') return;
+    var meta = {
+      wbRef: f.wb || null,
+      sheetsRef: f.sheets || null,
+      sheetsSig: sheetsSignature(f),
+      savedAt: String(f.savedAt || f.updatedAt || f.version || ''),
+      name: String(f.name || f.filename || f.id || ''),
+      index: index
+    };
+    if (FILE_INDEX_CACHE) {
+      FILE_INDEX_CACHE.set(f, meta);
+    } else {
+      for (var i = 0; i < FILE_INDEX_FALLBACK.length; i++) {
+        if (FILE_INDEX_FALLBACK[i].file === f) {
+          FILE_INDEX_FALLBACK[i].meta = meta;
+          return;
+        }
+      }
+      if (FILE_INDEX_FALLBACK.length > 80) FILE_INDEX_FALLBACK.shift();
+      FILE_INDEX_FALLBACK.push({ file: f, meta: meta });
+    }
+  }
+
+  function buildSheetIndex(sh) {
+    var rows = (sh && sh.rows) || [];
     var hdr = detectHeaderRow(rows);
+    var shName = (sh && sh.name) || 'Sheet';
+    if (!hdr) {
+      return { name: shName, priority: sheetPriority(shName), hdr: null, rows: rows, byCode: null, byName: null };
+    }
+    var hi = hdr.hi;
+    var ix = hdr.ix;
+    var nameIdx = hdr.nameIdx;
+    var hasCode = !!(ix.code && ix.code.length);
+    var codeCol = hasCode ? ix.code[0] : -1;
+    var byCode = {};
+    var byName = {};
+
+    for (var i = hi + 1; i < rows.length; i++) {
+      var row = rows[i];
+      if (!row || !row.length) continue;
+      if (hasCode) {
+        var ck = key(row[codeCol]);
+        if (ck) {
+          (byCode[ck] || (byCode[ck] = [])).push(i);
+          var m = ck.match(/^[A-Z\/_-]+0*(\d+)$/);
+          if (m) {
+            var stripped = m[1].replace(/^0+/, '') || '0';
+            if (stripped && stripped !== ck) {
+              (byCode[stripped] || (byCode[stripped] = [])).push(i);
+            }
+          }
+        }
+      }
+      if (nameIdx >= 0) {
+        var rName = norm(row[nameIdx]);
+        if (rName) {
+          (byName[rName] || (byName[rName] = [])).push(i);
+          var rNameClean = rName.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
+          if (rNameClean && rNameClean !== rName) {
+            (byName[rNameClean] || (byName[rNameClean] = [])).push(i);
+          }
+        }
+      }
+    }
+
+    return {
+      name: shName,
+      priority: sheetPriority(shName),
+      hdr: hdr,
+      rows: rows,
+      byCode: byCode,
+      byName: byName
+    };
+  }
+
+  function getOrBuildFileIndex(f) {
+    var cached = getCachedFileIndex(f);
+    if (cached) return cached;
+    var fname = f.name || f.filename || f.id;
+    var p = parseMonthFromText(fname);
+    var shList = sheets(f);
+    if (!p) p = month(fname, shList);
+    var indexedSheets = new Array(shList.length);
+    for (var i = 0; i < shList.length; i++) {
+      indexedSheets[i] = buildSheetIndex(shList[i]);
+    }
+    var index = {
+      file: f,
+      period: p,
+      sheets: indexedSheets
+    };
+    setCachedFileIndex(f, index);
+    return index;
+  }
+
+  function allFilesCached(fs) {
+    for (var i = 0; i < fs.length; i++) {
+      if (!getCachedFileIndex(fs[i])) return false;
+    }
+    return true;
+  }
+
+  function lookupIndexedSheet(f, idxSh, p, emp, masterEmp, allowNameFallback) {
+    var hdr = idxSh && idxSh.hdr;
     if (!hdr) return { recognized: false, rows: [] };
 
+    var rows = idxSh.rows || [];
+    var numericKeys = ['manual', 'gross', 'basic', 'hra', 'pf', 'esic', 'net', 'earn', 'adv', 'ded'];
     var hi = hdr.hi;
     var ix = hdr.ix;
     var nameIdx = hdr.nameIdx;
@@ -607,8 +782,8 @@
       var rec = {
         period: p,
         file: f.name || f.id || 'Unnamed',
-        sheet: sh.name || 'Sheet',
-        priority: sheetPriority(sh.name || ''),
+        sheet: idxSh.name || 'Sheet',
+        priority: idxSh.priority != null ? idxSh.priority : sheetPriority(idxSh.name || ''),
         row: rowIdx + 1,
         code: rawCode || emp,
         empName: nameIdx >= 0 ? cleanStatId(row[nameIdx]) : '',
@@ -644,28 +819,42 @@
     }
 
     var found = [];
-    if (ix.code.length) {
-      for (var i = hi + 1; i < rows.length; i++) {
-        var row = rows[i] || [];
-        if (!codeMatches(row[ix.code[0]], empKey)) continue;
-        var rec = extractRowRec(row, i, 'code');
+    if (ix.code.length && empKey && idxSh.byCode && idxSh.byCode[empKey]) {
+      var cRows = idxSh.byCode[empKey];
+      var seenCode = {};
+      for (var ci = 0; ci < cRows.length; ci++) {
+        var rIdx = cRows[ci];
+        if (seenCode[rIdx]) continue;
+        seenCode[rIdx] = true;
+        var rec = extractRowRec(rows[rIdx], rIdx, 'code');
         if (rec) found.push(rec);
       }
     }
 
     // Name fallback ONLY if code match found nothing in this sheet and we have a multi-char target name
-    if (!found.length && allowNameFallback && targetNameNorm && nameIdx >= 0 && targetNameNorm.length >= 4) {
-      var nameHits = [];
-      for (var j = hi + 1; j < rows.length; j++) {
-        var r2 = rows[j] || [];
-        var rName = norm(r2[nameIdx]);
-        if (!rName) continue;
-        var rNameClean = rName.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
-        var tNameClean = targetNameNorm.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
-        if (rName === targetNameNorm || (tNameClean.length >= 4 && rNameClean === tNameClean)) {
-          var nRec = extractRowRec(r2, j, 'name');
-          if (nRec) nameHits.push(nRec);
+    if (!found.length && allowNameFallback && targetNameNorm && nameIdx >= 0 && targetNameNorm.length >= 4 && idxSh.byName) {
+      var tNameClean = targetNameNorm.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
+      var cand = [];
+      var seenName = {};
+      var l1 = idxSh.byName[targetNameNorm];
+      if (l1) {
+        for (var a = 0; a < l1.length; a++) {
+          if (!seenName[l1[a]]) { seenName[l1[a]] = true; cand.push(l1[a]); }
         }
+      }
+      if (tNameClean && tNameClean.length >= 4 && tNameClean !== targetNameNorm) {
+        var l2 = idxSh.byName[tNameClean];
+        if (l2) {
+          for (var b = 0; b < l2.length; b++) {
+            if (!seenName[l2[b]]) { seenName[l2[b]] = true; cand.push(l2[b]); }
+          }
+        }
+      }
+      if (cand.length > 1) cand.sort(function(x, y) { return x - y; });
+      var nameHits = [];
+      for (var ni2 = 0; ni2 < cand.length; ni2++) {
+        var nRec = extractRowRec(rows[cand[ni2]], cand[ni2], 'name');
+        if (nRec) nameHits.push(nRec);
       }
       if (nameHits.length === 1) {
         found.push(nameHits[0]);
@@ -727,12 +916,8 @@
     });
   }
 
-  function scan(rawQuery) {
-    var inputVal = String(rawQuery || '').trim();
-    var masterEmp = lookupMasterEmployee(inputVal);
+  function finalizeScan(inputVal, masterEmp, indexedFiles) {
     var emp = (masterEmp && masterEmp.code) ? masterEmp.code : inputVal;
-
-    var fs = getFiles();
     var map = {};
     var undatedFiles = [];
     var now = new Date();
@@ -740,17 +925,18 @@
     var startMonth = '2026-01';
     var endMonth = end;
 
-    fs.forEach(function(f) {
-      var shList = sheets(f);
-      var p = month(f.name || f.filename || f.id, shList);
+    for (var fi = 0; fi < indexedFiles.length; fi++) {
+      var entry = indexedFiles[fi];
+      if (!entry) continue;
+      var p = entry.period;
       if (p) {
         if (p < startMonth) startMonth = p;
         if (p > endMonth) endMonth = p;
-        (map[p] || (map[p] = [])).push({ file: f, sheets: shList });
+        (map[p] || (map[p] = [])).push(entry);
       } else {
-        undatedFiles.push({ file: f, sheets: shList });
+        undatedFiles.push(entry);
       }
-    });
+    }
 
     var months = [];
     var sp = startMonth.split('-');
@@ -803,20 +989,24 @@
       var matches = [];
       var recognized = 0;
       var unread = [];
-      entries.forEach(function(entry) {
+      for (var ei = 0; ei < entries.length; ei++) {
+        var entry = entries[ei];
         var f = entry.file;
-        var ss = entry.sheets || sheets(f);
+        var ss = entry.sheets || [];
         if (!ss.length) {
           unread.push(f.name || 'Unnamed file');
-          return;
+          continue;
         }
-        ss.forEach(function(sh) {
-          var z = parse(f, sh, p, emp, masterEmp, allowNameFallback);
+        for (var si = 0; si < ss.length; si++) {
+          var idxSh = ss[si];
+          var z = lookupIndexedSheet(f, idxSh, p, emp, masterEmp, allowNameFallback);
           if (z.recognized) recognized++;
-          else unread.push((f.name || 'File') + ' / ' + sh.name);
-          matches = matches.concat(z.rows);
-        });
-      });
+          else unread.push((f.name || 'File') + ' / ' + idxSh.name);
+          if (z.rows.length) {
+            for (var ri = 0; ri < z.rows.length; ri++) matches.push(z.rows[ri]);
+          }
+        }
+      }
 
       if (matches.length >= 1) {
         var r = consolidateMatches(matches);
@@ -893,10 +1083,118 @@
     return {
       employeeCode: finalCode,
       profile: profile,
-      filesScanned: fs.length,
+      filesScanned: indexedFiles.length,
       totals: totals,
       months: monthResults
     };
+  }
+
+  function scan(rawQuery) {
+    var inputVal = String(rawQuery || '').trim();
+    var masterEmp = lookupMasterEmployee(inputVal);
+    var fs = getFiles();
+    var indexedFiles = new Array(fs.length);
+    for (var i = 0; i < fs.length; i++) {
+      indexedFiles[i] = getOrBuildFileIndex(fs[i]);
+    }
+    return finalizeScan(inputVal, masterEmp, indexedFiles);
+  }
+
+  function scanAsync(rawQuery, opts) {
+    opts = opts || {};
+    var inputVal = String(rawQuery || '').trim();
+    var masterEmp = lookupMasterEmployee(inputVal);
+    var fs = getFiles();
+    var token = opts.token;
+    var hasTimer = typeof g.setTimeout === 'function';
+    var sliceMs = typeof opts.sliceMs === 'number' ? opts.sliceMs : 12;
+    var indexedFiles = new Array(fs.length);
+    var pos = 0;
+
+    function cancelled() {
+      return (typeof opts.isCancelled === 'function' && opts.isCancelled()) ||
+             (token != null && token !== activeSearchToken);
+    }
+
+    function done(resolve) {
+      if (cancelled()) {
+        if (typeof opts.onCancel === 'function') opts.onCancel();
+        if (resolve) resolve(null);
+        return null;
+      }
+      var res = finalizeScan(inputVal, masterEmp, indexedFiles);
+      if (typeof opts.onComplete === 'function') opts.onComplete(res);
+      if (resolve) resolve(res);
+      return res;
+    }
+
+    function step(resolve) {
+      if (cancelled()) {
+        if (typeof opts.onCancel === 'function') opts.onCancel();
+        if (resolve) resolve(null);
+        return;
+      }
+      var t0 = Date.now();
+      while (pos < fs.length) {
+        var f = fs[pos];
+        var wasCached = !!getCachedFileIndex(f);
+        indexedFiles[pos] = getOrBuildFileIndex(f);
+        pos++;
+        if (pos < fs.length && hasTimer) {
+          var elapsed = Date.now() - t0;
+          if (!wasCached && (opts.yieldPerUncachedFile || elapsed >= sliceMs)) {
+            if (typeof opts.onProgress === 'function') {
+              opts.onProgress({
+                done: pos,
+                total: fs.length,
+                fileName: (f && (f.name || f.filename || f.id)) || ''
+              });
+            }
+            g.setTimeout(function() { step(resolve); }, 0);
+            return;
+          }
+        }
+      }
+      done(resolve);
+    }
+
+    if (typeof Promise === 'function') {
+      return new Promise(function(resolve) {
+        if (opts.deferStart && hasTimer && fs.length > 0 && !allFilesCached(fs)) {
+          g.setTimeout(function() { step(resolve); }, 0);
+        } else {
+          step(resolve);
+        }
+      });
+    }
+
+    step(null);
+    return pos === fs.length ? finalizeScan(inputVal, masterEmp, indexedFiles) : null;
+  }
+
+  function warmCacheInBackground() {
+    if (typeof g.setTimeout !== 'function' || warmRunning || scanInProgress) return;
+    var fs = getFiles();
+    if (!fs.length || allFilesCached(fs)) return;
+    var idx = 0;
+    warmRunning = true;
+    function warmStep() {
+      if (scanInProgress) {
+        warmRunning = false;
+        return;
+      }
+      while (idx < fs.length && getCachedFileIndex(fs[idx])) {
+        idx++;
+      }
+      if (idx >= fs.length) {
+        warmRunning = false;
+        return;
+      }
+      getOrBuildFileIndex(fs[idx]);
+      idx++;
+      g.setTimeout(warmStep, 20);
+    }
+    g.setTimeout(warmStep, 40);
   }
 
   function label(p) {
@@ -975,7 +1273,7 @@
     if (!host) return;
     var r = S.result;
     if (!r) {
-      var emSample = getMasterList().filter(function(e) { return e && (e.emp_id || e.code); }).slice(0, 5);
+      var masterList = getMasterList(); var emSample = []; for (var mi = 0; mi < masterList.length && emSample.length < 5; mi++) { if (masterList[mi] && (masterList[mi].emp_id || masterList[mi].code)) emSample.push(masterList[mi]); }
       var emptyHtml = '<div class="sh-empty-panel">';
       emptyHtml += '  <div class="sh-empty-title">Search an employee to inspect PF/ESIC numbers &amp; monthly deductions</div>';
       emptyHtml += '  <div class="sh-empty-sub">Employee Code ya Name daalein — Employee Master aur sabhi uploaded salary sheets se PF No, ESIC No, PF cut, ESIC cut aur monthly payout automatic calculate hoga.</div>';
@@ -1195,17 +1493,12 @@
       box.innerHTML = '';
       return;
     }
-    var list = getMasterList();
+    var entries = getMasterIndex().entries;
     var hits = [];
-    for (var i = 0; i < list.length && hits.length < 7; i++) {
-      var e = list[i];
-      if (!e) continue;
-      var c = String(e.emp_id || e.code || e.emp_code || '').trim();
-      var nm = String(e.name || '').trim();
-      var pf = cleanStatId(e.pf_no || e.pfno || e.uan);
-      var es = cleanStatId(e.esi_no || e.esic_no);
-      if (c.toLowerCase().indexOf(q) >= 0 || nm.toLowerCase().indexOf(q) >= 0 || pf.toLowerCase().indexOf(q) >= 0 || es.toLowerCase().indexOf(q) >= 0) {
-        hits.push({ code: c, name: nm, dept: String(e.dept || '').trim(), pf: pf, es: es });
+    for (var i = 0; i < entries.length && hits.length < 7; i++) {
+      var item = entries[i];
+      if (item.searchLower.indexOf(q) >= 0) {
+        hits.push(item);
       }
     }
     if (!hits.length) {
@@ -1232,6 +1525,33 @@
     });
   }
 
+  function renderScanningState(done, total, fileName) {
+    var notice = $('notice');
+    var host = $('results');
+    var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (notice) {
+      notice.textContent = 'Scanning salary workbooks (' + done + ' / ' + total + ' files)...';
+    }
+    if (host) {
+      host.innerHTML =
+        '<div class="sh-empty-panel">' +
+        '  <div class="sh-empty-title">Scanning Salary Workbooks &amp; PF / ESIC Ledger…</div>' +
+        '  <div class="sh-empty-sub">' + esc(fileName ? ('Reading: ' + fileName) : 'Building search index…') + ' (' + done + ' / ' + total + ' files · ' + pct + '%)</div>' +
+        '</div>';
+    }
+  }
+
+  function applySearchResult(res) {
+    S.result = res;
+    S.expanded = {};
+    S.filter = 'all';
+    render();
+    if ($('notice')) {
+      var p = (res && res.profile) || {};
+      $('notice').textContent = 'Read-only scan complete for ' + (p.name ? (p.name + ' (' + res.employeeCode + ')') : (res ? res.employeeCode : '')) + '. No source file was modified.';
+    }
+  }
+
   function search() {
     var inp = $('code');
     var v = inp ? inp.value.trim() : '';
@@ -1241,14 +1561,35 @@
       if ($('notice')) $('notice').textContent = 'Enter an Employee Code, Name, PF No, or ESIC No.';
       return;
     }
-    S.result = scan(v);
-    S.expanded = {};
-    S.filter = 'all';
-    render();
-    if ($('notice')) {
-      var p = S.result.profile || {};
-      $('notice').textContent = 'Read-only scan complete for ' + (p.name ? (p.name + ' (' + S.result.employeeCode + ')') : S.result.employeeCode) + '. No source file was modified.';
+
+    var token = ++activeSearchToken;
+    var fs = getFiles();
+    if (allFilesCached(fs) || typeof g.setTimeout !== 'function') {
+      scanInProgress = false;
+      applySearchResult(scan(v));
+      return;
     }
+
+    scanInProgress = true;
+    var firstFile = fs[0] && (fs[0].name || fs[0].filename || fs[0].id || '');
+    renderScanningState(0, fs.length, firstFile);
+    scanAsync(v, {
+      token: token,
+      deferStart: true,
+      sliceMs: 12,
+      onProgress: function(prog) {
+        if (token !== activeSearchToken) return;
+        renderScanningState(prog.done, prog.total, prog.fileName);
+      },
+      onComplete: function(res) {
+        if (token !== activeSearchToken) return;
+        scanInProgress = false;
+        applySearchResult(res);
+      },
+      onCancel: function() {
+        if (token === activeSearchToken) scanInProgress = false;
+      }
+    });
   }
 
   function allowed() {
@@ -1398,6 +1739,7 @@
         if (allowed()) {
           g.goPage('servicehistory');
           if (!S.result) render();
+          warmCacheInBackground();
         }
       };
       sub.appendChild(n);
@@ -1408,7 +1750,12 @@
     var back = $('back');
     if (b) b.onclick = search;
     if (c) {
-      c.oninput = function() { updateAutocomplete(c.value); };
+      var suggestTimer = null;
+      c.oninput = function() {
+        if (typeof g.setTimeout !== 'function') { updateAutocomplete(c.value); return; }
+        if (typeof g.clearTimeout === 'function' && suggestTimer) g.clearTimeout(suggestTimer);
+        suggestTimer = g.setTimeout(function() { suggestTimer = null; updateAutocomplete(c.value); }, 60);
+      };
       c.onkeydown = function(e) { if (e.key === 'Enter') search(); };
     }
     if (back) back.onclick = function() { g.goPage('cmd'); };
@@ -1435,5 +1782,5 @@
     boot();
   }
 
-  g.ATPLServiceHistoryV1 = { scan: scan, lookupMasterEmployee: lookupMasterEmployee, version: '2.1.0' };
+  g.ATPLServiceHistoryV1 = { scan: scan, scanAsync: scanAsync, lookupMasterEmployee: lookupMasterEmployee, warmCache: warmCacheInBackground, version: '2.2.0' };
 })(window);

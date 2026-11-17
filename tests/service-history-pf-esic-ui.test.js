@@ -237,4 +237,115 @@ test('Service History Module - PF No, ESIC No, Monthly Deductions & UI Upgrade',
     assert.equal(res.totals.esicMonths, 2);
     assert.equal(res.totals.grossTotal, 55320);
   });
+
+  await t.test('4. Caches decoded workbook sheets so repeat searches avoid XLSX.sheet_to_json, and invalidates when wb changes', () => {
+    let sheetToJsonCalls = 0;
+    const rowsA = [
+      ['Emp Code', 'Employee Name', 'Gross Salary', 'PF @ 12%', 'ESIC @0.75%', 'Manual Amount', 'Net Payable'],
+      ['101', 'Ramesh Kumar', '18000', '1440', '135', '16425', '16425'],
+      ['102', 'Mahesh Verma', '20000', '1600', '150', '18250', '18250']
+    ];
+    const rowsB = [
+      ['Emp Code', 'Employee Name', 'Gross Salary', 'PF @ 12%', 'ESIC @0.75%', 'Manual Amount', 'Net Payable'],
+      ['101', 'Ramesh Kumar', '19000', '1500', '143', '17357', '17357']
+    ];
+    const wb1 = { SheetNames: ['Formula Sheet'], Sheets: { 'Formula Sheet': { tag: 'v1' } } };
+    const wb2 = { SheetNames: ['Formula Sheet'], Sheets: { 'Formula Sheet': { tag: 'v2' } } };
+    const files = [{ name: 'Salary_Jan_2026.xlsx', wb: wb1 }];
+
+    const { mockWindow } = makeDomCtx([], files);
+    mockWindow.XLSX = {
+      utils: {
+        sheet_to_json(ws) {
+          sheetToJsonCalls++;
+          return ws.tag === 'v2' ? rowsB : rowsA;
+        }
+      }
+    };
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(shCode, ctx);
+
+    const r1 = mockWindow.ATPLServiceHistoryV1.scan('101');
+    assert.equal(r1.totals.pfTotal, 1440);
+    assert.equal(sheetToJsonCalls, 1, 'First scan decodes workbook once');
+
+    // Search a DIFFERENT employee on the same workbook — must use cached index (0 extra sheet_to_json calls)
+    const r2 = mockWindow.ATPLServiceHistoryV1.scan('102');
+    assert.equal(r2.totals.pfTotal, 1600);
+    assert.equal(r2.profile.name, 'Mahesh Verma');
+    assert.equal(sheetToJsonCalls, 1, 'Second scan must reuse cached index without calling sheet_to_json');
+
+    // Mutate wb reference (e.g. file re-uploaded) — cache must invalidate cleanly
+    files[0].wb = wb2;
+    const r3 = mockWindow.ATPLServiceHistoryV1.scan('101');
+    assert.equal(r3.totals.pfTotal, 1500);
+    assert.equal(sheetToJsonCalls, 2, 'Replacing wb must invalidate cache and re-read updated sheet');
+  });
+
+  await t.test('5. scanAsync & UI search yield cleanly across chunks, report progress, match sync output, and cancel stale searches', async () => {
+    const files = [
+      {
+        name: 'Salary_Jan_2026.xlsx',
+        sheets: {
+          'Formula Sheet': [
+            ['Emp Code', 'Employee Name', 'Gross', 'PF', 'ESIC', 'Manual Amount', 'Net Payable'],
+            ['501', 'Vikas Sharma', '20000', '1800', '150', '18050', '18050'],
+            ['502', 'Anita Devi', '15000', '1200', '113', '13687', '13687']
+          ]
+        }
+      },
+      {
+        name: 'Salary_Feb_2026.xlsx',
+        sheets: {
+          'Formula Sheet': [
+            ['Emp Code', 'Employee Name', 'Gross', 'PF', 'ESIC', 'Manual Amount', 'Net Payable'],
+            ['501', 'Vikas Sharma', '20000', '1800', '150', '18050', '18050'],
+            ['502', 'Anita Devi', '15000', '1200', '113', '13687', '13687']
+          ]
+        }
+      }
+    ];
+
+    const { mockWindow, ids } = makeDomCtx([], files);
+    mockWindow.setTimeout = setTimeout;
+    mockWindow.clearTimeout = clearTimeout;
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(shCode, ctx);
+
+    const progressEvents = [];
+    const asyncRes = await mockWindow.ATPLServiceHistoryV1.scanAsync('501', {
+      deferStart: true,
+      yieldPerUncachedFile: true,
+      onProgress: (p) => progressEvents.push(p)
+    });
+    const syncRes = mockWindow.ATPLServiceHistoryV1.scan('501');
+    assert.deepEqual(asyncRes.totals, syncRes.totals);
+    assert.equal(asyncRes.totals.pfTotal, 3600);
+    assert.equal(progressEvents.length, 1);
+
+    // Test UI click with fresh uncached file: immediate scanning banner + stale search cancellation
+    const freshFiles = [
+      {
+        name: 'Salary_Mar_2026.xlsx',
+        sheets: {
+          'Formula Sheet': [
+            ['Emp Code', 'Employee Name', 'Gross', 'PF', 'ESIC', 'Manual Amount', 'Net Payable'],
+            ['501', 'Vikas Sharma', '21000', '1800', '158', '19042', '19042'],
+            ['502', 'Anita Devi', '16000', '1200', '120', '14680', '14680']
+          ]
+        }
+      }
+    ];
+    mockWindow.FILES = freshFiles;
+    ids['atpl-sh-code'].value = '501';
+    ids['atpl-sh-search'].onclick();
+    assert(ids['atpl-sh-results'].innerHTML.includes('Scanning Salary Workbooks'), 'UI must immediately show non-blocking scanning state');
+
+    // Immediately supersede with search for 502 — final UI must show Anita Devi, never overwritten by stale 501 scan
+    ids['atpl-sh-code'].value = '502';
+    ids['atpl-sh-search'].onclick();
+    await new Promise((r) => setTimeout(r, 40));
+    assert(ids['atpl-sh-results'].innerHTML.includes('Anita Devi'), 'Latest search must win after async completion');
+    assert(!ids['atpl-sh-results'].innerHTML.includes('Vikas Sharma'), 'Cancelled search must not overwrite results');
+  });
 });
