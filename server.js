@@ -175,6 +175,8 @@ let syncEmployeeMaster = readJsonFile('employee_master.json', []);
 let syncDolRecords = readJsonFile('dol_records.json', {}); // id -> DOL challan
 let syncAdvances = readJsonFile('advances.json', {}); // id -> advance record
 let syncAdvanceDeductions = readJsonFile('advance_deductions.json', {}); // id -> deduction record
+const ADV_SLIPS_DIR = path.join(DATA_DIR, 'adv_slips');
+let syncAdvanceSlipsMem = {}; // slipId/advanceId -> signed advance slip payload
 let syncPendingDiffs = readJsonFile('pending_diff_vouchers.json', {}); // id -> pending diff amount / cash adv voucher record
 let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {}); // id -> deleted_at ISO
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
@@ -1941,6 +1943,117 @@ app.delete('/api/sync/advance-deduction/:id', (req, res) => {
     broadcastEvent('advance_deduction_deleted', { id: id, deleted_at: new Date().toISOString() });
     forwardAdvanceSyncToCloud();
     return res.json({ ok: true, deleted: true, id });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Advance Signed Slip Upload & Sync Endpoints ──
+function safeSlipKey(k) {
+  return String(k || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 140);
+}
+
+app.post('/api/sync/advance-slip', (req, res) => {
+  try {
+    const body = req.body || {};
+    const slipId = safeSlipKey(body.slipId || body.id);
+    const advanceId = String(body.advanceId || '').trim();
+    if (!slipId || !advanceId) {
+      return res.status(400).json({ ok: false, error: 'slipId and advanceId required' });
+    }
+    const slipObj = {
+      slipId: slipId,
+      advanceId: advanceId,
+      empCode: String(body.empCode || '').trim(),
+      fileName: String(body.fileName || 'signed_slip').trim(),
+      mimeType: String(body.mimeType || 'image/jpeg').trim(),
+      size: Number(body.size) || 0,
+      signedBy: String(body.signedBy || '').trim(),
+      note: String(body.note || '').trim(),
+      uploadedAt: body.uploadedAt || new Date().toISOString(),
+      cloudFileName: String(body.cloudFileName || ('ATPL_ADV_SLIP_' + safeSlipKey(advanceId) + '.json')),
+      dataUrl: body.dataUrl || ''
+    };
+    syncAdvanceSlipsMem[slipId] = slipObj;
+    syncAdvanceSlipsMem['adv:' + advanceId] = slipObj;
+    if (process.env.NODE_ENV !== 'test') {
+      try {
+        if (!fs.existsSync(ADV_SLIPS_DIR)) fs.mkdirSync(ADV_SLIPS_DIR, { recursive: true });
+        fs.writeFileSync(path.join(ADV_SLIPS_DIR, slipId + '.json'), JSON.stringify(slipObj));
+        fs.writeFileSync(path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(advanceId) + '.json'), JSON.stringify(slipObj));
+      } catch (_) {}
+    }
+    if (syncAdvances[advanceId]) {
+      syncAdvances[advanceId].signedSlip = {
+        slipId: slipObj.slipId,
+        fileName: slipObj.fileName,
+        mimeType: slipObj.mimeType,
+        size: slipObj.size,
+        signedBy: slipObj.signedBy,
+        note: slipObj.note,
+        uploadedAt: slipObj.uploadedAt,
+        cloudFileName: slipObj.cloudFileName
+      };
+      syncAdvances[advanceId].updatedAt = new Date().toISOString();
+      writeJsonFile('advances.json', syncAdvances);
+    }
+    incrementVersion();
+    broadcastEvent('advance_slip_saved', { advanceId: advanceId, slipId: slipId, uploadedAt: slipObj.uploadedAt });
+    try {
+      const b64 = Buffer.from(JSON.stringify(slipObj)).toString('base64');
+      syncToGoogleAppsScript('uploadFile', {
+        fileName: slipObj.cloudFileName,
+        fileBase64: b64,
+        mimeType: 'application/json'
+      });
+    } catch (_) {}
+    return res.json({ ok: true, slipId: slipId, advanceId: advanceId });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/sync/advance-slip/:id', (req, res) => {
+  try {
+    const rawId = decodeURIComponent(req.params.id || '');
+    const key = safeSlipKey(rawId);
+    const advId = String(req.query.advanceId || '').trim();
+    let found = syncAdvanceSlipsMem[key] || (advId ? syncAdvanceSlipsMem['adv:' + advId] : null);
+    if (!found && process.env.NODE_ENV !== 'test') {
+      const p1 = path.join(ADV_SLIPS_DIR, key + '.json');
+      const p2 = advId ? path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(advId) + '.json') : null;
+      if (fs.existsSync(p1)) found = JSON.parse(fs.readFileSync(p1, 'utf8'));
+      else if (p2 && fs.existsSync(p2)) found = JSON.parse(fs.readFileSync(p2, 'utf8'));
+    }
+    if (!found) return res.status(404).json({ ok: false, error: 'Slip not found' });
+    return res.json({ ok: true, slip: found });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/advance-slip/:id', (req, res) => {
+  try {
+    const rawId = decodeURIComponent(req.params.id || '');
+    const key = safeSlipKey(rawId);
+    const advId = String(req.query.advanceId || '').trim();
+    const existing = syncAdvanceSlipsMem[key] || (advId ? syncAdvanceSlipsMem['adv:' + advId] : null);
+    const targetAdvId = advId || (existing && existing.advanceId) || '';
+    delete syncAdvanceSlipsMem[key];
+    if (targetAdvId) delete syncAdvanceSlipsMem['adv:' + targetAdvId];
+    if (process.env.NODE_ENV !== 'test') {
+      [path.join(ADV_SLIPS_DIR, key + '.json'), targetAdvId ? path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(targetAdvId) + '.json') : ''].forEach(fp => {
+        if (fp && fs.existsSync(fp)) try { fs.unlinkSync(fp); } catch (_) {}
+      });
+    }
+    if (targetAdvId && syncAdvances[targetAdvId]) {
+      syncAdvances[targetAdvId].signedSlip = null;
+      syncAdvances[targetAdvId].updatedAt = new Date().toISOString();
+      writeJsonFile('advances.json', syncAdvances);
+    }
+    incrementVersion();
+    broadcastEvent('advance_slip_deleted', { slipId: key, advanceId: targetAdvId });
+    return res.json({ ok: true, deleted: true, slipId: key });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

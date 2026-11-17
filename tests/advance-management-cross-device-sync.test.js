@@ -17,9 +17,11 @@ function createMockBrowser(browserName, sharedCloud) {
       setItem: (k, v) => { localStorageData[k] = String(v); },
       removeItem: (k) => { delete localStorageData[k]; }
     },
+    _elements: { advanceModuleContainer: { innerHTML: '' }, advModal: { id: 'advModal', innerHTML: '' } },
     document: {
       addEventListener: () => {},
-      getElementById: () => null,
+      getElementById: (id) => mockWindow._elements[id] || null,
+      createElement: () => ({ style: {}, setAttribute: () => {}, click: () => {} }),
       body: { appendChild: () => {}, removeChild: () => {} },
       readyState: 'complete',
       hidden: false
@@ -70,6 +72,10 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
           return { ok: true, name: file.name, fileBase64: file.fileBase64, updatedAt: file.updatedAt };
         }
         return { ok: false, error: 'File not found' };
+      }
+      if (action === 'deleteFile') {
+        delete cloudStorage.files[params.fileName];
+        return { ok: true, deleted: true };
       }
       return { ok: false };
     }
@@ -322,5 +328,109 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().some(a => a.empCode === '25924'), false, 'Deleted employee ledger must stay deleted across devices');
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getAllDeductions().some(d => d.empCode === '25924'), false, 'Deleted employee deductions must stay deleted across devices');
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26448'), 9000, 'Other employee advance must sync intact');
+  });
+
+  await t.test('Test 8: Diary / Director Signed Advance Slip uploads in row, stays quota-safe, and syncs across all browsers', async () => {
+    const serverJsCode = fs.readFileSync(path.join(rootDir, 'server.js'), 'utf8');
+    assert.ok(serverJsCode.includes("app.post('/api/sync/advance-slip'"), 'server.js must expose POST /api/sync/advance-slip');
+    assert.ok(serverJsCode.includes("app.get('/api/sync/advance-slip/:id'"), 'server.js must expose GET /api/sync/advance-slip/:id');
+    assert.ok(serverJsCode.includes("app.delete('/api/sync/advance-slip/:id'"), 'server.js must expose DELETE /api/sync/advance-slip/:id');
+    assert.ok(serverJsCode.includes("'advance_slip_saved'") && serverJsCode.includes("'advance_slip_deleted'"), 'server.js must broadcast SSE slip events');
+
+    const desktop = createMockBrowser('Desktop_Slip_Uploader', cloudStorage);
+    vm.runInContext(advanceJsCode, vm.createContext(desktop.mockWindow));
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+
+    // Ensure advance record exists with clean initial state
+    desktop.mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_slip_test_1',
+      empCode: '25924',
+      amount: 12000,
+      monthlyCap: 4000,
+      advanceDate: '2026-11-17',
+      remarks: 'Diary signed advance test'
+    });
+
+    // 1. Row must show Upload Slip button directly next to the advance
+    const beforeTableHtml = desktop.mockWindow._elements.advanceModuleContainer.innerHTML;
+    assert.ok(beforeTableHtml.includes('Signed Slip'), 'Advances table must have Signed Slip column');
+    assert.ok(beforeTableHtml.includes("ATPLAdvanceManager.openSlipModal('adv_slip_test_1')") && beforeTableHtml.includes("Upload Slip"), "Each advance row must render Upload Slip button");
+
+    // 2. Add/Edit Advance modal & Employee History / Statement modals also expose Signed Slip controls
+    desktop.mockWindow.ATPLAdvanceManager.openNewModal('25924');
+    assert.ok(desktop.mockWindow._elements.advModal.innerHTML.includes('advFormSlipFile'), 'New/Edit Advance modal must include optional Signed Slip file picker');
+    desktop.mockWindow.ATPLAdvanceManager.viewEmployeeHistory('25924');
+    assert.ok(desktop.mockWindow._elements.advModal.innerHTML.includes('Signed Slip'), 'Employee History modal must show Signed Slip column');
+    desktop.mockWindow.ATPLAdvanceManager.viewStatement('adv_slip_test_1');
+    assert.ok(desktop.mockWindow._elements.advModal.innerHTML.includes('Diary / Director Signed Advance Slip'), 'Advance Statement modal must show Signed Slip section');
+
+    // 3. Upload a Director-signed Diary Slip photo in Browser A
+    const sampleDataUrl = 'data:image/jpeg;base64,' + Buffer.from('DIRECTOR_SIGNED_DIARY_SLIP_BINARY_MOCK').toString('base64');
+    const upRes = await desktop.mockWindow.ATPLAdvanceManager.uploadAdvanceSlip('adv_slip_test_1', {
+      fileName: 'diary_slip_25924.jpg',
+      mimeType: 'image/jpeg',
+      size: 2048,
+      signedBy: 'Sarthak ji',
+      note: 'Diary Pg 22 - Account Paid',
+      dataUrl: sampleDataUrl
+    });
+    assert.equal(upRes.ok, true, 'Slip upload must succeed');
+    assert.equal(upRes.synced, true, 'Slip must sync to cloud');
+
+    // Row button updates immediately to Saved Slip with Director name
+    const afterTableHtml = desktop.mockWindow._elements.advanceModuleContainer.innerHTML;
+    assert.ok(afterTableHtml.includes('✅ Slip (Sarthak ji)'), 'Row button must reflect saved Director signed slip');
+
+    // Separate slip cloud file exists and main advance JSON stays lightweight (no dataUrl bloat)
+    const expectedCloudSlipKey = 'ATPL_ADV_SLIP_adv_slip_test_1.json';
+    assert.ok(cloudStorage.files[expectedCloudSlipKey], 'Cloud storage must hold dedicated slip blob file');
+    const mainLocalJson = desktop.storage['ATPL_AdvanceRecordsV2'] || '';
+    assert.equal(mainLocalJson.includes(sampleDataUrl), false, 'Main advance localStorage must NOT embed heavy base64 slip dataUrl');
+
+    // 4. Browser B (fresh browser, empty storage) syncs and retrieves both metadata and full slip payload
+    const mobile = createMockBrowser('Mobile_Account_Browser', cloudStorage);
+    // Simulate cloud listing accidentally containing the slip JSON in FILES to verify cleanup guard
+    mobile.mockWindow.FILES = [
+      { name: 'JUNE_SALARY.xlsx', sheets: {} },
+      { name: 'ATPL_ADV_SLIP_adv_slip_test_1.json' }
+    ];
+    vm.runInContext(advanceJsCode, vm.createContext(mobile.mockWindow));
+    const syncB = await mobile.mockWindow.ATPLAdvanceManager.syncNow(false);
+    assert.equal(syncB.ok, true, 'Browser B sync must succeed');
+    assert.equal(mobile.mockWindow.FILES.some(f => f.name.toLowerCase().includes('atpl_adv_slip_')), false, 'Advance slip JSONs must be filtered out of window.FILES');
+
+    const advB = mobile.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_slip_test_1');
+    assert.ok(advB && advB.signedSlip, 'Browser B must receive signedSlip metadata');
+    assert.equal(advB.signedSlip.signedBy, 'Sarthak ji');
+    assert.equal(advB.signedSlip.fileName, 'diary_slip_25924.jpg');
+    assert.ok(mobile.mockWindow._elements.advanceModuleContainer.innerHTML.includes('✅ Slip (Sarthak ji)'), 'Browser B row UI must show Saved Slip badge');
+
+    const fetchedSlipB = await mobile.mockWindow.ATPLAdvanceManager.fetchAdvanceSlipData('adv_slip_test_1');
+    assert.ok(fetchedSlipB, 'Browser B must download slip payload');
+    assert.equal(fetchedSlipB.dataUrl, sampleDataUrl, 'Browser B must receive exact uploaded slip image/PDF dataUrl');
+
+    // 5. Editing advance amount preserves signedSlip metadata
+    desktop.mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_slip_test_1',
+      empCode: '25924',
+      amount: 13500,
+      monthlyCap: 4500,
+      advanceDate: '2026-11-17',
+      remarks: 'Edited amount preserves slip'
+    });
+    const editedAdv = desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_slip_test_1');
+    assert.ok(editedAdv.signedSlip && editedAdv.signedSlip.slipId, 'Editing advance must preserve signedSlip metadata');
+    await new Promise(r => setTimeout(r, 40));
+
+    // 6. Removing slip on Browser B clears cloud slip and syncs removal back to Browser A
+    await mobile.mockWindow.ATPLAdvanceManager.syncNow(false);
+    const remOk = await mobile.mockWindow.ATPLAdvanceManager.removeAdvanceSlip('adv_slip_test_1');
+    assert.equal(remOk, true, 'Slip removal must succeed');
+    assert.equal(cloudStorage.files[expectedCloudSlipKey], undefined, 'Cloud slip blob must be deleted when slip removed');
+
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+    const advAfterRemA = desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_slip_test_1');
+    assert.equal(advAfterRemA.signedSlip, null, 'Browser A must reflect slip removal after sync');
+    assert.ok(desktop.mockWindow._elements.advanceModuleContainer.innerHTML.includes('Upload Slip'), 'Browser A row must revert to Upload Slip button');
   });
 });

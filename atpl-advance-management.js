@@ -51,7 +51,10 @@
     editingAdvanceId: null,
     editingPendingDiffId: null,
     monthFeedRows: [],
-    pendingDiffFeedRows: []
+    pendingDiffFeedRows: [],
+    stagedFormSlip: null,
+    stagedModalSlip: null,
+    openSlipAdvanceId: null
   };
 
   function round2(n) {
@@ -878,7 +881,8 @@
         if (Array.isArray(window.FILES)) {
           var hasAdvInFiles = false;
           window.FILES = window.FILES.filter(function(f) {
-            if (f && String(f.name).toLowerCase().trim() === CLOUD_FILENAME.toLowerCase()) {
+            var fnLow = f && String(f.name || '').toLowerCase().trim();
+            if (fnLow === CLOUD_FILENAME.toLowerCase() || fnLow.indexOf('atpl_adv_slip_') === 0) {
               hasAdvInFiles = true;
               return false;
             }
@@ -892,6 +896,11 @@
         recalculateAllBalances();
         saveToLocal();
         renderUI();
+        if (typeof setTimeout === 'function') {
+          setTimeout(function() { prefetchMissingSlips(); }, 60);
+        } else {
+          prefetchMissingSlips();
+        }
         return { ok: cloudLoaded, manual: !!isManual };
       } catch (err) {
         return { ok: false, error: err.message };
@@ -969,6 +978,392 @@
     return res;
   }
 
+  // ── 3B. SIGNED ADVANCE SLIP UPLOAD, COMPRESSION & CROSS-BROWSER SYNC ──
+  var SLIP_CLOUD_PREFIX = 'ATPL_ADV_SLIP_';
+  var SLIP_IDB_NAME = 'ATPL_AdvanceSlipsDB';
+  var SLIP_IDB_STORE = 'slips';
+  var slipDataCache = {};
+  var slipFetchPromises = {};
+
+  function safeSlipKey(k) {
+    return String(k || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 140);
+  }
+
+  function getSlipCloudFileName(advanceId) {
+    return SLIP_CLOUD_PREFIX + safeSlipKey(advanceId) + '.json';
+  }
+
+  function openSlipIdb() {
+    return new Promise(function(resolve) {
+      try {
+        if (typeof window.indexedDB === 'undefined' || !window.indexedDB) return resolve(null);
+        var req = window.indexedDB.open(SLIP_IDB_NAME, 1);
+        req.onupgradeneeded = function(ev) {
+          try {
+            var db = ev.target.result;
+            if (!db.objectStoreNames.contains(SLIP_IDB_STORE)) {
+              db.createObjectStore(SLIP_IDB_STORE, { keyPath: 'slipId' });
+            }
+          } catch (_) {}
+        };
+        req.onsuccess = function(ev) { resolve(ev.target.result || null); };
+        req.onerror = function() { resolve(null); };
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  function saveSlipLocalCache(slipPayload) {
+    if (!slipPayload || !slipPayload.slipId) return Promise.resolve();
+    slipDataCache[slipPayload.slipId] = slipPayload;
+    if (slipPayload.advanceId) {
+      slipDataCache['adv:' + slipPayload.advanceId] = slipPayload;
+    }
+    try {
+      var serialized = JSON.stringify(slipPayload);
+      if (serialized.length < 240000 && typeof localStorage !== 'undefined') {
+        localStorage.setItem('ATPL_AdvSlip_' + safeSlipKey(slipPayload.slipId), serialized);
+      }
+    } catch (_) {}
+    return openSlipIdb().then(function(db) {
+      if (!db) return;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction([SLIP_IDB_STORE], 'readwrite');
+          tx.objectStore(SLIP_IDB_STORE).put(slipPayload);
+          tx.oncomplete = function() { resolve(); };
+          tx.onerror = function() { resolve(); };
+        } catch (_) { resolve(); }
+      });
+    });
+  }
+
+  function getSlipLocalCache(slipId, advanceId) {
+    if (slipId && slipDataCache[slipId]) return Promise.resolve(slipDataCache[slipId]);
+    if (advanceId && slipDataCache['adv:' + advanceId]) {
+      var byAdv = slipDataCache['adv:' + advanceId];
+      if (!slipId || byAdv.slipId === slipId) return Promise.resolve(byAdv);
+    }
+    try {
+      if (slipId && typeof localStorage !== 'undefined') {
+        var raw = localStorage.getItem('ATPL_AdvSlip_' + safeSlipKey(slipId));
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.dataUrl) {
+            slipDataCache[slipId] = parsed;
+            return Promise.resolve(parsed);
+          }
+        }
+      }
+    } catch (_) {}
+    return openSlipIdb().then(function(db) {
+      if (!db || !slipId) return null;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction([SLIP_IDB_STORE], 'readonly');
+          var req = tx.objectStore(SLIP_IDB_STORE).get(slipId);
+          req.onsuccess = function() {
+            var res = req.result || null;
+            if (res && res.dataUrl) slipDataCache[slipId] = res;
+            resolve(res);
+          };
+          req.onerror = function() { resolve(null); };
+        } catch (_) { resolve(null); }
+      });
+    });
+  }
+
+  function deleteSlipLocalCache(slipId, advanceId) {
+    if (slipId) delete slipDataCache[slipId];
+    if (advanceId) delete slipDataCache['adv:' + advanceId];
+    try {
+      if (slipId && typeof localStorage !== 'undefined') {
+        localStorage.removeItem('ATPL_AdvSlip_' + safeSlipKey(slipId));
+      }
+    } catch (_) {}
+    return openSlipIdb().then(function(db) {
+      if (!db || !slipId) return;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction([SLIP_IDB_STORE], 'readwrite');
+          tx.objectStore(SLIP_IDB_STORE).delete(slipId);
+          tx.oncomplete = function() { resolve(); };
+          tx.onerror = function() { resolve(); };
+        } catch (_) { resolve(); }
+      });
+    });
+  }
+
+  function readAndCompressSlipFile(file) {
+    return new Promise(function(resolve, reject) {
+      if (!file) return reject(new Error('No file selected'));
+      var origSize = Number(file.size) || 0;
+      var mimeType = String(file.type || '').toLowerCase();
+      var fileName = String(file.name || 'signed_slip');
+      if (!mimeType && /\.pdf$/i.test(fileName)) mimeType = 'application/pdf';
+      if (!mimeType && /\.(png|jpe?g|webp|gif)$/i.test(fileName)) mimeType = 'image/jpeg';
+      if (mimeType === 'application/pdf' && origSize > 4 * 1024 * 1024) {
+        return reject(new Error('PDF file 4 MB se chhoti honi chahiye (current: ' + Math.round(origSize / 1024 / 1024 * 10) / 10 + ' MB).'));
+      }
+      if (origSize > 15 * 1024 * 1024) {
+        return reject(new Error('File 15 MB se chhoti honi chahiye.'));
+      }
+      var reader = new window.FileReader();
+      reader.onload = function(ev) {
+        var rawDataUrl = (ev && ev.target && ev.target.result) ? String(ev.target.result) : '';
+        if (!rawDataUrl) return reject(new Error('File read nahi ho saki.'));
+        if (mimeType.indexOf('image/') === 0 && typeof window.Image !== 'undefined' && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+          try {
+            var img = new window.Image();
+            img.onload = function() {
+              try {
+                var maxDim = 1280;
+                var w = img.naturalWidth || img.width || 0;
+                var h = img.naturalHeight || img.height || 0;
+                if (w > 0 && h > 0) {
+                  if (w > maxDim || h > maxDim) {
+                    if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+                    else { w = Math.round(w * maxDim / h); h = maxDim; }
+                  }
+                  var canvas = document.createElement('canvas');
+                  canvas.width = w;
+                  canvas.height = h;
+                  var ctx = canvas.getContext('2d');
+                  if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, w, h);
+                    ctx.drawImage(img, 0, 0, w, h);
+                    var compUrl = canvas.toDataURL('image/jpeg', 0.78);
+                    if (compUrl && compUrl.length < rawDataUrl.length) {
+                      var approxBytes = Math.round((compUrl.length - compUrl.indexOf(',') - 1) * 0.75);
+                      return resolve({ fileName: fileName, mimeType: 'image/jpeg', size: approxBytes, origSize: origSize, dataUrl: compUrl });
+                    }
+                  }
+                }
+              } catch (_) {}
+              resolve({ fileName: fileName, mimeType: mimeType || 'image/jpeg', size: origSize, origSize: origSize, dataUrl: rawDataUrl });
+            };
+            img.onerror = function() {
+              resolve({ fileName: fileName, mimeType: mimeType || 'image/jpeg', size: origSize, origSize: origSize, dataUrl: rawDataUrl });
+            };
+            img.src = rawDataUrl;
+            return;
+          } catch (_) {}
+        }
+        resolve({ fileName: fileName, mimeType: mimeType || 'application/octet-stream', size: origSize, origSize: origSize, dataUrl: rawDataUrl });
+      };
+      reader.onerror = function() { reject(new Error('File read failed.')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function formatSlipSize(bytes) {
+    var b = Number(bytes) || 0;
+    if (!b) return '';
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return Math.max(1, Math.round(b / 1024)) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  async function pushSlipPayloadToCloud(slipPayload) {
+    var gasOk = false;
+    try {
+      var b64Slip = utf8ToB64(JSON.stringify(slipPayload));
+      var res = await callGoogleBackend('uploadFile', {
+        fileName: slipPayload.cloudFileName,
+        fileBase64: b64Slip,
+        mimeType: 'application/json'
+      });
+      if (res && res.ok) gasOk = true;
+    } catch (_) {}
+    var srvOk = false;
+    try {
+      if (typeof fetch === 'function') {
+        var srvRes = await fetch('/api/sync/advance-slip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(slipPayload)
+        }).catch(function() { return null; });
+        if (srvRes && srvRes.ok) srvOk = true;
+      }
+    } catch (_) {}
+    return gasOk || srvOk;
+  }
+
+  async function uploadAdvanceSlip(advanceId, slipInput) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return { ok: false, error: 'ADVANCE_NOT_FOUND' };
+    slipInput = slipInput || {};
+    var mimeType = String(slipInput.mimeType || 'image/jpeg').trim();
+    var fileName = String(slipInput.fileName || 'signed_slip.jpg').trim();
+    var dataUrl = String(slipInput.dataUrl || '').trim();
+    if (!dataUrl && slipInput.fileBase64) {
+      dataUrl = String(slipInput.fileBase64).indexOf('data:') === 0
+        ? String(slipInput.fileBase64)
+        : ('data:' + mimeType + ';base64,' + String(slipInput.fileBase64));
+    }
+    if (!dataUrl) return { ok: false, error: 'EMPTY_SLIP' };
+
+    var nowIso = new Date().toISOString();
+    var slipId = 'slip_' + safeSlipKey(advanceId) + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+    var cloudFileName = getSlipCloudFileName(advanceId);
+    var approxSize = Number(slipInput.size) || Math.round(dataUrl.length * 0.75);
+    var signedBy = String(slipInput.signedBy || '').trim();
+    var note = String(slipInput.note || '').trim();
+
+    var slipPayload = {
+      slipId: slipId,
+      advanceId: advanceId,
+      empCode: adv.empCode,
+      empName: adv.empName,
+      fileName: fileName,
+      mimeType: mimeType,
+      size: approxSize,
+      signedBy: signedBy,
+      note: note,
+      uploadedAt: nowIso,
+      cloudFileName: cloudFileName,
+      dataUrl: dataUrl
+    };
+
+    await saveSlipLocalCache(slipPayload);
+
+    adv.signedSlip = {
+      slipId: slipId,
+      fileName: fileName,
+      mimeType: mimeType,
+      size: approxSize,
+      signedBy: signedBy,
+      note: note,
+      uploadedAt: nowIso,
+      cloudFileName: cloudFileName
+    };
+    adv.updatedAt = nowIso;
+
+    saveToLocal();
+    renderUI();
+    if (state.openHistoryEmpCode && normalizeCode(state.openHistoryEmpCode) === normalizeCode(adv.empCode)) {
+      viewEmployeeHistory(state.openHistoryEmpCode);
+    }
+
+    var blobSynced = await pushSlipPayloadToCloud(slipPayload);
+    if (!blobSynced && adv.signedSlip) {
+      adv.signedSlip.pendingCloudSync = true;
+      saveToLocal();
+    } else if (adv.signedSlip && adv.signedSlip.pendingCloudSync) {
+      delete adv.signedSlip.pendingCloudSync;
+      saveToLocal();
+    }
+
+    var advSyncRes = await pushAdvanceRemote(adv);
+    broadcastSync('advance_slip_updated', { id: advanceId, slipId: slipId });
+
+    var allSynced = !!(blobSynced && advSyncRes && advSyncRes.ok);
+    return { ok: true, synced: allSynced, blobSynced: blobSynced, slip: adv.signedSlip };
+  }
+
+  async function fetchAdvanceSlipData(advanceId) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv || !adv.signedSlip || !adv.signedSlip.slipId) return null;
+    var meta = adv.signedSlip;
+    var local = await getSlipLocalCache(meta.slipId, advanceId);
+    if (local && local.dataUrl) return local;
+
+    if (slipFetchPromises[meta.slipId]) return slipFetchPromises[meta.slipId];
+    slipFetchPromises[meta.slipId] = (async function() {
+      try {
+        var cloudFile = meta.cloudFileName || getSlipCloudFileName(advanceId);
+        var dlRes = await callGoogleBackend('downloadFile', { fileName: cloudFile });
+        if (dlRes && dlRes.ok && dlRes.fileBase64) {
+          try {
+            var jsonStr = b64ToUtf8(dlRes.fileBase64);
+            var parsed = JSON.parse(jsonStr);
+            if (parsed && parsed.dataUrl) {
+              if (!parsed.slipId) parsed.slipId = meta.slipId;
+              if (!parsed.advanceId) parsed.advanceId = advanceId;
+              await saveSlipLocalCache(parsed);
+              return parsed;
+            }
+          } catch (_) {}
+        }
+        try {
+          if (typeof fetch === 'function') {
+            var srvRes = await fetch('/api/sync/advance-slip/' + encodeURIComponent(meta.slipId) + '?advanceId=' + encodeURIComponent(advanceId), { cache: 'no-store' });
+            if (srvRes && srvRes.ok) {
+              var srvJson = await srvRes.json();
+              if (srvJson && srvJson.ok && srvJson.slip && srvJson.slip.dataUrl) {
+                await saveSlipLocalCache(srvJson.slip);
+                return srvJson.slip;
+              }
+            }
+          }
+        } catch (_) {}
+        return null;
+      } finally {
+        delete slipFetchPromises[meta.slipId];
+      }
+    })();
+    return slipFetchPromises[meta.slipId];
+  }
+
+  function prefetchMissingSlips() {
+    try {
+      var list = (state.advances || []).filter(function(a) {
+        return a && a.signedSlip && a.signedSlip.slipId;
+      });
+      // Retry any local slips waiting for cloud push
+      list.filter(function(a) { return a.signedSlip.pendingCloudSync; }).slice(0, 3).forEach(function(a) {
+        getSlipLocalCache(a.signedSlip.slipId, a.id).then(function(payload) {
+          if (!payload || !payload.dataUrl) return;
+          pushSlipPayloadToCloud(payload).then(function(ok) {
+            if (ok && a.signedSlip) {
+              delete a.signedSlip.pendingCloudSync;
+              saveToLocal();
+              pushAdvanceRemote(a);
+            }
+          });
+        });
+      });
+      // Pre-warm recent slips missing on this browser
+      list.filter(function(a) { return !slipDataCache[a.signedSlip.slipId]; }).slice(0, 4).forEach(function(a) {
+        fetchAdvanceSlipData(a.id).catch(function() {});
+      });
+    } catch (_) {}
+  }
+
+  async function removeAdvanceSlip(advanceId) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return false;
+    var oldMeta = adv.signedSlip;
+    var oldSlipId = oldMeta && oldMeta.slipId;
+    var oldCloudFile = (oldMeta && oldMeta.cloudFileName) || getSlipCloudFileName(advanceId);
+
+    adv.signedSlip = null;
+    adv.updatedAt = new Date().toISOString();
+    saveToLocal();
+    renderUI();
+    if (state.openHistoryEmpCode && normalizeCode(state.openHistoryEmpCode) === normalizeCode(adv.empCode)) {
+      viewEmployeeHistory(state.openHistoryEmpCode);
+    }
+
+    await deleteSlipLocalCache(oldSlipId, advanceId);
+    try {
+      if (oldCloudFile) {
+        callGoogleBackend('deleteFile', { fileName: oldCloudFile }).catch(function() {});
+      }
+    } catch (_) {}
+    try {
+      if (oldSlipId && typeof fetch === 'function') {
+        fetch('/api/sync/advance-slip/' + encodeURIComponent(oldSlipId) + '?advanceId=' + encodeURIComponent(advanceId), { method: 'DELETE' }).catch(function() {});
+      }
+    } catch (_) {}
+
+    await pushAdvanceRemote(adv);
+    broadcastSync('advance_slip_removed', { id: advanceId });
+    return true;
+  }
+
   function broadcastSync(action, details) {
     var payload = { action: action, details: details || {}, ts: Date.now() };
     if (typeof window.BroadcastChannel !== 'undefined') {
@@ -989,7 +1384,7 @@
         var bc = new window.BroadcastChannel(CHANNEL_NAME);
         bc.onmessage = function(ev) {
           if (ev && ev.data && ev.data.action && (ev.data.action.indexOf('advance') === 0 || ev.data.action.indexOf('pending_diff') === 0)) {
-            fetchRemoteAdvances(false);
+            fetchRemoteAdvances(ev.data.action.indexOf('advance_slip') === 0);
           }
         };
       } catch (_) {}
@@ -1000,7 +1395,7 @@
         try {
           var ev = JSON.parse(e.newValue);
           if (ev && ev.action && (ev.action.indexOf('advance') === 0 || ev.action.indexOf('pending_diff') === 0)) {
-            fetchRemoteAdvances(false);
+            fetchRemoteAdvances(ev.action.indexOf('advance_slip') === 0);
           }
         } catch (_) {}
       }
@@ -1046,6 +1441,8 @@
       try {
         var evtSrc = new window.EventSource('/api/sync/events');
         evtSrc.addEventListener('advance_saved', function() { fetchRemoteAdvances(false); });
+        evtSrc.addEventListener('advance_slip_saved', function() { fetchRemoteAdvances(true); });
+        evtSrc.addEventListener('advance_slip_deleted', function() { fetchRemoteAdvances(true); });
         evtSrc.addEventListener('advance_deleted', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advance_deduction_saved', function() { fetchRemoteAdvances(false); });
         evtSrc.addEventListener('advance_deduction_deleted', function() { fetchRemoteAdvances(false); });
@@ -1089,6 +1486,7 @@
       status: status,
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now,
+      signedSlip: Object.prototype.hasOwnProperty.call(payload, 'signedSlip') ? payload.signedSlip : (existing && existing.signedSlip ? existing.signedSlip : null),
       deductions: existing && Array.isArray(existing.deductions) ? existing.deductions : []
     };
 
@@ -1125,6 +1523,10 @@
     if (!id) return;
     var idx = state.advances.findIndex(function(a) { return a.id === id; });
     if (idx < 0) return;
+    var removedAdv = state.advances[idx];
+    if (removedAdv && removedAdv.signedSlip && removedAdv.signedSlip.slipId) {
+      deleteSlipLocalCache(removedAdv.signedSlip.slipId, id);
+    }
     state.advances.splice(idx, 1);
 
     state.tombstones[id] = new Date().toISOString();
@@ -1173,6 +1575,12 @@
       if (a && a.id) {
         state.tombstones[a.id] = nowIso;
         deletedAdvIds.push(a.id);
+        if (a.signedSlip && a.signedSlip.slipId) {
+          deleteSlipLocalCache(a.signedSlip.slipId, a.id);
+          try {
+            callGoogleBackend('deleteFile', { fileName: a.signedSlip.cloudFileName || getSlipCloudFileName(a.id) }).catch(function() {});
+          } catch (_) {}
+        }
       }
     });
     toDeleteDeds.forEach(function(d) {
@@ -2448,6 +2856,8 @@
       html += '      <option value="ACTIVE"' + (state.statusFilter === 'ACTIVE' ? ' selected' : '') + '>Active dues only</option>';
       html += '      <option value="PARTIAL"' + (state.statusFilter === 'PARTIAL' ? ' selected' : '') + '>Partial repaid</option>';
       html += '      <option value="REPAID"' + (state.statusFilter === 'REPAID' ? ' selected' : '') + '>Fully repaid only</option>';
+      html += '      <option value="HAS_SLIP"' + (state.statusFilter === 'HAS_SLIP' ? ' selected' : '') + '>✅ Signed Slip Uploaded</option>';
+      html += '      <option value="NO_SLIP"' + (state.statusFilter === 'NO_SLIP' ? ' selected' : '') + '>📎 Slip Upload Pending</option>';
       html += '    </select>';
     } else if (state.activeTab === 'deductions') {
       if (state.selectedFileName && state.selectedFileName !== 'ALL' && state.selectedFileName !== 'NONE') {
@@ -2502,7 +2912,10 @@
     var query = state.searchQuery.toLowerCase().trim();
     var filtered = (state.advances || []).filter(function(a) {
       if (!a) return false;
-      if (state.statusFilter !== 'ALL' && a.status !== state.statusFilter) return false;
+      var hasSlip = !!(a.signedSlip && a.signedSlip.slipId);
+      if (state.statusFilter === 'HAS_SLIP' && !hasSlip) return false;
+      if (state.statusFilter === 'NO_SLIP' && hasSlip) return false;
+      if (state.statusFilter !== 'ALL' && state.statusFilter !== 'HAS_SLIP' && state.statusFilter !== 'NO_SLIP' && a.status !== state.statusFilter) return false;
       if (state.filterTablesByMonth && getAdvanceMonthKey(a) !== state.selectedMonth) return false;
       if (state.selectedDateFilter && String(a.advanceDate || '').slice(0, 10) !== state.selectedDateFilter) return false;
       if (!query) return true;
@@ -2531,6 +2944,7 @@
     html += '      <th style="padding:10px 14px;text-align:right">Outstanding (₹)</th>';
     html += '      <th style="padding:10px 14px;text-align:center">Status</th>';
     html += '      <th style="padding:10px 14px">Remarks</th>';
+    html += '      <th style="padding:10px 14px;text-align:center">Signed Slip</th>';
     html += '      <th style="padding:10px 14px;text-align:center">Actions</th>';
     html += '    </tr>';
     html += '  </thead>';
@@ -2553,6 +2967,17 @@
       html += '      <td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#64748b') + '">' + formatINR(adv.balanceAmount) + '</td>';
       html += '      <td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:0.3px;' + pillClass + '">' + esc(adv.status) + '</span></td>';
       html += '      <td style="padding:10px 14px;color:#64748b;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(adv.remarks) + '">' + esc(adv.remarks || '—') + '</td>';
+      var slipMeta = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
+      if (slipMeta) {
+        var slipSub = slipMeta.signedBy ? (' · ' + slipMeta.signedBy) : '';
+        html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">' +
+                '        <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="height:26px;padding:0 10px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800" title="' + esc((slipMeta.fileName || 'Signed Slip') + slipSub) + '">✅ Slip' + (slipMeta.signedBy ? ' (' + esc(slipMeta.signedBy) + ')' : '') + '</button>' +
+                '      </td>';
+      } else {
+        html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">' +
+                '        <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="height:26px;padding:0 10px;border:1px dashed #818cf8;background:#eef2ff;color:#312e81;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800" title="Diary / Director Signed Advance Slip Upload Karein">📎 Upload Slip</button>' +
+                '      </td>';
+      }
       html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">';
       html += '        <button onclick="ATPLAdvanceManager.viewEmployeeHistory(\'' + esc(adv.empCode) + '\')" style="height:26px;padding:0 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800;margin-right:4px" title="Employee History (Salary + Manual)">📜 History</button>';
       if (adv.balanceAmount > 0) {
@@ -2831,6 +3256,7 @@
   function openNewModal(prefillCode) {
     state.editingAdvanceId = null;
     state.openHistoryEmpCode = null;
+    state.stagedFormSlip = null;
     var emp = prefillCode ? findEmployeeByCode(prefillCode) : null;
     var outBal = prefillCode ? getEmployeeOutstandingBalance(prefillCode) : 0;
     var modal = getOrCreateModal();
@@ -2894,6 +3320,22 @@
     content += '      <div>';
     content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:5px">Remarks / Reason</label>';
     content += '        <input type="text" id="advFormRemarks" placeholder="e.g. Festival Advance, Medical Need, Urgent Loan" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
+    content += '      </div>';
+    content += '      <div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;padding:12px">';
+    content += '        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    content += '          <label style="font-size:10px;font-weight:850;color:#312e81;text-transform:uppercase;letter-spacing:0.7px">📎 Diary / Director Signed Slip (Optional · Syncs All Browsers)</label>';
+    content += '          <select id="advFormSlipSignedBy" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;font-size:11px;font-weight:700;color:#334155">';
+    content += '            <option value="">Signed By (Optional)</option>';
+    SIGNED_BY_OPTIONS.forEach(function(nm) {
+      content += '            <option value="' + esc(nm) + '">' + esc(nm) + '</option>';
+    });
+    content += '          </select>';
+    content += '        </div>';
+    content += '        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    content += '          <input type="file" id="advFormSlipFile" accept="image/*,.pdf" onchange="ATPLAdvanceManager.onFormSlipFileChange(this)" style="flex:1;min-width:190px;font-size:11px;color:#475569">';
+    content += '          <button type="button" onclick="ATPLAdvanceManager.clearFormSlip()" style="padding:5px 10px;background:#fff;border:1px solid #d1d5db;border-radius:6px;font-size:10px;font-weight:700;color:#64748b;cursor:pointer">Clear</button>';
+    content += '        </div>';
+    content += '        <div id="advFormSlipStatus" style="margin-top:6px;font-size:10.5px;color:#64748b">Photo ya PDF upload karein (automatic compress hokar sabhi browsers me sync hogi).</div>';
     content += '      </div>';
     content += '    </div>';
 
@@ -2997,8 +3439,13 @@
     var emp = findEmployeeByCode(code);
     var empName = emp ? emp.name : ('Employee ' + code);
 
+    var recordId = state.editingAdvanceId || ('adv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+    var pendingFormSlip = state.stagedFormSlip;
+    var slipSignedByEl = document.getElementById('advFormSlipSignedBy');
+    var slipSignedBy = slipSignedByEl ? String(slipSignedByEl.value || '').trim() : '';
+
     var success = addOrUpdateAdvance({
-      id: state.editingAdvanceId || undefined,
+      id: recordId,
       empCode: String(code).trim(),
       empName: empName,
       advanceDate: date,
@@ -3008,8 +3455,49 @@
     });
 
     if (success) {
+      state.stagedFormSlip = null;
       closeModal();
+      if (pendingFormSlip && pendingFormSlip.dataUrl) {
+        uploadAdvanceSlip(recordId, Object.assign({}, pendingFormSlip, { signedBy: slipSignedBy })).then(function(uRes) {
+          if (window.showToast) {
+            if (uRes && uRes.synced) {
+              window.showToast('✅ Advance & Signed Slip dono save aur sabhi browsers me sync ho gaye!');
+            } else if (uRes && uRes.ok) {
+              window.showToast('✅ Signed Slip saved locally & syncing to cloud...');
+            }
+          }
+        });
+      }
     }
+  }
+
+  function onFormSlipFileChange(input) {
+    var file = input && input.files && input.files[0];
+    var statusEl = document.getElementById('advFormSlipStatus');
+    if (!file) {
+      state.stagedFormSlip = null;
+      if (statusEl) statusEl.innerHTML = 'Photo ya PDF upload karein (automatic compress hokar sabhi browsers me sync hogi).';
+      return;
+    }
+    if (statusEl) statusEl.innerHTML = '<span style="color:#4f46e5;font-weight:700">⏳ File prepare &amp; compress ho rahi hai...</span>';
+    readAndCompressSlipFile(file).then(function(comp) {
+      state.stagedFormSlip = comp;
+      if (statusEl) {
+        statusEl.innerHTML = '<span style="color:#15803d;font-weight:800">✅ Ready: ' + esc(comp.fileName) + ' (' + formatSlipSize(comp.size) + ')</span>';
+      }
+    }).catch(function(err) {
+      state.stagedFormSlip = null;
+      if (input) input.value = '';
+      if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626;font-weight:700">⚠️ ' + esc(err && err.message ? err.message : 'File read failed') + '</span>';
+    });
+  }
+
+  function clearFormSlip() {
+    state.stagedFormSlip = null;
+    var inp = document.getElementById('advFormSlipFile');
+    if (inp) inp.value = '';
+    var statusEl = document.getElementById('advFormSlipStatus');
+    if (statusEl) statusEl.innerHTML = 'Photo ya PDF upload karein (automatic compress hokar sabhi browsers me sync hogi).';
   }
 
   function editAdvance(id) {
@@ -3027,7 +3515,257 @@
       if (aInp) aInp.value = adv.amount || '';
       if (cInp) cInp.value = adv.monthlyCap || 0;
       if (rInp) rInp.value = adv.remarks || '';
+      var sByInp = document.getElementById('advFormSlipSignedBy');
+      var sSt = document.getElementById('advFormSlipStatus');
+      if (adv.signedSlip && adv.signedSlip.slipId) {
+        if (sByInp && adv.signedSlip.signedBy) sByInp.value = adv.signedSlip.signedBy;
+        if (sSt) sSt.innerHTML = '<span style="color:#15803d;font-weight:800">✅ Existing Slip Saved: ' + esc(adv.signedSlip.fileName || 'Signed Slip') + ' (Nayi file chunein sirf replace karne ke liye)</span>';
+      }
     }, 50);
+  }
+
+  // ── SIGNED ADVANCE SLIP MODAL (UPLOAD / VIEW / SYNC ACROSS BROWSERS) ──
+  function renderSlipPreviewHtml(slipPayload) {
+    if (!slipPayload || !slipPayload.dataUrl) {
+      return '<div style="padding:28px 16px;text-align:center;color:#94a3b8;font-size:12px">Abhi koi signed slip upload nahi hui hai.<br>Upar se Diary / Director sign wali photo ya PDF select karein.</div>';
+    }
+    var isPdf = String(slipPayload.mimeType || '').toLowerCase().indexOf('pdf') >= 0 || /^data:application\/pdf/i.test(slipPayload.dataUrl);
+    if (isPdf) {
+      return '<iframe src="' + slipPayload.dataUrl + '" style="width:100%;height:340px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"></iframe>';
+    }
+    return '<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px"><img src="' + slipPayload.dataUrl + '" alt="Signed Advance Slip" style="max-width:100%;max-height:360px;border-radius:6px;object-fit:contain;box-shadow:0 4px 12px rgba(15,23,42,0.12)"></div>';
+  }
+
+  function openSlipModal(advanceId) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return;
+    state.openSlipAdvanceId = advanceId;
+    state.stagedModalSlip = null;
+    var modal = getOrCreateModal();
+    var meta = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
+    var defaultSignedBy = (meta && meta.signedBy) || '';
+    var defaultNote = (meta && meta.note) || '';
+
+    var content = '';
+    content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+
+    content += '    <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
+    content += '      <div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#4f46e5;text-transform:uppercase">DIARY / DIRECTOR SIGNED ADVANCE SLIP</div>';
+    content += '        <h3 style="margin:2px 0 0;font-size:17px;font-weight:850;color:#111827">' + esc(adv.empName) + ' <span style="font-family:monospace;color:#312e81;font-size:14px">(' + esc(adv.empCode) + ')</span></h3>';
+    content += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Advance Date: <strong>' + esc(adv.advanceDate || '-') + '</strong> · Amount: <strong style="color:#111827">' + formatINR(adv.amount) + '</strong> · Bal: <strong style="color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</strong></div>';
+    content += '      </div>';
+    content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #e5e7eb;background:#f9fafb;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
+    content += '    </div>';
+
+    content += '    <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;background:#fff">';
+    content += '      <div id="advSlipErrorBox" style="display:none;padding:9px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:11.5px;font-weight:700"></div>';
+
+    content += '      <div style="background:#f8fafc;border:1.5px dashed #818cf8;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">';
+    content += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    content += '          <div>';
+    content += '            <label style="display:block;font-size:9.5px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Director Signed By (Optional)</label>';
+    content += '            <select id="advSlipSignedBy" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#111827">';
+    content += '              <option value="">Select Director Sign...</option>';
+    SIGNED_BY_OPTIONS.forEach(function(nm) {
+      content += '              <option value="' + esc(nm) + '"' + (defaultSignedBy === nm ? ' selected' : '') + '>' + esc(nm) + '</option>';
+    });
+    content += '              <option value="Other"' + (defaultSignedBy === 'Other' ? ' selected' : '') + '>Other</option>';
+    content += '            </select>';
+    content += '          </div>';
+    content += '          <div>';
+    content += '            <label style="display:block;font-size:9.5px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Diary / Slip Note (Optional)</label>';
+    content += '            <input type="text" id="advSlipNote" value="' + esc(defaultNote) + '" placeholder="e.g. Diary Pg 14 · Account Sent" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;color:#111827">';
+    content += '          </div>';
+    content += '        </div>';
+    content += '        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">';
+    content += '          <input type="file" id="advSlipFileInput" accept="image/*,.pdf" onchange="ATPLAdvanceManager.onSlipFileSelected(this)" style="flex:1;min-width:210px;font-size:11.5px;color:#334155">';
+    content += '          <span id="advSlipFileStatus" style="font-size:10.5px;font-weight:700;color:#475569">' + (meta ? ('Saved: ' + esc(meta.fileName) + (meta.size ? ' (' + formatSlipSize(meta.size) + ')' : '')) : 'Photo / PDF select karein') + '</span>';
+    content += '        </div>';
+    content += '      </div>';
+
+    content += '      <div id="advSlipPreviewBox" style="min-height:120px">';
+    if (meta) {
+      content += '        <div style="padding:36px 16px;text-align:center;color:#4f46e5;font-size:12px;font-weight:700">☁️ Signed slip load ho rahi hai...</div>';
+    } else {
+      content += renderSlipPreviewHtml(null);
+    }
+    content += '      </div>';
+
+    content += '    </div>';
+
+    content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc">';
+    content += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
+    if (meta) {
+      content += '        <button type="button" onclick="ATPLAdvanceManager.downloadSlip(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">⬇ Download</button>';
+      content += '        <button type="button" onclick="ATPLAdvanceManager.printSlip(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🖨 Print</button>';
+      content += '        <button type="button" onclick="ATPLAdvanceManager.removeSlipModal(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🗑 Remove Slip</button>';
+    }
+    content += '      </div>';
+    content += '      <div style="display:flex;gap:8px;align-items:center">';
+    content += '        <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 14px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Close</button>';
+    content += '        <button type="button" id="advSlipSaveBtn" onclick="ATPLAdvanceManager.saveSlipModal(\'' + esc(adv.id) + '\')" style="padding:8px 18px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">☁️ Save &amp; Sync Slip</button>';
+    content += '      </div>';
+    content += '    </div>';
+
+    content += '  </div>';
+    content += '</div>';
+    modal.innerHTML = content;
+
+    if (meta) {
+      fetchAdvanceSlipData(advanceId).then(function(payload) {
+        if (state.openSlipAdvanceId !== advanceId) return;
+        var box = document.getElementById('advSlipPreviewBox');
+        if (!box) return;
+        if (payload && payload.dataUrl) {
+          box.innerHTML = renderSlipPreviewHtml(payload);
+        } else {
+          box.innerHTML = '<div style="padding:24px;text-align:center;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:11.5px;font-weight:700">⚠️ Cloud se slip abhi fetch nahi ho paayi. Sync dabakar retry karein ya nayi slip upload karein.</div>';
+        }
+      });
+    }
+  }
+
+  function showSlipModalError(msg) {
+    var box = document.getElementById('advSlipErrorBox');
+    if (box) {
+      box.textContent = msg;
+      box.style.display = 'block';
+    } else if (window.showToast) {
+      window.showToast('⚠️ ' + msg);
+    }
+  }
+
+  function onSlipFileSelected(input) {
+    var file = input && input.files && input.files[0];
+    var statusEl = document.getElementById('advSlipFileStatus');
+    var previewEl = document.getElementById('advSlipPreviewBox');
+    var errEl = document.getElementById('advSlipErrorBox');
+    if (errEl) errEl.style.display = 'none';
+    if (!file) return;
+    if (statusEl) statusEl.innerHTML = '<span style="color:#4f46e5">⏳ Compressing...</span>';
+    readAndCompressSlipFile(file).then(function(comp) {
+      state.stagedModalSlip = comp;
+      if (statusEl) statusEl.innerHTML = '<span style="color:#15803d">✅ Ready: ' + esc(comp.fileName) + ' (' + formatSlipSize(comp.size) + ')</span>';
+      if (previewEl) previewEl.innerHTML = renderSlipPreviewHtml(comp);
+    }).catch(function(err) {
+      state.stagedModalSlip = null;
+      showSlipModalError(err && err.message ? err.message : 'Slip file read nahi ho saki.');
+      if (statusEl) statusEl.innerHTML = '<span style="color:#dc2626">Failed</span>';
+    });
+  }
+
+  async function saveSlipModal(advanceId) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return;
+    var signedBy = String((document.getElementById('advSlipSignedBy') || {}).value || '').trim();
+    var note = String((document.getElementById('advSlipNote') || {}).value || '').trim();
+    var saveBtn = document.getElementById('advSlipSaveBtn');
+
+    if (!state.stagedModalSlip) {
+      if (adv.signedSlip && adv.signedSlip.slipId) {
+        var existingPayload = await fetchAdvanceSlipData(advanceId);
+        if (existingPayload && existingPayload.dataUrl) {
+          if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Syncing...'; }
+          var updRes = await uploadAdvanceSlip(advanceId, Object.assign({}, existingPayload, { signedBy: signedBy, note: note }));
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '☁️ Save & Sync Slip'; }
+          if (updRes && updRes.ok) {
+            closeModal();
+            if (window.showToast) window.showToast(updRes.synced ? '✅ Slip details updated & synced!' : '✅ Slip details saved locally.');
+          }
+          return updRes;
+        }
+      }
+      showSlipModalError('Pehle Diary / Director signed slip ki photo ya PDF choose karein.');
+      return { ok: false, error: 'NO_FILE_SELECTED' };
+    }
+
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Uploading & Syncing...'; }
+    var res = await uploadAdvanceSlip(advanceId, Object.assign({}, state.stagedModalSlip, { signedBy: signedBy, note: note }));
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '☁️ Save & Sync Slip'; }
+
+    if (res && res.ok) {
+      state.stagedModalSlip = null;
+      closeModal();
+      if (window.showToast) {
+        window.showToast(res.synced
+          ? '✅ Signed Advance Slip uploaded & synced across all browsers!'
+          : '✅ Signed Advance Slip saved locally. Cloud sync queued.');
+      }
+    } else {
+      showSlipModalError('Slip upload me error aayi. Dobara try karein.');
+    }
+    return res;
+  }
+
+  async function removeSlipModal(advanceId) {
+    if (typeof window.confirm === 'function' && !window.confirm('Kya aap is advance ki uploaded Signed Slip remove karna chahte hain?')) {
+      return false;
+    }
+    await removeAdvanceSlip(advanceId);
+    closeModal();
+    if (window.showToast) window.showToast('🗑 Signed Slip removed & synced across browsers.');
+    return true;
+  }
+
+  async function downloadSlip(advanceId) {
+    var payload = await fetchAdvanceSlipData(advanceId);
+    if (!payload || !payload.dataUrl) {
+      if (window.showToast) window.showToast('⚠️ Slip data load nahi ho paaya.');
+      return false;
+    }
+    try {
+      var a = document.createElement('a');
+      a.href = payload.dataUrl;
+      a.download = payload.fileName || ('ATPL_Advance_Slip_' + (payload.empCode || 'doc') + '.jpg');
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function printSlip(advanceId) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    var payload = await fetchAdvanceSlipData(advanceId);
+    if (!payload || !payload.dataUrl) {
+      if (window.showToast) window.showToast('⚠️ Slip data print ke liye ready nahi hai.');
+      return false;
+    }
+    var isPdf = String(payload.mimeType || '').toLowerCase().indexOf('pdf') >= 0 || /^data:application\/pdf/i.test(payload.dataUrl);
+    if (isPdf) {
+      return downloadSlip(advanceId);
+    }
+    try {
+      var frame = document.getElementById('atplAdvSlipPrintFrame');
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.id = 'atplAdvSlipPrintFrame';
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        document.body.appendChild(frame);
+      }
+      var cw = frame.contentWindow;
+      var cdoc = frame.contentDocument || (cw && cw.document);
+      if (cdoc) {
+        cdoc.open();
+        cdoc.write('<!doctype html><html><head><title>Signed Advance Slip</title></head><body style="font-family:sans-serif;padding:18px;text-align:center"><h3 style="margin:0 0 6px">ARORA TEXTILES PRIVATE LIMITED — SIGNED ADVANCE SLIP</h3><div style="font-size:12px;margin-bottom:12px">' + esc((adv && adv.empName) || '') + ' (' + esc((adv && adv.empCode) || '') + ') · ' + esc((adv && adv.advanceDate) || '') + ' · ' + formatINR((adv && adv.amount) || 0) + (payload.signedBy ? ' · Signed: ' + esc(payload.signedBy) : '') + '</div><img src="' + payload.dataUrl + '" style="max-width:100%;max-height:92vh;border:1px solid #cbd5e1"></body></html>');
+        cdoc.close();
+      }
+      setTimeout(function() {
+        try { if (cw) { cw.focus(); cw.print(); } } catch (_) {}
+      }, 200);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   function confirmDelete(id) {
@@ -3384,7 +4122,7 @@
     } else {
       content += '        <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">';
       content += '          <table style="width:100%;border-collapse:collapse;font-size:11.5px;text-align:left">';
-      content += '            <thead><tr style="background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800"><th style="padding:8px 12px">Advance Date</th><th style="padding:8px 12px;text-align:right">Given (₹)</th><th style="padding:8px 12px;text-align:right">Recovered (₹)</th><th style="padding:8px 12px;text-align:right">Remaining (₹)</th><th style="padding:8px 12px">Status</th><th style="padding:8px 12px">Remarks</th></tr></thead>';
+      content += '            <thead><tr style="background:#f8fafc;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:9.5px;text-transform:uppercase;font-weight:800"><th style="padding:8px 12px">Advance Date</th><th style="padding:8px 12px;text-align:right">Given (₹)</th><th style="padding:8px 12px;text-align:right">Recovered (₹)</th><th style="padding:8px 12px;text-align:right">Remaining (₹)</th><th style="padding:8px 12px">Status</th><th style="padding:8px 12px">Remarks</th><th style="padding:8px 12px;text-align:center">Signed Slip</th></tr></thead>';
       content += '            <tbody>';
       hist.advances.forEach(function(a) {
         content += '              <tr style="border-bottom:1px solid #f1f5f9">';
@@ -3394,6 +4132,12 @@
         content += '                <td style="padding:8px 12px;text-align:right;font-weight:800;color:' + (a.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(a.balanceAmount) + '</td>';
         content += '                <td style="padding:8px 12px;font-weight:800;font-size:10px;color:' + (a.status === 'REPAID' ? '#15803d' : '#b45309') + '">' + esc(a.status) + '</td>';
         content += '                <td style="padding:8px 12px;color:#64748b">' + esc(a.remarks || '—') + '</td>';
+        var hSlip = a.signedSlip && a.signedSlip.slipId ? a.signedSlip : null;
+        if (hSlip) {
+          content += '                <td style="padding:8px 12px;text-align:center;white-space:nowrap"><button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(a.id) + '\')" style="padding:4px 9px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">✅ View Slip</button></td>';
+        } else {
+          content += '                <td style="padding:8px 12px;text-align:center;white-space:nowrap"><button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(a.id) + '\')" style="padding:4px 9px;border:1px dashed #818cf8;background:#eef2ff;color:#312e81;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">📎 Upload Slip</button></td>';
+        }
         content += '              </tr>';
       });
       content += '            </tbody></table></div>';
@@ -3517,6 +4261,14 @@
     content += '      <div><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Balance Remaining</div><div style="font-size:17px;font-weight:850;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</div><div style="font-size:10px;font-weight:800;color:' + (adv.status === 'REPAID' ? '#15803d' : '#b45309') + '">' + esc(adv.status) + '</div></div>';
     content += '    </div>';
 
+    var sSlip = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
+    content += '    <div style="padding:12px 22px;border-bottom:1px solid #e5e7eb;background:' + (sSlip ? '#f0fdf4' : '#eef2ff') + ';display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+    content += '      <div>';
+    content += '        <div style="font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:0.6px;color:' + (sSlip ? '#15803d' : '#312e81') + '">' + (sSlip ? '✅ Diary / Director Signed Advance Slip Saved' : '📎 Diary / Director Signed Advance Slip Pending') + '</div>';
+    content += '        <div style="font-size:11px;color:#475569;margin-top:2px">' + (sSlip ? (esc(sSlip.fileName || 'Signed Slip') + (sSlip.signedBy ? ' · Signed by: ' + esc(sSlip.signedBy) : '') + (sSlip.size ? ' (' + formatSlipSize(sSlip.size) + ')' : '')) : 'Director sign wali diary slip upload karein taaki Account me record aur saare browsers me sync rahe.') + '</div>';
+    content += '      </div>';
+    content += '      <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="padding:7px 13px;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;border:none;background:' + (sSlip ? '#15803d' : '#312e81') + ';color:#fff">' + (sSlip ? '👁 View / Print Slip' : '📎 Upload Signed Slip') + '</button>';
+    content += '    </div>';
     content += '    <div style="padding:18px 22px;max-height:320px;overflow-y:auto;background:#ffffff">';
     content += '      <h4 style="margin:0 0 10px;font-size:11px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:0.6px">Deductions History (Salary Sheet + Manual)</h4>';
 
@@ -4127,6 +4879,9 @@
 
   function closeModal() {
     state.openHistoryEmpCode = null;
+    state.openSlipAdvanceId = null;
+    state.stagedFormSlip = null;
+    state.stagedModalSlip = null;
     var modal = document.getElementById('advModal');
     if (modal) modal.innerHTML = '';
   }
@@ -5395,6 +6150,17 @@
     confirmDelete: confirmDelete,
     viewStatement: viewStatement,
     viewEmployeeHistory: viewEmployeeHistory,
+    openSlipModal: openSlipModal,
+    onSlipFileSelected: onSlipFileSelected,
+    saveSlipModal: saveSlipModal,
+    removeSlipModal: removeSlipModal,
+    downloadSlip: downloadSlip,
+    printSlip: printSlip,
+    uploadAdvanceSlip: uploadAdvanceSlip,
+    fetchAdvanceSlipData: fetchAdvanceSlipData,
+    removeAdvanceSlip: removeAdvanceSlip,
+    onFormSlipFileChange: onFormSlipFileChange,
+    clearFormSlip: clearFormSlip,
     syncNow: async function(manual) {
       var btn = document.getElementById('advSyncBtn');
       if (btn) btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">🔄</span>';
