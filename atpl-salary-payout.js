@@ -1,16 +1,19 @@
 /* ============================================================================
  * ATPLSalaryPayout — Monthly Salary, Emp Adjustment Points (+/-),
- * Compliance Bank Return Re-Transfer & Multi-Part Diff Payouts Dashboard
+ * Compliance Sheet & Bank Return Re-Transfer, & Multi-Part Diff Payouts
  * ----------------------------------------------------------------------------
  * Features:
- *  1. Month-Wise Salary Dashboard (Compliance + Diff + Net Adjustment Points)
- *  2. Emp Code Salary Adjustment Points (+ Extra / - Less / Note) synced real-time
- *  3. Compliance 1-Time Status + Bank Return & Account Change Re-Transfer Queue
- *     (optionally syncs corrected Bank A/C & IFSC back to Employee Master)
- *  4. Diff Multi-Part Payout Batches (4-6+ Parts: Workers ₹4-5L, Staff ₹1-2L,
- *     2-3 Leaders, Part Payments & Small Leftover <= ₹500 clearance like ₹150)
+ *  1. Two Clear Payment Sheet Workflows (Bank Excel/CSV + Manual Entry):
+ *     - Compliance Salary Sheet / Manual + Bank Return & A/C Change Re-Pay
+ *     - Diff Master Sheet / Manual / Missed Late Diff + Multi-Part Payout Batches
+ *  2. Inside Each Diff Batch (Part 1..6+): Upload Bank Payment Sheet OR enter
+ *     Emp Code + Amount + Remarks manually (Workers ₹4-5L, Staff ₹1-2L,
+ *     2-3 Leaders Lot, & Small Leftover <= ₹500 clearance like ₹150)
+ *  3. Dashboard Totals: Compliance Di, Diff Total, Diff Di (Paid),
+ *     Diff Baaki / Chhoota Hua (Leftover), & Emp Adjustment Points (+/-)
+ *  4. Full Edit & Delete with Tombstones on every Ledger, Point, Return & Batch
  *  5. Cross-Browser Cloud Sync: Google Drive/GAS + /api/sync/salary-payout +
- *     SSE + BroadcastChannel + localStorage + Tombstone Delete Protection
+ *     SSE + BroadcastChannel + localStorage
  * ============================================================================ */
 (function(window) {
   'use strict';
@@ -66,7 +69,6 @@
     activeTab: 'overview', // 'overview' | 'points' | 'compliance' | 'diff'
     searchQuery: '',
     overviewFilter: 'ALL', // 'ALL' | 'DIFF_PENDING' | 'LEFTOVER_SMALL' | 'HAS_POINTS' | 'RETURN_PENDING'
-    pointFilterStatus: 'ALL',
     monthSummaries: {},
     empSalaries: {},
     points: {},
@@ -76,6 +78,7 @@
     editingPointId: null,
     editingReturnId: null,
     editingBatchId: null,
+    _batchExtraRows: [],
     lastSyncAt: ''
   };
 
@@ -153,8 +156,7 @@
         };
       }
     }
-    // Fallback to existing monthly salary record if EM not loaded yet
-    var salKey = state.selectedMonth + '::' + String(code).trim();
+    var salKey = state.selectedMonth + '::' + norm;
     var sal = state.empSalaries[salKey];
     if (!sal) {
       var allSal = Object.values(state.empSalaries || {});
@@ -176,6 +178,28 @@
         bankName: sal.bankName || '',
         status: 'ACTIVE'
       };
+    }
+    return null;
+  }
+
+  function findEmployeeByAccount(accNo) {
+    var cleanAcc = String(accNo || '').replace(/\s+/g, '').replace(/^0+/, '');
+    if (!cleanAcc) return null;
+    var list = getEmployeeMasterList();
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (!e) continue;
+      var ec = String(e.account_no || e.accountNo || e.bank_account || e['A/C No'] || '').replace(/\s+/g, '').replace(/^0+/, '');
+      if (ec && ec === cleanAcc) {
+        return {
+          empCode: String(e.emp_id || e.empCode || e.code || '').trim(),
+          name: String(e.name || e.emp_name || '').trim(),
+          dept: String(e.dept || e.department || '').trim(),
+          desig: String(e.desig || e.designation || '').trim(),
+          accountNo: String(e.account_no || e.accountNo || '').trim(),
+          ifsc: String(e.ifsc || e.ifsc_code || '').trim()
+        };
+      }
     }
     return null;
   }
@@ -336,7 +360,6 @@
     sections.forEach(function(sec) {
       var localMap = state[sec] || {};
       var remoteMap = (cloud[sec] && typeof cloud[sec] === 'object') ? cloud[sec] : {};
-      // Prune local records superseded by tombstones
       Object.keys(localMap).forEach(function(id) {
         var tTs = Date.parse(state.tombstones[id] || 0) || 0;
         var rTs = Date.parse((localMap[id] && (localMap[id].updatedAt || localMap[id].createdAt)) || 0) || 0;
@@ -626,7 +649,7 @@
   function computeMonthLedger(monthKey) {
     var mk = monthKey || state.selectedMonth;
     var summary = getMonthSummary(mk);
-    var empMap = {}; // normCode -> row
+    var empMap = {};
 
     function ensureRow(empCode, hint) {
       var norm = normalizeCode(empCode);
@@ -635,6 +658,7 @@
         var em = findEmployeeByCode(empCode);
         empMap[norm] = {
           normCode: norm,
+          salId: (hint && hint.id) || (mk + '::' + norm),
           empCode: (hint && hint.empCode) || (em && em.empCode) || String(empCode).trim(),
           empName: (hint && hint.empName) || (em && em.name) || ('Employee ' + empCode),
           dept: (hint && hint.dept) || (em && em.dept) || '',
@@ -644,6 +668,10 @@
           manualAmount: Number(hint && hint.manualAmount) || 0,
           complianceAmount: Number(hint && hint.complianceAmount) || 0,
           baseDiffAmount: Number(hint && hint.baseDiffAmount) || 0,
+          missedDiffAmount: Number(hint && hint.missedDiffAmount) || 0,
+          remarks: String((hint && hint.remarks) || '').trim(),
+          sourceFile: String((hint && hint.sourceFile) || '').trim(),
+          hasSalaryRecord: !!(hint && hint.hasSalaryRecord),
           plusPoints: 0,
           minusPoints: 0,
           noteCount: 0,
@@ -661,8 +689,10 @@
     // 1. Imported / manually entered month salary rows
     Object.values(state.empSalaries || {}).forEach(function(s) {
       if (!s || s.monthKey !== mk || state.tombstones[s.id]) return;
-      var row = ensureRow(s.empCode, s);
+      var row = ensureRow(s.empCode, Object.assign({}, s, { hasSalaryRecord: true }));
       if (!row) return;
+      row.salId = s.id;
+      row.hasSalaryRecord = true;
       row.empCode = s.empCode || row.empCode;
       row.empName = s.empName || row.empName;
       row.dept = s.dept || row.dept;
@@ -672,6 +702,9 @@
       row.manualAmount = round2(Number(s.manualAmount) || 0);
       row.complianceAmount = round2(Number(s.complianceAmount) || 0);
       row.baseDiffAmount = round2(Number(s.baseDiffAmount) || 0);
+      row.missedDiffAmount = round2(Number(s.missedDiffAmount) || 0);
+      row.remarks = s.remarks || row.remarks || '';
+      row.sourceFile = s.sourceFile || row.sourceFile || '';
     });
 
     // 2. Emp Adjustment Points (+/-)
@@ -737,6 +770,7 @@
             partNumber: b.partNumber,
             title: b.title,
             amount: aAmt,
+            remarks: al.remarks || '',
             status: b.status || 'DISBURSED'
           });
         }
@@ -755,7 +789,9 @@
 
     // 5. Finalize per-employee Net Diff & Leftover
     var rows = Object.values(empMap).map(function(r) {
-      r.netDiffAmount = Math.max(0, round2(r.baseDiffAmount + r.plusPoints - r.minusPoints));
+      var effectiveBaseDiff = round2(r.baseDiffAmount + r.missedDiffAmount);
+      r.effectiveBaseDiff = effectiveBaseDiff;
+      r.netDiffAmount = Math.max(0, round2(effectiveBaseDiff + r.plusPoints - r.minusPoints));
       r.diffRemaining = Math.max(0, round2(r.netDiffAmount - r.diffPaid));
       r.isSmallLeftover = r.diffRemaining > 0 && r.diffRemaining <= 500;
       return r;
@@ -764,18 +800,21 @@
     });
 
     var empComplianceSum = rows.reduce(function(acc, r) { return round2(acc + r.complianceAmount); }, 0);
-    var empBaseDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.baseDiffAmount); }, 0);
+    var empBaseDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.effectiveBaseDiff); }, 0);
     var empNetDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.netDiffAmount); }, 0);
+    var empMissedDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.missedDiffAmount); }, 0);
     var empDiffRemainingSum = rows.reduce(function(acc, r) { return round2(acc + r.diffRemaining); }, 0);
     var smallLeftoverRows = rows.filter(function(r) { return r.isSmallLeftover; });
     var smallLeftoverTotal = smallLeftoverRows.reduce(function(acc, r) { return round2(acc + r.diffRemaining); }, 0);
 
-    var complianceTotal = round2(Number(summary.complianceTarget) || 0) > 0 ? round2(Number(summary.complianceTarget)) : empComplianceSum;
-    var diffTargetBase = round2(Number(summary.diffTarget) || 0) > 0 ? round2(Number(summary.diffTarget)) : empNetDiffSum;
-    // If summary diffTarget is set explicitly without emp rows, apply net points impact too
-    var diffTotal = round2(Number(summary.diffTarget) || 0) > 0 && empBaseDiffSum === 0
-      ? Math.max(0, round2(diffTargetBase + totalPlusPoints - totalMinusPoints))
-      : Math.max(diffTargetBase, empNetDiffSum);
+    var compTarget = round2(Number(summary.complianceTarget) || 0);
+    var complianceTotal = compTarget > 0 && empComplianceSum === 0 ? compTarget : (empComplianceSum > 0 ? Math.max(compTarget, empComplianceSum) : compTarget);
+    var complianceEmpCount = rows.filter(function(r) { return r.complianceAmount > 0; }).length;
+
+    var diffTarget = round2(Number(summary.diffTarget) || 0);
+    var diffTotal = diffTarget > 0 && empBaseDiffSum === 0
+      ? Math.max(0, round2(diffTarget + totalPlusPoints - totalMinusPoints))
+      : Math.max(diffTarget, empNetDiffSum);
 
     var diffRemainingTotal = empNetDiffSum > 0 && lumpSumUnallocated === 0
       ? empDiffRemainingSum
@@ -789,7 +828,9 @@
       returns: rets,
       batches: batches,
       complianceTotal: complianceTotal,
+      complianceEmpCount: complianceEmpCount,
       diffTotal: diffTotal,
+      empMissedDiffSum: empMissedDiffSum,
       totalMonthSalary: round2(complianceTotal + diffTotal),
       totalBatchPaid: totalBatchPaidAll,
       totalBatchPlanned: totalBatchPlannedAll,
@@ -805,7 +846,7 @@
     };
   }
 
-  // ── CRUD OPERATIONS (WITH REAL-TIME CLOUD SYNC) ──
+  // ── CRUD OPERATIONS (WITH REAL-TIME CLOUD SYNC & TOMBSTONES) ──
   function setSelectedMonth(mk) {
     if (!mk) return;
     state.selectedMonth = String(mk).trim();
@@ -861,6 +902,13 @@
     var em = findEmployeeByCode(code);
     var prev = state.empSalaries[id];
     var nowIso = new Date().toISOString();
+
+    // Support adding missed/chhoota diff cleanly on top of existing row
+    var missedAdd = payload.addMissedDiff !== undefined ? Math.max(0, round2(Number(payload.addMissedDiff) || 0)) : 0;
+    var nextMissed = payload.missedDiffAmount !== undefined
+      ? Math.max(0, round2(Number(payload.missedDiffAmount) || 0))
+      : round2(((prev && Number(prev.missedDiffAmount)) || 0) + missedAdd);
+
     var rec = {
       id: id,
       monthKey: mk,
@@ -868,11 +916,13 @@
       empName: String(payload.empName || (em && em.name) || (prev && prev.empName) || ('Employee ' + code)).trim(),
       dept: String(payload.dept || (em && em.dept) || (prev && prev.dept) || '').trim(),
       desig: String(payload.desig || (em && em.desig) || (prev && prev.desig) || '').trim(),
-      accountNo: String(payload.accountNo || (em && em.accountNo) || (prev && prev.accountNo) || '').trim(),
-      ifsc: String(payload.ifsc || (em && em.ifsc) || (prev && prev.ifsc) || '').trim(),
+      accountNo: String(payload.accountNo !== undefined ? payload.accountNo : ((em && em.accountNo) || (prev && prev.accountNo) || '')).trim(),
+      ifsc: String(payload.ifsc !== undefined ? payload.ifsc : ((em && em.ifsc) || (prev && prev.ifsc) || '')).trim(),
       manualAmount: round2(Number(payload.manualAmount !== undefined ? payload.manualAmount : (prev && prev.manualAmount)) || 0),
       complianceAmount: round2(Number(payload.complianceAmount !== undefined ? payload.complianceAmount : (prev && prev.complianceAmount)) || 0),
       baseDiffAmount: round2(Number(payload.baseDiffAmount !== undefined ? payload.baseDiffAmount : (prev && prev.baseDiffAmount)) || 0),
+      missedDiffAmount: nextMissed,
+      remarks: String(payload.remarks !== undefined ? payload.remarks : ((prev && prev.remarks) || '')).trim(),
       sourceFile: String(payload.sourceFile || (prev && prev.sourceFile) || 'Manual Entry').trim(),
       createdAt: (prev && prev.createdAt) || nowIso,
       updatedAt: nowIso
@@ -885,8 +935,21 @@
     return { ok: true, record: rec };
   }
 
-  function bulkImportMonthSalaries(monthKey, rowsList, sourceFile) {
+  function deleteEmpSalary(empCodeOrId) {
+    if (!empCodeOrId) return false;
+    var id = String(empCodeOrId).indexOf('::') >= 0 ? String(empCodeOrId) : (state.selectedMonth + '::' + normalizeCode(empCodeOrId));
+    if (!state.empSalaries[id]) return false;
+    delete state.empSalaries[id];
+    state.tombstones[id] = new Date().toISOString();
+    saveToLocal();
+    renderUI();
+    pushCloudNow('emp_salary_deleted');
+    return true;
+  }
+
+  function bulkImportMonthSalaries(monthKey, rowsList, sourceFile, sheetKind) {
     var mk = String(monthKey || state.selectedMonth).trim();
+    var kind = String(sheetKind || 'BOTH').toUpperCase(); // 'COMPLIANCE' | 'DIFF' | 'BOTH'
     if (!mk || !Array.isArray(rowsList) || !rowsList.length) return { ok: false, imported: 0 };
     var nowIso = new Date().toISOString();
     var count = 0;
@@ -897,6 +960,15 @@
       var em = findEmployeeByCode(code);
       var prev = state.empSalaries[id];
       delete state.tombstones[id];
+
+      var nextComp = kind === 'DIFF'
+        ? ((prev && Number(prev.complianceAmount)) || 0)
+        : round2(Number(item.complianceAmount) || 0);
+      var nextDiff = kind === 'COMPLIANCE'
+        ? ((prev && Number(prev.baseDiffAmount)) || 0)
+        : round2(Number(item.baseDiffAmount) || 0);
+      var nextManual = round2(Number(item.manualAmount) || (prev && Number(prev.manualAmount)) || 0);
+
       state.empSalaries[id] = {
         id: id,
         monthKey: mk,
@@ -906,9 +978,11 @@
         desig: String(item.desig || (em && em.desig) || (prev && prev.desig) || '').trim(),
         accountNo: String(item.accountNo || (em && em.accountNo) || (prev && prev.accountNo) || '').trim(),
         ifsc: String(item.ifsc || (em && em.ifsc) || (prev && prev.ifsc) || '').trim(),
-        manualAmount: round2(Number(item.manualAmount) || 0),
-        complianceAmount: round2(Number(item.complianceAmount) || 0),
-        baseDiffAmount: round2(Number(item.baseDiffAmount) || 0),
+        manualAmount: nextManual,
+        complianceAmount: nextComp,
+        baseDiffAmount: nextDiff,
+        missedDiffAmount: (prev && Number(prev.missedDiffAmount)) || 0,
+        remarks: String(item.remarks || (prev && prev.remarks) || '').trim(),
         sourceFile: String(sourceFile || item.sourceFile || 'Salary Sheet').trim(),
         createdAt: (prev && prev.createdAt) || nowIso,
         updatedAt: nowIso
@@ -918,9 +992,9 @@
     if (count > 0) {
       saveToLocal();
       renderUI();
-      pushCloudNow('bulk_import_salary');
+      pushCloudNow('bulk_import_' + kind.toLowerCase());
     }
-    return { ok: count > 0, imported: count };
+    return { ok: count > 0, imported: count, kind: kind };
   }
 
   function addOrUpdatePoint(payload) {
@@ -1021,7 +1095,6 @@
         } catch (_) {}
       }
     }
-    // Also update month salary snapshot if present
     var salKey = state.selectedMonth + '::' + norm;
     if (state.empSalaries[salKey]) {
       state.empSalaries[salKey].accountNo = newAccountNo;
@@ -1120,7 +1193,10 @@
       return {
         empCode: String(a.empCode).trim(),
         empName: String(a.empName || (em && em.name) || ('Employee ' + a.empCode)).trim(),
-        amount: round2(Number(a.amount) || 0)
+        amount: round2(Number(a.amount) || 0),
+        remarks: String(a.remarks || '').trim(),
+        accountNo: String(a.accountNo || (em && em.accountNo) || '').trim(),
+        ifsc: String(a.ifsc || (em && em.ifsc) || '').trim()
       };
     }) : [];
     var lumpSum = round2(Number(payload.lumpSumAmount) || 0);
@@ -1141,6 +1217,7 @@
       status: String(payload.status || 'DISBURSED').toUpperCase(),
       lumpSumAmount: lumpSum,
       notes: String(payload.notes || '').trim(),
+      sourceFile: String(payload.sourceFile || (prev && prev.sourceFile) || '').trim(),
       allocations: allocs,
       createdAt: (prev && prev.createdAt) || nowIso,
       updatedAt: nowIso
@@ -1174,7 +1251,7 @@
     return true;
   }
 
-  // ── SALARY SHEET PARSER (FROM window.FILES OR UPLOADED XLSX) ──
+  // ── UNIVERSAL BANK SHEET & SALARY SHEET PARSER ──
   function cleanHeader(v) {
     return String(v === null || v === undefined ? '' : v).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   }
@@ -1196,12 +1273,15 @@
     return -1;
   }
 
-  function extractSalaryRowsFromWorkbook(fileObj) {
+  // sheetKind: 'BOTH' | 'COMPLIANCE' | 'DIFF' | 'BATCH'
+  function extractSalaryRowsFromWorkbook(fileObj, sheetKind) {
     if (!fileObj || !fileObj.sheets) return [];
-    var byCode = {};
+    var kind = String(sheetKind || 'BOTH').toUpperCase();
+    var byKey = {};
+
     Object.keys(fileObj.sheets).forEach(function(sheetName) {
       var low = String(sheetName || '').toLowerCase();
-      if (/\b(summary|total|abstract|chart|challan|ecr|pf summary|esic summary|attendance|absent|ot sheet)\b/.test(low)) return;
+      if (/\b(summary|abstract|chart|challan|ecr|pf summary|esic summary|attendance|absent|ot sheet)\b/.test(low)) return;
       var grid = fileObj.sheets[sheetName];
       if (!Array.isArray(grid) || grid.length < 2) return;
       var hdrIdx = -1;
@@ -1209,60 +1289,98 @@
         var row = grid[r];
         if (!Array.isArray(row)) continue;
         var normRow = row.map(cleanHeader);
-        var hasCode = normRow.some(function(h) { return /\b(emp\s*code|emp\s*id|e\s*code|code|id\s*no)\b/.test(h); });
-        var hasMoney = normRow.some(function(h) { return /\b(diff|net|gross|manual|payable|bank|salary)\b/.test(h); });
-        if (hasCode && hasMoney) {
+        var hasId = normRow.some(function(h) {
+          return /\b(emp\s*code|emp\s*id|e\s*code|code|id\s*no|a\s*c\s*no|account\s*no|beneficiary\s*a\s*c)\b/.test(h);
+        });
+        var hasMoney = normRow.some(function(h) {
+          return /\b(diff|net|gross|manual|payable|bank|salary|amount|amt|transfer|cr\s*amt)\b/.test(h);
+        });
+        if (hasId && hasMoney) {
           hdrIdx = r;
           break;
         }
       }
       if (hdrIdx < 0) return;
+
       var h = grid[hdrIdx].map(cleanHeader);
-      var iCode = findHeaderIdx(h, [/^emp\s*code$/, /^emp\s*id$/, /^e\s*code$/, /\b(emp\s*code|emp\s*id|employee\s*code|e\s*code|code)\b/]);
-      if (iCode < 0) return;
-      var iName = findHeaderIdx(h, [/^emp\s*name$/, /^employee\s*name$/, /^name$/]);
+      var iCode = findHeaderIdx(h, [/^emp\s*code$/, /^emp\s*id$/, /^employee\s*id$/, /^e\s*code$/, /\b(emp\s*code|emp\s*id|employee\s*code|employee\s*id|beneficiary\s*code|e\s*code|code)\b/]);
+      var iAcc = findHeaderIdx(h, [/\b(a\s*c\s*no|account\s*no|bank\s*account|ac\s*no|beneficiary\s*account|beneficiary\s*a\s*c)\b/]);
+      if (iCode < 0 && iAcc < 0) return;
+
+      var iName = findHeaderIdx(h, [/^emp\s*name$/, /^employee\s*name$/, /^name\s*of\s*employee$/, /^beneficiary\s*name$/, /^name$/, /\b(name\s*of\s*employee|emp\s*name|employee\s*name|beneficiary\s*name)\b/]);
       var iDept = findHeaderIdx(h, [/\b(dept|department)\b/]);
       var iDesig = findHeaderIdx(h, [/\b(desig|designation)\b/]);
       var iManual = findHeaderIdx(h, [/\b(manual\s*amt|manual\s*amount|manual)\b/]);
       var iDiff = findHeaderIdx(h, [/\b(diff\s*amt|diff\s*amount|difference\s*amount|cash\s*diff|diff)\b/]);
-      var iComp = findHeaderIdx(h, [/\b(net\s*pay|net\s*payable|bank\s*transfer|compliance\s*net|net\s*salary|payable\s*bank)\b/, /\b(gross\s*earned|earned\s*gross|gross\s*pay|gross)\b/]);
-      var iAcc = findHeaderIdx(h, [/\b(a\s*c\s*no|account\s*no|bank\s*account|ac\s*no)\b/]);
+      var iComp = findHeaderIdx(h, [/\b(net\s*pay|net\s*payable|bank\s*transfer|compliance\s*net|compliance|net\s*salary|payable\s*bank)\b/, /\b(gross\s*earned|earned\s*gross|gross\s*pay|gross)\b/]);
+      var iGenericAmt = findHeaderIdx(h, [/\b(amount|amt|transfer\s*amount|cr\s*amt|paid|payable)\b/]);
       var iIfsc = findHeaderIdx(h, [/\b(ifsc|ifsc\s*code)\b/]);
+      var iRem = findHeaderIdx(h, [/\b(remarks|remark|note|reason|narration)\b/]);
 
       for (var rr = hdrIdx + 1; rr < grid.length; rr++) {
         var dataRow = grid[rr];
         if (!Array.isArray(dataRow)) continue;
-        var rawCode = String(dataRow[iCode] === null || dataRow[iCode] === undefined ? '' : dataRow[iCode]).trim().replace(/\.0$/, '');
-        if (!rawCode || /^(total|grand total|sub total|sr|s no|emp code)$/i.test(rawCode)) continue;
-        if (!/^[a-z0-9_-]{1,16}$/i.test(rawCode)) continue;
-        var compVal = iComp >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iComp]))) : 0;
-        var diffVal = iDiff >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iDiff]))) : 0;
-        var manVal = iManual >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iManual]))) : 0;
-        if (compVal === 0 && diffVal === 0 && manVal === 0) continue;
-        if (diffVal === 0 && manVal > compVal && compVal > 0) {
-          diffVal = round2(manVal - compVal);
+        var rawCode = iCode >= 0 ? String(dataRow[iCode] === null || dataRow[iCode] === undefined ? '' : dataRow[iCode]).trim().replace(/\.0$/, '') : '';
+        var rawAcc = iAcc >= 0 ? String(dataRow[iAcc] === null || dataRow[iAcc] === undefined ? '' : dataRow[iAcc]).trim().replace(/\.0$/, '') : '';
+        if (/^(total|grand total|sub total|sr|s no|emp code)$/i.test(rawCode)) continue;
+
+        if (!rawCode && rawAcc) {
+          var byAcc = findEmployeeByAccount(rawAcc);
+          if (byAcc && byAcc.empCode) rawCode = byAcc.empCode;
         }
+        if (!rawCode || !/^[a-z0-9_-]{1,16}$/i.test(rawCode)) continue;
+
+        var compColVal = iComp >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iComp]))) : 0;
+        var diffColVal = iDiff >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iDiff]))) : 0;
+        var manColVal = iManual >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iManual]))) : 0;
+        var genAmtVal = iGenericAmt >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iGenericAmt]))) : 0;
+
+        var compVal = 0;
+        var diffVal = 0;
+        var payAmt = 0;
+
+        if (kind === 'COMPLIANCE') {
+          compVal = compColVal || genAmtVal || manColVal;
+          if (compVal <= 0) continue;
+        } else if (kind === 'DIFF') {
+          diffVal = diffColVal || genAmtVal || (manColVal > compColVal && compColVal > 0 ? round2(manColVal - compColVal) : 0);
+          if (diffVal <= 0) continue;
+        } else if (kind === 'BATCH') {
+          payAmt = diffColVal || genAmtVal || compColVal || manColVal;
+          if (payAmt <= 0) continue;
+        } else {
+          compVal = compColVal || (diffColVal === 0 && manColVal === 0 ? genAmtVal : 0);
+          diffVal = diffColVal;
+          if (diffVal === 0 && manColVal > compVal && compVal > 0) diffVal = round2(manColVal - compVal);
+          if (compVal === 0 && diffVal === 0 && manColVal === 0) continue;
+        }
+
         var norm = normalizeCode(rawCode);
-        if (!byCode[norm]) {
-          byCode[norm] = {
+        var remVal = iRem >= 0 ? String(dataRow[iRem] || '').trim() : '';
+        if (!byKey[norm]) {
+          byKey[norm] = {
             empCode: rawCode,
             empName: iName >= 0 ? String(dataRow[iName] || '').trim() : '',
             dept: iDept >= 0 ? String(dataRow[iDept] || '').trim() : '',
             desig: iDesig >= 0 ? String(dataRow[iDesig] || '').trim() : '',
-            accountNo: iAcc >= 0 ? String(dataRow[iAcc] || '').trim() : '',
+            accountNo: rawAcc,
             ifsc: iIfsc >= 0 ? String(dataRow[iIfsc] || '').trim() : '',
-            manualAmount: manVal,
+            manualAmount: manColVal,
             complianceAmount: compVal,
-            baseDiffAmount: diffVal
+            baseDiffAmount: diffVal,
+            amount: payAmt,
+            remarks: remVal
           };
         } else {
-          byCode[norm].manualAmount = round2(byCode[norm].manualAmount + manVal);
-          byCode[norm].complianceAmount = round2(byCode[norm].complianceAmount + compVal);
-          byCode[norm].baseDiffAmount = round2(byCode[norm].baseDiffAmount + diffVal);
+          byKey[norm].manualAmount = round2(byKey[norm].manualAmount + manColVal);
+          byKey[norm].complianceAmount = round2(byKey[norm].complianceAmount + compVal);
+          byKey[norm].baseDiffAmount = round2(byKey[norm].baseDiffAmount + diffVal);
+          byKey[norm].amount = round2(byKey[norm].amount + payAmt);
+          if (remVal && !byKey[norm].remarks) byKey[norm].remarks = remVal;
         }
       }
     });
-    return Object.values(byCode);
+    return Object.values(byKey);
   }
 
   function getLoadedSalaryWorkbooks() {
@@ -1278,22 +1396,47 @@
     });
   }
 
-  function importFromLoadedFile(fileName, monthKey) {
+  function importFromLoadedFile(fileName, monthKey, sheetKind) {
     var mk = monthKey || state.selectedMonth;
+    var kind = String(sheetKind || 'BOTH').toUpperCase();
     var files = getLoadedSalaryWorkbooks();
     var target = files.find(function(f) { return f && f.name === fileName; });
     if (!target) {
       if (window.showToast) window.showToast('⚠️ Selected salary file loaded nahi mili.');
       return { ok: false, imported: 0 };
     }
-    var extracted = extractSalaryRowsFromWorkbook(target);
+    var extracted = extractSalaryRowsFromWorkbook(target, kind);
     if (!extracted.length) {
-      if (window.showToast) window.showToast('⚠️ Is sheet me Emp Code / Salary columns detect nahi huye.');
+      if (window.showToast) window.showToast('⚠️ Is sheet me Emp Code / Amount columns detect nahi huye.');
       return { ok: false, imported: 0 };
     }
-    var res = bulkImportMonthSalaries(mk, extracted, target.name);
-    if (window.showToast) window.showToast('✅ ' + res.imported + ' employees ki ' + formatMonthLabel(mk) + ' salary import aur sync ho gayi!');
+    var res = bulkImportMonthSalaries(mk, extracted, target.name, kind);
+    if (window.showToast) {
+      window.showToast('✅ ' + res.imported + ' employees (' + kind + ') ' + formatMonthLabel(mk) + ' me import & sync ho gaye!');
+    }
     return res;
+  }
+
+  function readWorkbookFromFileInput(file, callback) {
+    if (!file || typeof window.XLSX === 'undefined') {
+      if (window.showToast) window.showToast('⚠️ Excel reader ready nahi hai.');
+      return;
+    }
+    var reader = new window.FileReader();
+    reader.onload = function(ev) {
+      try {
+        var wb = window.XLSX.read(ev.target.result, { type: 'array' });
+        var sheets = {};
+        wb.SheetNames.forEach(function(sn) {
+          sheets[sn] = window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
+        });
+        callback(null, { name: file.name, sheets: sheets });
+      } catch (err) {
+        callback(err);
+      }
+    };
+    reader.onerror = function() { callback(new Error('File read failed')); };
+    reader.readAsArrayBuffer(file);
   }
 
   // ── UI MODALS & INTERACTION HANDLERS ──
@@ -1311,6 +1454,7 @@
     state.editingPointId = null;
     state.editingReturnId = null;
     state.editingBatchId = null;
+    state._batchExtraRows = [];
     var m = document.getElementById('salPayoutModal');
     if (m) m.innerHTML = '';
   }
@@ -1369,7 +1513,7 @@
     h += '    </div>';
     h += '    <div style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">';
     h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
-    h += '      <button type="button" onclick="ATPLSalaryPayout.submitPointModal()" style="padding:8px 18px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save & Sync Point</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.submitPointModal()" style="padding:8px 18px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save &amp; Sync Point</button>';
     h += '    </div>';
     h += '  </div>';
     h += '</div>';
@@ -1406,6 +1550,102 @@
     }
     closeModal();
     if (window.showToast) window.showToast('✅ Salary Point save & sabhi browsers me sync ho gaya!');
+  }
+
+  // Edit / Add Employee Salary + Add Missed Diff modal
+  function openEmpSalaryModal(empCode, mode) {
+    var code = empCode ? String(empCode).trim() : '';
+    var norm = code ? normalizeCode(code) : '';
+    var prev = norm ? state.empSalaries[state.selectedMonth + '::' + norm] : null;
+    var em = code ? findEmployeeByCode(code) : null;
+    var modal = getOrCreateModal();
+    if (!modal) return;
+    var isMissedMode = mode === 'MISSED_DIFF';
+
+    var h = '';
+    h += '<div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(3px);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLSalaryPayout.closeModal()">';
+    h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;max-width:520px;width:100%;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+    h += '    <div style="padding:15px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">';
+    h += '      <div><div style="font-size:11px;font-weight:700;color:#4f46e5">' + esc(formatMonthLabel(state.selectedMonth)) + ' · Employee Salary &amp; Missed Diff</div><h3 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#0f172a">' + (isMissedMode ? 'Add Chhoota Hua / Missed Diff Amount' : (prev ? 'Edit Employee Salary Row' : 'Add Manual Employee Salary')) + '</h3></div>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px">✕</button>';
+    h += '    </div>';
+    h += '    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px">';
+    h += '      <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:10px">';
+    h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Emp Code</label><input type="text" id="spEmpCode" value="' + esc(code) + '" oninput="ATPLSalaryPayout.onEmpSalaryCodeInput(this.value)" placeholder="e.g. 25924" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Employee Name</label><input type="text" id="spEmpName" value="' + esc((prev && prev.empName) || (em && em.name) || '') + '" placeholder="Auto from Master" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;box-sizing:border-box"></div>';
+    h += '      </div>';
+    if (isMissedMode) {
+      h += '      <div style="padding:12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">';
+      h += '        <label style="display:block;font-size:11px;font-weight:800;color:#9a3412;margin-bottom:4px">Chhoota Hua / Missed Diff Amount Add Karein (₹)</label>';
+      h += '        <input type="number" id="spEmpMissedAdd" min="1" placeholder="e.g. 150 or 2500" style="width:100%;padding:9px 10px;border:1px solid #fdba74;border-radius:8px;font-size:13px;font-weight:800;box-sizing:border-box">';
+      h += '        <div id="spEmpCurrInfo" style="margin-top:5px;font-size:11px;color:#7c2d12">Existing Base Diff: ' + formatINR(prev ? (Number(prev.baseDiffAmount) || 0) + (Number(prev.missedDiffAmount) || 0) : 0) + ' (Naya amount isme judkar Dashboard par show hoga)</div>';
+      h += '      </div>';
+    } else {
+      h += '      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance (₹)</label><input type="number" id="spEmpComp" min="0" value="' + esc(prev ? prev.complianceAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Base Diff (₹)</label><input type="number" id="spEmpDiff" min="0" value="' + esc(prev ? prev.baseDiffAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#9a3412;margin-bottom:3px">Missed Diff (₹)</label><input type="number" id="spEmpMissed" min="0" value="' + esc(prev ? prev.missedDiffAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #fdba74;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+      h += '      </div>';
+    }
+    h += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Bank A/C No (Optional)</label><input type="text" id="spEmpAcc" value="' + esc((prev && prev.accountNo) || (em && em.accountNo) || '') + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-family:monospace;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">IFSC (Optional)</label><input type="text" id="spEmpIfsc" value="' + esc((prev && prev.ifsc) || (em && em.ifsc) || '') + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-family:monospace;box-sizing:border-box"></div>';
+    h += '      </div>';
+    h += '      <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Remarks</label><input type="text" id="spEmpRem" value="' + esc((prev && prev.remarks) || '') + '" placeholder="e.g. Chhoota diff added / Bank sheet note" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
+    h += '    </div>';
+    h += '    <div style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.submitEmpSalaryModal(' + (isMissedMode ? 'true' : 'false') + ')" style="padding:8px 18px;border:none;background:#0f172a;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save &amp; Sync</button>';
+    h += '    </div>';
+    h += '  </div>';
+    h += '</div>';
+    modal.innerHTML = h;
+  }
+
+  function onEmpSalaryCodeInput(code) {
+    var em = findEmployeeByCode(code);
+    var norm = normalizeCode(code);
+    var prev = state.empSalaries[state.selectedMonth + '::' + norm];
+    var nmEl = document.getElementById('spEmpName');
+    var accEl = document.getElementById('spEmpAcc');
+    var ifscEl = document.getElementById('spEmpIfsc');
+    var currEl = document.getElementById('spEmpCurrInfo');
+    if (nmEl && (em || prev)) nmEl.value = (prev && prev.empName) || (em && em.name) || '';
+    if (accEl && (em || prev)) accEl.value = (prev && prev.accountNo) || (em && em.accountNo) || '';
+    if (ifscEl && (em || prev)) ifscEl.value = (prev && prev.ifsc) || (em && em.ifsc) || '';
+    if (currEl) currEl.textContent = 'Existing Base Diff: ' + formatINR(prev ? (Number(prev.baseDiffAmount) || 0) + (Number(prev.missedDiffAmount) || 0) : 0);
+  }
+
+  function submitEmpSalaryModal(isMissedMode) {
+    var code = String((document.getElementById('spEmpCode') || {}).value || '').trim();
+    if (!code) {
+      if (window.showToast) window.showToast('⚠️ Emp Code daalna zaroori hai.');
+      return;
+    }
+    var payload = {
+      monthKey: state.selectedMonth,
+      empCode: code,
+      empName: (document.getElementById('spEmpName') || {}).value,
+      accountNo: (document.getElementById('spEmpAcc') || {}).value,
+      ifsc: (document.getElementById('spEmpIfsc') || {}).value,
+      remarks: (document.getElementById('spEmpRem') || {}).value
+    };
+    if (isMissedMode) {
+      var addMissed = Number((document.getElementById('spEmpMissedAdd') || {}).value) || 0;
+      if (addMissed <= 0) {
+        if (window.showToast) window.showToast('⚠️ Missed Diff amount daalein.');
+        return;
+      }
+      payload.addMissedDiff = addMissed;
+      payload.sourceFile = 'Missed Diff Add-On';
+    } else {
+      payload.complianceAmount = Number((document.getElementById('spEmpComp') || {}).value) || 0;
+      payload.baseDiffAmount = Number((document.getElementById('spEmpDiff') || {}).value) || 0;
+      payload.missedDiffAmount = Number((document.getElementById('spEmpMissed') || {}).value) || 0;
+    }
+    upsertEmpSalary(payload);
+    closeModal();
+    if (window.showToast) window.showToast('✅ Employee salary updated & dashboard synced!');
   }
 
   function openReturnModal(returnId, prefillEmpCode) {
@@ -1463,36 +1703,16 @@
     h += '        </div>';
     h += '      </div>';
     h += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-bottom:3px">Old Bank A/C (Returned)</label>';
-    h += '          <input type="text" id="spRetOldAcc" value="' + esc(defOldAcc) + '" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box">';
-    h += '        </div>';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-bottom:3px">Old IFSC</label>';
-    h += '          <input type="text" id="spRetOldIfsc" value="' + esc(defOldIfsc) + '" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box">';
-    h += '        </div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-bottom:3px">Old Bank A/C (Returned)</label><input type="text" id="spRetOldAcc" value="' + esc(defOldAcc) + '" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#64748b;margin-bottom:3px">Old IFSC</label><input type="text" id="spRetOldIfsc" value="' + esc(defOldIfsc) + '" style="width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box"></div>';
     h += '      </div>';
     h += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px">';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New / Corrected Bank A/C</label>';
-    h += '          <input type="text" id="spRetNewAcc" value="' + esc(defNewAcc) + '" placeholder="Naya Sahi Account No." style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;font-weight:700;box-sizing:border-box">';
-    h += '        </div>';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New IFSC</label>';
-    h += '          <input type="text" id="spRetNewIfsc" value="' + esc(defNewIfsc) + '" placeholder="e.g. SBIN0001234" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;font-weight:700;box-sizing:border-box">';
-    h += '        </div>';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New Bank Name (Optional)</label>';
-    h += '          <input type="text" id="spRetNewBank" value="' + esc(defNewBank) + '" placeholder="e.g. SBI / BOB / HDFC" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;box-sizing:border-box">';
-    h += '        </div>';
-    h += '        <div>';
-    h += '          <label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">Re-Transfer UTR / Ref</label>';
-    h += '          <input type="text" id="spRetUtr" value="' + esc(defUtr) + '" placeholder="Re-pay UTR number" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box">';
-    h += '        </div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New / Corrected Bank A/C</label><input type="text" id="spRetNewAcc" value="' + esc(defNewAcc) + '" placeholder="Naya Sahi Account No." style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;font-weight:700;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New IFSC</label><input type="text" id="spRetNewIfsc" value="' + esc(defNewIfsc) + '" placeholder="e.g. SBIN0001234" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;font-weight:700;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">New Bank Name (Optional)</label><input type="text" id="spRetNewBank" value="' + esc(defNewBank) + '" placeholder="e.g. SBI / BOB / HDFC" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#15803d;margin-bottom:3px">Re-Transfer UTR / Ref</label><input type="text" id="spRetUtr" value="' + esc(defUtr) + '" placeholder="Re-pay UTR number" style="width:100%;padding:7px 9px;border:1px solid #86efac;border-radius:6px;font-size:12px;font-family:monospace;box-sizing:border-box"></div>';
     h += '      </div>';
-    h += '      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer">';
-    h += '        <input type="checkbox" id="spRetUpdateMaster" checked> New Bank A/C &amp; IFSC ko Employee Master me bhi update &amp; sync karein';
-    h += '      </label>';
+    h += '      <label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:#0f172a;cursor:pointer"><input type="checkbox" id="spRetUpdateMaster" checked> New Bank A/C &amp; IFSC ko Employee Master me bhi update &amp; sync karein</label>';
     h += '    </div>';
     h += '    <div style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:flex-end;gap:8px">';
     h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
@@ -1566,20 +1786,37 @@
     var defNotes = b ? b.notes : '';
 
     var existingAllocMap = {};
+    var ledgerCodesSet = {};
+    ledger.rows.forEach(function(r) { ledgerCodesSet[r.normCode] = true; });
+    state._batchExtraRows = [];
+
     if (b && Array.isArray(b.allocations)) {
       b.allocations.forEach(function(al) {
-        if (al && al.empCode) existingAllocMap[normalizeCode(al.empCode)] = round2(Number(al.amount) || 0);
+        if (!al || !al.empCode) return;
+        var nc = normalizeCode(al.empCode);
+        if (ledgerCodesSet[nc]) {
+          existingAllocMap[nc] = { amount: round2(Number(al.amount) || 0), remarks: String(al.remarks || '') };
+        } else {
+          state._batchExtraRows.push({
+            empCode: al.empCode,
+            empName: al.empName || ('Employee ' + al.empCode),
+            amount: round2(Number(al.amount) || 0),
+            remarks: String(al.remarks || ''),
+            accountNo: al.accountNo || '',
+            ifsc: al.ifsc || ''
+          });
+        }
       });
     }
 
     var candidateRows = ledger.rows.filter(function(r) {
-      var prevInThisBatch = existingAllocMap[r.normCode] || 0;
+      var prevInThisBatch = existingAllocMap[r.normCode] ? existingAllocMap[r.normCode].amount : 0;
       return r.diffRemaining > 0 || prevInThisBatch > 0;
     });
 
     var h = '';
     h += '<div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(3px);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLSalaryPayout.closeModal()">';
-    h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;max-width:780px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+    h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;max-width:860px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
     h += '    <div style="padding:15px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">';
     h += '      <div><div style="font-size:11px;font-weight:700;color:#4f46e5">' + esc(formatMonthLabel(state.selectedMonth)) + ' · Multi-Part Diff Payout</div><h3 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#0f172a">' + (b ? 'Edit Diff Payout Batch' : 'New Diff Payout Batch (Part ' + nextPart + ')') + '</h3></div>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px">✕</button>';
@@ -1611,56 +1848,65 @@
     h += '      </div>';
 
     h += '      <div style="display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:10px">';
-    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:3px">Lump-Sum Lot Amount (₹ Optional)</label><input type="number" id="spBatLump" min="0" value="' + esc(defLump) + '" placeholder="Agar bina emp list ke dalna ho" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:3px">Lump-Sum Lot Amount (₹ Optional)</label><input type="number" id="spBatLump" min="0" value="' + esc(defLump) + '" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" placeholder="Bina emp list ke lot amount" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;box-sizing:border-box"></div>';
     h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:3px">UTR / Voucher Ref</label><input type="text" id="spBatUtr" value="' + esc(defUtr) + '" placeholder="UTR / Ref No." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
-    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:3px">Notes</label><input type="text" id="spBatNotes" value="' + esc(defNotes) + '" placeholder="e.g. 2-3 Leaders Lot / ₹150 remaining clear" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
+    h += '        <div><label style="display:block;font-size:10.5px;font-weight:700;color:#475569;margin-bottom:3px">Batch Notes</label><input type="text" id="spBatNotes" value="' + esc(defNotes) + '" placeholder="e.g. 2-3 Leaders Lot / ₹150 remaining clear" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
+    h += '      </div>';
+
+    // Bank Sheet Upload inside Batch Modal
+    h += '      <div style="padding:10px 12px;background:#eef2ff;border:1px dashed #818cf8;border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+    h += '        <div><div style="font-size:11.5px;font-weight:800;color:#312e81">Is Payment Part Ki Bank Sheet Upload Karein (.xlsx / .csv)</div><div style="font-size:11px;color:#475569">Emp Code / Bank A/C, Amount aur Remarks sheet se direct is batch me add ho jayenge.</div></div>';
+    h += '        <input type="file" id="spBatExcelInput" accept=".xlsx,.xls,.csv" onchange="ATPLSalaryPayout.handleBatchBankSheetUpload(this)" style="font-size:11px;max-width:240px">';
     h += '      </div>';
 
     // Employee-wise allocation table inside batch modal
     h += '      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">';
     h += '        <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-    h += '          <div style="font-size:11.5px;font-weight:700;color:#0f172a">Employee Diff Allocation (Custom / Partial / Leftover)</div>';
+    h += '          <div style="font-size:11.5px;font-weight:700;color:#0f172a">Employee Diff Allocation (Amount + Remarks)</div>';
     h += '          <div style="display:flex;gap:6px;flex-wrap:wrap">';
     h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'ALL\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Fill All Remaining</button>';
     h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'LEFTOVER\')" style="padding:4px 9px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Only Leftover ≤ ₹500</button>';
     h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'CLEAR\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Clear All</button>';
     h += '          </div>';
     h += '        </div>';
-    h += '        <div style="max-height:240px;overflow-y:auto">';
-    if (!candidateRows.length) {
-      h += '          <div style="padding:18px;text-align:center;color:#64748b;font-size:12px">Abhi is mahine ki employee Diff sheet import nahi hui hai. Upar <strong>Lump-Sum Lot Amount</strong> daal sakte ho ya niche ek-ek Emp Code add kar sakte ho.</div>';
-    } else {
+    h += '        <div style="max-height:210px;overflow-y:auto">';
+    if (candidateRows.length) {
       h += '          <table style="width:100%;border-collapse:collapse;font-size:11.5px">';
-      h += '            <thead><tr style="background:#fff;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:10px;text-align:left"><th style="padding:7px 10px">Pick</th><th style="padding:7px 10px">Emp Code</th><th style="padding:7px 10px">Name / Dept</th><th style="padding:7px 10px;text-align:right">Remaining</th><th style="padding:7px 10px;text-align:right">Pay in This Batch (₹)</th></tr></thead>';
+      h += '            <thead><tr style="background:#fff;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:10px;text-align:left"><th style="padding:7px 10px">Pick</th><th style="padding:7px 10px">Emp Code</th><th style="padding:7px 10px">Name / Dept</th><th style="padding:7px 10px;text-align:right">Remaining</th><th style="padding:7px 10px;text-align:right">Pay Now (₹)</th><th style="padding:7px 10px">Remarks</th></tr></thead>';
       h += '            <tbody>';
       candidateRows.forEach(function(r) {
-        var avail = round2(r.diffRemaining + (existingAllocMap[r.normCode] || 0));
-        var preChecked = existingAllocMap[r.normCode] > 0 || (isLeftoverPreset && avail > 0 && avail <= 500);
-        var preVal = existingAllocMap[r.normCode] > 0 ? existingAllocMap[r.normCode] : (preChecked ? avail : 0);
+        var prevAlloc = existingAllocMap[r.normCode];
+        var avail = round2(r.diffRemaining + (prevAlloc ? prevAlloc.amount : 0));
+        var preChecked = !!(prevAlloc && prevAlloc.amount > 0) || (isLeftoverPreset && avail > 0 && avail <= 500);
+        var preVal = (prevAlloc && prevAlloc.amount > 0) ? prevAlloc.amount : (preChecked ? avail : '');
+        var preRem = (prevAlloc && prevAlloc.remarks) ? prevAlloc.remarks : '';
         h += '              <tr class="sp-bat-row" data-code="' + esc(r.empCode) + '" data-name="' + esc(r.empName) + '" data-avail="' + avail + '" style="border-bottom:1px solid #f1f5f9">';
         h += '                <td style="padding:6px 10px"><input type="checkbox" class="sp-bat-chk"' + (preChecked ? ' checked' : '') + ' onchange="ATPLSalaryPayout.onBatchRowToggle(this)"></td>';
         h += '                <td style="padding:6px 10px;font-family:monospace;font-weight:700;color:#312e81">' + esc(r.empCode) + '</td>';
         h += '                <td style="padding:6px 10px">' + esc(r.empName) + (r.dept ? (' <span style="color:#64748b;font-size:10.5px">· ' + esc(r.dept) + '</span>') : '') + '</td>';
         h += '                <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;color:' + (avail <= 500 ? '#c2410c' : '#334155') + ';font-weight:700">' + formatINR(avail) + '</td>';
-        h += '                <td style="padding:6px 10px;text-align:right"><input type="number" class="sp-bat-amt" min="0" step="1" value="' + (preVal || '') + '" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" style="width:105px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700"></td>';
+        h += '                <td style="padding:6px 10px;text-align:right"><input type="number" class="sp-bat-amt" min="0" step="1" value="' + esc(preVal) + '" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" style="width:95px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700"></td>';
+        h += '                <td style="padding:6px 10px"><input type="text" class="sp-bat-rem" value="' + esc(preRem) + '" placeholder="Remark" style="width:120px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"></td>';
         h += '              </tr>';
       });
       h += '            </tbody></table>';
     }
     h += '        </div>';
-    // Quick inline add single Emp Code to batch (useful for 2-3 Leaders without importing full sheet)
-    h += '        <div style="padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
-    h += '          <span style="font-size:11px;font-weight:700;color:#475569">Quick Add Emp:</span>';
-    h += '          <input type="text" id="spBatQuickCode" placeholder="Emp Code" style="width:100px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px">';
-    h += '          <input type="number" id="spBatQuickAmt" placeholder="Amount ₹" style="width:110px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px">';
-    h += '          <button type="button" onclick="ATPLSalaryPayout.addManualRowToBatchModal()" style="padding:5px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">+ Add to Batch</button>';
-    h += '          <div id="spBatQuickExtraList" style="font-size:11px;color:#15803d;font-weight:700"></div>';
+
+    // Manual / Sheet Extra Rows List + Quick Add Emp
+    h += '        <div id="spBatExtraTableWrap"></div>';
+    h += '        <div style="padding:9px 12px;background:#f8fafc;border-top:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    h += '          <span style="font-size:11px;font-weight:700;color:#475569">Manual Add Emp:</span>';
+    h += '          <input type="text" id="spBatQuickCode" placeholder="Emp Code" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" style="width:95px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px;font-weight:700">';
+    h += '          <input type="number" id="spBatQuickAmt" placeholder="Amount ₹" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" style="width:105px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px;font-weight:700">';
+    h += '          <input type="text" id="spBatQuickRem" placeholder="Remarks (Optional)" style="flex:1;min-width:130px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px">';
+    h += '          <button type="button" onclick="ATPLSalaryPayout.addManualRowToBatchModal()" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">+ Add Row</button>';
     h += '        </div>';
     h += '      </div>';
 
     h += '    </div>';
     h += '    <div style="padding:12px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;gap:10px">';
-    h += '      <div id="spBatModalTotal" style="font-size:13px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums">Selected Total: ₹0</div>';
+    h += '      <div id="spBatModalTotal" style="font-size:13px;font-weight:800;color:#0f172a;font-variant-numeric:tabular-nums">Batch Total: ₹0</div>';
     h += '      <div style="display:flex;gap:8px">';
     h += '        <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Cancel</button>';
     h += '        <button type="button" onclick="ATPLSalaryPayout.submitBatchModal()" style="padding:8px 18px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save &amp; Sync Batch</button>';
@@ -1669,8 +1915,86 @@
     h += '  </div>';
     h += '</div>';
     modal.innerHTML = h;
-    state._batchExtraRows = [];
+    renderBatchExtraRowsTable();
     recalcBatchModalTotal();
+  }
+
+  function renderBatchExtraRowsTable() {
+    var wrap = document.getElementById('spBatExtraTableWrap');
+    if (!wrap) return;
+    var extras = state._batchExtraRows || [];
+    if (!extras.length) {
+      wrap.innerHTML = '';
+      return;
+    }
+    var h = '<div style="border-top:1px solid #e2e8f0;max-height:170px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px;background:#fefce8">';
+    h += '<thead><tr style="border-bottom:1px solid #fde68a;color:#854d0e;font-size:10px;text-align:left"><th style="padding:6px 10px">Emp Code</th><th style="padding:6px 10px">Name</th><th style="padding:6px 10px;text-align:right">Amount (₹)</th><th style="padding:6px 10px">Remarks</th><th style="padding:6px 10px;text-align:center">Remove</th></tr></thead><tbody>';
+    extras.forEach(function(ex, idx) {
+      h += '<tr style="border-bottom:1px solid #fef08a">';
+      h += '<td style="padding:5px 10px;font-family:monospace;font-weight:700;color:#312e81">' + esc(ex.empCode) + '</td>';
+      h += '<td style="padding:5px 10px">' + esc(ex.empName) + '</td>';
+      h += '<td style="padding:5px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">' + formatINR(ex.amount) + '</td>';
+      h += '<td style="padding:5px 10px;color:#475569">' + esc(ex.remarks || '—') + '</td>';
+      h += '<td style="padding:5px 10px;text-align:center"><button type="button" onclick="ATPLSalaryPayout.removeExtraBatchRow(' + idx + ')" style="border:none;background:transparent;color:#dc2626;font-weight:800;cursor:pointer">✕</button></td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    wrap.innerHTML = h;
+  }
+
+  function removeExtraBatchRow(idx) {
+    if (!Array.isArray(state._batchExtraRows)) return;
+    state._batchExtraRows.splice(idx, 1);
+    renderBatchExtraRowsTable();
+    recalcBatchModalTotal();
+  }
+
+  function handleBatchBankSheetUpload(input) {
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    readWorkbookFromFileInput(file, function(err, wbObj) {
+      if (err || !wbObj) {
+        if (window.showToast) window.showToast('⚠️ Bank sheet read failed.');
+        return;
+      }
+      var parsed = extractSalaryRowsFromWorkbook(wbObj, 'BATCH');
+      if (!parsed.length) {
+        if (window.showToast) window.showToast('⚠️ Sheet me Emp Code/Account aur Amount column nahi mila.');
+        return;
+      }
+      var matchedInTable = 0;
+      var tableRows = {};
+      document.querySelectorAll('.sp-bat-row').forEach(function(tr) {
+        tableRows[normalizeCode(tr.getAttribute('data-code'))] = tr;
+      });
+      state._batchExtraRows = state._batchExtraRows || [];
+      parsed.forEach(function(item) {
+        var nc = normalizeCode(item.empCode);
+        var tr = tableRows[nc];
+        if (tr) {
+          var chk = tr.querySelector('.sp-bat-chk');
+          var amtInp = tr.querySelector('.sp-bat-amt');
+          var remInp = tr.querySelector('.sp-bat-rem');
+          if (chk) chk.checked = true;
+          if (amtInp) amtInp.value = item.amount;
+          if (remInp && item.remarks) remInp.value = item.remarks;
+          matchedInTable++;
+        } else {
+          var em = findEmployeeByCode(item.empCode);
+          state._batchExtraRows.push({
+            empCode: item.empCode,
+            empName: item.empName || (em && em.name) || ('Employee ' + item.empCode),
+            amount: item.amount,
+            remarks: item.remarks || ('Sheet: ' + file.name),
+            accountNo: item.accountNo || (em && em.accountNo) || '',
+            ifsc: item.ifsc || (em && em.ifsc) || ''
+          });
+        }
+      });
+      renderBatchExtraRowsTable();
+      recalcBatchModalTotal();
+      if (window.showToast) window.showToast('✅ ' + parsed.length + ' rows Bank Sheet se batch me load ho gayi!');
+    });
   }
 
   function onBatchRowToggle(chk) {
@@ -1699,20 +2023,25 @@
   function addManualRowToBatchModal() {
     var cEl = document.getElementById('spBatQuickCode');
     var aEl = document.getElementById('spBatQuickAmt');
+    var rEl = document.getElementById('spBatQuickRem');
     var code = String((cEl && cEl.value) || '').trim();
     var amt = round2(Number((aEl && aEl.value) || 0));
+    var rem = String((rEl && rEl.value) || '').trim();
     if (!code || amt <= 0) return;
     var em = findEmployeeByCode(code);
     state._batchExtraRows = state._batchExtraRows || [];
     state._batchExtraRows.push({
       empCode: code,
       empName: em ? em.name : ('Employee ' + code),
-      amount: amt
+      amount: amt,
+      remarks: rem,
+      accountNo: em ? em.accountNo : '',
+      ifsc: em ? em.ifsc : ''
     });
     if (cEl) cEl.value = '';
     if (aEl) aEl.value = '';
-    var badge = document.getElementById('spBatQuickExtraList');
-    if (badge) badge.textContent = state._batchExtraRows.length + ' manual emp added';
+    if (rEl) rEl.value = '';
+    renderBatchExtraRowsTable();
     recalcBatchModalTotal();
   }
 
@@ -1733,6 +2062,13 @@
       total = round2(total + (Number(r.amount) || 0));
       count++;
     });
+    // Also include pending typed Quick Add row if user typed both code & amount
+    var qCode = String((document.getElementById('spBatQuickCode') || {}).value || '').trim();
+    var qAmt = round2(Number((document.getElementById('spBatQuickAmt') || {}).value || 0));
+    if (qCode && qAmt > 0) {
+      total = round2(total + qAmt);
+      count++;
+    }
     var lump = round2(Number((document.getElementById('spBatLump') || {}).value || 0));
     var el = document.getElementById('spBatModalTotal');
     if (el) {
@@ -1742,16 +2078,25 @@
   }
 
   function submitBatchModal() {
+    // Auto-flush Quick Add inputs if user typed them directly without clicking "+ Add Row"
+    var qCode = String((document.getElementById('spBatQuickCode') || {}).value || '').trim();
+    var qAmt = round2(Number((document.getElementById('spBatQuickAmt') || {}).value || 0));
+    if (qCode && qAmt > 0) {
+      addManualRowToBatchModal();
+    }
+
     var allocs = [];
     document.querySelectorAll('.sp-bat-row').forEach(function(tr) {
       var chk = tr.querySelector('.sp-bat-chk');
       var inp = tr.querySelector('.sp-bat-amt');
+      var remInp = tr.querySelector('.sp-bat-rem');
       var val = round2(Number((inp && inp.value) || 0));
       if (chk && chk.checked && val > 0) {
         allocs.push({
           empCode: tr.getAttribute('data-code'),
           empName: tr.getAttribute('data-name'),
-          amount: val
+          amount: val,
+          remarks: remInp ? String(remInp.value || '').trim() : ''
         });
       }
     });
@@ -1772,7 +2117,7 @@
       allocations: allocs
     });
     if (!res.ok) {
-      if (window.showToast) window.showToast('⚠️ Kam se kam ek employee select karein ya Lump-Sum Amount daalein.');
+      if (window.showToast) window.showToast('⚠️ Kam se kam ek employee add/select karein ya Lump-Sum Amount daalein.');
       return;
     }
     state._batchExtraRows = [];
@@ -1780,53 +2125,66 @@
     if (window.showToast) window.showToast('✅ Diff Payout Batch save & sabhi browsers me sync ho gaya!');
   }
 
-  function openImportAndTargetsModal() {
+  function openImportAndTargetsModal(defaultKind) {
     var modal = getOrCreateModal();
     if (!modal) return;
     var summary = getMonthSummary(state.selectedMonth);
     var loadedFiles = getLoadedSalaryWorkbooks();
+    var kind = String(defaultKind || 'BOTH').toUpperCase();
+
     var h = '';
     h += '<div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(3px);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLSalaryPayout.closeModal()">';
-    h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;max-width:600px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 24px 48px rgba(15,23,42,0.22)">';
+    h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;max-width:640px;width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 24px 48px rgba(15,23,42,0.22)">';
     h += '    <div style="padding:15px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">';
-    h += '      <div><div style="font-size:11px;font-weight:700;color:#4f46e5">' + esc(formatMonthLabel(state.selectedMonth)) + ' · Month Setup</div><h3 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#0f172a">Load Month Salary Sheet / Set Targets</h3></div>';
+    h += '      <div><div style="font-size:11px;font-weight:700;color:#4f46e5">' + esc(formatMonthLabel(state.selectedMonth)) + ' · Sheet Upload &amp; Manual Salary</div><h3 style="margin:2px 0 0;font-size:16px;font-weight:800;color:#0f172a">Compliance &amp; Diff Sheet Upload / Targets</h3></div>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.closeModal()" style="border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px">✕</button>';
     h += '    </div>';
     h += '    <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">';
+
+    // 1. Two Sheet Uploads (Compliance Bank Sheet OR Diff Master Sheet OR Combined)
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">';
-    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">1. Loaded Salary Excel Se Import Karein (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div>';
+    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:6px">1. Salary / Bank Payment Sheet Upload Karein (.xlsx / .csv)</div>';
+    h += '        <div style="margin-bottom:8px"><label style="font-size:11px;font-weight:700;color:#475569;margin-right:8px">Sheet Type:</label>';
+    h += '          <select id="spImportKindSel" style="padding:6px 10px;border:1px solid #cbd5e1;border-radius:7px;font-size:12px;font-weight:700;background:#fff">';
+    h += '            <option value="COMPLIANCE"' + (kind === 'COMPLIANCE' ? ' selected' : '') + '>Compliance Salary / Bank Sheet</option>';
+    h += '            <option value="DIFF"' + (kind === 'DIFF' ? ' selected' : '') + '>Diff Salary Sheet</option>';
+    h += '            <option value="BOTH"' + (kind === 'BOTH' ? ' selected' : '') + '>Combined Salary Sheet (Compliance + Diff Dono)</option>';
+    h += '          </select>';
+    h += '        </div>';
     if (loadedFiles.length) {
-      h += '        <div style="display:flex;gap:8px;flex-wrap:wrap">';
+      h += '        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
       h += '          <select id="spImportFileSel" style="flex:1;min-width:200px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:12px">';
       loadedFiles.forEach(function(f) { h += '<option value="' + esc(f.name) + '">' + esc(f.name) + '</option>'; });
       h += '          </select>';
-      h += '          <button type="button" onclick="ATPLSalaryPayout.runFileImport()" style="padding:8px 14px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Import &amp; Sync</button>';
+      h += '          <button type="button" onclick="ATPLSalaryPayout.runFileImport()" style="padding:8px 14px;border:none;background:#1e293b;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Import Loaded File</button>';
       h += '        </div>';
-    } else {
-      h += '        <div style="font-size:11.5px;color:#64748b">Abhi software me koi Excel loaded nahi hai. Niche se sidha Excel upload karein ya target amounts set karein.</div>';
     }
-    h += '        <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+    h += '        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:6px;border-top:1px dashed #cbd5e1">';
+    h += '          <span style="font-size:11.5px;font-weight:700;color:#334155">Ya seedha computer se Excel / Bank Sheet upload karein:</span>';
     h += '          <input type="file" id="spDirectExcelInput" accept=".xlsx,.xls,.csv" onchange="ATPLSalaryPayout.handleDirectExcelUpload(this)" style="font-size:11.5px">';
     h += '        </div>';
     h += '      </div>';
 
+    // 2. Manual Month Totals
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
-    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">2. Month Salary Targets (Manual Total Override)</div>';
+    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">2. Month Total Manual Set Karein (Compliance / Diff)</div>';
     h += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance Total (₹)</label><input type="number" id="spTgtComp" min="0" value="' + esc(summary.complianceTarget || '') + '" placeholder="Auto from sheet ya manual" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
-    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Diff Salary Target (₹)</label><input type="number" id="spTgtDiff" min="0" value="' + esc(summary.diffTarget || '') + '" placeholder="Auto from sheet ya manual" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance Total (₹)</label><input type="number" id="spTgtComp" min="0" value="' + esc(summary.complianceTarget || '') + '" placeholder="e.g. 850000" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Diff Salary Target (₹)</label><input type="number" id="spTgtDiff" min="0" value="' + esc(summary.diffTarget || '') + '" placeholder="e.g. 650000" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
     h += '        </div>';
-    h += '        <div style="margin-top:10px;display:flex;justify-content:flex-end"><button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:7px 14px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save Month Targets</button></div>';
+    h += '        <div style="margin-top:10px;display:flex;justify-content:flex-end"><button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:7px 14px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save Month Totals</button></div>';
     h += '      </div>';
 
+    // 3. Quick Manual Single Emp Row
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
-    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">3. Add / Edit Single Employee Month Salary</div>';
-    h += '        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">';
+    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">3. Manual Employee Compliance / Diff / Chhoota Diff Add Karein</div>';
+    h += '        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;gap:8px">';
     h += '          <input type="text" id="spOneCode" placeholder="Emp Code" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700">';
     h += '          <input type="number" id="spOneComp" placeholder="Compliance ₹" min="0" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
-    h += '          <input type="number" id="spOneDiff" placeholder="Base Diff ₹" min="0" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
+    h += '          <input type="number" id="spOneDiff" placeholder="Diff ₹" min="0" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
+    h += '          <input type="text" id="spOneRem" placeholder="Remarks" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
     h += '        </div>';
-    h += '        <div style="margin-top:8px;display:flex;justify-content:flex-end"><button type="button" onclick="ATPLSalaryPayout.submitSingleEmpSalary()" style="padding:7px 14px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Save Emp Row</button></div>';
+    h += '        <div style="margin-top:8px;display:flex;justify-content:flex-end"><button type="button" onclick="ATPLSalaryPayout.submitSingleEmpSalary()" style="padding:7px 14px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Save &amp; Sync Emp Row</button></div>';
     h += '      </div>';
     h += '    </div>';
     h += '  </div>';
@@ -1836,38 +2194,30 @@
 
   function runFileImport() {
     var sel = document.getElementById('spImportFileSel');
+    var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
     if (!sel || !sel.value) return;
-    var res = importFromLoadedFile(sel.value, state.selectedMonth);
+    var res = importFromLoadedFile(sel.value, state.selectedMonth, kind);
     if (res.ok) closeModal();
   }
 
   function handleDirectExcelUpload(input) {
     var file = input && input.files && input.files[0];
-    if (!file || typeof window.XLSX === 'undefined') {
-      if (window.showToast) window.showToast('⚠️ Excel reader ready nahi hai.');
-      return;
-    }
-    var reader = new window.FileReader();
-    reader.onload = function(ev) {
-      try {
-        var wb = window.XLSX.read(ev.target.result, { type: 'array' });
-        var sheets = {};
-        wb.SheetNames.forEach(function(sn) {
-          sheets[sn] = window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
-        });
-        var rows = extractSalaryRowsFromWorkbook({ name: file.name, sheets: sheets });
-        if (!rows.length) {
-          if (window.showToast) window.showToast('⚠️ Excel me Emp Code aur Salary columns nahi mile.');
-          return;
-        }
-        var res = bulkImportMonthSalaries(state.selectedMonth, rows, file.name);
-        closeModal();
-        if (window.showToast) window.showToast('✅ ' + res.imported + ' employees imported from ' + file.name);
-      } catch (err) {
-        if (window.showToast) window.showToast('⚠️ Excel read error: ' + err.message);
+    var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
+    if (!file) return;
+    readWorkbookFromFileInput(file, function(err, wbObj) {
+      if (err || !wbObj) {
+        if (window.showToast) window.showToast('⚠️ Excel read error.');
+        return;
       }
-    };
-    reader.readAsArrayBuffer(file);
+      var rows = extractSalaryRowsFromWorkbook(wbObj, kind);
+      if (!rows.length) {
+        if (window.showToast) window.showToast('⚠️ Excel me Emp Code / Account aur Amount columns nahi mile.');
+        return;
+      }
+      var res = bulkImportMonthSalaries(state.selectedMonth, rows, file.name, kind);
+      closeModal();
+      if (window.showToast) window.showToast('✅ ' + res.imported + ' employees (' + kind + ') imported from ' + file.name);
+    });
   }
 
   function submitTargetsOnly() {
@@ -1877,24 +2227,27 @@
       diffTarget: Number((document.getElementById('spTgtDiff') || {}).value) || 0
     });
     closeModal();
-    if (window.showToast) window.showToast('✅ Month salary targets saved & synced!');
+    if (window.showToast) window.showToast('✅ Month salary totals saved & synced!');
   }
 
   function submitSingleEmpSalary() {
     var code = String((document.getElementById('spOneCode') || {}).value || '').trim();
     var comp = Number((document.getElementById('spOneComp') || {}).value) || 0;
     var diff = Number((document.getElementById('spOneDiff') || {}).value) || 0;
+    var rem = String((document.getElementById('spOneRem') || {}).value || '').trim();
     if (!code) return;
     upsertEmpSalary({
       monthKey: state.selectedMonth,
       empCode: code,
       complianceAmount: comp,
-      baseDiffAmount: diff
+      baseDiffAmount: diff,
+      remarks: rem
     });
     if (document.getElementById('spOneCode')) document.getElementById('spOneCode').value = '';
     if (document.getElementById('spOneComp')) document.getElementById('spOneComp').value = '';
     if (document.getElementById('spOneDiff')) document.getElementById('spOneDiff').value = '';
-    if (window.showToast) window.showToast('✅ Employee ' + code + ' month salary saved!');
+    if (document.getElementById('spOneRem')) document.getElementById('spOneRem').value = '';
+    if (window.showToast) window.showToast('✅ Employee ' + code + ' salary saved & synced!');
   }
 
   function printBatch(batchId) {
@@ -1904,7 +2257,7 @@
     var total = getBatchPaidTotal(b);
     var rowsHtml = allocs.map(function(al, idx) {
       var em = findEmployeeByCode(al.empCode) || {};
-      return '<tr><td style="padding:6px 8px;border:1px solid #cbd5e1">' + (idx + 1) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(al.empCode) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1">' + esc(al.empName) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(em.accountNo || '-') + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(em.ifsc || '-') + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;text-align:right;font-weight:700">' + formatINR(al.amount) + '</td></tr>';
+      return '<tr><td style="padding:6px 8px;border:1px solid #cbd5e1">' + (idx + 1) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(al.empCode) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1">' + esc(al.empName) + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(al.accountNo || em.accountNo || '-') + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;font-family:monospace">' + esc(al.ifsc || em.ifsc || '-') + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1">' + esc(al.remarks || '-') + '</td><td style="padding:6px 8px;border:1px solid #cbd5e1;text-align:right;font-weight:700">' + formatINR(al.amount) + '</td></tr>';
     }).join('');
     try {
       var frame = document.getElementById('atplSalPayoutPrintFrame');
@@ -1921,7 +2274,7 @@
       var doc = frame.contentDocument || (cw && cw.document);
       if (doc) {
         doc.open();
-        doc.write('<!doctype html><html><head><title>' + esc(b.title) + '</title></head><body style="font-family:sans-serif;padding:20px;color:#0f172a"><h2 style="margin:0 0 4px">ARORA TEXTILES PRIVATE LIMITED — DIFF PAYOUT SHEET</h2><div style="font-size:12px;margin-bottom:12px">' + esc(formatMonthLabel(b.monthKey)) + ' · <strong>' + esc(b.title) + '</strong> · Date: ' + esc(b.paymentDate) + ' · Mode: ' + esc(b.mode) + (b.signedBy ? (' · Signed: ' + esc(b.signedBy)) : '') + (b.utr ? (' · Ref: ' + esc(b.utr)) : '') + '</div><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9"><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">#</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Emp Code</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Name</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Account No</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">IFSC</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:right">Amount (₹)</th></tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="6" style="padding:12px;text-align:center;border:1px solid #cbd5e1">Lump-Sum Lot Payout</td></tr>') + '</tbody><tfoot><tr><td colspan="5" style="padding:8px;border:1px solid #cbd5e1;text-align:right;font-weight:800">TOTAL BATCH PAYOUT</td><td style="padding:8px;border:1px solid #cbd5e1;text-align:right;font-weight:800">' + formatINR(total) + '</td></tr></tfoot></table></body></html>');
+        doc.write('<!doctype html><html><head><title>' + esc(b.title) + '</title></head><body style="font-family:sans-serif;padding:20px;color:#0f172a"><h2 style="margin:0 0 4px">ARORA TEXTILES PRIVATE LIMITED — DIFF PAYOUT SHEET</h2><div style="font-size:12px;margin-bottom:12px">' + esc(formatMonthLabel(b.monthKey)) + ' · <strong>' + esc(b.title) + '</strong> · Date: ' + esc(b.paymentDate) + ' · Mode: ' + esc(b.mode) + (b.signedBy ? (' · Signed: ' + esc(b.signedBy)) : '') + (b.utr ? (' · Ref: ' + esc(b.utr)) : '') + '</div><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f1f5f9"><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">#</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Emp Code</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Name</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Account No</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">IFSC</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:left">Remarks</th><th style="padding:7px 8px;border:1px solid #cbd5e1;text-align:right">Amount (₹)</th></tr></thead><tbody>' + (rowsHtml || '<tr><td colspan="7" style="padding:12px;text-align:center;border:1px solid #cbd5e1">Lump-Sum Lot Payout</td></tr>') + '</tbody><tfoot><tr><td colspan="6" style="padding:8px;border:1px solid #cbd5e1;text-align:right;font-weight:800">TOTAL BATCH PAYOUT</td><td style="padding:8px;border:1px solid #cbd5e1;text-align:right;font-weight:800">' + formatINR(total) + '</td></tr></tfoot></table></body></html>');
         doc.close();
       }
       if (typeof setTimeout === 'function') setTimeout(function() { try { if (cw) { cw.focus(); cw.print(); } } catch (_) {} }, 180);
@@ -1932,12 +2285,14 @@
     var r = state.returns[returnId];
     if (!r) return;
     openReturnModal(returnId, r.empCode);
-    if (typeof setTimeout === 'function') setTimeout(function() {
-      var st = document.getElementById('spRetStatus');
-      if (st) st.value = 'RETRANSFERRED';
-      var utrEl = document.getElementById('spRetUtr');
-      if (utrEl && utrEl.focus) utrEl.focus();
-    }, 30);
+    if (typeof setTimeout === 'function') {
+      setTimeout(function() {
+        var st = document.getElementById('spRetStatus');
+        if (st) st.value = 'RETRANSFERRED';
+        var utrEl = document.getElementById('spRetUtr');
+        if (utrEl && utrEl.focus) utrEl.focus();
+      }, 30);
+    }
   }
 
   function promptComplianceComplete() {
@@ -1995,7 +2350,6 @@
     h += '      <h2 style="margin:2px 0 0;font-size:19px;font-weight:800;letter-spacing:-0.01em;color:#0f172a">Monthly Salary, Emp Points &amp; Multi-Part Diff Dashboard</h2>';
     h += '    </div>';
     h += '    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-    h += '      <label style="font-size:11px;font-weight:700;color:#475569">Month:</label>';
     h += '      <input type="month" value="' + esc(state.selectedMonth) + '" onchange="ATPLSalaryPayout.setSelectedMonth(this.value)" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;color:#0f172a;background:#fff">';
     if (months.length > 1) {
       h += '      <select onchange="ATPLSalaryPayout.setSelectedMonth(this.value)" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;color:#334155;background:#fff">';
@@ -2004,14 +2358,16 @@
       });
       h += '      </select>';
     }
-    h += '      <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal()" style="height:34px;padding:0 13px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Import / Month Targets</button>';
-    h += '      <button type="button" onclick="ATPLSalaryPayout.openPointModal()" style="height:34px;padding:0 13px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Emp Point (+/-)</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'COMPLIANCE\')" style="height:34px;padding:0 12px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Upload Compliance Sheet</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'DIFF\')" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Upload Diff Sheet / Targets</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal(null,\'MISSED_DIFF\')" style="height:34px;padding:0 12px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Missed Diff</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.openPointModal()" style="height:34px;padding:0 12px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Emp Point (+/-)</button>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.openBatchModal()" style="height:34px;padding:0 14px;border:none;background:#0f172a;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Diff Batch (Part ' + (ledger.batches.length + 1) + ')</button>';
-    h += '      <button type="button" onclick="ATPLSalaryPayout.syncNow(true)" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sync</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.syncNow(true)" style="height:34px;padding:0 11px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sync</button>';
     h += '    </div>';
     h += '  </div>';
 
-    // KPI Strip
+    // KPI Strip — Clean Compliance Di vs Diff Di vs Diff Leftover vs Total
     h += '  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:10px">';
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Total Month Salary (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div>';
@@ -2020,21 +2376,21 @@
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
-    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Compliance &amp; Bank Returns</div>';
-    h += '      <div style="font-size:21px;font-weight:800;color:' + (ledger.pendingReturnCount > 0 ? '#b45309' : '#15803d') + ';margin-top:4px;font-variant-numeric:tabular-nums">' + (ledger.pendingReturnCount > 0 ? (ledger.pendingReturnCount + ' Return Pending') : (ledger.summary.complianceDisbursed ? 'All Clear' : '1-Time Ready')) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.pendingReturnCount > 0 ? ('Re-pay pending: ' + formatINR(ledger.pendingReturnTotal)) : (ledger.summary.complianceDate ? ('Paid on ' + esc(ledger.summary.complianceDate)) : 'Click Compliance tab to update')) + '</div>';
+    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Compliance Me Di (1-Time)</div>';
+    h += '      <div style="font-size:21px;font-weight:800;color:#15803d;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.complianceTotal) + '</div>';
+    h += '      <div style="font-size:11px;color:' + (ledger.pendingReturnCount > 0 ? '#b45309' : '#475569') + ';margin-top:3px;font-weight:' + (ledger.pendingReturnCount > 0 ? '700' : '500') + '">' + (ledger.pendingReturnCount > 0 ? (ledger.pendingReturnCount + ' Bank Return (' + formatINR(ledger.pendingReturnTotal) + ')') : (ledger.complianceEmpCount + ' emp · ' + (ledger.summary.complianceDisbursed ? 'Paid' : 'Sheet Loaded / Ready'))) + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
-    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Multi-Part Paid</div>';
+    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Me Di (Paid in Batches)</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:#1d4ed8;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.totalBatchPaid) + '</div>';
     h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + ledger.disbursedBatchCount + ' batches disbursed' + (ledger.totalBatchPlanned > 0 ? (' · ' + formatINR(ledger.totalBatchPlanned) + ' planned') : '') + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
-    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Remaining &amp; Leftover</div>';
+    h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Baaki / Chhoota Hua</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:' + (ledger.diffRemainingTotal > 0 ? '#dc2626' : '#15803d') + ';margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.diffRemainingTotal) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.smallLeftoverRows.length > 0 ? (ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal)) : 'No small leftover pending') + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.smallLeftoverRows.length > 0 ? (ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal)) : (ledger.empMissedDiffSum > 0 ? ('Late/Missed added: ' + formatINR(ledger.empMissedDiffSum)) : 'No small leftover pending')) + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
@@ -2051,7 +2407,7 @@
     var tabs = [
       { id: 'overview', label: 'Emp Ledger (' + ledger.rows.length + ')' },
       { id: 'points', label: 'Adjustment Points (' + ledger.points.length + ')' },
-      { id: 'compliance', label: 'Compliance & Returns (' + ledger.returns.length + ')' },
+      { id: 'compliance', label: 'Compliance & Returns (' + ledger.complianceEmpCount + ' / ' + ledger.returns.length + ')' },
       { id: 'diff', label: 'Diff Batches / Parts (' + ledger.batches.length + ')' }
     ];
     tabs.forEach(function(tb) {
@@ -2081,7 +2437,7 @@
         if (state.overviewFilter === 'HAS_POINTS' && !r.pointsList.length) return false;
         if (state.overviewFilter === 'RETURN_PENDING' && !(r.returnsPendingCount > 0)) return false;
         if (q) {
-          var hay = (r.empCode + ' ' + r.empName + ' ' + r.dept + ' ' + r.desig).toLowerCase();
+          var hay = (r.empCode + ' ' + r.empName + ' ' + r.dept + ' ' + r.desig + ' ' + r.remarks).toLowerCase();
           if (hay.indexOf(q) < 0) return false;
         }
         return true;
@@ -2095,27 +2451,31 @@
       if (!filteredRows.length) {
         h += '    <div style="padding:38px 20px;text-align:center;color:#64748b">';
         h += '      <div style="font-size:14px;font-weight:700;color:#334155">Is mahine (' + esc(formatMonthLabel(state.selectedMonth)) + ') ke liye abhi koi employee ledger row nahi hai</div>';
-        h += '      <div style="font-size:12px;margin-top:4px">Upar <strong>Import / Month Targets</strong> se salary Excel import karein ya <strong>+ Emp Point (+/-)</strong> se adjustments add karein.</div>';
+        h += '      <div style="font-size:12px;margin-top:4px">Upar <strong>Upload Compliance Sheet</strong>, <strong>Upload Diff Sheet</strong>, ya <strong>+ Missed Diff / + Emp Point</strong> se data add karein.</div>';
         h += '    </div>';
       } else {
         h += '    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-        h += '      <thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:9px 12px">Emp Code</th><th style="padding:9px 12px">Employee &amp; Dept</th><th style="padding:9px 12px;text-align:right">Compliance</th><th style="padding:9px 12px;text-align:right">Base Diff</th><th style="padding:9px 12px;text-align:right">Points (+/-)</th><th style="padding:9px 12px;text-align:right">Net Diff</th><th style="padding:9px 12px;text-align:right">Paid (Parts)</th><th style="padding:9px 12px;text-align:right">Diff Left</th><th style="padding:9px 12px;text-align:center">Actions</th></tr></thead>';
+        h += '      <thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:9px 12px">Emp Code</th><th style="padding:9px 12px">Employee &amp; Remarks</th><th style="padding:9px 12px;text-align:right">Compliance Di</th><th style="padding:9px 12px;text-align:right">Diff Total</th><th style="padding:9px 12px;text-align:right">Points (+/-)</th><th style="padding:9px 12px;text-align:right">Net Diff</th><th style="padding:9px 12px;text-align:right">Diff Di (Parts)</th><th style="padding:9px 12px;text-align:right">Diff Left</th><th style="padding:9px 12px;text-align:center">Actions</th></tr></thead>';
         h += '      <tbody>';
         filteredRows.forEach(function(r) {
           var netPt = round2(r.plusPoints - r.minusPoints);
           var ptLabel = netPt === 0 ? (r.noteCount ? (r.noteCount + ' note') : '—') : ((netPt > 0 ? '+' : '-') + formatINR(Math.abs(netPt)));
           h += '        <tr style="border-bottom:1px solid #f1f5f9">';
           h += '          <td style="padding:9px 12px;font-family:monospace;font-weight:800;color:#312e81">' + esc(r.empCode) + '</td>';
-          h += '          <td style="padding:9px 12px"><div style="font-weight:700;color:#0f172a">' + esc(r.empName) + '</div><div style="font-size:11px;color:#64748b">' + esc(r.dept || '-') + (r.returnsPendingCount > 0 ? (' · <span style="color:#b45309;font-weight:700">Bank Return Pending</span>') : '') + '</div></td>';
+          h += '          <td style="padding:9px 12px"><div style="font-weight:700;color:#0f172a">' + esc(r.empName) + '</div><div style="font-size:11px;color:#64748b">' + esc(r.dept || '-') + (r.remarks ? (' · ' + esc(r.remarks)) : '') + (r.missedDiffAmount > 0 ? (' · <span style="color:#9a3412;font-weight:700">Missed +' + formatINR(r.missedDiffAmount) + '</span>') : '') + (r.returnsPendingCount > 0 ? (' · <span style="color:#b45309;font-weight:700">Bank Return Pending</span>') : '') + '</div></td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(r.complianceAmount) + '</td>';
-          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(r.baseDiffAmount) + '</td>';
+          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(r.effectiveBaseDiff) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:' + (netPt > 0 ? '#15803d' : netPt < 0 ? '#dc2626' : '#64748b') + '">' + esc(ptLabel) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">' + formatINR(r.netDiffAmount) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1d4ed8;font-weight:700">' + formatINR(r.diffPaid) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:' + (r.isSmallLeftover ? '#c2410c' : r.diffRemaining > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(r.diffRemaining) + (r.isSmallLeftover ? ' (Left)' : '') + '</td>';
           h += '          <td style="padding:9px 12px;text-align:center;white-space:nowrap">';
-          h += '            <button type="button" onclick="ATPLSalaryPayout.openPointModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">+ Point</button>';
-          h += '            <button type="button" onclick="ATPLSalaryPayout.openReturnModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Return</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal(\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Edit</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openPointModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">+ Point</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openReturnModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Return</button>';
+          if (r.hasSalaryRecord) {
+            h += '            <button type="button" onclick="ATPLSalaryPayout.deleteEmpSalary(\'' + esc(r.salId) + '\')" style="padding:4px 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Delete</button>';
+          }
           h += '          </td>';
           h += '        </tr>';
         });
@@ -2160,25 +2520,33 @@
       }
     }
 
-    // TAB 3: COMPLIANCE 1-TIME STATUS & BANK RETURN RE-TRANSFER
+    // TAB 3: COMPLIANCE 1-TIME STATUS, SHEET & BANK RETURN RE-TRANSFER
     if (state.activeTab === 'compliance') {
+      var compRows = ledger.rows.filter(function(r) {
+        if (!(r.complianceAmount > 0)) return false;
+        if (!q) return true;
+        return (r.empCode + ' ' + r.empName + ' ' + r.accountNo + ' ' + r.remarks).toLowerCase().indexOf(q) >= 0;
+      });
       var filteredRets = ledger.returns.filter(function(r) {
         if (!q) return true;
         return (r.empCode + ' ' + r.empName + ' ' + r.oldAccountNo + ' ' + r.newAccountNo + ' ' + r.reason).toLowerCase().indexOf(q) >= 0;
       });
       h += '    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#f8fafc">';
       h += '      <div>';
-      h += '        <div style="font-size:13px;font-weight:800;color:#0f172a">Compliance Salary Status (' + esc(formatMonthLabel(state.selectedMonth)) + '): ' + (ledger.summary.complianceDisbursed ? '<span style="color:#15803d">1-Time Paid</span>' : '<span style="color:#475569">Pending Confirmation</span>') + ' · Total ' + formatINR(ledger.complianceTotal) + '</div>';
-      h += '        <div style="font-size:11.5px;color:#64748b;margin-top:2px">' + (ledger.summary.complianceDate ? ('Transfer Date: ' + esc(ledger.summary.complianceDate) + (ledger.summary.complianceUtr ? (' · UTR: ' + esc(ledger.summary.complianceUtr)) : '')) : 'Compliance 1 baar me transfer hoti hai; agar kisi bank account se return aaye toh niche A/C change karke re-transfer record karein.') + '</div>';
+      h += '        <div style="font-size:13px;font-weight:800;color:#0f172a">Compliance Salary (' + esc(formatMonthLabel(state.selectedMonth)) + '): ' + (ledger.summary.complianceDisbursed ? '<span style="color:#15803d">1-Time Paid</span>' : '<span style="color:#475569">Active</span>') + ' · Total ' + formatINR(ledger.complianceTotal) + '</div>';
+      h += '        <div style="font-size:11.5px;color:#64748b;margin-top:2px">' + (ledger.summary.complianceDate ? ('Transfer Date: ' + esc(ledger.summary.complianceDate) + (ledger.summary.complianceUtr ? (' · UTR: ' + esc(ledger.summary.complianceUtr)) : '')) : 'Compliance bank sheet upload karein ya manual daalein; agar return aaye toh A/C change karke re-transfer karein.') + '</div>';
       h += '      </div>';
       h += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
-      h += '        <button type="button" onclick="ATPLSalaryPayout.promptComplianceComplete()" style="padding:7px 12px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Mark Compliance Paid</button>';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'COMPLIANCE\')" style="padding:7px 12px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Upload Compliance Sheet</button>';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal()" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Manual Compliance</button>';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.promptComplianceComplete()" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#15803d;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Mark Compliance Paid</button>';
       h += '        <button type="button" onclick="ATPLSalaryPayout.openReturnModal()" style="padding:7px 13px;border:none;background:#b45309;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Record Bank Return</button>';
       h += '      </div>';
       h += '    </div>';
-      if (!filteredRets.length) {
-        h += '    <div style="padding:34px 20px;text-align:center;color:#64748b;font-size:12.5px">Is mahine me koi Bank Return entry nahi hai.</div>';
-      } else {
+
+      // Bank Returns Table
+      if (filteredRets.length) {
+        h += '    <div style="padding:8px 16px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:11.5px;font-weight:800;color:#92400e">Bank Return &amp; Account-Change Re-Transfer Queue (' + filteredRets.length + ')</div>';
         h += '    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
         h += '      <thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:9px 12px">Emp Code</th><th style="padding:9px 12px">Name</th><th style="padding:9px 12px;text-align:right">Amount (₹)</th><th style="padding:9px 12px">Return Reason</th><th style="padding:9px 12px">Old A/C → New A/C</th><th style="padding:9px 12px">Status &amp; UTR</th><th style="padding:9px 12px;text-align:center">Actions</th></tr></thead>';
         h += '      <tbody>';
@@ -2202,18 +2570,45 @@
         });
         h += '      </tbody></table></div>';
       }
+
+      // Compliance Employees List
+      if (compRows.length) {
+        h += '    <div style="padding:8px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;font-size:11.5px;font-weight:800;color:#334155">Compliance Bank Sheet / Manual Entries (' + compRows.length + ' employees · ' + formatINR(ledger.complianceTotal) + ')</div>';
+        h += '    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+        h += '      <thead><tr style="background:#fff;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:8px 12px">Emp Code</th><th style="padding:8px 12px">Name</th><th style="padding:8px 12px">Bank A/C &amp; IFSC</th><th style="padding:8px 12px">Remarks</th><th style="padding:8px 12px;text-align:right">Compliance (₹)</th><th style="padding:8px 12px;text-align:center">Actions</th></tr></thead>';
+        h += '      <tbody>';
+        compRows.forEach(function(r) {
+          h += '        <tr style="border-bottom:1px solid #f1f5f9">';
+          h += '          <td style="padding:8px 12px;font-family:monospace;font-weight:800;color:#312e81">' + esc(r.empCode) + '</td>';
+          h += '          <td style="padding:8px 12px"><strong>' + esc(r.empName) + '</strong></td>';
+          h += '          <td style="padding:8px 12px;font-family:monospace;font-size:11px">' + esc(r.accountNo || '-') + (r.ifsc ? (' · ' + esc(r.ifsc)) : '') + '</td>';
+          h += '          <td style="padding:8px 12px;color:#475569">' + esc(r.remarks || r.sourceFile || '—') + '</td>';
+          h += '          <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">' + formatINR(r.complianceAmount) + '</td>';
+          h += '          <td style="padding:8px 12px;text-align:center;white-space:nowrap">';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openReturnModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Bank Return</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal(\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Edit</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.deleteEmpSalary(\'' + esc(r.salId) + '\')" style="padding:4px 8px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Delete</button>';
+          h += '          </td>';
+          h += '        </tr>';
+        });
+        h += '      </tbody></table></div>';
+      } else if (!filteredRets.length) {
+        h += '    <div style="padding:34px 20px;text-align:center;color:#64748b;font-size:12.5px">Abhi is mahine koi Compliance Bank Sheet ya Bank Return entry nahi hai.</div>';
+      }
     }
 
     // TAB 4: DIFF MULTI-PART PAYOUT BATCHES (4-6+ PARTS / LEADERS / LEFTOVER)
     if (state.activeTab === 'diff') {
       var filteredBatches = ledger.batches.filter(function(b) {
         if (!q) return true;
-        var hay = (b.title + ' ' + b.lotType + ' ' + b.utr + ' ' + b.notes + ' ' + (b.signedBy || '')).toLowerCase();
+        var allocStr = (b.allocations || []).map(function(al) { return al.empCode + ' ' + al.empName + ' ' + (al.remarks || ''); }).join(' ');
+        var hay = (b.title + ' ' + b.lotType + ' ' + b.utr + ' ' + b.notes + ' ' + (b.signedBy || '') + ' ' + allocStr).toLowerCase();
         return hay.indexOf(q) >= 0;
       });
       h += '    <div style="padding:12px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-      h += '      <div style="font-size:12px;color:#475569">Diff salary ko 4-6 parts/lots me manage karein (Workers ₹4-5L, Staff ₹1-2L, 2-3 Leaders Lot, aur small leftover ₹150 type clearance).</div>';
+      h += '      <div style="font-size:12px;color:#475569">Har Diff payment lot (Bank Sheet upload ya Manual Emp Code + Amount + Remarks) alag Part me save &amp; sync hota hai.</div>';
       h += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'DIFF\')" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Upload Master Diff Sheet</button>';
       if (ledger.smallLeftoverRows.length > 0) {
         h += '        <button type="button" onclick="ATPLSalaryPayout.openBatchModal(null,\'LEFTOVER_CLEARANCE\')" style="padding:7px 12px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Leftover Clearance (' + ledger.smallLeftoverRows.length + ')</button>';
       }
@@ -2221,21 +2616,25 @@
       h += '      </div>';
       h += '    </div>';
       if (!filteredBatches.length) {
-        h += '    <div style="padding:36px 20px;text-align:center;color:#64748b;font-size:12.5px">Abhi ' + esc(formatMonthLabel(state.selectedMonth)) + ' me koi Diff Payout Batch nahi bana hai. Upar <strong>+ New Diff Batch</strong> par click karke Part 1, Part 2... banayein.</div>';
+        h += '    <div style="padding:36px 20px;text-align:center;color:#64748b;font-size:12.5px">Abhi ' + esc(formatMonthLabel(state.selectedMonth)) + ' me koi Diff Payout Batch nahi bana hai. Upar <strong>+ New Diff Batch</strong> se Bank Sheet ya Manual Emp Code + Amount + Remarks add karein.</div>';
       } else {
         h += '    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-        h += '      <thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:9px 12px">Part</th><th style="padding:9px 12px">Batch Title &amp; Lot Type</th><th style="padding:9px 12px">Date &amp; Mode</th><th style="padding:9px 12px">Employees</th><th style="padding:9px 12px;text-align:right">Batch Amount (₹)</th><th style="padding:9px 12px">Sign &amp; Status</th><th style="padding:9px 12px;text-align:center">Actions</th></tr></thead>';
+        h += '      <thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#475569;font-size:11px;text-align:left"><th style="padding:9px 12px">Part</th><th style="padding:9px 12px">Batch Title &amp; Employees Detail</th><th style="padding:9px 12px">Date &amp; Mode</th><th style="padding:9px 12px;text-align:right">Batch Amount (₹)</th><th style="padding:9px 12px">Sign &amp; Status</th><th style="padding:9px 12px;text-align:center">Actions</th></tr></thead>';
         h += '      <tbody>';
         filteredBatches.forEach(function(b) {
           var amt = getBatchPaidTotal(b);
-          var empCnt = Array.isArray(b.allocations) ? b.allocations.length : 0;
+          var allocs = Array.isArray(b.allocations) ? b.allocations : [];
           var isPaid = b.status !== 'PLANNED';
+          var empPreview = allocs.slice(0, 4).map(function(al) {
+            return esc(al.empCode) + ' (' + formatINR(al.amount) + (al.remarks ? (': ' + esc(al.remarks)) : '') + ')';
+          }).join(' · ');
+          if (allocs.length > 4) empPreview += ' · +' + (allocs.length - 4) + ' more';
+
           h += '        <tr style="border-bottom:1px solid #f1f5f9">';
           h += '          <td style="padding:9px 12px;font-weight:800;color:#312e81">Part ' + esc(b.partNumber) + '</td>';
-          h += '          <td style="padding:9px 12px"><div style="font-weight:700;color:#0f172a">' + esc(b.title) + '</div><div style="font-size:11px;color:#64748b">' + esc(lotLabelMap[b.lotType] || b.lotType) + (b.notes ? (' · ' + esc(b.notes)) : '') + '</div></td>';
+          h += '          <td style="padding:9px 12px"><div style="font-weight:700;color:#0f172a">' + esc(b.title) + '</div><div style="font-size:11px;color:#64748b">' + esc(lotLabelMap[b.lotType] || b.lotType) + (b.notes ? (' · ' + esc(b.notes)) : '') + '</div>' + (empPreview ? ('<div style="font-size:11px;color:#334155;margin-top:3px">' + empPreview + '</div>') : '') + '</td>';
           h += '          <td style="padding:9px 12px"><div>' + esc(b.paymentDate) + '</div><div style="font-size:11px;color:#64748b">' + esc(b.mode) + (b.utr ? (' · ' + esc(b.utr)) : '') + '</div></td>';
-          h += '          <td style="padding:9px 12px">' + (empCnt > 0 ? (empCnt + ' employees') : 'Lump-Sum Lot') + '</td>';
-          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#0f172a">' + formatINR(amt) + '</td>';
+          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#0f172a">' + formatINR(amt) + '<div style="font-size:10.5px;color:#64748b;font-weight:600">' + (allocs.length ? (allocs.length + ' employees') : 'Lump-Sum Lot') + '</div></td>';
           h += '          <td style="padding:9px 12px"><div style="font-weight:700;color:' + (isPaid ? '#15803d' : '#b45309') + '">' + (isPaid ? 'Disbursed' : 'Planned') + '</div><div style="font-size:11px;color:#64748b">' + esc(b.signedBy || '—') + '</div></td>';
           h += '          <td style="padding:9px 12px;text-align:center;white-space:nowrap">';
           h += '            <button type="button" onclick="ATPLSalaryPayout.markBatchDisbursed(\'' + esc(b.id) + '\')" style="padding:4px 8px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:4px">' + (isPaid ? 'Set Planned' : 'Mark Paid') + '</button>';
@@ -2255,7 +2654,7 @@
   }
 
   var ATPLSalaryPayout = {
-    version: '1.0.0',
+    version: '1.1.0',
     init: function() {
       loadFromLocal();
       setupRealtimeListeners();
@@ -2269,6 +2668,7 @@
     setSearch: setSearch,
     saveMonthSummary: saveMonthSummary,
     upsertEmpSalary: upsertEmpSalary,
+    deleteEmpSalary: deleteEmpSalary,
     bulkImportMonthSalaries: bulkImportMonthSalaries,
     importFromLoadedFile: importFromLoadedFile,
     extractSalaryRowsFromWorkbook: extractSalaryRowsFromWorkbook,
@@ -2285,6 +2685,9 @@
     openPointModal: openPointModal,
     onPointCodeInput: onPointCodeInput,
     submitPointModal: submitPointModal,
+    openEmpSalaryModal: openEmpSalaryModal,
+    onEmpSalaryCodeInput: onEmpSalaryCodeInput,
+    submitEmpSalaryModal: submitEmpSalaryModal,
     openReturnModal: openReturnModal,
     onReturnCodeInput: onReturnCodeInput,
     submitReturnModal: submitReturnModal,
@@ -2295,6 +2698,8 @@
     onBatchRowToggle: onBatchRowToggle,
     batchQuickSelect: batchQuickSelect,
     addManualRowToBatchModal: addManualRowToBatchModal,
+    removeExtraBatchRow: removeExtraBatchRow,
+    handleBatchBankSheetUpload: handleBatchBankSheetUpload,
     recalcBatchModalTotal: recalcBatchModalTotal,
     submitBatchModal: submitBatchModal,
     printBatch: printBatch,

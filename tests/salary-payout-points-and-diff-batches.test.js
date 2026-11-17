@@ -288,4 +288,158 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(finalLedger.diffRemainingTotal, 0);
     assert.equal(finalLedger.smallLeftoverRows.length, 0);
   });
+
+  await t.test('6. Two separate sheets (Compliance sheet + Diff sheet), Batch Bank Sheet with Account lookup & Remarks, and cross-browser sync', async () => {
+    const bA = createBrowser('BrowserA_Sep', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-12');
+
+    bA.mockWindow.FILES.push({
+      name: 'DEC_COMPLIANCE_BANK.xlsx',
+      sheets: {
+        'BankTransfer': [
+          ['Emp Code', 'Name of employee', 'Net Payable', 'Remarks'],
+          ['25924', 'Ram Kumar Sharma', 18500, 'Comp NEFT'],
+          ['26448', 'Nikhil Arora', 30000, 'Comp Staff']
+        ]
+      }
+    });
+    bA.mockWindow.FILES.push({
+      name: 'DEC_DIFF_SHEET.xlsx',
+      sheets: {
+        'DiffSheet': [
+          ['Emp Code', 'Name of employee', 'Diff Amount', 'Remarks'],
+          ['25924', 'Ram Kumar Sharma', 4500, 'Workers Diff'],
+          ['26448', 'Nikhil Arora', 15000, 'Staff Diff']
+        ]
+      }
+    });
+
+    const cRes = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('DEC_COMPLIANCE_BANK.xlsx', '2026-12', 'COMPLIANCE');
+    assert.equal(cRes.ok, true);
+    assert.equal(cRes.imported, 2);
+
+    const dRes = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('DEC_DIFF_SHEET.xlsx', '2026-12', 'DIFF');
+    assert.equal(dRes.ok, true);
+    assert.equal(dRes.imported, 2);
+
+    const decLedger = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-12');
+    assert.equal(decLedger.complianceTotal, 48500, 'Compliance sheet total must stay preserved after Diff import');
+    assert.equal(decLedger.diffTotal, 19500, 'Diff sheet total must merge without overwriting Compliance');
+
+    // Parse a Batch Bank Payment Sheet that uses Account No instead of Emp Code + Remarks
+    const batchWb = {
+      name: 'DEC_DIFF_PART1_BANK.xlsx',
+      sheets: {
+        'Sheet1': [
+          ['Beneficiary Name', 'Account No', 'Amount', 'Remarks'],
+          ['Ram Kumar Sharma', '111122223333', 4000, 'Part 1 Bank Lot'],
+          ['Nikhil Arora', '777788889999', 15000, 'Staff Lot Paid']
+        ]
+      }
+    };
+    const batchRows = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsFromWorkbook(batchWb, 'BATCH');
+    assert.equal(batchRows.length, 2, 'Must resolve Emp Codes via Account No lookup');
+    assert.equal(batchRows[0].empCode, '25924');
+    assert.equal(batchRows[0].amount, 4000);
+    assert.equal(batchRows[0].remarks, 'Part 1 Bank Lot');
+
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-12',
+      partNumber: 1,
+      title: 'Part 1 Bank Lot',
+      status: 'DISBURSED',
+      allocations: batchRows.map(r => ({ empCode: r.empCode, empName: r.empName, amount: r.amount, remarks: r.remarks }))
+    });
+
+    await new Promise(r => setTimeout(r, 50));
+    const bB = createBrowser('BrowserB_Sep', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bB.mockWindow));
+    await bB.mockWindow.ATPLSalaryPayout.syncNow(false);
+    bB.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-12');
+    const ledgerB = bB.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-12');
+    assert.equal(ledgerB.complianceTotal, 48500);
+    assert.equal(ledgerB.totalBatchPaid, 19000);
+    assert.equal(ledgerB.diffRemainingTotal, 500);
+    assert.equal(ledgerB.batches[0].allocations[0].remarks, 'Part 1 Bank Lot');
+  });
+
+  await t.test('7. Late/Missed Diff addition, Edit & Delete ledger rows with tombstone sync, and Batch Modal quick-add auto-flush', async () => {
+    const bA = createBrowser('BrowserA_EditDel', cloud);
+    // Provide DOM elements needed to verify submitBatchModal auto-flush when user types without clicking + Add Row
+    const extraEls = {
+      spBatQuickCode: { value: '00387' },
+      spBatQuickAmt: { value: '500' },
+      spBatQuickRem: { value: 'Missed night shift' },
+      spBatPart: { value: '2' },
+      spBatTitle: { value: 'Part 2 Quick Flush' },
+      spBatLot: { value: 'WORKERS_LOT' },
+      spBatDate: { value: '2026-12-18' },
+      spBatMode: { value: 'Cash' },
+      spBatSigned: { value: 'Sarthak ji' },
+      spBatStatus: { value: 'DISBURSED' },
+      spBatLump: { value: '' },
+      spBatUtr: { value: 'CASH-22' },
+      spBatNotes: { value: 'Quick auto flush' },
+      spBatExtraRowsWrap: { innerHTML: '' },
+      spBatModalTotal: { textContent: '' }
+    };
+    const origGetEl = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => extraEls[id] || origGetEl(id);
+    bA.mockWindow.document.querySelectorAll = () => [];
+
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    await bA.mockWindow.ATPLSalaryPayout.syncNow(false);
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-12');
+
+    // 1. Add Missed / Chhoota Diff later for Ram (25924): +750 missed diff
+    const missRes = bA.mockWindow.ATPLSalaryPayout.upsertEmpSalary({
+      monthKey: '2026-12',
+      empCode: '25924',
+      addMissedDiff: 750,
+      remarks: 'Chhoota hua overtime diff baad me add'
+    });
+    assert.equal(missRes.ok, true);
+    assert.equal(missRes.record.missedDiffAmount, 750);
+
+    // Also add brand-new missed diff entry for 00387
+    bA.mockWindow.ATPLSalaryPayout.upsertEmpSalary({
+      monthKey: '2026-12',
+      empCode: '00387',
+      addMissedDiff: 500,
+      remarks: 'Surendra chhoota diff'
+    });
+
+    // Trigger submitBatchModal directly while 00387 / 500 is sitting in Quick Add inputs
+    bA.mockWindow.ATPLSalaryPayout.submitBatchModal();
+
+    const midLedger = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-12');
+    assert.equal(midLedger.empMissedDiffSum, 1250, 'Missed diff sum must show on dashboard immediately');
+    assert.equal(midLedger.diffTotal, 20750, '19500 + 1250 missed diff = 20750');
+    assert.equal(midLedger.batches.length, 2, 'submitBatchModal must auto-flush Quick Add row into Part 2');
+    const bat2 = midLedger.batches.find(b => b.partNumber === 2);
+    assert.equal(bat2.allocations[0].empCode, '00387');
+    assert.equal(bat2.allocations[0].amount, 500);
+    assert.equal(bat2.allocations[0].remarks, 'Missed night shift');
+
+    // 2. Edit Nikhil (26448) compliance from 30000 -> 32000, then Delete 25924 ledger row with tombstone
+    bA.mockWindow.ATPLSalaryPayout.upsertEmpSalary({
+      monthKey: '2026-12',
+      empCode: '26448',
+      complianceAmount: 32000,
+      remarks: 'Revised compliance'
+    });
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteEmpSalary('2026-12::25924'), true);
+
+    await new Promise(r => setTimeout(r, 50));
+    const bB = createBrowser('BrowserB_EditDel', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bB.mockWindow));
+    await bB.mockWindow.ATPLSalaryPayout.syncNow(false);
+    bB.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-12');
+    const finalB = bB.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-12');
+    const nikhilB = finalB.rows.find(r => r.empCode === '26448');
+    const ramB = finalB.rows.find(r => r.empCode === '25924');
+    assert.equal(nikhilB.complianceAmount, 32000, 'Edited compliance amount must sync across browsers');
+    assert.equal(ramB.hasSalaryRecord, false, 'Deleted emp salary row must stay deleted via tombstone');
+  });
 });
