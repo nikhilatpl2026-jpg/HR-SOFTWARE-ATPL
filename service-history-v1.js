@@ -1,7 +1,7 @@
 (function(g) {
   'use strict';
-  if (!g || g.__ATPL_SERVICE_HISTORY_V1__ === '2.1.0') return;
-  g.__ATPL_SERVICE_HISTORY_V1__ = '2.2.0';
+  if (!g || g.__ATPL_SERVICE_HISTORY_V1__ === '2.3.0') return;
+  g.__ATPL_SERVICE_HISTORY_V1__ = '2.3.0';
 
   var P = 'page-servicehistory';
   var N = 'atpl-sh-nav';
@@ -16,46 +16,50 @@
       'card no', 'token no', 'badli no', 'member id', 'id no', 'code'
     ],
     manual: [
-      'manual amount', 'manual amt', 'mam amount', 'manual salary', 'manual net',
-      'actual paid', 'manual pay', 'cash amount', 'cash amt', 'manual'
+      'manual amount', 'manual amt', 'mam amount', 'manisha mam', 'manual salary', 'manual net',
+      'actual paid', 'manual pay', 'cash amount', 'cash amt', 'manual',
+      'total amot', 'total amount'
     ],
     gross: [
       'gross salary', 'gross total salary', 'total gross salary', 'total gross',
       'earned gross salary', 'gross earned salary', 'gross earning salary', 'earned gross',
+      'total earned salary', 'earned salary', 'nett earning amount', 'net earning amount',
+      'net earning', 'nett earning', 'earning amount',
       'gross amount', 'gross amt', 'gross wages', 'gross wage', 'gross pay',
-      'total earnings', 'total earning', 'gross'
+      'total earnings', 'total earning', 'salry', 'salary', 'gross package', 'salary package', 'gross', 'total'
     ],
     basic: [
       'basic salary', 'basic wages', 'basic wage', 'basic pay', 'earned basic',
-      'actual basic', 'basic amt', 'basic amount', 'basic da', 'earn basic da', 'basic'
+      'actual basic', 'basic amt', 'basic amount', 'basic da', 'earn basic da', 'earning basic da',
+      'package basic and da', 'basic', 'rate'
     ],
-    hra: ['hra', 'h r a', 'house rent allowance', 'house rent', 'earned hra', 'hra allowance'],
+    hra: ['hra', 'h r a', 'house rent allowance', 'house rent', 'earned hra', 'earning hra', 'hra allowance'],
     pf: [
       'employee pf', 'emp pf', 'pf employee', 'pf emp', 'pf emp share', 'employee pf share',
       'pf deduction', 'pf ded', 'ded pf', 'deduction pf', 'pf deductions',
-      'pf 12', 'pf12', 'pf 12 0', 'p f 12', 'pf amt', 'pf amount', 'pf cut',
+      'pf 12', 'pf12', 'pf 12 0', 'p f 12', 'pfamt', 'pf amt', 'pf amount', 'pf cut',
       'epf employee', 'emp epf', 'epf deduction', 'epf ded', 'epf 12', 'epf12',
-      'epf amt', 'epf amount', 'provident fund', 'p f', 'epf', 'pf'
+      'epfamt', 'epf amt', 'epf amount', 'provident fund', 'p f', 'epf', 'pf'
     ],
     esic: [
       'employee esic', 'emp esic', 'esic employee', 'esic emp', 'esic emp share', 'employee esic share',
       'employee esi', 'emp esi', 'esi employee', 'esi emp', 'esi emp share',
       'esic deduction', 'esic ded', 'ded esic', 'esic deductions', 'esi deduction', 'esi ded',
       'esic 0 75', 'esic0 75', 'esic 075', 'esic 75', 'esi 0 75', 'esi0 75', 'esi 075', 'esi 75',
-      'esic amt', 'esic amount', 'esicamt', 'esi amt', 'esi amount', 'esiamt',
+      'esicamt', 'esic amt', 'esic amount', 'esiamt', 'esi amt', 'esi amount',
       'esic cut', 'ip ded', 'e s i c', 'e s i', 'esic', 'esi'
     ],
     net: [
-      'net salary payable', 'net payable', 'net pay', 'net salary', 'net payment',
+      'net salary payable', 'net payable amount', 'net payable', 'net pay', 'net salary', 'net payment',
       'net amount payable', 'net amount', 'net paid', 'take home pay', 'take home',
-      'in hand', 'total payable', 'payable amount', 'net sal'
+      'in hand', 'total payable', 'payable amount', 'net sal', 'total amot', 'total amount'
     ],
     earn: ['other earnings', 'other earning', 'allowances', 'allowance'],
     adv: [
       'advance deduction', 'adv deduction', 'advance ded', 'adv ded',
-      'advance recovery', 'adv recovery', 'salary advance', 'advance', 'adv'
+      'advance recovery', 'adv recovery', 'advance pay', 'salary advance', 'advance', 'adv'
     ],
-    ded: ['other deductions', 'other deduction', 'total deduction', 'total deductions'],
+    ded: ['other deductions', 'other deduction', 'total deduction', 'total deductions', 'total ded'],
     pfno: [
       'pf no uan', 'pf uan', 'pf no', 'pf number', 'pf account no', 'pf account number',
       'pf a c no', 'pf ac no', 'epf no', 'epf number', 'epf account no', 'pf member id',
@@ -114,35 +118,65 @@
     return '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
   }
 
-  function parseMonthFromText(raw) {
-    if (!raw) return '';
-    var s = String(raw).toLowerCase().replace(/[_.,/()'’`-]+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!s) return '';
+  var MONTH_DEFS = [
+    ['january', 1], ['february', 2], ['march', 3], ['april', 4],
+    ['june', 6], ['july', 7], ['august', 8], ['september', 9],
+    ['october', 10], ['november', 11], ['december', 12],
+    ['sept', 9], ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4],
+    ['may', 5], ['jun', 6], ['jul', 7], ['aug', 8], ['sep', 9],
+    ['oct', 10], ['nov', 11], ['dec', 12]
+  ];
 
-    // 1. Numeric YYYY MM or MM YYYY
-    var m = s.match(/\b(20\d{2})\s+(0?[1-9]|1[0-2])\b/) || s.match(/\b(0?[1-9]|1[0-2])\s+(20\d{2})\b/);
-    if (m) {
-      return m[1].length === 4
-        ? m[1] + '-' + String(+m[2]).padStart(2, '0')
-        : m[2] + '-' + String(+m[1]).padStart(2, '0');
+  function extractMonthOnlyFromText(raw) {
+    if (!raw) return 0;
+    var s = String(raw)
+      .replace(/\.(xlsx?|xlsm|xlsb|csv)$/i, '')
+      .replace(/\(\s*\d{1,3}\s*\)|\[\s*\d{1,3}\s*\]/g, ' ')
+      .toLowerCase()
+      .replace(/[_.,/()'’`-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!s) return 0;
+    for (var i = 0; i < MONTH_DEFS.length; i++) {
+      var nm = MONTH_DEFS[i][0];
+      var re = new RegExp('(?:^|\\b)' + nm + '(?:\\b|(?=\\d))');
+      if (re.test(s)) return MONTH_DEFS[i][1];
+    }
+    return 0;
+  }
+
+  function parseMonthFromText(raw, opts) {
+    if (!raw) return '';
+    opts = opts || {};
+    var maxYr = opts.maxYear || (new Date().getFullYear() + 1);
+    var minYr = opts.minYear || 2020;
+
+    if (raw instanceof Date && !isNaN(raw.getTime())) {
+      var dy = raw.getFullYear();
+      if (dy >= minYr && dy <= maxYr) {
+        return dy + '-' + String(raw.getMonth() + 1).padStart(2, '0');
+      }
+      return '';
     }
 
-    // 2. Named months (full + short) anywhere in text, with 4-digit or 2-digit year
-    var monthDefs = [
-      ['january', 1], ['february', 2], ['march', 3], ['april', 4],
-      ['june', 6], ['july', 7], ['august', 8], ['september', 9],
-      ['october', 10], ['november', 11], ['december', 12],
-      ['sept', 9], ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4],
-      ['may', 5], ['jun', 6], ['jul', 7], ['aug', 8], ['sep', 9],
-      ['oct', 10], ['nov', 11], ['dec', 12]
-    ];
+    var preClean = String(raw)
+      .replace(/\.(xlsx?|xlsm|xlsb|csv)$/i, '')
+      .replace(/\(\s*\d{1,3}\s*\)|\[\s*\d{1,3}\s*\]/g, ' ')
+      .toLowerCase()
+      .trim();
+    if (!preClean) return '';
 
+    var s = preClean.replace(/[_.,/()'’`-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // 1. Named months (full + short) first so version numbers never override explicit month names
     var foundMonthNum = 0;
-    for (var i = 0; i < monthDefs.length; i++) {
-      var nm = monthDefs[i][0];
+    var matchedToken = '';
+    for (var i = 0; i < MONTH_DEFS.length; i++) {
+      var nm = MONTH_DEFS[i][0];
       var re = new RegExp('(?:^|\\b)' + nm + '(?:\\b|(?=\\d))');
       if (re.test(s)) {
-        foundMonthNum = monthDefs[i][1];
+        foundMonthNum = MONTH_DEFS[i][1];
+        matchedToken = nm;
         break;
       }
     }
@@ -150,44 +184,117 @@
     if (foundMonthNum > 0) {
       var yr4 = s.match(/\b(20[1-3]\d)\b/) || s.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december|sept|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(20[1-3]\d)\b/);
       if (yr4) {
-        return yr4[1] + '-' + String(foundMonthNum).padStart(2, '0');
+        var y4Val = parseInt(yr4[1], 10);
+        if (y4Val >= minYr && y4Val <= maxYr) {
+          return y4Val + '-' + String(foundMonthNum).padStart(2, '0');
+        }
       }
-      var yr2 = s.match(/(?:^|\s|january|february|march|april|may|june|july|august|september|october|november|december|sept|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)(2[0-9]|3[0-5])\b/);
+      // 2-digit year must sit immediately after month token (e.g. "may-25", "june 26")
+      var adjRe = new RegExp('\\b' + matchedToken + '\\s*(2[0-9]|30)\\b');
+      var yr2 = s.match(adjRe);
       if (yr2) {
-        return '20' + yr2[1] + '-' + String(foundMonthNum).padStart(2, '0');
-      }
-    }
-
-    // 3. Numeric MM YY (e.g. 03 26)
-    var m2 = s.match(/\b(0?[1-9]|1[0-2])\s+(2[0-9]|3[0-5])\b/);
-    if (m2) {
-      return '20' + m2[2] + '-' + String(+m2[1]).padStart(2, '0');
-    }
-
-    return '';
-  }
-
-  function month(s, fileSheets) {
-    var p = parseMonthFromText(s);
-    if (p) return p;
-    if (Array.isArray(fileSheets)) {
-      for (var i = 0; i < fileSheets.length; i++) {
-        var sh = fileSheets[i];
-        if (!sh) continue;
-        p = parseMonthFromText(sh.name);
-        if (p) return p;
-        var rows = sh.rows || [];
-        for (var r = 0; r < Math.min(10, rows.length); r++) {
-          var rowTxt = Array.isArray(rows[r]) ? rows[r].join(' ') : String(rows[r] || '');
-          p = parseMonthFromText(rowTxt);
-          if (p) return p;
+        var y2Val = 2000 + parseInt(yr2[1], 10);
+        if (y2Val >= minYr && y2Val <= maxYr) {
+          return y2Val + '-' + String(foundMonthNum).padStart(2, '0');
         }
       }
     }
+
+    // 2. Strict separated numeric dates (YYYY-MM, MM-YYYY, DD/MM/YYYY) — never bare spaces
+    var sepYM = preClean.match(/\b(20[1-3]\d)[-/.](0?[1-9]|1[0-2])\b/);
+    if (sepYM) {
+      var sy = parseInt(sepYM[1], 10);
+      if (sy >= minYr && sy <= maxYr) return sy + '-' + String(+sepYM[2]).padStart(2, '0');
+    }
+    var sepMY = preClean.match(/\b(0?[1-9]|1[0-2])[-/.](20[1-3]\d)\b/);
+    if (sepMY) {
+      var my = parseInt(sepMY[2], 10);
+      if (my >= minYr && my <= maxYr) return my + '-' + String(+sepMY[1]).padStart(2, '0');
+    }
+    var sepDMY = preClean.match(/\b(?:0?[1-9]|[12]\d|3[01])[-/.](0?[1-9]|1[0-2])[-/.](20[1-3]\d)\b/);
+    if (sepDMY) {
+      var dmy = parseInt(sepDMY[3], 10);
+      if (dmy >= minYr && dmy <= maxYr) return dmy + '-' + String(+sepDMY[1]).padStart(2, '0');
+    }
+
     return '';
   }
 
-  var MASTER_CACHE = { listRef: null, len: -1, ts: 0, entries: [], byCode: {}, byName: {}, byStat: {} };
+  function inferYearForHintMonth(hintMonth, f) {
+    var ts = f && (f.savedAt || f.updated_at || f.updatedAt || f.created_at);
+    var refDate = ts ? new Date(ts) : new Date();
+    if (isNaN(refDate.getTime())) refDate = new Date();
+    var refY = refDate.getFullYear();
+    var refM = refDate.getMonth() + 1;
+    if (refY < 2020 || refY > (new Date().getFullYear() + 1)) {
+      refY = new Date().getFullYear();
+      refM = new Date().getMonth() + 1;
+    }
+    if (hintMonth > refM + 1) refY -= 1;
+    return refY + '-' + String(hintMonth).padStart(2, '0');
+  }
+
+  function month(s, fileSheets, f) {
+    var p = parseMonthFromText(s);
+    if (p) return p;
+
+    var hintMonth = extractMonthOnlyFromText(s);
+    if (Array.isArray(fileSheets) && fileSheets.length) {
+      // Check sheets in priority order, skip chart/empty sheets, and ONLY scan title rows above the table header
+      var ordered = fileSheets.slice().sort(function(a, b) {
+        return sheetPriority((b && b.name) || '') - sheetPriority((a && a.name) || '');
+      });
+      var fallbackCandidate = '';
+
+      for (var i = 0; i < ordered.length; i++) {
+        var sh = ordered[i];
+        if (!sh) continue;
+        var shLower = String(sh.name || '').toLowerCase();
+        if (shLower.indexOf('chart') >= 0) continue;
+
+        p = parseMonthFromText(sh.name);
+        if (p) {
+          if (!hintMonth || parseInt(p.split('-')[1], 10) === hintMonth) return p;
+          if (!fallbackCandidate) fallbackCandidate = p;
+        }
+
+        var rows = sh.rows || [];
+        if (rows.length < 2) continue;
+        var hdr = detectHeaderRow(rows);
+        var titleLimit = hdr ? Math.min(6, hdr.hi) : Math.min(4, rows.length);
+
+        for (var r = 0; r < titleLimit; r++) {
+          var row = rows[r];
+          if (!Array.isArray(row)) continue;
+          for (var c = 0; c < row.length; c++) {
+            var cell = row[c];
+            if (cell == null || cell === '') continue;
+            p = parseMonthFromText(cell);
+            if (p) {
+              if (!hintMonth || parseInt(p.split('-')[1], 10) === hintMonth) return p;
+              if (!fallbackCandidate) fallbackCandidate = p;
+            }
+          }
+          var rowTxt = row.map(function(v) {
+            return v instanceof Date ? v.toDateString() : String(v == null ? '' : v);
+          }).join(' ');
+          p = parseMonthFromText(rowTxt);
+          if (p) {
+            if (!hintMonth || parseInt(p.split('-')[1], 10) === hintMonth) return p;
+            if (!fallbackCandidate) fallbackCandidate = p;
+          }
+        }
+      }
+      if (fallbackCandidate && !hintMonth) return fallbackCandidate;
+    }
+
+    if (hintMonth > 0) {
+      return inferYearForHintMonth(hintMonth, f);
+    }
+    return '';
+  }
+
+    var MASTER_CACHE = { listRef: null, len: -1, ts: 0, entries: [], byCode: {}, byName: {}, byStat: {} };
 
   function getMasterList() {
     try {
@@ -311,6 +418,10 @@
     if (!nm) return false;
     if (/\.(json|pdf|doc|docx|png|jpg|jpeg|txt)$/i.test(nm)) return false;
     if (nm.indexOf('advance_management') >= 0 || nm.indexOf('atpl_employee_advances') >= 0) return false;
+    if (/(capa[\s_]*form|capa[\s_]*format|offline[\s_]*reconcile|machine[\s_]*rate[\s_]*audit|production[\s_]*data)/i.test(nm)) return false;
+    if (nm.indexOf('master data') >= 0 && nm.indexOf('salary') < 0) return false;
+    if (/\bf\s*&\s*f\b/i.test(nm) && nm.indexOf('salary') < 0) return false;
+    if (/attend[ae]nce/i.test(nm) && nm.indexOf('salary') < 0 && nm.indexOf('wages') < 0 && nm.indexOf('payroll') < 0) return false;
     if (f.isDocument === true && !f.wb && !f.sheets) return false;
     if (f.module && ['hr_doc', 'challan', 'pf', 'esic'].indexOf(String(f.module).toLowerCase()) >= 0) return false;
     return true;
@@ -498,13 +609,13 @@
       normalizedH.forEach(function(nv, i) {
         if (!nv) return;
         if (/\b(employer|er|3 67|8 33|13|13 0|13 61|admin|edli|no|number|num|account|acc|ac|uan|eps|wage|wages|base|gross|basic)\b/.test(nv)) return;
-        if (/\b(pf|p f|epf|pf12|epf12|provident)\b/.test(nv)) out.push(i);
+        if (/\b(pf|pfamt|p f|epf|epfamt|pf12|epf12|provident)\b/.test(nv)) out.push(i);
       });
     } else if (fieldKey === 'esic') {
       normalizedH.forEach(function(nv, i) {
         if (!nv) return;
         if (/\b(employer|er|3 25|325|4 75|no|number|num|ip|account|acc|ac|wage|wages|base|gross|basic)\b/.test(nv)) return;
-        if (/\b(esic|esi|e s i c|e s i|esic0|esi0)\b/.test(nv)) out.push(i);
+        if (/\b(esic|esicamt|esi|esiamt|e s i c|e s i|esic0|esi0)\b/.test(nv)) out.push(i);
       });
     } else if (fieldKey === 'pfno') {
       normalizedH.forEach(function(nv, i) {
@@ -548,7 +659,7 @@
   }
 
   function detectHeaderRow(rows) {
-    var nameHeads = ['employee name', 'employee s name', 'name of employee', 'name of employe', 'emp name', 'emp s name', 'empname', 'worker name', 'worker s name', 'staff name', 'name of worker', 'name of staff', 'full name', 'name', 'karamchari'];
+    var nameHeads = ['employee name', 'employee s name', 'name of employee', 'name of employe', 'emp name', 'emp s name', 'empname', 'worker name', 'worker s name', 'staff name', 'name of worker', 'name of staff', 'full name', 'name', 'karamchari', 'card no 1', 'card no 2'];
     var serialHeads = ['s no', 'sr no', 'serial no', 'serial number', 'sno', 'sr number', 'sl no', 'sr'];
     var best = null;
     var maxScan = Math.min(35, rows.length);
@@ -680,25 +791,79 @@
     }
   }
 
+  function parseSingleHeaderRow(rows, r, prevHdr) {
+    var nameHeads = ['employee name', 'employee s name', 'name of employee', 'name of employe', 'emp name', 'emp s name', 'empname', 'worker name', 'worker s name', 'staff name', 'name of worker', 'name of staff', 'full name', 'name', 'karamchari', 'card no 1', 'card no 2'];
+    var rawH = rows[r] || [];
+    if (!Array.isArray(rawH) || rawH.length < 2) return null;
+    var ni = -1;
+    for (var j = 0; j < rawH.length; j++) {
+      if (nameHeads.indexOf(norm(rawH[j])) >= 0) { ni = j; break; }
+    }
+    var explicitCodeCols = indices(rawH, A.code, 'code');
+    if (!explicitCodeCols.length) return null;
+    var codeCol = explicitCodeCols[0];
+    var ix = { code: [codeCol] };
+    var fieldHits = 0;
+    Object.keys(A).forEach(function(k) {
+      if (k === 'code') return;
+      var cols = indices(rawH, A[k], k);
+      ix[k] = cols;
+      if (cols.length) fieldHits++;
+    });
+    if (fieldHits === 0 && ni < 0) return null;
+    var effHeaderRow = rawH;
+    if (fieldHits === 0 && prevHdr && prevHdr.ix) {
+      effHeaderRow = rawH.slice();
+      var prevRow = prevHdr.headerRow || [];
+      Object.keys(prevHdr.ix).forEach(function(k) {
+        if (k === 'code') return;
+        var inherited = prevHdr.ix[k];
+        if (Array.isArray(inherited) && inherited.length) {
+          ix[k] = inherited.slice();
+          inherited.forEach(function(ci) {
+            if (!effHeaderRow[ci] && prevRow[ci]) effHeaderRow[ci] = prevRow[ci];
+          });
+        }
+      });
+    }
+    return { hi: r, nameIdx: ni >= 0 ? ni : (prevHdr ? prevHdr.nameIdx : -1), ix: ix, score: 20 + fieldHits * 5, headerRow: effHeaderRow };
+  }
+
   function buildSheetIndex(sh) {
     var rows = (sh && sh.rows) || [];
     var hdr = detectHeaderRow(rows);
     var shName = (sh && sh.name) || 'Sheet';
     if (!hdr) {
-      return { name: shName, priority: sheetPriority(shName), hdr: null, rows: rows, byCode: null, byName: null };
+      return { name: shName, priority: sheetPriority(shName), hdr: null, sections: null, rows: rows, byCode: null, byName: null };
     }
     var hi = hdr.hi;
-    var ix = hdr.ix;
-    var nameIdx = hdr.nameIdx;
-    var hasCode = !!(ix.code && ix.code.length);
-    var codeCol = hasCode ? ix.code[0] : -1;
+    var curHdr = hdr;
+    var sections = [{ startRow: hi, hdr: hdr }];
+    var codeCol = (curHdr.ix.code && curHdr.ix.code.length) ? curHdr.ix.code[0] : -1;
+    var nameIdx = curHdr.nameIdx;
     var byCode = {};
     var byName = {};
 
     for (var i = hi + 1; i < rows.length; i++) {
       var row = rows[i];
       if (!row || !row.length) continue;
-      if (hasCode) {
+
+      // Check for embedded section sub-headers (e.g. Staff section lower in the same sheet)
+      if (codeCol >= 0) {
+        var cRawNorm = norm(row[codeCol]);
+        if (cRawNorm === 'code' || cRawNorm === 'emp code' || cRawNorm === 'employee id' || cRawNorm === 'employee code') {
+          var subHdr = parseSingleHeaderRow(rows, i, curHdr);
+          if (subHdr) {
+            curHdr = subHdr;
+            sections.push({ startRow: i, hdr: subHdr });
+            codeCol = (curHdr.ix.code && curHdr.ix.code.length) ? curHdr.ix.code[0] : -1;
+            nameIdx = curHdr.nameIdx;
+            continue;
+          }
+        }
+      }
+
+      if (codeCol >= 0) {
         var ck = key(row[codeCol]);
         if (ck) {
           (byCode[ck] || (byCode[ck] = [])).push(i);
@@ -727,6 +892,7 @@
       name: shName,
       priority: sheetPriority(shName),
       hdr: hdr,
+      sections: sections,
       rows: rows,
       byCode: byCode,
       byName: byName
@@ -737,9 +903,10 @@
     var cached = getCachedFileIndex(f);
     if (cached) return cached;
     var fname = f.name || f.filename || f.id;
-    var p = parseMonthFromText(fname);
+    var maxYr = new Date().getFullYear() + 1;
+    var p = parseMonthFromText(fname, { minYear: 2020, maxYear: maxYr });
     var shList = sheets(f);
-    if (!p) p = month(fname, shList);
+    if (!p) p = month(fname, shList, f);
     var indexedSheets = new Array(shList.length);
     for (var i = 0; i < shList.length; i++) {
       indexedSheets[i] = buildSheetIndex(shList[i]);
@@ -766,15 +933,27 @@
 
     var rows = idxSh.rows || [];
     var numericKeys = ['manual', 'gross', 'basic', 'hra', 'pf', 'esic', 'net', 'earn', 'adv', 'ded'];
-    var hi = hdr.hi;
-    var ix = hdr.ix;
-    var nameIdx = hdr.nameIdx;
-    var headerArr = hdr.headerRow || rows[hi] || [];
+    var sections = idxSh.sections && idxSh.sections.length ? idxSh.sections : [{ startRow: hdr.hi, hdr: hdr }];
     var empKey = key(emp);
     var targetNameNorm = (masterEmp && masterEmp.name) ? norm(masterEmp.name) : (!/^\d+$/.test(String(emp || '').trim()) ? norm(emp) : '');
+    var nameIdx = hdr.nameIdx;
+    var ix = hdr.ix;
+
+    function headerForRow(rowIdx) {
+      var chosen = sections[0].hdr;
+      for (var sIdx = 1; sIdx < sections.length; sIdx++) {
+        if (sections[sIdx].startRow <= rowIdx) chosen = sections[sIdx].hdr;
+        else break;
+      }
+      return chosen;
+    }
 
     function extractRowRec(row, rowIdx, matchedBy) {
-      var rawCode = ix.code.length ? cleanStatId(row[ix.code[0]]) : '';
+      var rowHdr = headerForRow(rowIdx);
+      var rIx = rowHdr.ix;
+      var rNameIdx = rowHdr.nameIdx;
+      var rHeaderArr = rowHdr.headerRow || rows[rowHdr.hi] || [];
+      var rawCode = rIx.code.length ? cleanStatId(row[rIx.code[0]]) : '';
       if (!rawCode && matchedBy !== 'name') return null;
       var codeNorm = norm(rawCode);
       if (codeNorm === 'total' || codeNorm === 'grand total' || codeNorm === 'sub total' || codeNorm === 'subtotal') return null;
@@ -786,15 +965,15 @@
         priority: idxSh.priority != null ? idxSh.priority : sheetPriority(idxSh.name || ''),
         row: rowIdx + 1,
         code: rawCode || emp,
-        empName: nameIdx >= 0 ? cleanStatId(row[nameIdx]) : '',
+        empName: rNameIdx >= 0 ? cleanStatId(row[rNameIdx]) : '',
         matchedBy: matchedBy,
         values: {},
         headers: {},
         issues: []
       };
 
-      Object.keys(ix).forEach(function(k) {
-        var cols = ix[k];
+      Object.keys(rIx).forEach(function(k) {
+        var cols = rIx[k];
         if (!cols || !cols.length) return;
         var colIdx = cols[0];
         var val = numericKeys.indexOf(k) >= 0 ? num(row[colIdx]) : cleanStatId(row[colIdx]);
@@ -811,7 +990,7 @@
         if ((k === 'pf' || k === 'esic') && typeof val === 'number' && val < 0) {
           val = Math.abs(val);
         }
-        rec.headers[k] = String(headerArr[colIdx] || '');
+        rec.headers[k] = String(rHeaderArr[colIdx] || '');
         rec.values[k] = val;
       });
 
@@ -832,7 +1011,7 @@
     }
 
     // Name fallback ONLY if code match found nothing in this sheet and we have a multi-char target name
-    if (!found.length && allowNameFallback && targetNameNorm && nameIdx >= 0 && targetNameNorm.length >= 4 && idxSh.byName) {
+    if (!found.length && allowNameFallback && targetNameNorm && targetNameNorm.length >= 4 && idxSh.byName) {
       var tNameClean = targetNameNorm.replace(/^(mr|mrs|ms|shri|smt|miss|late)\s+/, '').replace(/\s+ji$/, '');
       var cand = [];
       var seenName = {};
@@ -944,7 +1123,7 @@
     var d = new Date(parseInt(sp[0], 10), parseInt(sp[1], 10) - 1, 1);
     var last = new Date(parseInt(ep[0], 10), parseInt(ep[1], 10) - 1, 1);
     var guard = 0;
-    while (d <= last && guard < 120) {
+    while (d <= last && guard < 240) {
       months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
       d.setMonth(d.getMonth() + 1);
       guard++;

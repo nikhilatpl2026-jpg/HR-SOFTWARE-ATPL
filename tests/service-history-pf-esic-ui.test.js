@@ -348,4 +348,131 @@ test('Service History Module - PF No, ESIC No, Monthly Deductions & UI Upgrade',
     assert(ids['atpl-sh-results'].innerHTML.includes('Anita Devi'), 'Latest search must win after async completion');
     assert(!ids['atpl-sh-results'].innerHTML.includes('Vikas Sharma'), 'Cancelled search must not overwrite results');
   });
+
+  await t.test('6. Regression: handles duplicate copy suffixes, ignores Chart/8.33%/DOJ fake dates, filters utility/attendance sheets, reads PFAmt/Earned Salary aliases & multi-section sub-headers', () => {
+    const master = [
+      { emp_id: '00387', name: 'SURENDRA KUMAR', father: 'UDMI RAM', doj: '2010-04-01', pf_no: '100372880934', gross: 34100 }
+    ];
+    const files = [
+      // Duplicate suffix (2) on Dec 2025 -> must map to 2025-12, NOT 2025-02
+      {
+        name: 'final salary sheet dec 2025 (2).xls',
+        sheets: {
+          'Fourmala Sheet': [
+            ['Emp ID', 'Name of employee', 'Total Gross salary', 'Manual Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable'],
+            ['00387', 'SURENDRA KUMAR', '34100', '34100', '1800', '0', '32300']
+          ]
+        }
+      },
+      // 2024 split tabs with PFAmt / ESIAmt + Manisha Mam column
+      {
+        name: 'final salary sheet nov 2024 atpl.xlsx',
+        sheets: {
+          'Manisha Mam': [
+            ['Code', 'Name', 'Manisha Mam'],
+            ['387', 'Surendra Kumar', '34100']
+          ],
+          'Sheet1': [
+            ['EmpCode', 'EmpName', 'Total Earned Salary', 'PFAmt', 'ESIAmt', 'Net Payable Amount'],
+            ['00387', 'SURENDRA KUMAR', '34100', '1800', '0', '32300']
+          ]
+        }
+      },
+      // Chart1 numeric numbers (9, 21) must NOT create 2021-09; Main Sheet title "June-26" resolves 2026-06
+      {
+        name: 'june salary lokesh ji.xlsx',
+        sheets: {
+          'Chart1': [['Summary'], [25247, 9, 21, 500]],
+          'Main Sheet': [
+            ['Salary Sheet Month of June-26'],
+            ['S.No.', 'Employee ID', 'Name of employee', 'D-O-J', 'Total Gross salary', 'Manual Amount', 'PF@12%', 'Net Payable'],
+            [1, '00387', 'SURENDRA KUMAR', '01/04/2002', 34100, 34100, 1800, 32300]
+          ]
+        }
+      },
+      // Header containing "Earned Bonus 8.33%" must NOT become 2033-08; month-only "sep" infers 2026 from savedAt
+      {
+        name: 'revised sent atpl-sep.xlsx',
+        savedAt: '2026-10-26T10:00:00.000Z',
+        sheets: {
+          'Main Sheet': [
+            ['S.No.', 'Employee ID', 'Name of employee', 'Earned Bonus 8.33%', 'Total Gross salary', 'Manual Amount', 'PF@12%', 'Net Payable'],
+            [1, '00387', 'SURENDRA KUMAR', 1543, 34090, 34100, 2223, 31867]
+          ]
+        }
+      },
+      // Embedded section sub-header with shifted columns (april-25 worker -> staff section)
+      {
+        name: 'salary sheet april-25 (1).xlsx',
+        sheets: {
+          'Sheet1': [
+            ['Code', 'Card No. 1', 'Days', 'Salry', 'Total', 'Adv', 'Total amot'],
+            ['25492', 'Gulab Chand', 44, 16500, 24200, '', 24200],
+            ['Code', 'Staff Name', 'Post', 'Rate', 'Days', 'Total', 'PF', 'Adv.', 'Total Amount'],
+            ['387', 'Surendra kumar', 'Blend Master', 34100, 30, 34100, 'PF', '', 34100]
+          ]
+        }
+      },
+      // Embedded section sub-header inheriting parent "Total" column when blank (aug-26 new)
+      {
+        name: 'salary sheet aug-26 new (1).xlsx',
+        sheets: {
+          'Sheet1': [
+            ['Code', 'Card No. 1', 'Total'],
+            ['25114', 'Sukumar Barman', 22298],
+            ['Code', 'Staff Name', ''],
+            ['00387', 'Surendra kumar', 34100]
+          ]
+        }
+      },
+      // Non-salary utility & attendance sheets must be excluded cleanly
+      {
+        name: 'atpl_machine_rate_audit.xlsx',
+        savedAt: '2026-10-15T00:00:00.000Z',
+        sheets: { 'REVIEW ROWS': [['A', 'B'], [1, 2]] }
+      },
+      {
+        name: 'offline_reconcile_file.xlsx',
+        sheets: { 'Sheet1': [['A', 'B'], [1, 2]] }
+      },
+      {
+        name: 'attendence sheet oct-26.xlsx',
+        sheets: {
+          'office dep.': [
+            ['Code', 'Staff Name', 'Rate', 'Days', 'Total', 'Total Amount'],
+            ['387', 'Surendra kumar', 34100, '', 0, 0]
+          ]
+        }
+      }
+    ];
+
+    const { mockWindow } = makeDomCtx(master, files);
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(shCode, ctx);
+
+    const res = mockWindow.ATPLServiceHistoryV1.scan('00387');
+    const byPeriod = {};
+    for (const m of res.months) {
+      if (m.status !== 'SALARY FILE UNAVAILABLE') byPeriod[m.period] = m;
+    }
+
+    assert(!byPeriod['2021-09'], 'Must not misclassify Chart1 numbers as Sep 2021');
+    assert(!byPeriod['2033-08'], 'Must not misclassify 8.33% as Aug 2033');
+    assert(!byPeriod['2025-02'], 'Duplicate suffix (2) on Dec 2025 must not map to Feb 2025');
+    assert(!byPeriod['UNDATED'], 'Utility reconcile file must be filtered');
+    assert(!byPeriod['2026-10'], 'Attendance/audit files without salary must be filtered');
+
+    assert.equal(byPeriod['2024-11'].records[0].values.pf, 1800);
+    assert.equal(byPeriod['2024-11'].records[0].values.manual, 34100);
+    assert.equal(byPeriod['2024-11'].records[0].values.gross, 34100);
+    assert.equal(byPeriod['2025-04'].records[0].values.manual, 34100);
+    assert.equal(byPeriod['2025-12'].records[0].values.pf, 1800);
+    assert.equal(byPeriod['2026-06'].records[0].values.pf, 1800);
+    assert.equal(byPeriod['2026-08'].status, 'RECORD FOUND');
+    assert.equal(byPeriod['2026-08'].records[0].values.gross, 34100);
+    assert.equal(byPeriod['2026-09'].records[0].values.pf, 2223);
+    assert.equal(res.totals.monthsFound, 6);
+    assert.equal(res.totals.pfMonths, 4);
+    assert.equal(res.totals.pfTotal, 7623);
+  });
 });
