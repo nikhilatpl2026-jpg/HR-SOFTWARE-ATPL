@@ -606,4 +606,152 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledgerJuly.diffTotal, 0);
     assert.equal(ledgerJuly.rows.length, 0);
   });
+
+  await t.test('10. Manual Compliance + Compliance Lock + Additive Multi-Diff Sheets (Sheet1+Sheet2+Sheet3+Manual) + Delete Sheet Sync', async () => {
+    const bA = createBrowser('BrowserA_Multi', cloud);
+    const bB = createBrowser('BrowserB_Multi', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    vm.runInContext(payoutJs, vm.createContext(bB.mockWindow));
+
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-08');
+    bB.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-08');
+
+    // A) Manual Compliance Net Payable (70L) -> auto-locks, toggle lock & delete works cleanly
+    const manComp = bA.mockWindow.ATPLSalaryPayout.saveManualSheetEntry({
+      monthKey: '2026-08',
+      kind: 'COMPLIANCE',
+      title: 'Aug Compliance Manual Net Pay',
+      amount: 7000000,
+      remarks: 'HDFC NEFT'
+    });
+    assert.equal(manComp.ok, true);
+    let ledA = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledA.complianceTotal, 7000000);
+    assert.equal(ledA.complianceLocked, true, 'Manual Compliance must lock after processing');
+    assert.equal(ledA.complianceSheets.length, 1);
+
+    // Unlock, delete manual compliance, then upload Excel Compliance sheet (80L)
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.toggleSheetLock(manComp.record.id), true);
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.isComplianceLockedForMonth('2026-08'), false);
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(manComp.record.id), true);
+    ledA = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledA.complianceTotal, 0);
+    assert.equal(ledA.complianceSheets.length, 0);
+
+    bA.mockWindow.FILES.push({
+      name: 'AUG_COMPLIANCE.xlsx',
+      sheets: {
+        'Compliance': [
+          ['Emp Code', 'Emp Name', 'Net Payable', 'PF 12%', 'ESIC 0.75%'],
+          ['25924', 'Ram Kumar Sharma', 5000000, 1800, 150],
+          ['26448', 'Nikhil Arora', 3000000, 3600, 0]
+        ]
+      }
+    });
+    const cImp = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('AUG_COMPLIANCE.xlsx', '2026-08', 'COMPLIANCE');
+    assert.equal(cImp.ok, true);
+    ledA = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledA.complianceTotal, 8000000);
+    assert.equal(ledA.complianceLocked, true, 'Excel Compliance must lock after processing');
+
+    // Bank Return still works even when Compliance is locked!
+    const retRes = bA.mockWindow.ATPLSalaryPayout.addOrUpdateReturn({
+      monthKey: '2026-08',
+      empCode: '25924',
+      amount: 18000,
+      reason: 'IFSC Changed',
+      newAccountNo: '9988776655',
+      newIfsc: 'HDFC0009999'
+    });
+    assert.equal(retRes.ok, true);
+
+    // B) Additive Multi-Diff Sheets: Sheet 1 (3L) + Sheet 2 (2L, overlapping 25924) + Sheet 3 (1L) + Manual Diff (50k) = 6.5L!
+    bA.mockWindow.FILES.push(
+      {
+        name: 'AUG_DIFF_1.xlsx',
+        sheets: {
+          'Diff1': [
+            ['Emp Code', 'Emp Name', 'Diff Amount'],
+            ['25924', 'Ram Kumar Sharma', 180000],
+            ['26448', 'Nikhil Arora', 120000]
+          ]
+        }
+      },
+      {
+        name: 'AUG_DIFF_2.xlsx',
+        sheets: {
+          'Diff2': [
+            ['Emp Code', 'Emp Name', 'Diff Amount'],
+            ['25924', 'Ram Kumar Sharma', 80000],
+            ['26510', 'Maheshwar Prasad', 120000]
+          ]
+        }
+      },
+      {
+        name: 'AUG_DIFF_3.xlsx',
+        sheets: {
+          'Diff3': [
+            ['Emp Code', 'Emp Name', 'Diff Amount'],
+            ['26520', 'Sukhchan Barman', 100000]
+          ]
+        }
+      }
+    );
+
+    const d1 = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('AUG_DIFF_1.xlsx', '2026-08', 'DIFF');
+    const d2 = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('AUG_DIFF_2.xlsx', '2026-08', 'DIFF');
+    const d3 = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('AUG_DIFF_3.xlsx', '2026-08', 'DIFF');
+    assert.equal(d1.ok && d2.ok && d3.ok, true);
+
+    const manDiff = bA.mockWindow.ATPLSalaryPayout.saveManualSheetEntry({
+      monthKey: '2026-08',
+      kind: 'DIFF',
+      title: 'Special Cash Diff Lot',
+      amount: 50000,
+      remarks: 'Extra Diff'
+    });
+    assert.equal(manDiff.ok, true);
+
+    // Pay 1,50,000 batch
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-08',
+      partNumber: 1,
+      status: 'DISBURSED',
+      allocations: [{ empCode: '25924', amount: 150000 }]
+    });
+
+    ledA = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledA.diffTotal, 650000, 'Sheet1 (3L) + Sheet2 (2L) + Sheet3 (1L) + Manual (50k) must sum to 6,50,000');
+    assert.equal(ledA.diffSheets.length, 4);
+    assert.equal(ledA.rows.find(r => r.empCode === '25924').baseDiffAmount, 260000, 'Same Emp across Sheet 1 + Sheet 2 must accumulate');
+    assert.equal(ledA.totalBatchPaid, 150000);
+    assert.equal(ledA.diffRemainingTotal, 500000);
+
+    // Sync to Browser B and verify parity
+    await new Promise(r => setTimeout(r, 60));
+    await bB.mockWindow.ATPLSalaryPayout.syncNow(true);
+    let ledB = bB.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledB.complianceTotal, 8000000);
+    assert.equal(ledB.complianceLocked, true);
+    assert.equal(ledB.diffTotal, 650000);
+    assert.equal(ledB.diffSheets.length, 4);
+    assert.equal(ledB.diffRemainingTotal, 500000);
+
+    // C) Delete ONLY Diff Sheet 2 (2L) -> subtracts 2L cleanly (6.5L -> 4.5L), keeps Sheet 1 + Sheet 3 + Manual, syncs via tombstone!
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(d2.sheetId), true);
+    ledA = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledA.diffTotal, 450000, 'Deleting Diff Sheet 2 must leave exact 4,50,000');
+    assert.equal(ledA.diffSheets.length, 3);
+    assert.equal(ledA.rows.find(r => r.empCode === '25924').baseDiffAmount, 180000, 'Emp 25924 must drop back to Sheet 1 amount 1,80,000');
+    assert.equal(ledA.rows.some(r => r.empCode === '26510'), false, 'Emp 26510 unique to Sheet 2 must be removed');
+    assert.equal(ledA.diffRemainingTotal, 300000);
+
+    await new Promise(r => setTimeout(r, 60));
+    await bB.mockWindow.ATPLSalaryPayout.syncNow(true);
+    ledB = bB.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-08');
+    assert.equal(ledB.diffTotal, 450000, 'Browser B must reflect deleted Diff Sheet 2 via tombstone sync');
+    assert.equal(ledB.diffSheets.length, 3);
+    assert.equal(ledB.rows.find(r => r.empCode === '25924').baseDiffAmount, 180000);
+    assert.equal(ledB.rows.some(r => r.empCode === '26510'), false);
+  });
 });

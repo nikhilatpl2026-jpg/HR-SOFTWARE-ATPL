@@ -182,7 +182,7 @@ let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {})
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
 let syncComplianceSheets = readJsonFile('compliance_sheets.json', {}); // id (e.g. monthKey) -> generated/edited compliance workbook snapshot
 let syncComplianceTombstones = readJsonFile('compliance_tombstones.json', {}); // id -> deleted_at ISO
-let syncSalaryPayout = readJsonFile('salary_payout.json', { monthSummaries: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} });
+let syncSalaryPayout = readJsonFile('salary_payout.json', { monthSummaries: {}, uploadedSheets: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} });
 
 if (syncPendingDiffs && typeof syncPendingDiffs === 'object' && syncPendingDiffTombstones && typeof syncPendingDiffTombstones === 'object') {
   Object.keys(syncPendingDiffTombstones).forEach(tid => {
@@ -2291,7 +2291,7 @@ function normalizeSalaryPayoutBucket(bucket) {
 
 function mergeSalaryPayoutState(incoming) {
   if (!syncSalaryPayout || typeof syncSalaryPayout !== 'object') {
-    syncSalaryPayout = { monthSummaries: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} };
+    syncSalaryPayout = { monthSummaries: {}, uploadedSheets: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} };
   }
   const inc = incoming && typeof incoming === 'object' ? incoming : {};
   const tombs = normalizeSalaryPayoutBucket(syncSalaryPayout.tombstones);
@@ -2304,7 +2304,7 @@ function mergeSalaryPayoutState(incoming) {
   });
   syncSalaryPayout.tombstones = tombs;
 
-  const sections = ['monthSummaries', 'empSalaries', 'points', 'returns', 'diffBatches'];
+  const sections = ['monthSummaries', 'uploadedSheets', 'empSalaries', 'points', 'returns', 'diffBatches'];
   sections.forEach(sec => {
     const cur = normalizeSalaryPayoutBucket(syncSalaryPayout[sec]);
     const incSec = normalizeSalaryPayoutBucket(inc[sec]);

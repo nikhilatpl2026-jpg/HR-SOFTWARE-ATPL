@@ -70,6 +70,7 @@
     searchQuery: '',
     overviewFilter: 'ALL', // 'ALL' | 'DIFF_PENDING' | 'LEFTOVER_SMALL' | 'HAS_POINTS' | 'RETURN_PENDING'
     monthSummaries: {},
+    uploadedSheets: {},
     empSalaries: {},
     points: {},
     returns: {},
@@ -316,6 +317,7 @@
       version: 1,
       updatedAt: new Date().toISOString(),
       monthSummaries: state.monthSummaries || {},
+      uploadedSheets: state.uploadedSheets || {},
       empSalaries: state.empSalaries || {},
       points: state.points || {},
       returns: state.returns || {},
@@ -356,7 +358,7 @@
       if (nTs >= pTs) state.tombstones[k] = incTombs[k];
     });
 
-    var sections = ['monthSummaries', 'empSalaries', 'points', 'returns', 'diffBatches'];
+    var sections = ['monthSummaries', 'uploadedSheets', 'empSalaries', 'points', 'returns', 'diffBatches'];
     sections.forEach(function(sec) {
       var localMap = state[sec] || {};
       var remoteMap = (cloud[sec] && typeof cloud[sec] === 'object') ? cloud[sec] : {};
@@ -593,11 +595,27 @@
     };
   }
 
+  function getMonthUploadedSheets(monthKey) {
+    var mk = monthKey || state.selectedMonth;
+    return Object.values(state.uploadedSheets || {}).filter(function(sh) {
+      return sh && sh.monthKey === mk && !state.tombstones[sh.id];
+    }).sort(function(a, b) {
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+  }
+
+  function isComplianceLockedForMonth(monthKey) {
+    return getMonthUploadedSheets(monthKey).some(function(sh) {
+      return (sh.kind === 'COMPLIANCE' || sh.kind === 'BOTH') && !!sh.locked;
+    });
+  }
+
   function listAvailableMonths() {
     var set = {};
     set[state.selectedMonth || currentMonthIso()] = true;
     set[currentMonthIso()] = true;
     Object.keys(state.monthSummaries || {}).forEach(function(k) { if (k) set[k] = true; });
+    Object.values(state.uploadedSheets || {}).forEach(function(r) { if (r && r.monthKey && !state.tombstones[r.id]) set[r.monthKey] = true; });
     Object.values(state.empSalaries || {}).forEach(function(r) { if (r && r.monthKey) set[r.monthKey] = true; });
     Object.values(state.points || {}).forEach(function(r) { if (r && r.monthKey) set[r.monthKey] = true; });
     Object.values(state.returns || {}).forEach(function(r) { if (r && r.monthKey) set[r.monthKey] = true; });
@@ -811,13 +829,31 @@
       return String(a.empCode).localeCompare(String(b.empCode), undefined, { numeric: true });
     });
 
-    var empComplianceSum = rows.reduce(function(acc, r) { return round2(acc + r.complianceAmount); }, 0);
+    var monthUploadedSheets = getMonthUploadedSheets(mk);
+    var complianceSheets = monthUploadedSheets.filter(function(sh) { return sh.kind === 'COMPLIANCE' || sh.kind === 'BOTH'; });
+    var diffSheets = monthUploadedSheets.filter(function(sh) { return sh.kind === 'DIFF' || sh.kind === 'BOTH'; });
+    var complianceLocked = complianceSheets.some(function(sh) { return !!sh.locked; });
+
+    var lumpComplianceSheets = monthUploadedSheets.reduce(function(acc, sh) {
+      if ((sh.kind === 'COMPLIANCE' || sh.kind === 'BOTH') && (!Array.isArray(sh.rows) || sh.rows.length === 0)) {
+        return round2(acc + (Number(sh.complianceAmount) || 0));
+      }
+      return acc;
+    }, 0);
+    var lumpDiffSheets = monthUploadedSheets.reduce(function(acc, sh) {
+      if ((sh.kind === 'DIFF' || sh.kind === 'BOTH') && (!Array.isArray(sh.rows) || sh.rows.length === 0)) {
+        return round2(acc + (Number(sh.diffAmount) || 0));
+      }
+      return acc;
+    }, 0);
+
+    var empComplianceSum = round2(rows.reduce(function(acc, r) { return round2(acc + r.complianceAmount); }, 0) + lumpComplianceSheets);
     var empManualSum = rows.reduce(function(acc, r) { return round2(acc + r.manualAmount); }, 0);
     var empPfSum = rows.reduce(function(acc, r) { return round2(acc + r.pfEmployee); }, 0);
     var empEsicSum = rows.reduce(function(acc, r) { return round2(acc + r.esicEmployee); }, 0);
     var empAdvanceDedSum = rows.reduce(function(acc, r) { return round2(acc + r.advanceDeduction); }, 0);
-    var empBaseDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.effectiveBaseDiff); }, 0);
-    var empNetDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.netDiffAmount); }, 0);
+    var empBaseDiffSum = round2(rows.reduce(function(acc, r) { return round2(acc + r.effectiveBaseDiff); }, 0) + lumpDiffSheets);
+    var empNetDiffSum = round2(rows.reduce(function(acc, r) { return round2(acc + r.netDiffAmount); }, 0) + lumpDiffSheets);
     var empMissedDiffSum = rows.reduce(function(acc, r) { return round2(acc + r.missedDiffAmount); }, 0);
     var empDiffRemainingSum = rows.reduce(function(acc, r) { return round2(acc + r.diffRemaining); }, 0);
     var smallLeftoverRows = rows.filter(function(r) { return r.isSmallLeftover; });
@@ -832,7 +868,7 @@
       ? Math.max(0, round2(diffTarget + totalPlusPoints - totalMinusPoints))
       : Math.max(diffTarget, empNetDiffSum);
 
-    var diffRemainingTotal = (empNetDiffSum > 0 && diffTarget <= empNetDiffSum && lumpSumUnallocated === 0)
+    var diffRemainingTotal = (empNetDiffSum > 0 && lumpDiffSheets === 0 && diffTarget <= empNetDiffSum && lumpSumUnallocated === 0)
       ? empDiffRemainingSum
       : Math.max(0, round2(diffTotal - totalBatchPaidAll));
 
@@ -843,6 +879,10 @@
       points: pts,
       returns: rets,
       batches: batches,
+      uploadedSheets: monthUploadedSheets,
+      complianceSheets: complianceSheets,
+      diffSheets: diffSheets,
+      complianceLocked: complianceLocked,
       complianceTotal: complianceTotal,
       complianceEmpCount: complianceEmpCount,
       manualTotal: empManualSum,
@@ -977,6 +1017,12 @@
     var mk = String(monthKey || state.selectedMonth).trim();
     if (!mk) return false;
     var nowIso = new Date().toISOString();
+    Object.keys(state.uploadedSheets || {}).forEach(function(id) {
+      if (state.uploadedSheets[id] && state.uploadedSheets[id].monthKey === mk) {
+        delete state.uploadedSheets[id];
+        state.tombstones[id] = nowIso;
+      }
+    });
     Object.keys(state.empSalaries || {}).forEach(function(id) {
       if (state.empSalaries[id] && state.empSalaries[id].monthKey === mk) {
         delete state.empSalaries[id];
@@ -1011,15 +1057,111 @@
     return true;
   }
 
+  function saveManualSheetEntry(payload) {
+    payload = payload || {};
+    var mk = String(payload.monthKey || state.selectedMonth).trim();
+    var kind = String(payload.kind || 'DIFF').toUpperCase();
+    var amt = Math.max(0, round2(Number(payload.amount) || 0));
+    if (!mk || amt <= 0) return { ok: false, error: 'AMOUNT_REQUIRED' };
+    var nowIso = new Date().toISOString();
+    var id = payload.id || ('sh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
+    var prev = state.uploadedSheets[id];
+    var rec = {
+      id: id,
+      monthKey: mk,
+      kind: kind,
+      entryMode: 'MANUAL',
+      title: String(payload.title || (kind === 'COMPLIANCE' ? 'Manual Compliance Net Payable' : 'Manual Diff Entry')).trim(),
+      fileName: 'Manual Entry',
+      selectedTabs: [],
+      locked: kind === 'COMPLIANCE' ? (payload.locked !== undefined ? !!payload.locked : true) : false,
+      empCount: 0,
+      complianceAmount: kind === 'COMPLIANCE' ? amt : 0,
+      diffAmount: kind === 'DIFF' ? amt : 0,
+      manualAmount: round2(Number(payload.manualAmount) || 0),
+      pfTotal: round2(Number(payload.pfTotal) || 0),
+      esicTotal: round2(Number(payload.esicTotal) || 0),
+      notes: String(payload.remarks || payload.notes || '').trim(),
+      rows: [],
+      createdAt: (prev && prev.createdAt) || nowIso,
+      updatedAt: nowIso
+    };
+    delete state.tombstones[id];
+    state.uploadedSheets[id] = rec;
+    saveToLocal();
+    renderUI();
+    pushCloudNow('manual_sheet_saved');
+    return { ok: true, record: rec };
+  }
+
+  function toggleSheetLock(sheetId) {
+    var sh = sheetId && state.uploadedSheets[sheetId];
+    if (!sh) return false;
+    sh.locked = !sh.locked;
+    sh.updatedAt = new Date().toISOString();
+    saveToLocal();
+    renderUI();
+    pushCloudNow('sheet_lock_toggled');
+    return true;
+  }
+
+  function deleteUploadedSheet(sheetId) {
+    var sh = sheetId && state.uploadedSheets[sheetId];
+    if (!sh) return false;
+    var mk = sh.monthKey;
+    var kind = String(sh.kind || 'DIFF').toUpperCase();
+    var nowIso = new Date().toISOString();
+
+    // Subtract ONLY this deleted sheet's per-employee contributions cleanly
+    (Array.isArray(sh.rows) ? sh.rows : []).forEach(function(item) {
+      if (!item || !item.empCode) return;
+      var eid = mk + '::' + normalizeCode(item.empCode);
+      var existing = state.empSalaries[eid];
+      if (!existing) return;
+      if (kind !== 'DIFF') {
+        existing.complianceAmount = Math.max(0, round2((Number(existing.complianceAmount) || 0) - (Number(item.complianceAmount) || 0)));
+        existing.pfEmployee = Math.max(0, round2((Number(existing.pfEmployee) || 0) - (Number(item.pfEmployee) || 0)));
+        existing.esicEmployee = Math.max(0, round2((Number(existing.esicEmployee) || 0) - (Number(item.esicEmployee) || 0)));
+        existing.pfEmployer = Math.max(0, round2((Number(existing.pfEmployer) || 0) - (Number(item.pfEmployer) || 0)));
+        existing.esicEmployer = Math.max(0, round2((Number(existing.esicEmployer) || 0) - (Number(item.esicEmployer) || 0)));
+        existing.advanceDeduction = Math.max(0, round2((Number(existing.advanceDeduction) || 0) - (Number(item.advanceDeduction) || 0)));
+        existing.totalDeduction = Math.max(0, round2((Number(existing.totalDeduction) || 0) - (Number(item.totalDeduction) || 0)));
+        if (Number(item.manualAmount) > 0) {
+          existing.manualAmount = Math.max(0, round2((Number(existing.manualAmount) || 0) - (Number(item.manualAmount) || 0)));
+        }
+      }
+      if (kind !== 'COMPLIANCE') {
+        existing.baseDiffAmount = Math.max(0, round2((Number(existing.baseDiffAmount) || 0) - (Number(item.baseDiffAmount) || 0)));
+      }
+      if ((Number(existing.complianceAmount) || 0) === 0 && (Number(existing.baseDiffAmount) || 0) === 0 && (Number(existing.missedDiffAmount) || 0) === 0 && (Number(existing.manualAmount) || 0) === 0) {
+        delete state.empSalaries[eid];
+        state.tombstones[eid] = nowIso;
+      } else {
+        existing.updatedAt = nowIso;
+      }
+    });
+
+    delete state.uploadedSheets[sheetId];
+    state.tombstones[sheetId] = nowIso;
+    saveToLocal();
+    renderUI();
+    pushCloudNow('uploaded_sheet_deleted');
+    return true;
+  }
+
   function bulkImportMonthSalaries(monthKey, rowsList, sourceFile, sheetKind, opts) {
     var mk = String(monthKey || state.selectedMonth).trim();
     var kind = String(sheetKind || 'BOTH').toUpperCase(); // 'COMPLIANCE' | 'DIFF' | 'BOTH'
     opts = opts || {};
-    var replaceExisting = opts.replaceExisting !== false; // default true: exact match to current uploaded sheet
+    // DIFF sheets ADD onto previous Diff sheets by default! COMPLIANCE/BOTH replace stale same-type sheets by default.
+    var replaceExisting = opts.replaceExisting !== undefined ? !!opts.replaceExisting : (kind !== 'DIFF');
     if (!mk || !Array.isArray(rowsList) || !rowsList.length) return { ok: false, imported: 0 };
     var nowIso = new Date().toISOString();
     var incomingIds = {};
     var count = 0;
+
+    var sheetCompSum = 0, sheetDiffSum = 0, sheetManualSum = 0, sheetPfSum = 0, sheetEsicSum = 0;
+    var compactRows = [];
 
     rowsList.forEach(function(item) {
       if (!item || !item.empCode) return;
@@ -1030,14 +1172,25 @@
       var prev = state.empSalaries[id];
       delete state.tombstones[id];
 
+      var rowComp = round2(Number(item.complianceAmount) || 0);
+      var rowDiff = round2(Number(item.baseDiffAmount) || 0);
+      var rowManual = round2(Number(item.manualAmount) || 0);
+      var rowPf = round2(Number(item.pfEmployee) || 0);
+      var rowEsic = round2(Number(item.esicEmployee) || 0);
+      var rowPfEr = round2(Number(item.pfEmployer) || 0);
+      var rowEsicEr = round2(Number(item.esicEmployer) || 0);
+      var rowAdvDed = round2(Number(item.advanceDeduction) || 0);
+      var rowTotDed = round2(Number(item.totalDeduction) || 0);
+
       var nextComp = kind === 'DIFF'
         ? ((prev && Number(prev.complianceAmount)) || 0)
-        : round2(Number(item.complianceAmount) || 0);
+        : rowComp;
+      // Additive DIFF mode (!replaceExisting) sums onto previous baseDiffAmount!
       var nextDiff = kind === 'COMPLIANCE'
         ? ((prev && Number(prev.baseDiffAmount)) || 0)
-        : round2(Number(item.baseDiffAmount) || 0);
-      var nextManual = item.manualAmount !== undefined && Number(item.manualAmount) > 0
-        ? round2(Number(item.manualAmount))
+        : (replaceExisting ? rowDiff : round2(((prev && Number(prev.baseDiffAmount)) || 0) + rowDiff));
+      var nextManual = rowManual > 0
+        ? (kind === 'DIFF' && !replaceExisting && prev && Number(prev.manualAmount) > 0 ? Number(prev.manualAmount) : rowManual)
         : ((prev && Number(prev.manualAmount)) || 0);
       var nextPf = kind === 'DIFF'
         ? ((prev && Number(prev.pfEmployee)) || 0)
@@ -1082,11 +1235,38 @@
         createdAt: (prev && prev.createdAt) || nowIso,
         updatedAt: nowIso
       };
+
+      sheetCompSum = round2(sheetCompSum + (kind === 'DIFF' ? 0 : rowComp));
+      sheetDiffSum = round2(sheetDiffSum + (kind === 'COMPLIANCE' ? 0 : rowDiff));
+      sheetManualSum = round2(sheetManualSum + rowManual);
+      sheetPfSum = round2(sheetPfSum + (kind === 'DIFF' ? 0 : rowPf));
+      sheetEsicSum = round2(sheetEsicSum + (kind === 'DIFF' ? 0 : rowEsic));
+      compactRows.push({
+        empCode: code,
+        complianceAmount: kind === 'DIFF' ? 0 : rowComp,
+        baseDiffAmount: kind === 'COMPLIANCE' ? 0 : rowDiff,
+        manualAmount: rowManual,
+        pfEmployee: kind === 'DIFF' ? 0 : rowPf,
+        esicEmployee: kind === 'DIFF' ? 0 : rowEsic,
+        pfEmployer: kind === 'DIFF' ? 0 : rowPfEr,
+        esicEmployer: kind === 'DIFF' ? 0 : rowEsicEr,
+        advanceDeduction: kind === 'DIFF' ? 0 : rowAdvDed,
+        totalDeduction: kind === 'DIFF' ? 0 : rowTotDed
+      });
       count++;
     });
 
-    // Clean up stale sheet-imported rows for this month & kind so totals never stay inflated
     if (count > 0 && replaceExisting) {
+      // Remove & tombstone previous uploadedSheets of same kind for this month
+      Object.keys(state.uploadedSheets || {}).forEach(function(shId) {
+        var oldSh = state.uploadedSheets[shId];
+        if (!oldSh || oldSh.monthKey !== mk) return;
+        if (kind === 'BOTH' || oldSh.kind === kind) {
+          delete state.uploadedSheets[shId];
+          state.tombstones[shId] = nowIso;
+        }
+      });
+
       Object.keys(state.empSalaries || {}).forEach(function(eid) {
         var existing = state.empSalaries[eid];
         if (!existing || existing.monthKey !== mk || incomingIds[eid]) return;
@@ -1116,7 +1296,6 @@
         }
       });
 
-      // Reset stale manual month targets for imported dimension so Dashboard reflects exact sheet sum
       var prevSum = state.monthSummaries[mk];
       if (prevSum) {
         if (kind === 'COMPLIANCE' || kind === 'BOTH') prevSum.complianceTarget = 0;
@@ -1125,12 +1304,33 @@
       }
     }
 
+    var sheetId = 'sh_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     if (count > 0) {
+      state.uploadedSheets[sheetId] = {
+        id: sheetId,
+        monthKey: mk,
+        kind: kind,
+        entryMode: 'EXCEL_SHEET',
+        title: String(sourceFile || (kind + ' Sheet')).trim(),
+        fileName: String(sourceFile || 'Salary Sheet').trim(),
+        selectedTabs: Array.isArray(opts.selectedTabs) ? opts.selectedTabs : [],
+        locked: (kind === 'COMPLIANCE' || kind === 'BOTH') ? (opts.locked !== undefined ? !!opts.locked : true) : false,
+        empCount: count,
+        complianceAmount: sheetCompSum,
+        diffAmount: sheetDiffSum,
+        manualAmount: sheetManualSum,
+        pfTotal: sheetPfSum,
+        esicTotal: sheetEsicSum,
+        notes: String(opts.notes || '').trim(),
+        rows: compactRows,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
       saveToLocal();
       renderUI();
       pushCloudNow('bulk_import_' + kind.toLowerCase());
     }
-    return { ok: count > 0, imported: count, kind: kind };
+    return { ok: count > 0, imported: count, kind: kind, sheetId: sheetId };
   }
 
   function addOrUpdatePoint(payload) {
@@ -1755,7 +1955,8 @@
       if (window.showToast) window.showToast('⚠️ Is sheet me Emp Code / Net Payment / Amount columns detect nahi huye.');
       return { ok: false, imported: 0 };
     }
-    var res = bulkImportMonthSalaries(mk, meta.rows, target.name, kind, opts);
+    var mergedOpts = Object.assign({}, opts || {}, { selectedTabs: meta.selectedSheets });
+    var res = bulkImportMonthSalaries(mk, meta.rows, target.name, kind, mergedOpts);
     res.meta = meta;
     if (window.showToast) {
       window.showToast('✅ ' + res.imported + ' employees (' + meta.selectedSheets.join(', ') + ') import · Net Pay ' + formatINR(meta.totals.complianceTotal) + ' · PF ' + formatINR(meta.totals.pfTotal) + ' · ESIC ' + formatINR(meta.totals.esicTotal));
@@ -1907,6 +2108,7 @@
     var modal = getOrCreateModal();
     if (!modal) return;
     var isMissedMode = mode === 'MISSED_DIFF';
+    var compLocked = !isMissedMode && isComplianceLockedForMonth(state.selectedMonth);
 
     var h = '';
     h += '<div style="position:fixed;inset:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(3px);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLSalaryPayout.closeModal()">';
@@ -1927,15 +2129,18 @@
       h += '        <div id="spEmpCurrInfo" style="margin-top:5px;font-size:11px;color:#7c2d12">Existing Base Diff: ' + formatINR(prev ? (Number(prev.baseDiffAmount) || 0) + (Number(prev.missedDiffAmount) || 0) : 0) + ' (Naya amount isme judkar Dashboard par show hoga)</div>';
       h += '      </div>';
     } else {
+      if (compLocked) {
+        h += '      <div style="padding:8px 10px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:11px;font-weight:700;color:#15803d">🔒 Compliance Processed &amp; Locked — Net Pay / PF / ESIC me change nahi ho sakta (sirf Bank Return / Unlock allowed). Diff &amp; Missed Diff edit kar sakte hain.</div>';
+      }
       h += '      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
-      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance / Net Pay (₹)</label><input type="number" id="spEmpComp" min="0" value="' + esc(prev ? prev.complianceAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance / Net Pay (₹)' + (compLocked ? ' 🔒' : '') + '</label><input type="number" id="spEmpComp" min="0" value="' + esc(prev ? prev.complianceAmount : 0) + '"' + (compLocked ? ' disabled' : '') + ' style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box' + (compLocked ? ';background:#f1f5f9;color:#64748b' : '') + '"></div>';
       h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Base Diff (₹)</label><input type="number" id="spEmpDiff" min="0" value="' + esc(prev ? prev.baseDiffAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
       h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#9a3412;margin-bottom:3px">Missed Diff (₹)</label><input type="number" id="spEmpMissed" min="0" value="' + esc(prev ? prev.missedDiffAmount : 0) + '" style="width:100%;padding:8px;border:1px solid #fdba74;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
       h += '      </div>';
       h += '      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">';
       h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Manual Amount (₹)</label><input type="number" id="spEmpManual" min="0" value="' + esc(prev ? (prev.manualAmount || 0) : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;box-sizing:border-box"></div>';
-      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">PF @12% (₹)</label><input type="number" id="spEmpPf" min="0" value="' + esc(prev ? (prev.pfEmployee || 0) : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
-      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">ESIC @0.75% (₹)</label><input type="number" id="spEmpEsic" min="0" value="' + esc(prev ? (prev.esicEmployee || 0) : 0) + '" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box"></div>';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">PF @12% (₹)' + (compLocked ? ' 🔒' : '') + '</label><input type="number" id="spEmpPf" min="0" value="' + esc(prev ? (prev.pfEmployee || 0) : 0) + '"' + (compLocked ? ' disabled' : '') + ' style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box' + (compLocked ? ';background:#f1f5f9;color:#64748b' : '') + '"></div>';
+      h += '        <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">ESIC @0.75% (₹)' + (compLocked ? ' 🔒' : '') + '</label><input type="number" id="spEmpEsic" min="0" value="' + esc(prev ? (prev.esicEmployee || 0) : 0) + '"' + (compLocked ? ' disabled' : '') + ' style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;box-sizing:border-box' + (compLocked ? ';background:#f1f5f9;color:#64748b' : '') + '"></div>';
       h += '      </div>';
     }
     h += '      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
@@ -1990,12 +2195,14 @@
       payload.addMissedDiff = addMissed;
       payload.sourceFile = 'Missed Diff Add-On';
     } else {
-      payload.complianceAmount = Number((document.getElementById('spEmpComp') || {}).value) || 0;
+      var prevRec = state.empSalaries[state.selectedMonth + '::' + normalizeCode(code)];
+      var compLocked = isComplianceLockedForMonth(state.selectedMonth);
+      payload.complianceAmount = compLocked && prevRec ? (Number(prevRec.complianceAmount) || 0) : (Number((document.getElementById('spEmpComp') || {}).value) || 0);
       payload.baseDiffAmount = Number((document.getElementById('spEmpDiff') || {}).value) || 0;
       payload.missedDiffAmount = Number((document.getElementById('spEmpMissed') || {}).value) || 0;
       payload.manualAmount = Number((document.getElementById('spEmpManual') || {}).value) || 0;
-      payload.pfEmployee = Number((document.getElementById('spEmpPf') || {}).value) || 0;
-      payload.esicEmployee = Number((document.getElementById('spEmpEsic') || {}).value) || 0;
+      payload.pfEmployee = compLocked && prevRec ? (Number(prevRec.pfEmployee) || 0) : (Number((document.getElementById('spEmpPf') || {}).value) || 0);
+      payload.esicEmployee = compLocked && prevRec ? (Number(prevRec.esicEmployee) || 0) : (Number((document.getElementById('spEmpEsic') || {}).value) || 0);
     }
     upsertEmpSalary(payload);
     closeModal();
@@ -2546,6 +2753,10 @@
   function onTabSelectionChange() {
     var wbObj = getActivePreviewWorkbook();
     var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
+    var repChk = document.getElementById('spImportReplaceChk');
+    if (repChk && !state._userTouchedReplaceChk) {
+      repChk.checked = (kind !== 'DIFF');
+    }
     var picked = getSelectedTabNamesFromModal();
     renderImportPreviewBox(wbObj, kind, picked || []);
   }
@@ -2565,7 +2776,11 @@
     }
     var mk = String((document.getElementById('spImportMonthInp') || {}).value || state.selectedMonth).trim();
     var kind = String((document.getElementById('spImportKindSel') || {}).value || 'BOTH').toUpperCase();
-    var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : true;
+    if ((kind === 'COMPLIANCE' || kind === 'BOTH') && isComplianceLockedForMonth(mk)) {
+      if (window.showToast) window.showToast('🔒 Compliance processed & locked hai — pehle Unlock ya Delete karein, ya sirf Bank Return record karein!');
+      return { ok: false, imported: 0, locked: true };
+    }
+    var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : (kind !== 'DIFF');
     var picked = getSelectedTabNamesFromModal();
     var meta = extractSalaryRowsWithMeta(wbObj, kind, picked);
     if (!meta.rows.length) {
@@ -2573,7 +2788,7 @@
       return { ok: false, imported: 0 };
     }
     state.selectedMonth = mk;
-    var res = bulkImportMonthSalaries(mk, meta.rows, wbObj.name, kind, { replaceExisting: rep });
+    var res = bulkImportMonthSalaries(mk, meta.rows, wbObj.name, kind, { replaceExisting: rep, selectedTabs: meta.selectedSheets });
     state._pendingDirectWorkbook = null;
     closeModal();
     if (window.showToast) {
@@ -2588,7 +2803,9 @@
     var loadedFiles = getLoadedSalaryWorkbooks();
     var summary = getMonthSummary(state.selectedMonth);
     var kind = String(defaultKind || 'COMPLIANCE').toUpperCase();
+    var compLocked = isComplianceLockedForMonth(state.selectedMonth);
     state._pendingDirectWorkbook = null;
+    state._userTouchedReplaceChk = false;
 
     var h = '<div onclick="if(event.target===this)ATPLSalaryPayout.closeModal()" style="position:fixed;inset:0;background:rgba(15,23,42,0.55);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px">';
     h += '  <div style="background:#fff;width:100%;max-width:720px;max-height:92vh;overflow-y:auto;border-radius:14px;border:1px solid #e2e8f0;box-shadow:0 24px 60px rgba(15,23,42,0.22)">';
@@ -2612,8 +2829,11 @@
     h += '              <option value="BOTH"' + (kind === 'BOTH' ? ' selected' : '') + '>Combined Salary Sheet (Compliance + Diff + PF + ESIC Dono)</option>';
     h += '            </select>';
     h += '          </div>';
-    h += '          <label style="font-size:11px;font-weight:700;color:#334155;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="spImportReplaceChk" checked> Purani sheet replace karein (Exact total match)</label>';
+    h += '          <label style="font-size:11px;font-weight:700;color:#334155;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="spImportReplaceChk" onchange="ATPLSalaryPayout._markReplaceTouched()"' + (kind !== 'DIFF' ? ' checked' : '') + '> Purani ' + (kind === 'DIFF' ? 'Diff sheets replace karein (Untick = Sheet 1 + Sheet 2 Add hoga!)' : 'sheet replace karein (Exact total match)') + '</label>';
     h += '        </div>';
+    if (compLocked && kind === 'COMPLIANCE') {
+      h += '        <div style="margin-bottom:8px;padding:8px 10px;background:#fefce8;border:1px solid #fde047;border-radius:8px;font-size:11px;font-weight:700;color:#854d0e">🔒 Is mahine ki Compliance Sheet pehle se processed &amp; locked hai (sirf Bank Return allowed). Nayi sheet upload karne ke liye pehle Dashboard par Compliance card se Unlock ya Delete karein.</div>';
+    }
     if (loadedFiles.length) {
       h += '        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
       h += '          <select id="spImportFileSel" onchange="ATPLSalaryPayout.previewSelectedFileImport()" style="flex:1;min-width:200px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:12px">';
@@ -2629,18 +2849,23 @@
     h += '        <div id="spImportPreviewBox"></div>';
     h += '      </div>';
 
-    // 2. Manual Month Totals & Clear Month Reset
+    // 2. Manual Compliance Net Payable & Manual Diff Sheet Add (Adds cleanly + Deletable!)
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
-    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">2. Month Total Manual Set / Reset Karein (Compliance / Diff)</div>';
-    h += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
-    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Compliance Target Override (₹ · 0 = Sheet Sum)</label><input type="number" id="spTgtComp" min="0" value="' + esc(summary.complianceTarget || '') + '" placeholder="0 = Sheet ka exact Net Pay" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
-    h += '          <div><label style="display:block;font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">Diff Target Override (₹ · 0 = Sheet Sum)</label><input type="number" id="spTgtDiff" min="0" value="' + esc(summary.diffTarget || '') + '" placeholder="0 = Sheet ka exact Diff" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;font-weight:700;box-sizing:border-box"></div>';
+    h += '        <div style="font-size:12px;font-weight:800;color:#0f172a;margin-bottom:8px">2. Manual Compliance Net Payable ya Manual Diff Entry Add Karein</div>';
+    h += '        <div style="display:grid;grid-template-columns:130px 1fr 1fr 1.1fr auto;gap:8px;align-items:center">';
+    h += '          <select id="spManSheetKind" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700;background:#fff"><option value="COMPLIANCE"' + (kind === 'COMPLIANCE' ? ' selected' : '') + '>Compliance (Net)</option><option value="DIFF"' + (kind === 'DIFF' ? ' selected' : '') + '>Diff (+ Add)</option></select>';
+    h += '          <input type="text" id="spManSheetTitle" placeholder="Sheet / Entry Name" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
+    h += '          <input type="number" id="spManSheetAmt" min="1" placeholder="Amount (₹)" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:700">';
+    h += '          <input type="text" id="spManSheetRem" placeholder="Remarks" style="padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px">';
+    h += '          <button type="button" onclick="ATPLSalaryPayout.submitManualSheetEntry()" style="padding:8px 13px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Add &amp; Sync</button>';
     h += '        </div>';
-    h += '        <div style="margin-top:10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">';
-    h += '          <button type="button" onclick="ATPLSalaryPayout.clearCurrentMonthAllData()" style="padding:7px 12px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Clear This Month Data</button>';
-    h += '          <div style="display:flex;gap:8px">';
-    h += '            <button type="button" onclick="ATPLSalaryPayout.resetMonthTargets()" style="padding:7px 12px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Reset Override to 0</button>';
-    h += '            <button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:7px 14px;border:none;background:#0f766e;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Save Month Totals</button>';
+    h += '        <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+    h += '          <button type="button" onclick="ATPLSalaryPayout.clearCurrentMonthAllData()" style="padding:6px 12px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Clear This Month Data</button>';
+    h += '          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    h += '            <input type="number" id="spTgtComp" min="0" value="' + esc(summary.complianceTarget || '') + '" placeholder="Comp Override ₹" style="width:125px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:11.5px">';
+    h += '            <input type="number" id="spTgtDiff" min="0" value="' + esc(summary.diffTarget || '') + '" placeholder="Diff Override ₹" style="width:125px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:7px;font-size:11.5px">';
+    h += '            <button type="button" onclick="ATPLSalaryPayout.submitTargetsOnly()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">Save Override</button>';
+    h += '            <button type="button" onclick="ATPLSalaryPayout.resetMonthTargets()" style="padding:6px 10px;border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer">Reset 0</button>';
     h += '          </div>';
     h += '        </div>';
     h += '      </div>';
@@ -2682,6 +2907,25 @@
         window.showToast('✓ File loaded — niche Preview check karke "Confirm & Import" dabaye!');
       }
     });
+  }
+
+  function submitManualSheetEntry() {
+    var kind = String((document.getElementById('spManSheetKind') || {}).value || 'DIFF').toUpperCase();
+    var title = String((document.getElementById('spManSheetTitle') || {}).value || '').trim();
+    var amt = Number((document.getElementById('spManSheetAmt') || {}).value) || 0;
+    var rem = String((document.getElementById('spManSheetRem') || {}).value || '').trim();
+    var mk = String((document.getElementById('spImportMonthInp') || {}).value || state.selectedMonth).trim();
+    if (kind === 'COMPLIANCE' && isComplianceLockedForMonth(mk)) {
+      if (window.showToast) window.showToast('🔒 Compliance locked hai — pehle Unlock ya Delete karein, ya sirf Bank Return record karein!');
+      return;
+    }
+    if (amt <= 0) {
+      if (window.showToast) window.showToast('⚠️ Valid amount (₹) daalein.');
+      return;
+    }
+    saveManualSheetEntry({ monthKey: mk, kind: kind, title: title, amount: amt, remarks: rem });
+    closeModal();
+    if (window.showToast) window.showToast('✅ Manual ' + kind + ' amount (' + formatINR(amt) + ') save & sync ho gaya!');
   }
 
   function clearCurrentMonthAllData() {
@@ -2881,6 +3125,58 @@
     h += '    </div>';
     h += '  </div>';
 
+    // Uploaded Compliance & Diff Sheets Strip (Add multiple Diff sheets + Delete any sheet + Lock Compliance)
+    if (ledger.uploadedSheets.length > 0) {
+      h += '  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px">';
+      // Compliance Sheets Box
+      h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
+      h += '      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '        <div style="font-size:12px;font-weight:800;color:#15803d">Compliance Sheets / Manual (' + ledger.complianceSheets.length + ') · ' + formatINR(ledger.complianceTotal) + '</div>';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'COMPLIANCE\')" style="padding:3px 9px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">+ Sheet / Manual</button>';
+      h += '      </div>';
+      if (!ledger.complianceSheets.length) {
+        h += '      <div style="font-size:11.5px;color:#64748b">Koi Compliance sheet/manual upload nahi hai.</div>';
+      } else {
+        h += '      <div style="display:flex;flex-direction:column;gap:6px">';
+        ledger.complianceSheets.forEach(function(sh) {
+          h += '        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;font-size:11.5px">';
+          h += '          <div><div style="font-weight:700;color:#0f172a">' + esc(sh.title) + (sh.locked ? ' <span style="color:#15803d;font-size:10.5px">(Locked · Return Only)</span>' : '') + '</div><div style="font-size:10.5px;color:#64748b">' + (sh.entryMode === 'MANUAL' ? 'Manual Entry' : (sh.empCount + ' emp · ' + esc((sh.selectedTabs || []).join(', ') || sh.fileName))) + (sh.notes ? (' · ' + esc(sh.notes)) : '') + '</div></div>';
+          h += '          <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">';
+          h += '            <strong style="color:#15803d;font-variant-numeric:tabular-nums">' + formatINR(sh.complianceAmount) + '</strong>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.toggleSheetLock(\'' + esc(sh.id) + '\')" style="padding:3px 7px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer">' + (sh.locked ? 'Unlock' : 'Lock') + '</button>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.deleteUploadedSheet(\'' + esc(sh.id) + '\')" style="padding:3px 7px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer">Delete</button>';
+          h += '          </div>';
+          h += '        </div>';
+        });
+        h += '      </div>';
+      }
+      h += '    </div>';
+
+      // Diff Sheets Box (Additive Sheet 1 + Sheet 2 + Sheet 3 + Manual!)
+      h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
+      h += '      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+      h += '        <div style="font-size:12px;font-weight:800;color:#1d4ed8">Diff Sheets / Manual (' + ledger.diffSheets.length + ' · Auto-Sum) · ' + formatINR(ledger.diffTotal) + '</div>';
+      h += '        <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'DIFF\')" style="padding:3px 9px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">+ Add Diff Sheet / Manual</button>';
+      h += '      </div>';
+      if (!ledger.diffSheets.length) {
+        h += '      <div style="font-size:11.5px;color:#64748b">Diff Sheet 1, Sheet 2, Sheet 3 ya Manual Diff add karein — sabhi aapas me judte jayenge.</div>';
+      } else {
+        h += '      <div style="display:flex;flex-direction:column;gap:6px">';
+        ledger.diffSheets.forEach(function(sh, idx) {
+          h += '        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;font-size:11.5px">';
+          h += '          <div><div style="font-weight:700;color:#0f172a">#' + (idx + 1) + ' ' + esc(sh.title) + '</div><div style="font-size:10.5px;color:#64748b">' + (sh.entryMode === 'MANUAL' ? 'Manual Diff' : (sh.empCount + ' emp · ' + esc((sh.selectedTabs || []).join(', ') || sh.fileName))) + (sh.notes ? (' · ' + esc(sh.notes)) : '') + '</div></div>';
+          h += '          <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">';
+          h += '            <strong style="color:#1d4ed8;font-variant-numeric:tabular-nums">+' + formatINR(sh.diffAmount) + '</strong>';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.deleteUploadedSheet(\'' + esc(sh.id) + '\')" style="padding:3px 7px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer">Delete</button>';
+          h += '          </div>';
+          h += '        </div>';
+        });
+        h += '      </div>';
+      }
+      h += '    </div>';
+      h += '  </div>';
+    }
+
     // Segmented Sub-Tab Bar + Search
     h += '  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden">';
     h += '    <div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#f8fafc">';
@@ -3017,7 +3313,7 @@
       });
       h += '    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:#f8fafc">';
       h += '      <div>';
-      h += '        <div style="font-size:13px;font-weight:800;color:#0f172a">Compliance Salary (' + esc(formatMonthLabel(state.selectedMonth)) + '): ' + (ledger.summary.complianceDisbursed ? '<span style="color:#15803d">1-Time Paid</span>' : '<span style="color:#475569">Active</span>') + ' · Total ' + formatINR(ledger.complianceTotal) + '</div>';
+      h += '        <div style="font-size:13px;font-weight:800;color:#0f172a">Compliance Salary (' + esc(formatMonthLabel(state.selectedMonth)) + '): ' + (ledger.summary.complianceDisbursed ? '<span style="color:#15803d">1-Time Paid</span>' : '<span style="color:#475569">Active</span>') + (ledger.complianceLocked ? ' <span style="color:#15803d;font-size:11.5px">· 🔒 Locked (Return Only)</span>' : '') + ' · Total ' + formatINR(ledger.complianceTotal) + '</div>';
       h += '        <div style="font-size:11.5px;color:#64748b;margin-top:2px">' + (ledger.summary.complianceDate ? ('Transfer Date: ' + esc(ledger.summary.complianceDate) + (ledger.summary.complianceUtr ? (' · UTR: ' + esc(ledger.summary.complianceUtr)) : '')) : 'Compliance bank sheet upload karein ya manual daalein; agar return aaye toh A/C change karke re-transfer karein.') + '</div>';
       h += '      </div>';
       h += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
@@ -3166,6 +3462,13 @@
     clearCurrentMonthAllData: clearCurrentMonthAllData,
     resetMonthData: resetMonthData,
     resetMonthTargets: resetMonthTargets,
+    getMonthUploadedSheets: getMonthUploadedSheets,
+    isComplianceLockedForMonth: isComplianceLockedForMonth,
+    saveManualSheetEntry: saveManualSheetEntry,
+    submitManualSheetEntry: submitManualSheetEntry,
+    toggleSheetLock: toggleSheetLock,
+    deleteUploadedSheet: deleteUploadedSheet,
+    _markReplaceTouched: function() { state._userTouchedReplaceChk = true; },
     addOrUpdatePoint: addOrUpdatePoint,
     togglePointStatus: togglePointStatus,
     deletePoint: deletePoint,
