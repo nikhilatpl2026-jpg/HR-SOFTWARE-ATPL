@@ -365,6 +365,21 @@
         if (!usedNorms || !usedNorms[eligible[j]]) return eligible[j];
       }
       if (eligible.length === 1) return eligible[0];
+    } else if (pn && !/^employee\s+/.test(pn) && isSyntheticCode(rawNc)) {
+      var pnCompact = pn.replace(/\s+/g, '');
+      if (pnCompact.length >= 4) {
+        var compactCands = [];
+        Object.keys(idIdx.nameToNorms).forEach(function(k) {
+          if (k.replace(/\s+/g, '') === pnCompact) {
+            (idIdx.nameToNorms[k] || []).forEach(function(cn) {
+              if (compactCands.indexOf(cn) < 0) compactCands.push(cn);
+            });
+          }
+        });
+        if (compactCands.length === 1 && (!ca || !idIdx.normToAcc[compactCands[0]] || idIdx.normToAcc[compactCands[0]] === ca)) {
+          return compactCands[0];
+        }
+      }
     }
 
     return rawNc;
@@ -967,11 +982,27 @@
           var allEmpRows = Object.values(empMap);
           if (alAcc) {
             var accHits = allEmpRows.filter(function(er) { return normalizeAccountNo(er.accountNo) === alAcc; });
-            if (accHits.length === 1) row = accHits[0];
+            if (accHits.length === 1) {
+              row = accHits[0];
+            } else if (accHits.length > 1 && alName) {
+              var accNameHits = accHits.filter(function(er) { return normalizePersonName(er.empName) === alName; });
+              if (accNameHits.length === 1) row = accNameHits[0];
+            }
           }
           if (!row && alName && !/^employee\s+/.test(alName)) {
             var nameHits = allEmpRows.filter(function(er) { return normalizePersonName(er.empName) === alName; });
-            if (nameHits.length === 1) row = nameHits[0];
+            if (nameHits.length === 1) {
+              row = nameHits[0];
+            } else if (nameHits.length === 0) {
+              var alCompact = alName.replace(/\s+/g, '');
+              if (alCompact.length >= 4) {
+                var compactHits = allEmpRows.filter(function(er) {
+                  var en = normalizePersonName(er.empName).replace(/\s+/g, '');
+                  return en && en === alCompact;
+                });
+                if (compactHits.length === 1) row = compactHits[0];
+              }
+            }
           }
           if (!row) {
             row = ensureRow(al.empCode, { empCode: al.empCode, empName: al.empName, accountNo: al.accountNo });
@@ -3333,7 +3364,7 @@
         var preChecked = !!(prevAlloc && prevAlloc.amount > 0) || (isLeftoverPreset && avail > 0 && avail <= 500);
         var preVal = (prevAlloc && prevAlloc.amount > 0) ? prevAlloc.amount : (preChecked ? avail : '');
         var preRem = (prevAlloc && prevAlloc.remarks) ? prevAlloc.remarks : '';
-        h += '              <tr class="sp-bat-row" data-code="' + esc(r.empCode) + '" data-name="' + esc(r.empName) + '" data-avail="' + avail + '" data-diff-avail="' + diffOnlyAvail + '" style="border-bottom:1px solid #f1f5f9">';
+        h += '              <tr class="sp-bat-row" data-code="' + esc(r.empCode) + '" data-name="' + esc(r.empName) + '" data-acc="' + esc(r.accountNo || '') + '" data-avail="' + avail + '" data-diff-avail="' + diffOnlyAvail + '" style="border-bottom:1px solid #f1f5f9">';
         h += '                <td style="padding:6px 10px"><input type="checkbox" class="sp-bat-chk"' + (preChecked ? ' checked' : '') + ' onchange="ATPLSalaryPayout.onBatchRowToggle(this)"></td>';
         h += '                <td style="padding:6px 10px;font-family:monospace;font-weight:700;color:#312e81">' + esc(r.empCode) + '</td>';
         h += '                <td style="padding:6px 10px">' + esc(r.empName) + (r.dept ? (' <span style="color:#64748b;font-size:10.5px">· ' + esc(r.dept) + '</span>') : '') + '</td>';
@@ -3420,8 +3451,21 @@
       var matchedInTable = 0;
       var sheetTotalAmt = 0;
       var tableRows = {};
+      var tableByAcc = {};
+      var tableByName = {};
       document.querySelectorAll('.sp-bat-row').forEach(function(tr) {
-        tableRows[normalizeCode(tr.getAttribute('data-code'))] = tr;
+        var dc = normalizeCode(tr.getAttribute('data-code'));
+        if (dc) tableRows[dc] = tr;
+        var da = normalizeAccountNo(tr.getAttribute('data-acc'));
+        if (da) {
+          if (!tableByAcc[da]) tableByAcc[da] = [];
+          tableByAcc[da].push(tr);
+        }
+        var dn = normalizePersonName(tr.getAttribute('data-name'));
+        if (dn) {
+          if (!tableByName[dn]) tableByName[dn] = [];
+          tableByName[dn].push(tr);
+        }
       });
       state._batchExtraRows = (state._batchExtraRows || []).filter(function(ex) {
         return ex && ex._sourceFile !== file.name;
@@ -3434,6 +3478,14 @@
         var nc = normalizeCode(item.empCode);
         sheetTotalAmt = round2(sheetTotalAmt + (Number(item.amount) || 0));
         var tr = tableRows[nc];
+        if (!tr) {
+          var ia = normalizeAccountNo(item.accountNo);
+          if (ia && tableByAcc[ia] && tableByAcc[ia].length === 1) tr = tableByAcc[ia][0];
+        }
+        if (!tr) {
+          var iname = normalizePersonName(item.empName);
+          if (iname && tableByName[iname] && tableByName[iname].length === 1) tr = tableByName[iname][0];
+        }
         if (tr) {
           var chk = tr.querySelector('.sp-bat-chk');
           var amtInp = tr.querySelector('.sp-bat-amt');
@@ -4362,7 +4414,7 @@
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Sheet / Target (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:#0f172a;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.diffTotal) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">Points ' + (ledger.netPointsImpact >= 0 ? '+' : '-') + formatINR(Math.abs(ledger.netPointsImpact)) + (ledger.empMissedDiffSum > 0 ? (' · Missed +' + formatINR(ledger.empMissedDiffSum)) : '') + (ledger.manualTotal > 0 ? (' · Manual ' + formatINR(ledger.manualTotal)) : '') + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + (ledger.diffTotal === 0 && ledger.totalBatchPaid > 0 ? ('Batch se ' + formatINR(ledger.totalBatchPaid) + ' paid (Target sheet pending)') : ('Points ' + (ledger.netPointsImpact >= 0 ? '+' : '-') + formatINR(Math.abs(ledger.netPointsImpact)))) + (ledger.empMissedDiffSum > 0 ? (' · Missed +' + formatINR(ledger.empMissedDiffSum)) : '') + (ledger.manualTotal > 0 ? (' · Manual ' + formatINR(ledger.manualTotal)) : '') + '</div>';
     h += '    </div>';
 
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
@@ -4373,7 +4425,7 @@
 
     var baakiSubTxt = '';
     if (ledger.compDiffUncoveredTotal > 0) {
-      baakiSubTxt = 'Comp Sheet Diff Chhoota: ' + formatINR(ledger.compDiffUncoveredTotal) + (ledger.diffRemainingTotal > 0 ? (' · Diff Sheet Baaki: ' + formatINR(ledger.diffRemainingTotal)) : '');
+      baakiSubTxt = 'Comp Sheet Diff Chhoota (' + ledger.compDiffUncoveredRows.length + ' emp): ' + formatINR(ledger.compDiffUncoveredTotal) + (ledger.diffRemainingTotal > 0 ? (' · Diff Sheet Baaki: ' + formatINR(ledger.diffRemainingTotal)) : '') + ' · <button type="button" onclick="ATPLSalaryPayout.setTab(\'overview\');ATPLSalaryPayout.setOverviewFilter(\'COMP_DIFF_CHHOOTA\')" style="border:none;background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:4px;cursor:pointer;text-decoration:underline">List Dekhein</button>';
     } else if (ledger.smallLeftoverRows.length > 0) {
       baakiSubTxt = ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal);
     } else if (ledger.diffRemainingTotal > 0) {
@@ -4487,6 +4539,7 @@
       h += '        <select onchange="ATPLSalaryPayout.setOverviewFilter(this.value)" style="height:32px;padding:0 9px;border:1px solid #cbd5e1;border-radius:7px;font-size:11.5px;font-weight:700;background:#fff;color:#334155">';
       h += '          <option value="ALL"' + (state.overviewFilter === 'ALL' ? ' selected' : '') + '>All Employees</option>';
       h += '          <option value="DIFF_PENDING"' + (state.overviewFilter === 'DIFF_PENDING' ? ' selected' : '') + '>Diff Remaining > 0</option>';
+      h += '          <option value="COMP_DIFF_CHHOOTA"' + (state.overviewFilter === 'COMP_DIFF_CHHOOTA' ? ' selected' : '') + '>Comp Diff Chhoota (' + ledger.compDiffUncoveredRows.length + ')</option>';
       h += '          <option value="LEFTOVER_SMALL"' + (state.overviewFilter === 'LEFTOVER_SMALL' ? ' selected' : '') + '>Small Leftover (≤ ₹500)</option>';
       h += '          <option value="HAS_POINTS"' + (state.overviewFilter === 'HAS_POINTS' ? ' selected' : '') + '>Has Adjustment Points</option>';
       h += '          <option value="RETURN_PENDING"' + (state.overviewFilter === 'RETURN_PENDING' ? ' selected' : '') + '>Bank Return Pending</option>';
@@ -4499,6 +4552,7 @@
     if (state.activeTab === 'overview') {
       var filteredRows = ledger.rows.filter(function(r) {
         if (state.overviewFilter === 'DIFF_PENDING' && !(r.diffRemaining > 0 || r.compDiffUncovered > 0)) return false;
+        if (state.overviewFilter === 'COMP_DIFF_CHHOOTA' && !(r.compDiffUncovered > 0)) return false;
         if (state.overviewFilter === 'LEFTOVER_SMALL' && !r.isSmallLeftover) return false;
         if (state.overviewFilter === 'HAS_POINTS' && !r.pointsList.length) return false;
         if (state.overviewFilter === 'RETURN_PENDING' && !(r.returnsPendingCount > 0)) return false;
