@@ -827,4 +827,122 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
       bA.mockWindow.document.getElementById = origGet;
     }
   });
+
+  await t.test('12. Compliance Sheet Diff Chhoota Total + Swapped Emp Name/Code & a.c Header in Part 3 Diff Batch', async () => {
+    const bA = createBrowser('BrowserA_Part3', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-10');
+
+    // 1. Compliance sheet with Diff. Amount column where 26468 (Mintu Modak) is later omitted from Diff Sheet
+    bA.mockWindow.FILES.push({
+      name: 'Sent Compilance Sheet October-26 (1).xlsx',
+      sheets: {
+        'working SHeet': [
+          ['S.No.', 'Employee ID', 'Name of employee', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable', 'Remarks'],
+          [1, '00135', 'SAMPAT LAL', 27660, 188, 2300, 144, 25028, 'onroll'],
+          [2, '26468', 'MINTU MODAK', 15050, 1050, 0, 0, 14000, 'onroll'],
+          ['', '', 'Grand Total', 42710, 1238, 2300, 144, 39028, '']
+        ]
+      }
+    });
+    const impComp = bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('Sent Compilance Sheet October-26 (1).xlsx', '2026-10', 'COMPLIANCE');
+    assert.equal(impComp.ok, true);
+    assert.equal(impComp.meta.totals.compDiffTotal, 1238, 'Compliance sheet Diff. Amount must be extracted');
+
+    // Diff sheet only includes 00135 (188), missing 26468 (1050) from Compliance sheet
+    bA.mockWindow.FILES.push({
+      name: '#1 Sent Diff .Sheet October-26 FINAL WORKING.xlsx',
+      sheets: {
+        'BANK SHEET': [
+          ['Employee ID', 'Name of employee', 'AMOUNT'],
+          ['00135', 'SAMPAT LAL', 188]
+        ]
+      }
+    });
+    bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('#1 Sent Diff .Sheet October-26 FINAL WORKING.xlsx', '2026-10', 'DIFF');
+
+    // Pay 00135 in Batch 1 -> Diff sheet remaining = 0, yet Compliance Diff Chhoota (1050) must still show!
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-10',
+      partNumber: 1,
+      status: 'DISBURSED',
+      allocations: [{ empCode: '00135', empName: 'SAMPAT LAL', amount: 188 }]
+    });
+
+    let ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.compSheetDiffTotal, 1238, 'Total Compliance Sheet Diff must show');
+    assert.equal(ledOct.compDiffUncoveredTotal, 1050, 'Missed Compliance Diff for 26468 must be tracked');
+    assert.equal(ledOct.diffBaakiTotal, 1050, 'Dashboard Diff Baaki must include uncovered Compliance Diff');
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('Comp Diff Chhoota'));
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('1,238'));
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('1,050'));
+
+    // 2. Part 3 Diff Batch bank sheet with swapped headers ("emp name" = code, "emp code" = multi-word name) + "a.c" header
+    const part3Wb = {
+      name: 'diff amount 3 abdul.xlsx',
+      sheets: {
+        'Sheet1': [
+          ['s.no', 'emp name', 'emp code', 'net payable', 'department', 'remarks', 'a.c', 'ifsc code', 'bank name'],
+          [1, '26468', 'mintu modak', 1050, 'card no 03', 'production', '7568046412', 'AIRP0000001', 'AIRTEL PAYMENTS BANK'],
+          [2, '26531', 'sukhchan', 1200, 'card no 03', 'production', '31724919089', 'SBIN0011382', 'STATE BANK OF INDIA'],
+          [3, '26634', 'manjay thakur', 500, 'card no 03', 'production', '45524027401', 'SBIN0031725', 'SBI BANK'],
+          [4, '22271', 'abdul miya', 8165, 'card no 03', 'production', '61232449447', 'SBIN0031725', 'STATE BANK OF INDIA'],
+          [5, '26630', 'deepak mahto', 2478, 'k.w', 'left amount', '36998098118', 'SBIN0005785', 'STATE BANK OF INDIA'],
+          ['', 'TOTAL', '', 13393, '', '', '', '', '']
+        ]
+      }
+    };
+    const batchRows = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsFromWorkbook(part3Wb, 'BATCH');
+    assert.equal(batchRows.length, 5, 'All 5 rows including multi-word names must parse when emp name & emp code are swapped');
+    const mintuRow = batchRows.find(r => r.empCode === '26468');
+    const manjayRow = batchRows.find(r => r.empCode === '26634');
+    const abdulRow = batchRows.find(r => r.empCode === '22271');
+    assert.ok(mintuRow && manjayRow && abdulRow);
+    assert.equal(mintuRow.empName, 'mintu modak');
+    assert.equal(mintuRow.accountNo, '7568046412');
+    assert.equal(mintuRow.amount, 1050);
+    assert.equal(manjayRow.empName, 'manjay thakur');
+    assert.equal(abdulRow.amount, 8165);
+    const part3Sum = batchRows.reduce((s, r) => s + r.amount, 0);
+    assert.equal(part3Sum, 13393);
+
+    // Paying Part 3 clears Mintu Modak (26468) uncovered Compliance Diff
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-10',
+      partNumber: 3,
+      status: 'DISBURSED',
+      allocations: batchRows.map(r => ({ empCode: r.empCode, empName: r.empName, amount: r.amount, remarks: r.remarks }))
+    });
+    ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.compDiffUncoveredTotal, 0, 'Mintu Modak paid in Part 3 clears uncovered Compliance Diff');
+    assert.equal(ledOct.diffBaakiTotal, 0);
+
+    // 3. Legacy Compliance sheet uploaded before compDiffAmount tracking backfills dynamically once cloud workbook loads
+    const bLegacy = createBrowser('BrowserB_LegacyBackfill', new Map());
+    vm.runInContext(payoutJs, vm.createContext(bLegacy.mockWindow));
+    bLegacy.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-10');
+    bLegacy.mockWindow.FILES.push({
+      name: 'Sent Compilance Sheet October-26 (1).xlsx',
+      sheets: {
+        'working SHeet': [
+          ['S.No.', 'Employee ID', 'Name of employee', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable', 'Remarks'],
+          [1, '00135', 'SAMPAT LAL', 27660, 188, 2300, 144, 25028, 'onroll'],
+          [2, '26468', 'MINTU MODAK', 15050, 1050, 0, 0, 14000, 'onroll']
+        ]
+      }
+    });
+    bLegacy.mockWindow.ATPLSalaryPayout.importFromLoadedFile('Sent Compilance Sheet October-26 (1).xlsx', '2026-10', 'COMPLIANCE');
+    // Strip compDiffAmount + remove file temporarily to simulate pre-upgrade DB + async cloud file load
+    const legSt = bLegacy.mockWindow.ATPLSalaryPayout.getState();
+    Object.values(legSt.uploadedSheets).forEach(sh => { delete sh.compDiffAmount; });
+    Object.values(legSt.empSalaries).forEach(rec => { delete rec.compDiffAmount; });
+    const savedCompFile = bLegacy.mockWindow.FILES.pop();
+    let legLed = bLegacy.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(legLed.compSheetDiffTotal, 0);
+    // Now simulate cloud file arriving later
+    bLegacy.mockWindow.FILES.push(savedCompFile);
+    legLed = bLegacy.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(legLed.compSheetDiffTotal, 1238, 'Legacy Compliance sheet must backfill compDiffAmount after async file load');
+    assert.equal(legLed.compDiffUncoveredTotal, 1238);
+  });
 });
