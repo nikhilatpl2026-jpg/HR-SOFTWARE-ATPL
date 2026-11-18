@@ -1962,6 +1962,7 @@ app.post('/api/sync/advance-slip', (req, res) => {
     if (!slipId || !advanceId) {
       return res.status(400).json({ ok: false, error: 'slipId and advanceId required' });
     }
+    const isAppend = !!body.append;
     const slipObj = {
       slipId: slipId,
       advanceId: advanceId,
@@ -1969,32 +1970,58 @@ app.post('/api/sync/advance-slip', (req, res) => {
       fileName: String(body.fileName || 'signed_slip').trim(),
       mimeType: String(body.mimeType || 'image/jpeg').trim(),
       size: Number(body.size) || 0,
+      advDate: String(body.advDate || '').trim(),
       signedBy: String(body.signedBy || '').trim(),
       note: String(body.note || '').trim(),
       uploadedAt: body.uploadedAt || new Date().toISOString(),
-      cloudFileName: String(body.cloudFileName || ('ATPL_ADV_SLIP_' + safeSlipKey(advanceId) + '.json')),
+      cloudFileName: String(body.cloudFileName || (isAppend ? ('ATPL_ADV_SLIP_' + safeSlipKey(advanceId) + '_' + slipId + '.json') : ('ATPL_ADV_SLIP_' + safeSlipKey(advanceId) + '.json'))),
       dataUrl: body.dataUrl || ''
     };
     syncAdvanceSlipsMem[slipId] = slipObj;
-    syncAdvanceSlipsMem['adv:' + advanceId] = slipObj;
+    if (!isAppend || !syncAdvanceSlipsMem['adv:' + advanceId]) {
+      syncAdvanceSlipsMem['adv:' + advanceId] = slipObj;
+    }
     if (process.env.NODE_ENV !== 'test') {
       try {
         if (!fs.existsSync(ADV_SLIPS_DIR)) fs.mkdirSync(ADV_SLIPS_DIR, { recursive: true });
         fs.writeFileSync(path.join(ADV_SLIPS_DIR, slipId + '.json'), JSON.stringify(slipObj));
-        fs.writeFileSync(path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(advanceId) + '.json'), JSON.stringify(slipObj));
+        const advFile = path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(advanceId) + '.json');
+        if (!isAppend || !fs.existsSync(advFile)) {
+          fs.writeFileSync(advFile, JSON.stringify(slipObj));
+        }
       } catch (_) {}
     }
     if (syncAdvances[advanceId]) {
-      syncAdvances[advanceId].signedSlip = {
+      const slipMeta = {
         slipId: slipObj.slipId,
         fileName: slipObj.fileName,
         mimeType: slipObj.mimeType,
         size: slipObj.size,
+        advDate: slipObj.advDate,
         signedBy: slipObj.signedBy,
         note: slipObj.note,
         uploadedAt: slipObj.uploadedAt,
         cloudFileName: slipObj.cloudFileName
       };
+      const existingList = Array.isArray(syncAdvances[advanceId].signedSlips)
+        ? syncAdvances[advanceId].signedSlips.slice()
+        : (syncAdvances[advanceId].signedSlip && syncAdvances[advanceId].signedSlip.slipId ? [syncAdvances[advanceId].signedSlip] : []);
+      const idx = existingList.findIndex(s => s && s.slipId === slipMeta.slipId);
+      if (idx >= 0) {
+        existingList[idx] = slipMeta;
+      } else if (isAppend || existingList.length === 0) {
+        existingList.push(slipMeta);
+      } else {
+        existingList[0] = slipMeta;
+      }
+      syncAdvances[advanceId].signedSlips = existingList;
+      syncAdvances[advanceId].signedSlip = existingList[0] || null;
+      if (slipObj.advDate && slipObj.advDate !== syncAdvances[advanceId].advanceDate) {
+        const md = Array.isArray(syncAdvances[advanceId].moreAdvanceDates) ? syncAdvances[advanceId].moreAdvanceDates.slice() : [];
+        if (!md.includes(slipObj.advDate)) md.push(slipObj.advDate);
+        md.sort();
+        syncAdvances[advanceId].moreAdvanceDates = md;
+      }
       syncAdvances[advanceId].updatedAt = new Date().toISOString();
       writeJsonFile('advances.json', syncAdvances);
     }
@@ -2041,16 +2068,30 @@ app.delete('/api/sync/advance-slip/:id', (req, res) => {
     const existing = syncAdvanceSlipsMem[key] || (advId ? syncAdvanceSlipsMem['adv:' + advId] : null);
     const targetAdvId = advId || (existing && existing.advanceId) || '';
     delete syncAdvanceSlipsMem[key];
-    if (targetAdvId) delete syncAdvanceSlipsMem['adv:' + targetAdvId];
-    if (process.env.NODE_ENV !== 'test') {
-      [path.join(ADV_SLIPS_DIR, key + '.json'), targetAdvId ? path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(targetAdvId) + '.json') : ''].forEach(fp => {
-        if (fp && fs.existsSync(fp)) try { fs.unlinkSync(fp); } catch (_) {}
-      });
-    }
+    let remainingSlips = [];
     if (targetAdvId && syncAdvances[targetAdvId]) {
-      syncAdvances[targetAdvId].signedSlip = null;
+      const currList = Array.isArray(syncAdvances[targetAdvId].signedSlips)
+        ? syncAdvances[targetAdvId].signedSlips
+        : (syncAdvances[targetAdvId].signedSlip ? [syncAdvances[targetAdvId].signedSlip] : []);
+      remainingSlips = currList.filter(s => s && s.slipId !== key);
+      syncAdvances[targetAdvId].signedSlips = remainingSlips;
+      syncAdvances[targetAdvId].signedSlip = remainingSlips[0] || null;
       syncAdvances[targetAdvId].updatedAt = new Date().toISOString();
       writeJsonFile('advances.json', syncAdvances);
+    }
+    if (targetAdvId && remainingSlips.length === 0) {
+      delete syncAdvanceSlipsMem['adv:' + targetAdvId];
+    } else if (targetAdvId && remainingSlips.length > 0 && syncAdvanceSlipsMem[remainingSlips[0].slipId]) {
+      syncAdvanceSlipsMem['adv:' + targetAdvId] = syncAdvanceSlipsMem[remainingSlips[0].slipId];
+    }
+    if (process.env.NODE_ENV !== 'test') {
+      const filesToDelete = [path.join(ADV_SLIPS_DIR, key + '.json')];
+      if (targetAdvId && remainingSlips.length === 0) {
+        filesToDelete.push(path.join(ADV_SLIPS_DIR, 'adv_' + safeSlipKey(targetAdvId) + '.json'));
+      }
+      filesToDelete.forEach(fp => {
+        if (fp && fs.existsSync(fp)) try { fs.unlinkSync(fp); } catch (_) {}
+      });
     }
     incrementVersion();
     broadcastEvent('advance_slip_deleted', { slipId: key, advanceId: targetAdvId });

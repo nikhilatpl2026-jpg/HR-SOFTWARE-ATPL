@@ -433,4 +433,118 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     assert.equal(advAfterRemA.signedSlip, null, 'Browser A must reflect slip removal after sync');
     assert.ok(desktop.mockWindow._elements.advanceModuleContainer.innerHTML.includes('Upload Slip'), 'Browser A row must revert to Upload Slip button');
   });
+
+  await t.test('Test 9: Add More Slip + More Adv Date in Slip modal stay quota-safe and sync across all browsers', async () => {
+    const desktop = createMockBrowser('Desktop_MultiSlip', cloudStorage);
+    vm.runInContext(advanceJsCode, vm.createContext(desktop.mockWindow));
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+
+    desktop.mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: 'adv_multi_slip_1',
+      empCode: '26448',
+      amount: 18000,
+      monthlyCap: 3000,
+      advanceDate: '2026-10-10',
+      remarks: 'Multi slip & more date test'
+    });
+
+    // 1. Open slip modal -> must expose Slip Adv Date + More Adv Date controls
+    desktop.mockWindow.ATPLAdvanceManager.openSlipModal('adv_multi_slip_1');
+    const modalHtml1 = desktop.mockWindow._elements.advModal.innerHTML;
+    assert.ok(modalHtml1.includes('advSlipAdvDate'), 'Slip modal must include Slip Adv Date input');
+    assert.ok(modalHtml1.includes('advSlipMoreDateInput') && modalHtml1.includes('+ More Adv Date'), 'Slip modal must include + More Adv Date control');
+
+    // 2. Upload Slip #1 (Main Date 2026-10-10)
+    const slip1DataUrl = 'data:image/jpeg;base64,' + Buffer.from('SLIP_ONE_BINARY_MOCK').toString('base64');
+    const r1 = await desktop.mockWindow.ATPLAdvanceManager.uploadAdvanceSlip('adv_multi_slip_1', {
+      fileName: 'slip_1_26448.jpg',
+      mimeType: 'image/jpeg',
+      size: 1536,
+      advDate: '2026-10-10',
+      signedBy: 'Sarthak ji',
+      note: 'Diary Pg 101',
+      dataUrl: slip1DataUrl
+    });
+    assert.equal(r1.ok, true);
+    assert.equal(r1.slipCount, 1);
+
+    // Re-open modal -> must show "+ Add More Slip" button now that 1st slip exists
+    desktop.mockWindow.ATPLAdvanceManager.openSlipModal('adv_multi_slip_1');
+    const modalHtml2 = desktop.mockWindow._elements.advModal.innerHTML;
+    assert.ok(modalHtml2.includes('advAddMoreSlipBtn') && modalHtml2.includes('+ Add More Slip'), 'Slip modal must show + Add More Slip button once first slip is saved');
+
+    // Switch to "+ Add More Slip" mode cleanly
+    desktop.mockWindow.ATPLAdvanceManager.startAddMoreSlip('adv_multi_slip_1');
+    const modalAddMoreHtml = desktop.mockWindow._elements.advModal.innerHTML;
+    assert.ok(modalAddMoreHtml.includes('Add More Slip (Slip #2)'), 'startAddMoreSlip must switch modal to Add More Slip mode');
+
+    // 3. Upload Slip #2 with its own Slip Adv Date (2026-10-18)
+    const slip2DataUrl = 'data:image/jpeg;base64,' + Buffer.from('SLIP_TWO_BINARY_MOCK').toString('base64');
+    const r2 = await desktop.mockWindow.ATPLAdvanceManager.addMoreAdvanceSlip('adv_multi_slip_1', {
+      fileName: 'slip_2_26448.jpg',
+      mimeType: 'image/jpeg',
+      size: 1840,
+      advDate: '2026-10-18',
+      signedBy: 'Nikhil ji',
+      note: 'Diary Pg 118',
+      dataUrl: slip2DataUrl
+    });
+    assert.equal(r2.ok, true);
+    assert.equal(r2.slipCount, 2);
+
+    // 4. Add another More Adv Date explicitly (2026-10-25)
+    const dRes = await desktop.mockWindow.ATPLAdvanceManager.addMoreAdvDate('adv_multi_slip_1', '2026-10-25');
+    assert.equal(dRes.ok, true);
+    assert.equal(dRes.synced, true);
+
+    const advA = desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_multi_slip_1');
+    assert.equal(advA.signedSlips.length, 2, 'Advance must hold both slips in signedSlips');
+    assert.deepEqual(Array.from(advA.moreAdvanceDates), ['2026-10-18', '2026-10-25'], 'Advance must store both extra advance dates sorted');
+
+    const cloudKey1 = 'ATPL_ADV_SLIP_adv_multi_slip_1.json';
+    const cloudKey2 = advA.signedSlips[1].cloudFileName;
+    assert.ok(cloudStorage.files[cloudKey1], 'Cloud must keep first slip blob');
+    assert.ok(cloudKey2 && cloudKey2 !== cloudKey1 && cloudStorage.files[cloudKey2], 'Cloud must keep separate blob for 2nd slip');
+
+    const tableHtmlA = desktop.mockWindow._elements.advanceModuleContainer.innerHTML;
+    assert.ok(tableHtmlA.includes('✅ 2 Slips'), 'Advances table must show 2 Slips count badge');
+    assert.ok(tableHtmlA.includes('+2 More Date'), 'Advances table Date cell must indicate extra advance dates');
+
+    // 5. Fresh Browser B syncs and receives BOTH slips, BOTH images, BOTH extra dates, and date filter match
+    const mobile = createMockBrowser('Mobile_MultiSlip', cloudStorage);
+    vm.runInContext(advanceJsCode, vm.createContext(mobile.mockWindow));
+    const syncB = await mobile.mockWindow.ATPLAdvanceManager.syncNow(false);
+    assert.equal(syncB.ok, true);
+
+    const advB = mobile.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_multi_slip_1');
+    assert.ok(advB && advB.signedSlips && advB.signedSlips.length === 2, 'Browser B must receive both slips');
+    assert.deepEqual(Array.from(advB.moreAdvanceDates), ['2026-10-18', '2026-10-25'], 'Browser B must receive extra advance dates');
+    assert.ok(mobile.mockWindow._elements.advanceModuleContainer.innerHTML.includes('✅ 2 Slips'), 'Browser B UI must show 2 Slips');
+
+    const fetched1 = await mobile.mockWindow.ATPLAdvanceManager.fetchAdvanceSlipData('adv_multi_slip_1', advB.signedSlips[0].slipId);
+    const fetched2 = await mobile.mockWindow.ATPLAdvanceManager.fetchAdvanceSlipData('adv_multi_slip_1', advB.signedSlips[1].slipId);
+    assert.equal(fetched1 && fetched1.dataUrl, slip1DataUrl, 'Browser B must fetch Slip #1 payload accurately');
+    assert.equal(fetched2 && fetched2.dataUrl, slip2DataUrl, 'Browser B must fetch Slip #2 payload accurately');
+
+    // Selecting an extra date in Date Picker must still match and show this advance row
+    mobile.mockWindow.ATPLAdvanceManager.setSelectedDate('2026-10-25');
+    assert.ok(mobile.mockWindow._elements.advanceModuleContainer.innerHTML.includes('adv_multi_slip_1'), 'Date filter must match extra advance date');
+    mobile.mockWindow.ATPLAdvanceManager.setSelectedDate('');
+
+    // 6. Selective delete of Slip #2 in Browser B removes only Slip #2 and preserves Slip #1 across browsers
+    const delSlip2 = await mobile.mockWindow.ATPLAdvanceManager.removeAdvanceSlip('adv_multi_slip_1', advB.signedSlips[1].slipId);
+    assert.equal(delSlip2, true);
+    assert.equal(cloudStorage.files[cloudKey2], undefined, 'Slip #2 cloud blob must be deleted');
+    assert.ok(cloudStorage.files[cloudKey1], 'Slip #1 cloud blob must remain intact');
+
+    // Remove extra date 2026-10-25 as well
+    const delDate = await mobile.mockWindow.ATPLAdvanceManager.removeMoreAdvDate('adv_multi_slip_1', '2026-10-25');
+    assert.equal(delDate, true);
+
+    await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
+    const advAfterRemA = desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_multi_slip_1');
+    assert.equal(advAfterRemA.signedSlips.length, 1, 'Browser A must show only 1 slip after selective delete');
+    assert.equal(advAfterRemA.signedSlip.signedBy, 'Sarthak ji', 'Slip #1 must remain intact on Browser A');
+    assert.deepEqual(Array.from(advAfterRemA.moreAdvanceDates), ['2026-10-18'], 'Browser A must reflect removed extra date');
+  });
 });

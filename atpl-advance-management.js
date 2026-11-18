@@ -700,7 +700,7 @@
       }
     });
 
-    state.advances = Object.values(advMap);
+    state.advances = Object.values(advMap).map(normalizeAdvanceSlipFields);
 
     state.deductions = (state.deductions || []).filter(function(d) {
       return !isDeductionTombstoned(d);
@@ -989,8 +989,47 @@
     return String(k || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 140);
   }
 
-  function getSlipCloudFileName(advanceId) {
+  function getSlipCloudFileName(advanceId, slipId, forceUnique) {
+    if (forceUnique && slipId) {
+      return SLIP_CLOUD_PREFIX + safeSlipKey(advanceId) + '_' + safeSlipKey(slipId) + '.json';
+    }
     return SLIP_CLOUD_PREFIX + safeSlipKey(advanceId) + '.json';
+  }
+
+  function getAdvanceSlipsList(adv) {
+    if (!adv) return [];
+    if (Array.isArray(adv.signedSlips) && adv.signedSlips.length) {
+      return adv.signedSlips.filter(function(s) { return s && s.slipId; });
+    }
+    if (adv.signedSlip && adv.signedSlip.slipId) {
+      return [adv.signedSlip];
+    }
+    return [];
+  }
+
+  function getAdvanceMoreDatesList(adv) {
+    if (!adv) return [];
+    var mainD = String(adv.advanceDate || '').slice(0, 10);
+    var seen = {};
+    var out = [];
+    (Array.isArray(adv.moreAdvanceDates) ? adv.moreAdvanceDates : []).forEach(function(d) {
+      var clean = String(d || '').trim().slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(clean) && clean !== mainD && !seen[clean]) {
+        seen[clean] = true;
+        out.push(clean);
+      }
+    });
+    out.sort();
+    return out;
+  }
+
+  function normalizeAdvanceSlipFields(adv) {
+    if (!adv || typeof adv !== 'object') return adv;
+    var list = getAdvanceSlipsList(adv);
+    adv.signedSlips = list;
+    adv.signedSlip = list[0] || null;
+    adv.moreAdvanceDates = getAdvanceMoreDatesList(adv);
+    return adv;
   }
 
   function openSlipIdb() {
@@ -1076,7 +1115,12 @@
 
   function deleteSlipLocalCache(slipId, advanceId) {
     if (slipId) delete slipDataCache[slipId];
-    if (advanceId) delete slipDataCache['adv:' + advanceId];
+    if (advanceId) {
+      var cachedAdvSlip = slipDataCache['adv:' + advanceId];
+      if (!slipId || (cachedAdvSlip && cachedAdvSlip.slipId === slipId)) {
+        delete slipDataCache['adv:' + advanceId];
+      }
+    }
     try {
       if (slipId && typeof localStorage !== 'undefined') {
         localStorage.removeItem('ATPL_AdvSlip_' + safeSlipKey(slipId));
@@ -1191,13 +1235,59 @@
     return gasOk || srvOk;
   }
 
+  async function addMoreAdvDate(advanceId, dateStr) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return { ok: false, error: 'ADVANCE_NOT_FOUND' };
+    var clean = String(dateStr || '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(clean)) return { ok: false, error: 'INVALID_DATE' };
+    normalizeAdvanceSlipFields(adv);
+    if (clean === String(adv.advanceDate || '').slice(0, 10)) {
+      return { ok: true, alreadyMain: true, dates: adv.moreAdvanceDates };
+    }
+    if (adv.moreAdvanceDates.indexOf(clean) < 0) {
+      adv.moreAdvanceDates.push(clean);
+      adv.moreAdvanceDates.sort();
+      adv.updatedAt = new Date().toISOString();
+      saveToLocal();
+      renderUI();
+      if (state.openHistoryEmpCode && normalizeCode(state.openHistoryEmpCode) === normalizeCode(adv.empCode)) {
+        viewEmployeeHistory(state.openHistoryEmpCode);
+      }
+      var syncRes = await pushAdvanceRemote(adv);
+      broadcastSync('advance_more_dates_updated', { id: advanceId, dates: adv.moreAdvanceDates });
+      return { ok: true, added: true, synced: !!(syncRes && syncRes.ok), dates: adv.moreAdvanceDates };
+    }
+    return { ok: true, alreadyExists: true, dates: adv.moreAdvanceDates };
+  }
+
+  async function removeMoreAdvDate(advanceId, dateStr) {
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    if (!adv) return false;
+    var clean = String(dateStr || '').trim().slice(0, 10);
+    normalizeAdvanceSlipFields(adv);
+    var next = adv.moreAdvanceDates.filter(function(d) { return d !== clean; });
+    if (next.length === adv.moreAdvanceDates.length) return false;
+    adv.moreAdvanceDates = next;
+    adv.updatedAt = new Date().toISOString();
+    saveToLocal();
+    renderUI();
+    if (state.openHistoryEmpCode && normalizeCode(state.openHistoryEmpCode) === normalizeCode(adv.empCode)) {
+      viewEmployeeHistory(state.openHistoryEmpCode);
+    }
+    await pushAdvanceRemote(adv);
+    broadcastSync('advance_more_dates_updated', { id: advanceId, dates: adv.moreAdvanceDates });
+    return true;
+  }
+
   async function uploadAdvanceSlip(advanceId, slipInput) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
     if (!adv) return { ok: false, error: 'ADVANCE_NOT_FOUND' };
-    slipInput = slipInput || {};
-    var mimeType = String(slipInput.mimeType || 'image/jpeg').trim();
+    if (!slipInput) return { ok: false, error: 'NO_SLIP_INPUT' };
+    normalizeAdvanceSlipFields(adv);
+
     var fileName = String(slipInput.fileName || 'signed_slip.jpg').trim();
-    var dataUrl = String(slipInput.dataUrl || '').trim();
+    var mimeType = String(slipInput.mimeType || 'image/jpeg').trim();
+    var dataUrl = String(slipInput.dataUrl || '');
     if (!dataUrl && slipInput.fileBase64) {
       dataUrl = String(slipInput.fileBase64).indexOf('data:') === 0
         ? String(slipInput.fileBase64)
@@ -1205,12 +1295,25 @@
     }
     if (!dataUrl) return { ok: false, error: 'EMPTY_SLIP' };
 
+    var existingList = adv.signedSlips.slice();
+    var targetSlipId = slipInput.targetSlipId ? String(slipInput.targetSlipId).trim() : '';
+    var targetIdx = targetSlipId ? existingList.findIndex(function(s) { return s && s.slipId === targetSlipId; }) : -1;
+    var isAppend = !!slipInput.append && targetIdx < 0;
+
     var nowIso = new Date().toISOString();
-    var slipId = 'slip_' + safeSlipKey(advanceId) + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
-    var cloudFileName = getSlipCloudFileName(advanceId);
+    var slipId = targetIdx >= 0
+      ? existingList[targetIdx].slipId
+      : ('slip_' + safeSlipKey(advanceId) + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5));
+
+    var useUniqueCloudName = (isAppend && existingList.length > 0) || (targetIdx > 0);
+    var cloudFileName = (targetIdx >= 0 && existingList[targetIdx].cloudFileName)
+      ? existingList[targetIdx].cloudFileName
+      : getSlipCloudFileName(advanceId, slipId, useUniqueCloudName);
+
     var approxSize = Number(slipInput.size) || Math.round(dataUrl.length * 0.75);
     var signedBy = String(slipInput.signedBy || '').trim();
     var note = String(slipInput.note || '').trim();
+    var advDate = String(slipInput.advDate || (targetIdx >= 0 && existingList[targetIdx].advDate) || adv.advanceDate || nowIso.slice(0, 10)).trim().slice(0, 10);
 
     var slipPayload = {
       slipId: slipId,
@@ -1220,8 +1323,10 @@
       fileName: fileName,
       mimeType: mimeType,
       size: approxSize,
+      advDate: advDate,
       signedBy: signedBy,
       note: note,
+      append: isAppend,
       uploadedAt: nowIso,
       cloudFileName: cloudFileName,
       dataUrl: dataUrl
@@ -1229,16 +1334,34 @@
 
     await saveSlipLocalCache(slipPayload);
 
-    adv.signedSlip = {
+    var slipMeta = {
       slipId: slipId,
       fileName: fileName,
       mimeType: mimeType,
       size: approxSize,
+      advDate: advDate,
       signedBy: signedBy,
       note: note,
       uploadedAt: nowIso,
       cloudFileName: cloudFileName
     };
+
+    if (targetIdx >= 0) {
+      existingList[targetIdx] = slipMeta;
+    } else if (isAppend || existingList.length === 0) {
+      existingList.push(slipMeta);
+    } else {
+      existingList[0] = slipMeta;
+    }
+
+    adv.signedSlips = existingList;
+    adv.signedSlip = existingList[0] || null;
+    if (advDate && /^\d{4}-\d{2}-\d{2}$/.test(advDate) && advDate !== String(adv.advanceDate || '').slice(0, 10) && slipInput.recordMoreDate !== false) {
+      if (adv.moreAdvanceDates.indexOf(advDate) < 0) {
+        adv.moreAdvanceDates.push(advDate);
+        adv.moreAdvanceDates.sort();
+      }
+    }
     adv.updatedAt = nowIso;
 
     saveToLocal();
@@ -1248,11 +1371,14 @@
     }
 
     var blobSynced = await pushSlipPayloadToCloud(slipPayload);
-    if (!blobSynced && adv.signedSlip) {
-      adv.signedSlip.pendingCloudSync = true;
+    var liveMeta = adv.signedSlips.find(function(s) { return s && s.slipId === slipId; });
+    if (!blobSynced && liveMeta) {
+      liveMeta.pendingCloudSync = true;
+      if (adv.signedSlip && adv.signedSlip.slipId === slipId) adv.signedSlip.pendingCloudSync = true;
       saveToLocal();
-    } else if (adv.signedSlip && adv.signedSlip.pendingCloudSync) {
-      delete adv.signedSlip.pendingCloudSync;
+    } else if (liveMeta && liveMeta.pendingCloudSync) {
+      delete liveMeta.pendingCloudSync;
+      if (adv.signedSlip && adv.signedSlip.slipId === slipId) delete adv.signedSlip.pendingCloudSync;
       saveToLocal();
     }
 
@@ -1260,20 +1386,29 @@
     broadcastSync('advance_slip_updated', { id: advanceId, slipId: slipId });
 
     var allSynced = !!(blobSynced && advSyncRes && advSyncRes.ok);
-    return { ok: true, synced: allSynced, blobSynced: blobSynced, slip: adv.signedSlip };
+    return { ok: true, synced: allSynced, blobSynced: blobSynced, slip: liveMeta || slipMeta, slipCount: adv.signedSlips.length };
   }
 
-  async function fetchAdvanceSlipData(advanceId) {
+  async function addMoreAdvanceSlip(advanceId, slipInput) {
+    return uploadAdvanceSlip(advanceId, Object.assign({}, slipInput || {}, { append: true }));
+  }
+
+  async function fetchAdvanceSlipData(advanceId, optSlipId) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
-    if (!adv || !adv.signedSlip || !adv.signedSlip.slipId) return null;
-    var meta = adv.signedSlip;
+    var list = getAdvanceSlipsList(adv);
+    if (!adv || !list.length) return null;
+    var meta = optSlipId
+      ? (list.find(function(s) { return s && s.slipId === optSlipId; }) || null)
+      : list[0];
+    if (!meta || !meta.slipId) return null;
+
     var local = await getSlipLocalCache(meta.slipId, advanceId);
     if (local && local.dataUrl) return local;
 
     if (slipFetchPromises[meta.slipId]) return slipFetchPromises[meta.slipId];
     slipFetchPromises[meta.slipId] = (async function() {
       try {
-        var cloudFile = meta.cloudFileName || getSlipCloudFileName(advanceId);
+        var cloudFile = meta.cloudFileName || getSlipCloudFileName(advanceId, meta.slipId, list.indexOf(meta) > 0);
         var dlRes = await callGoogleBackend('downloadFile', { fileName: cloudFile });
         if (dlRes && dlRes.ok && dlRes.fileBase64) {
           try {
@@ -1309,37 +1444,46 @@
 
   function prefetchMissingSlips() {
     try {
-      var list = (state.advances || []).filter(function(a) {
-        return a && a.signedSlip && a.signedSlip.slipId;
+      var pairs = [];
+      (state.advances || []).forEach(function(a) {
+        getAdvanceSlipsList(a).forEach(function(s) {
+          pairs.push({ adv: a, slip: s });
+        });
       });
-      // Retry any local slips waiting for cloud push
-      list.filter(function(a) { return a.signedSlip.pendingCloudSync; }).slice(0, 3).forEach(function(a) {
-        getSlipLocalCache(a.signedSlip.slipId, a.id).then(function(payload) {
+      pairs.filter(function(p) { return p.slip.pendingCloudSync; }).slice(0, 4).forEach(function(p) {
+        getSlipLocalCache(p.slip.slipId, p.adv.id).then(function(payload) {
           if (!payload || !payload.dataUrl) return;
           pushSlipPayloadToCloud(payload).then(function(ok) {
-            if (ok && a.signedSlip) {
-              delete a.signedSlip.pendingCloudSync;
+            if (ok && p.slip) {
+              delete p.slip.pendingCloudSync;
+              if (p.adv.signedSlip && p.adv.signedSlip.slipId === p.slip.slipId) delete p.adv.signedSlip.pendingCloudSync;
               saveToLocal();
-              pushAdvanceRemote(a);
+              pushAdvanceRemote(p.adv);
             }
           });
         });
       });
-      // Pre-warm recent slips missing on this browser
-      list.filter(function(a) { return !slipDataCache[a.signedSlip.slipId]; }).slice(0, 4).forEach(function(a) {
-        fetchAdvanceSlipData(a.id).catch(function() {});
+      pairs.filter(function(p) { return !slipDataCache[p.slip.slipId]; }).slice(0, 6).forEach(function(p) {
+        fetchAdvanceSlipData(p.adv.id, p.slip.slipId).catch(function() {});
       });
     } catch (_) {}
   }
 
-  async function removeAdvanceSlip(advanceId) {
+  async function removeAdvanceSlip(advanceId, optSlipId) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
     if (!adv) return false;
-    var oldMeta = adv.signedSlip;
-    var oldSlipId = oldMeta && oldMeta.slipId;
-    var oldCloudFile = (oldMeta && oldMeta.cloudFileName) || getSlipCloudFileName(advanceId);
+    normalizeAdvanceSlipFields(adv);
+    var toRemove = optSlipId
+      ? adv.signedSlips.filter(function(s) { return s && s.slipId === optSlipId; })
+      : adv.signedSlips.slice();
+    if (!toRemove.length && adv.signedSlip) toRemove = [adv.signedSlip];
 
-    adv.signedSlip = null;
+    if (optSlipId) {
+      adv.signedSlips = adv.signedSlips.filter(function(s) { return s && s.slipId !== optSlipId; });
+    } else {
+      adv.signedSlips = [];
+    }
+    adv.signedSlip = adv.signedSlips[0] || null;
     adv.updatedAt = new Date().toISOString();
     saveToLocal();
     renderUI();
@@ -1347,20 +1491,25 @@
       viewEmployeeHistory(state.openHistoryEmpCode);
     }
 
-    await deleteSlipLocalCache(oldSlipId, advanceId);
-    try {
-      if (oldCloudFile) {
-        callGoogleBackend('deleteFile', { fileName: oldCloudFile }).catch(function() {});
-      }
-    } catch (_) {}
-    try {
-      if (oldSlipId && typeof fetch === 'function') {
-        fetch('/api/sync/advance-slip/' + encodeURIComponent(oldSlipId) + '?advanceId=' + encodeURIComponent(advanceId), { method: 'DELETE' }).catch(function() {});
-      }
-    } catch (_) {}
+    for (var i = 0; i < toRemove.length; i++) {
+      var oldMeta = toRemove[i];
+      var oldSlipId = oldMeta && oldMeta.slipId;
+      var oldCloudFile = (oldMeta && oldMeta.cloudFileName) || getSlipCloudFileName(advanceId, oldSlipId, i > 0);
+      await deleteSlipLocalCache(oldSlipId, advanceId);
+      try {
+        if (oldCloudFile) {
+          callGoogleBackend('deleteFile', { fileName: oldCloudFile }).catch(function() {});
+        }
+      } catch (_) {}
+      try {
+        if (oldSlipId && typeof fetch === 'function') {
+          fetch('/api/sync/advance-slip/' + encodeURIComponent(oldSlipId) + '?advanceId=' + encodeURIComponent(advanceId), { method: 'DELETE' }).catch(function() {});
+        }
+      } catch (_) {}
+    }
 
     await pushAdvanceRemote(adv);
-    broadcastSync('advance_slip_removed', { id: advanceId });
+    broadcastSync('advance_slip_removed', { id: advanceId, slipId: optSlipId || null });
     return true;
   }
 
@@ -1487,6 +1636,8 @@
       createdAt: existing ? existing.createdAt : now,
       updatedAt: now,
       signedSlip: Object.prototype.hasOwnProperty.call(payload, 'signedSlip') ? payload.signedSlip : (existing && existing.signedSlip ? existing.signedSlip : null),
+      signedSlips: Object.prototype.hasOwnProperty.call(payload, 'signedSlips') ? payload.signedSlips : (existing ? getAdvanceSlipsList(existing) : []),
+      moreAdvanceDates: Object.prototype.hasOwnProperty.call(payload, 'moreAdvanceDates') ? payload.moreAdvanceDates : (existing ? getAdvanceMoreDatesList(existing) : []),
       deductions: existing && Array.isArray(existing.deductions) ? existing.deductions : []
     };
 
@@ -1524,9 +1675,9 @@
     var idx = state.advances.findIndex(function(a) { return a.id === id; });
     if (idx < 0) return;
     var removedAdv = state.advances[idx];
-    if (removedAdv && removedAdv.signedSlip && removedAdv.signedSlip.slipId) {
-      deleteSlipLocalCache(removedAdv.signedSlip.slipId, id);
-    }
+    getAdvanceSlipsList(removedAdv).forEach(function(s) {
+      if (s && s.slipId) deleteSlipLocalCache(s.slipId, id);
+    });
     state.advances.splice(idx, 1);
 
     state.tombstones[id] = new Date().toISOString();
@@ -1575,12 +1726,14 @@
       if (a && a.id) {
         state.tombstones[a.id] = nowIso;
         deletedAdvIds.push(a.id);
-        if (a.signedSlip && a.signedSlip.slipId) {
-          deleteSlipLocalCache(a.signedSlip.slipId, a.id);
-          try {
-            callGoogleBackend('deleteFile', { fileName: a.signedSlip.cloudFileName || getSlipCloudFileName(a.id) }).catch(function() {});
-          } catch (_) {}
-        }
+        getAdvanceSlipsList(a).forEach(function(s, sIdx2) {
+          if (s && s.slipId) {
+            deleteSlipLocalCache(s.slipId, a.id);
+            try {
+              callGoogleBackend('deleteFile', { fileName: s.cloudFileName || getSlipCloudFileName(a.id, s.slipId, sIdx2 > 0) }).catch(function() {});
+            } catch (_) {}
+          }
+        });
       }
     });
     toDeleteDeds.forEach(function(d) {
@@ -2912,12 +3065,18 @@
     var query = state.searchQuery.toLowerCase().trim();
     var filtered = (state.advances || []).filter(function(a) {
       if (!a) return false;
-      var hasSlip = !!(a.signedSlip && a.signedSlip.slipId);
+      var rowSlips = getAdvanceSlipsList(a);
+      var hasSlip = rowSlips.length > 0;
       if (state.statusFilter === 'HAS_SLIP' && !hasSlip) return false;
       if (state.statusFilter === 'NO_SLIP' && hasSlip) return false;
       if (state.statusFilter !== 'ALL' && state.statusFilter !== 'HAS_SLIP' && state.statusFilter !== 'NO_SLIP' && a.status !== state.statusFilter) return false;
       if (state.filterTablesByMonth && getAdvanceMonthKey(a) !== state.selectedMonth) return false;
-      if (state.selectedDateFilter && String(a.advanceDate || '').slice(0, 10) !== state.selectedDateFilter) return false;
+      if (state.selectedDateFilter) {
+        var rowMoreDates = getAdvanceMoreDatesList(a);
+        var matchMainD = String(a.advanceDate || '').slice(0, 10) === state.selectedDateFilter;
+        var matchExtraD = rowMoreDates.indexOf(state.selectedDateFilter) >= 0 || rowSlips.some(function(s) { return String(s.advDate || '').slice(0, 10) === state.selectedDateFilter; });
+        if (!matchMainD && !matchExtraD) return false;
+      }
       if (!query) return true;
       return String(a.empCode || '').toLowerCase().includes(query) ||
              String(a.empName || '').toLowerCase().includes(query) ||
@@ -2959,7 +3118,8 @@
       }
 
       html += '    <tr style="border-bottom:1px solid #f3f4f6;transition:background 0.15s" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
-      html += '      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;font-size:11px">' + esc(adv.advanceDate || '-') + '</td>';
+      var rowMoreDatesDisp = getAdvanceMoreDatesList(adv);
+      html += '      <td style="padding:10px 14px;color:#64748b;white-space:nowrap;font-size:11px">' + esc(adv.advanceDate || '-') + (rowMoreDatesDisp.length ? ('<div style="font-size:9.5px;font-weight:800;color:#4f46e5;margin-top:2px" title="' + esc(rowMoreDatesDisp.join(', ')) + '">+' + rowMoreDatesDisp.length + ' More Date (' + esc(rowMoreDatesDisp[rowMoreDatesDisp.length - 1]) + ')</div>') : '') + '</td>';
       html += '      <td style="padding:10px 14px;font-weight:800;color:#312e81;font-family:monospace;font-size:12px">' + esc(adv.empCode) + '</td>';
       html += '      <td style="padding:10px 14px;font-weight:700;color:#111827">' + esc(adv.empName) + '</td>';
       html += '      <td style="padding:10px 14px;text-align:right;font-weight:750;color:#111827">' + formatINR(adv.amount) + '</td>';
@@ -2967,11 +3127,15 @@
       html += '      <td style="padding:10px 14px;text-align:right;font-weight:800;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#64748b') + '">' + formatINR(adv.balanceAmount) + '</td>';
       html += '      <td style="padding:10px 14px;text-align:center"><span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:0.3px;' + pillClass + '">' + esc(adv.status) + '</span></td>';
       html += '      <td style="padding:10px 14px;color:#64748b;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(adv.remarks) + '">' + esc(adv.remarks || '—') + '</td>';
-      var slipMeta = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
+      var rowSlipList = getAdvanceSlipsList(adv);
+      var slipMeta = rowSlipList[0] || null;
       if (slipMeta) {
+        var slipLabel = rowSlipList.length > 1
+          ? ('✅ ' + rowSlipList.length + ' Slips' + (slipMeta.signedBy ? ' (' + esc(slipMeta.signedBy) + ')' : ''))
+          : ('✅ Slip' + (slipMeta.signedBy ? ' (' + esc(slipMeta.signedBy) + ')' : ''));
         var slipSub = slipMeta.signedBy ? (' · ' + slipMeta.signedBy) : '';
         html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">' +
-                '        <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="height:26px;padding:0 10px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800" title="' + esc((slipMeta.fileName || 'Signed Slip') + slipSub) + '">✅ Slip' + (slipMeta.signedBy ? ' (' + esc(slipMeta.signedBy) + ')' : '') + '</button>' +
+                '        <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="height:26px;padding:0 10px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;cursor:pointer;font-size:10px;font-weight:800" title="' + esc((slipMeta.fileName || 'Signed Slip') + slipSub) + '">' + slipLabel + '</button>' +
                 '      </td>';
       } else {
         html += '      <td style="padding:10px 14px;text-align:center;white-space:nowrap">' +
@@ -3458,7 +3622,7 @@
       state.stagedFormSlip = null;
       closeModal();
       if (pendingFormSlip && pendingFormSlip.dataUrl) {
-        uploadAdvanceSlip(recordId, Object.assign({}, pendingFormSlip, { signedBy: slipSignedBy })).then(function(uRes) {
+        uploadAdvanceSlip(recordId, Object.assign({}, pendingFormSlip, { signedBy: slipSignedBy, advDate: date })).then(function(uRes) {
           if (window.showToast) {
             if (uRes && uRes.synced) {
               window.showToast('✅ Advance & Signed Slip dono save aur sabhi browsers me sync ho gaye!');
@@ -3536,34 +3700,121 @@
     return '<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px"><img src="' + slipPayload.dataUrl + '" alt="Signed Advance Slip" style="max-width:100%;max-height:360px;border-radius:6px;object-fit:contain;box-shadow:0 4px 12px rgba(15,23,42,0.12)"></div>';
   }
 
-  function openSlipModal(advanceId) {
+  function startAddMoreSlip(advanceId) {
+    return openSlipModal(advanceId, null, true);
+  }
+
+  async function addMoreAdvDateFromModal(advanceId) {
+    var inp = document.getElementById('advSlipMoreDateInput');
+    var val = inp ? String(inp.value || '').trim() : '';
+    if (!val) {
+      showSlipModalError('Pehle More Adv Date select karein.');
+      return { ok: false, error: 'DATE_REQUIRED' };
+    }
+    var res = await addMoreAdvDate(advanceId, val);
+    if (res && res.ok) {
+      if (window.showToast) {
+        window.showToast(res.synced ? ('✅ Adv Date ' + val + ' add & sync ho gayi!') : ('✅ Adv Date ' + val + ' save ho gayi.'));
+      }
+      openSlipModal(advanceId, state.openSlipId, state.addingMoreSlip);
+    }
+    return res;
+  }
+
+  async function removeMoreAdvDateFromModal(advanceId, dateStr) {
+    var ok = await removeMoreAdvDate(advanceId, dateStr);
+    if (ok) {
+      if (window.showToast) window.showToast('🗑 Extra Adv Date ' + dateStr + ' remove & sync ho gayi.');
+      openSlipModal(advanceId, state.openSlipId, state.addingMoreSlip);
+    }
+    return ok;
+  }
+
+  function openSlipModal(advanceId, focusSlipId, forceAddMode) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
     if (!adv) return;
+    normalizeAdvanceSlipFields(adv);
+    var slips = getAdvanceSlipsList(adv);
+    var moreDates = getAdvanceMoreDatesList(adv);
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    var addMode = forceAddMode === true || slips.length === 0;
+    var activeMeta = null;
+    if (!addMode) {
+      activeMeta = focusSlipId
+        ? (slips.find(function(s) { return s && s.slipId === focusSlipId; }) || slips[0])
+        : slips[0];
+    }
+
     state.openSlipAdvanceId = advanceId;
+    state.openSlipId = activeMeta ? activeMeta.slipId : null;
+    state.addingMoreSlip = addMode;
     state.stagedModalSlip = null;
     var modal = getOrCreateModal();
-    var meta = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
-    var defaultSignedBy = (meta && meta.signedBy) || '';
-    var defaultNote = (meta && meta.note) || '';
+    if (!modal) return;
+
+    var defaultSignedBy = (activeMeta && activeMeta.signedBy) || '';
+    var defaultNote = (activeMeta && activeMeta.note) || '';
+    var defaultAdvDate = (activeMeta && activeMeta.advDate) || (forceAddMode === true && slips.length > 0 ? todayStr : (adv.advanceDate || todayStr));
 
     var content = '';
     content += '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.5);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)ATPLAdvanceManager.closeModal()">';
-    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
+    content += '  <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:16px;max-width:720px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(15,23,42,0.22);overflow:hidden">';
 
     content += '    <div style="padding:16px 22px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
     content += '      <div>';
-    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#4f46e5;text-transform:uppercase">DIARY / DIRECTOR SIGNED ADVANCE SLIP</div>';
+    content += '        <div style="font-size:9px;font-weight:900;letter-spacing:1px;color:#4f46e5;text-transform:uppercase">DIARY / DIRECTOR SIGNED ADVANCE SLIP (' + slips.length + ' SAVED)</div>';
     content += '        <h3 style="margin:2px 0 0;font-size:17px;font-weight:850;color:#111827">' + esc(adv.empName) + ' <span style="font-family:monospace;color:#312e81;font-size:14px">(' + esc(adv.empCode) + ')</span></h3>';
-    content += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Advance Date: <strong>' + esc(adv.advanceDate || '-') + '</strong> · Amount: <strong style="color:#111827">' + formatINR(adv.amount) + '</strong> · Bal: <strong style="color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</strong></div>';
+    content += '        <div style="font-size:11px;color:#64748b;margin-top:2px">Main Adv Date: <strong>' + esc(adv.advanceDate || '-') + '</strong> · Amount: <strong style="color:#111827">' + formatINR(adv.amount) + '</strong> · Bal: <strong style="color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</strong></div>';
     content += '      </div>';
     content += '      <button onclick="ATPLAdvanceManager.closeModal()" style="border:1px solid #e5e7eb;background:#f9fafb;color:#64748b;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center">✕</button>';
     content += '    </div>';
 
-    content += '    <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:14px;background:#fff">';
+    content += '    <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;background:#fff">';
     content += '      <div id="advSlipErrorBox" style="display:none;padding:9px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:11.5px;font-weight:700"></div>';
 
+    if (slips.length > 0) {
+      content += '      <div style="padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+      content += '        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
+      content += '          <span style="font-size:10px;font-weight:850;color:#15803d;text-transform:uppercase;margin-right:4px">Saved Slips (' + slips.length + '):</span>';
+      slips.forEach(function(s, sIdx) {
+        var isSel = !addMode && activeMeta && activeMeta.slipId === s.slipId;
+        var sDateLbl = s.advDate ? s.advDate : (adv.advanceDate || '');
+        content += '          <button type="button" onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\',\'' + esc(s.slipId) + '\',false)" style="padding:5px 10px;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;border:' + (isSel ? '1.5px solid #15803d' : '1px solid #cbd5e1') + ';background:' + (isSel ? '#15803d' : '#ffffff') + ';color:' + (isSel ? '#ffffff' : '#0f172a') + '">#' + (sIdx + 1) + (sDateLbl ? ' · ' + esc(sDateLbl) : '') + (s.signedBy ? ' · ' + esc(s.signedBy) : '') + '</button>';
+      });
+      content += '        </div>';
+      content += '        <button type="button" id="advAddMoreSlipBtn" onclick="ATPLAdvanceManager.startAddMoreSlip(\'' + esc(adv.id) + '\')" style="padding:6px 12px;border-radius:8px;border:none;background:' + (addMode ? '#4f46e5' : '#1e293b') + ';color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">+ Add More Slip</button>';
+      content += '      </div>';
+    }
+
+    content += '      <div style="padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;flex-direction:column;gap:7px">';
+    content += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+    content += '          <span style="font-size:10px;font-weight:850;color:#312e81;text-transform:uppercase;letter-spacing:0.4px">📅 Advance Dates &amp; More Adv Date</span>';
+    content += '          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+    content += '            <input type="date" id="advSlipMoreDateInput" value="' + esc(todayStr) + '" style="padding:4px 8px;border:1px solid #a5b4fc;border-radius:6px;font-size:11px;font-weight:700;background:#fff;color:#0f172a">';
+    content += '            <button type="button" id="advAddMoreDateBtn" onclick="ATPLAdvanceManager.addMoreAdvDateFromModal(\'' + esc(adv.id) + '\')" style="padding:5px 10px;border:none;background:#4338ca;color:#fff;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer">+ More Adv Date</button>';
+    content += '          </div>';
+    content += '        </div>';
+    content += '        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
+    content += '          <span style="padding:3px 8px;border-radius:6px;background:#fff;border:1px solid #c7d2fe;font-size:10.5px;font-weight:700;color:#1e293b">Main: ' + esc(adv.advanceDate || '-') + '</span>';
+    moreDates.forEach(function(md) {
+      content += '          <span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:#fff;border:1px solid #818cf8;font-size:10.5px;font-weight:800;color:#312e81">' + esc(md) + ' <button type="button" onclick="ATPLAdvanceManager.removeMoreAdvDateFromModal(\'' + esc(adv.id) + '\',\'' + esc(md) + '\')" style="border:none;background:transparent;color:#dc2626;cursor:pointer;font-size:11px;font-weight:800;padding:0;line-height:1" title="Remove date">✕</button></span>';
+    });
+    if (!moreDates.length) {
+      content += '          <span style="font-size:10.5px;color:#475569">Extra advance date add karne ke liye date chun kar "+ More Adv Date" dabaye (sabhi browsers me sync hogi).</span>';
+    }
+    content += '        </div>';
+    content += '      </div>';
+
     content += '      <div style="background:#f8fafc;border:1.5px dashed #818cf8;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">';
-    content += '        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    if (slips.length > 0 && addMode) {
+      content += '        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 9px;background:#eef2ff;border-radius:6px;font-size:11px;font-weight:800;color:#312e81"><span>➕ Add More Slip (Slip #' + (slips.length + 1) + ')</span><button type="button" onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\',\'' + esc(slips[0].slipId) + '\',false)" style="border:none;background:transparent;color:#4338ca;font-size:11px;font-weight:800;cursor:pointer;text-decoration:underline">Saved Slips Dekhein</button></div>';
+    }
+    content += '        <div style="display:grid;grid-template-columns:150px 1fr 1fr;gap:10px">';
+    content += '          <div>';
+    content += '            <label style="display:block;font-size:9.5px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Slip Adv Date</label>';
+    content += '            <input type="date" id="advSlipAdvDate" value="' + esc(defaultAdvDate) + '" style="width:100%;padding:8px 8px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:11.5px;font-weight:700;color:#111827;box-sizing:border-box">';
+    content += '          </div>';
     content += '          <div>';
     content += '            <label style="display:block;font-size:9.5px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Director Signed By (Optional)</label>';
     content += '            <select id="advSlipSignedBy" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;font-weight:700;color:#111827">';
@@ -3576,17 +3827,17 @@
     content += '          </div>';
     content += '          <div>';
     content += '            <label style="display:block;font-size:9.5px;font-weight:800;color:#475569;text-transform:uppercase;margin-bottom:4px">Diary / Slip Note (Optional)</label>';
-    content += '            <input type="text" id="advSlipNote" value="' + esc(defaultNote) + '" placeholder="e.g. Diary Pg 14 · Account Sent" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;color:#111827">';
+    content += '            <input type="text" id="advSlipNote" value="' + esc(defaultNote) + '" placeholder="e.g. Diary Pg 14 · Account Sent" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;background:#fff;font-size:12px;color:#111827;box-sizing:border-box">';
     content += '          </div>';
     content += '        </div>';
     content += '        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">';
     content += '          <input type="file" id="advSlipFileInput" accept="image/*,.pdf" onchange="ATPLAdvanceManager.onSlipFileSelected(this)" style="flex:1;min-width:210px;font-size:11.5px;color:#334155">';
-    content += '          <span id="advSlipFileStatus" style="font-size:10.5px;font-weight:700;color:#475569">' + (meta ? ('Saved: ' + esc(meta.fileName) + (meta.size ? ' (' + formatSlipSize(meta.size) + ')' : '')) : 'Photo / PDF select karein') + '</span>';
+    content += '          <span id="advSlipFileStatus" style="font-size:10.5px;font-weight:700;color:#475569">' + (activeMeta ? ('Saved: ' + esc(activeMeta.fileName) + (activeMeta.size ? ' (' + formatSlipSize(activeMeta.size) + ')' : '')) : 'Photo / PDF select karein') + '</span>';
     content += '        </div>';
     content += '      </div>';
 
     content += '      <div id="advSlipPreviewBox" style="min-height:120px">';
-    if (meta) {
+    if (activeMeta && !addMode) {
       content += '        <div style="padding:36px 16px;text-align:center;color:#4f46e5;font-size:12px;font-weight:700">☁️ Signed slip load ho rahi hai...</div>';
     } else {
       content += renderSlipPreviewHtml(null);
@@ -3597,15 +3848,15 @@
 
     content += '    <div style="padding:14px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#f8fafc">';
     content += '      <div style="display:flex;gap:8px;flex-wrap:wrap">';
-    if (meta) {
-      content += '        <button type="button" onclick="ATPLAdvanceManager.downloadSlip(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">⬇ Download</button>';
-      content += '        <button type="button" onclick="ATPLAdvanceManager.printSlip(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🖨 Print</button>';
-      content += '        <button type="button" onclick="ATPLAdvanceManager.removeSlipModal(\'' + esc(adv.id) + '\')" style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🗑 Remove Slip</button>';
+    if (activeMeta && !addMode) {
+      content += '        <button type="button" onclick="ATPLAdvanceManager.downloadSlip(\'' + esc(adv.id) + '\',\'' + esc(activeMeta.slipId) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">⬇ Download</button>';
+      content += '        <button type="button" onclick="ATPLAdvanceManager.printSlip(\'' + esc(adv.id) + '\',\'' + esc(activeMeta.slipId) + '\')" style="padding:8px 12px;background:#ffffff;border:1px solid #d1d5db;color:#334155;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🖨 Print</button>';
+      content += '        <button type="button" onclick="ATPLAdvanceManager.removeSlipModal(\'' + esc(adv.id) + '\',\'' + esc(activeMeta.slipId) + '\')" style="padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">🗑 Remove Slip</button>';
     }
     content += '      </div>';
     content += '      <div style="display:flex;gap:8px;align-items:center">';
     content += '        <button type="button" onclick="ATPLAdvanceManager.closeModal()" style="padding:8px 14px;background:#ffffff;border:1px solid #d1d5db;color:#475569;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Close</button>';
-    content += '        <button type="button" id="advSlipSaveBtn" onclick="ATPLAdvanceManager.saveSlipModal(\'' + esc(adv.id) + '\')" style="padding:8px 18px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">☁️ Save &amp; Sync Slip</button>';
+    content += '        <button type="button" id="advSlipSaveBtn" onclick="ATPLAdvanceManager.saveSlipModal(\'' + esc(adv.id) + '\')" style="padding:8px 18px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer">☁️ ' + (addMode && slips.length > 0 ? 'Save More Slip &amp; Sync' : 'Save &amp; Sync Slip') + '</button>';
     content += '      </div>';
     content += '    </div>';
 
@@ -3613,9 +3864,10 @@
     content += '</div>';
     modal.innerHTML = content;
 
-    if (meta) {
-      fetchAdvanceSlipData(advanceId).then(function(payload) {
-        if (state.openSlipAdvanceId !== advanceId) return;
+    if (activeMeta && !addMode) {
+      var targetId = activeMeta.slipId;
+      fetchAdvanceSlipData(advanceId, targetId).then(function(payload) {
+        if (state.openSlipAdvanceId !== advanceId || state.openSlipId !== targetId || state.addingMoreSlip) return;
         var box = document.getElementById('advSlipPreviewBox');
         if (!box) return;
         if (payload && payload.dataUrl) {
@@ -3659,16 +3911,24 @@
   async function saveSlipModal(advanceId) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
     if (!adv) return;
+    var advDate = String((document.getElementById('advSlipAdvDate') || {}).value || adv.advanceDate || '').trim();
     var signedBy = String((document.getElementById('advSlipSignedBy') || {}).value || '').trim();
     var note = String((document.getElementById('advSlipNote') || {}).value || '').trim();
     var saveBtn = document.getElementById('advSlipSaveBtn');
+    var isAppendMode = !!state.addingMoreSlip;
+    var activeSlipId = !isAppendMode ? state.openSlipId : null;
 
     if (!state.stagedModalSlip) {
-      if (adv.signedSlip && adv.signedSlip.slipId) {
-        var existingPayload = await fetchAdvanceSlipData(advanceId);
+      if (activeSlipId) {
+        var existingPayload = await fetchAdvanceSlipData(advanceId, activeSlipId);
         if (existingPayload && existingPayload.dataUrl) {
           if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Syncing...'; }
-          var updRes = await uploadAdvanceSlip(advanceId, Object.assign({}, existingPayload, { signedBy: signedBy, note: note }));
+          var updRes = await uploadAdvanceSlip(advanceId, Object.assign({}, existingPayload, {
+            targetSlipId: activeSlipId,
+            advDate: advDate,
+            signedBy: signedBy,
+            note: note
+          }));
           if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '☁️ Save & Sync Slip'; }
           if (updRes && updRes.ok) {
             closeModal();
@@ -3682,15 +3942,22 @@
     }
 
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Uploading & Syncing...'; }
-    var res = await uploadAdvanceSlip(advanceId, Object.assign({}, state.stagedModalSlip, { signedBy: signedBy, note: note }));
+    var res = await uploadAdvanceSlip(advanceId, Object.assign({}, state.stagedModalSlip, {
+      targetSlipId: activeSlipId,
+      append: isAppendMode,
+      advDate: advDate,
+      signedBy: signedBy,
+      note: note
+    }));
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '☁️ Save & Sync Slip'; }
 
     if (res && res.ok) {
       state.stagedModalSlip = null;
+      state.addingMoreSlip = false;
       closeModal();
       if (window.showToast) {
         window.showToast(res.synced
-          ? '✅ Signed Advance Slip uploaded & synced across all browsers!'
+          ? ('✅ Signed Advance Slip (#' + (res.slipCount || 1) + ') uploaded & synced across all browsers!')
           : '✅ Signed Advance Slip saved locally. Cloud sync queued.');
       }
     } else {
@@ -3699,18 +3966,24 @@
     return res;
   }
 
-  async function removeSlipModal(advanceId) {
-    if (typeof window.confirm === 'function' && !window.confirm('Kya aap is advance ki uploaded Signed Slip remove karna chahte hain?')) {
+  async function removeSlipModal(advanceId, slipId) {
+    if (typeof window.confirm === 'function' && !window.confirm('Kya aap is advance ki selected Signed Slip remove karna chahte hain?')) {
       return false;
     }
-    await removeAdvanceSlip(advanceId);
-    closeModal();
+    await removeAdvanceSlip(advanceId, slipId);
+    var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
+    var rem = getAdvanceSlipsList(adv);
+    if (rem.length > 0) {
+      openSlipModal(advanceId, rem[0].slipId, false);
+    } else {
+      closeModal();
+    }
     if (window.showToast) window.showToast('🗑 Signed Slip removed & synced across browsers.');
     return true;
   }
 
-  async function downloadSlip(advanceId) {
-    var payload = await fetchAdvanceSlipData(advanceId);
+  async function downloadSlip(advanceId, optSlipId) {
+    var payload = await fetchAdvanceSlipData(advanceId, optSlipId);
     if (!payload || !payload.dataUrl) {
       if (window.showToast) window.showToast('⚠️ Slip data load nahi ho paaya.');
       return false;
@@ -3718,7 +3991,7 @@
     try {
       var a = document.createElement('a');
       a.href = payload.dataUrl;
-      a.download = payload.fileName || ('ATPL_Advance_Slip_' + (payload.empCode || 'doc') + '.jpg');
+      a.download = payload.fileName || ('advance_slip_' + advanceId + '.jpg');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3728,16 +4001,16 @@
     }
   }
 
-  async function printSlip(advanceId) {
+  async function printSlip(advanceId, optSlipId) {
     var adv = (state.advances || []).find(function(a) { return a && a.id === advanceId; });
-    var payload = await fetchAdvanceSlipData(advanceId);
+    var payload = await fetchAdvanceSlipData(advanceId, optSlipId);
     if (!payload || !payload.dataUrl) {
       if (window.showToast) window.showToast('⚠️ Slip data print ke liye ready nahi hai.');
       return false;
     }
     var isPdf = String(payload.mimeType || '').toLowerCase().indexOf('pdf') >= 0 || /^data:application\/pdf/i.test(payload.dataUrl);
     if (isPdf) {
-      return downloadSlip(advanceId);
+      return downloadSlip(advanceId, optSlipId);
     }
     try {
       var frame = document.getElementById('atplAdvSlipPrintFrame');
@@ -3753,22 +4026,20 @@
         document.body.appendChild(frame);
       }
       var cw = frame.contentWindow;
-      var cdoc = frame.contentDocument || (cw && cw.document);
-      if (cdoc) {
+      if (cw && cw.document) {
+        var cdoc = cw.document;
         cdoc.open();
-        cdoc.write('<!doctype html><html><head><title>Signed Advance Slip</title></head><body style="font-family:sans-serif;padding:18px;text-align:center"><h3 style="margin:0 0 6px">ARORA TEXTILES PRIVATE LIMITED — SIGNED ADVANCE SLIP</h3><div style="font-size:12px;margin-bottom:12px">' + esc((adv && adv.empName) || '') + ' (' + esc((adv && adv.empCode) || '') + ') · ' + esc((adv && adv.advanceDate) || '') + ' · ' + formatINR((adv && adv.amount) || 0) + (payload.signedBy ? ' · Signed: ' + esc(payload.signedBy) : '') + '</div><img src="' + payload.dataUrl + '" style="max-width:100%;max-height:92vh;border:1px solid #cbd5e1"></body></html>');
+        cdoc.write('<!doctype html><html><head><title>Signed Advance Slip</title></head><body style="font-family:sans-serif;padding:18px;text-align:center"><h3 style="margin:0 0 6px">ARORA TEXTILES PRIVATE LIMITED — SIGNED ADVANCE SLIP</h3><div style="font-size:12px;margin-bottom:12px">' + esc((adv && adv.empName) || '') + ' (' + esc((adv && adv.empCode) || '') + ') · ' + esc(payload.advDate || (adv && adv.advanceDate) || '') + ' · ' + formatINR((adv && adv.amount) || 0) + (payload.signedBy ? ' · Signed: ' + esc(payload.signedBy) : '') + '</div><img src="' + payload.dataUrl + '" style="max-width:100%;max-height:92vh;border:1px solid #cbd5e1"></body></html>');
         cdoc.close();
+        cw.focus();
+        cw.print();
+        return true;
       }
-      setTimeout(function() {
-        try { if (cw) { cw.focus(); cw.print(); } } catch (_) {}
-      }, 200);
-      return true;
-    } catch (_) {
-      return false;
-    }
+    } catch (_) {}
+    return downloadSlip(advanceId, optSlipId);
   }
 
-  function confirmDelete(id) {
+    function confirmDelete(id) {
     var adv = state.advances.find(function(a) { return a.id === id; });
     if (!adv) return;
     if (confirm('Are you sure you want to delete Advance of ' + formatINR(adv.amount) + ' for ' + adv.empName + ' (' + adv.empCode + ')?')) {
@@ -4132,9 +4403,10 @@
         content += '                <td style="padding:8px 12px;text-align:right;font-weight:800;color:' + (a.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(a.balanceAmount) + '</td>';
         content += '                <td style="padding:8px 12px;font-weight:800;font-size:10px;color:' + (a.status === 'REPAID' ? '#15803d' : '#b45309') + '">' + esc(a.status) + '</td>';
         content += '                <td style="padding:8px 12px;color:#64748b">' + esc(a.remarks || '—') + '</td>';
-        var hSlip = a.signedSlip && a.signedSlip.slipId ? a.signedSlip : null;
+        var hSlips = getAdvanceSlipsList(a);
+        var hSlip = hSlips[0] || null;
         if (hSlip) {
-          content += '                <td style="padding:8px 12px;text-align:center;white-space:nowrap"><button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(a.id) + '\')" style="padding:4px 9px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">✅ View Slip</button></td>';
+          content += '                <td style="padding:8px 12px;text-align:center;white-space:nowrap"><button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(a.id) + '\')" style="padding:4px 9px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">✅ ' + (hSlips.length > 1 ? (hSlips.length + ' Slips') : 'View Slip') + '</button></td>';
         } else {
           content += '                <td style="padding:8px 12px;text-align:center;white-space:nowrap"><button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(a.id) + '\')" style="padding:4px 9px;border:1px dashed #818cf8;background:#eef2ff;color:#312e81;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer">📎 Upload Slip</button></td>';
         }
@@ -4261,13 +4533,15 @@
     content += '      <div><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:800">Balance Remaining</div><div style="font-size:17px;font-weight:850;color:' + (adv.balanceAmount > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(adv.balanceAmount) + '</div><div style="font-size:10px;font-weight:800;color:' + (adv.status === 'REPAID' ? '#15803d' : '#b45309') + '">' + esc(adv.status) + '</div></div>';
     content += '    </div>';
 
-    var sSlip = adv.signedSlip && adv.signedSlip.slipId ? adv.signedSlip : null;
+    var sSlips = getAdvanceSlipsList(adv);
+    var sSlip = sSlips[0] || null;
+    var sMoreDates = getAdvanceMoreDatesList(adv);
     content += '    <div style="padding:12px 22px;border-bottom:1px solid #e5e7eb;background:' + (sSlip ? '#f0fdf4' : '#eef2ff') + ';display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
     content += '      <div>';
-    content += '        <div style="font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:0.6px;color:' + (sSlip ? '#15803d' : '#312e81') + '">' + (sSlip ? '✅ Diary / Director Signed Advance Slip Saved' : '📎 Diary / Director Signed Advance Slip Pending') + '</div>';
-    content += '        <div style="font-size:11px;color:#475569;margin-top:2px">' + (sSlip ? (esc(sSlip.fileName || 'Signed Slip') + (sSlip.signedBy ? ' · Signed by: ' + esc(sSlip.signedBy) : '') + (sSlip.size ? ' (' + formatSlipSize(sSlip.size) + ')' : '')) : 'Director sign wali diary slip upload karein taaki Account me record aur saare browsers me sync rahe.') + '</div>';
+    content += '        <div style="font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:0.6px;color:' + (sSlip ? '#15803d' : '#312e81') + '">' + (sSlip ? ('✅ Diary / Director Signed Advance Slip Saved (' + sSlips.length + ')') : '📎 Diary / Director Signed Advance Slip Pending') + '</div>';
+    content += '        <div style="font-size:11px;color:#475569;margin-top:2px">' + (sSlip ? (esc(sSlip.fileName || 'Signed Slip') + (sSlip.signedBy ? ' · Signed by: ' + esc(sSlip.signedBy) : '') + (sMoreDates.length ? ' · Extra Dates: ' + esc(sMoreDates.join(', ')) : '')) : 'Director sign wali diary slip upload karein taaki Account me record aur saare browsers me sync rahe.') + '</div>';
     content += '      </div>';
-    content += '      <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="padding:7px 13px;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;border:none;background:' + (sSlip ? '#15803d' : '#312e81') + ';color:#fff">' + (sSlip ? '👁 View / Print Slip' : '📎 Upload Signed Slip') + '</button>';
+    content += '      <button onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\')" style="padding:7px 13px;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;border:none;background:' + (sSlip ? '#15803d' : '#312e81') + ';color:#fff">' + (sSlip ? '👁 View / + More Slip' : '📎 Upload Signed Slip') + '</button>';
     content += '    </div>';
     content += '    <div style="padding:18px 22px;max-height:320px;overflow-y:auto;background:#ffffff">';
     content += '      <h4 style="margin:0 0 10px;font-size:11px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:0.6px">Deductions History (Salary Sheet + Manual)</h4>';
@@ -6151,12 +6425,18 @@
     viewStatement: viewStatement,
     viewEmployeeHistory: viewEmployeeHistory,
     openSlipModal: openSlipModal,
+    startAddMoreSlip: startAddMoreSlip,
+    addMoreAdvDate: addMoreAdvDate,
+    removeMoreAdvDate: removeMoreAdvDate,
+    addMoreAdvDateFromModal: addMoreAdvDateFromModal,
+    removeMoreAdvDateFromModal: removeMoreAdvDateFromModal,
     onSlipFileSelected: onSlipFileSelected,
     saveSlipModal: saveSlipModal,
     removeSlipModal: removeSlipModal,
     downloadSlip: downloadSlip,
     printSlip: printSlip,
     uploadAdvanceSlip: uploadAdvanceSlip,
+    addMoreAdvanceSlip: addMoreAdvanceSlip,
     fetchAdvanceSlipData: fetchAdvanceSlipData,
     removeAdvanceSlip: removeAdvanceSlip,
     onFormSlipFileChange: onFormSlipFileChange,
