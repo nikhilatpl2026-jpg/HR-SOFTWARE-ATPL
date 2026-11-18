@@ -873,7 +873,7 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledOct.compSheetDiffTotal, 1238, 'Total Compliance Sheet Diff must show');
     assert.equal(ledOct.compDiffUncoveredTotal, 1050, 'Missed Compliance Diff for 26468 must be tracked');
     assert.equal(ledOct.diffBaakiTotal, 1050, 'Dashboard Diff Baaki must include uncovered Compliance Diff');
-    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('Comp Diff Chhoota'));
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('Comp Sheet Diff Chhoota'));
     assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('1,238'));
     assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('1,050'));
 
@@ -944,5 +944,98 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     legLed = bLegacy.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
     assert.equal(legLed.compSheetDiffTotal, 1238, 'Legacy Compliance sheet must backfill compDiffAmount after async file load');
     assert.equal(legLed.compDiffUncoveredTotal, 1238);
+  });
+
+  await t.test('13. Total Month Payout uses Paid Diff + Compliance, and Emp Payout Audit tracks Manual/Cuts/Increase/Parts 1-4', async () => {
+    const bA = createBrowser('BrowserA_Audit', new Map());
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-09');
+
+    // Compliance sheet: Emp 25046 Manual 25000, PF 1500, ESIC 200, Net Payable 21000 => Diff = 2300
+    bA.mockWindow.FILES.push({
+      name: 'SEP_COMP.xlsx',
+      sheets: {
+        'working SHeet': [
+          ['Emp Code', 'Name of employee', 'Manual Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable', 'Diff. Amount'],
+          ['25046', 'Kamlaram', 25000, 1500, 200, 21000, 2300],
+          ['26471', 'Mhanta Rai', 20000, 1200, 150, 17000, 1650]
+        ]
+      }
+    });
+    bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('SEP_COMP.xlsx', '2026-09', 'COMPLIANCE');
+
+    // Check Audit BEFORE any Diff Batch is paid -> 0 Diff paid, 2300 pending
+    let aud = bA.mockWindow.ATPLSalaryPayout.buildEmpPayoutAudit('25046', '2026-09');
+    assert.equal(aud.compliance.manualAmount, 25000);
+    assert.equal(aud.compliance.pfEmployee, 1500);
+    assert.equal(aud.compliance.esicEmployee, 200);
+    assert.equal(aud.compliance.compliancePaid, 21000);
+    assert.equal(aud.compliance.calcComplianceDiff, 2300);
+    assert.equal(aud.summary.totalDiffDisbursed, 0, 'Before batches, 0 Diff should be paid');
+    assert.equal(aud.summary.grandTotalPaid, 21000);
+    assert.equal(aud.summary.pendingDiff, 2300);
+
+    // Upload Diff Sheet #1 (2300) + Additive Diff Sheet #2 (+500 increase) => Total Diff Target = 2800
+    bA.mockWindow.FILES.push({
+      name: 'SEP_DIFF_1.xlsx',
+      sheets: { 'BANK SHEET': [['Emp Code', 'Name', 'AMOUNT'], ['25046', 'Kamlaram', 2300], ['26471', 'Mhanta Rai', 1650]] }
+    });
+    bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('SEP_DIFF_1.xlsx', '2026-09', 'DIFF');
+
+    bA.mockWindow.FILES.push({
+      name: 'SEP_DIFF_2_EXTRA.xlsx',
+      sheets: { 'BANK SHEET': [['Emp Code', 'Name', 'AMOUNT'], ['25046', 'Kamlaram', 500]] }
+    });
+    bA.mockWindow.ATPLSalaryPayout.importFromLoadedFile('SEP_DIFF_2_EXTRA.xlsx', '2026-09', 'DIFF', { replaceMonthSheets: false });
+
+    // Pay across Part 1, Part 2, Part 3, Part 4 (Kamlaram gets 0 in Part 1, 2300 in Part 2, 500 in Part 3, 0 in Part 4)
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-09', partNumber: 1, title: 'Part 1', status: 'DISBURSED',
+      allocations: [{ empCode: '26471', empName: 'Mhanta Rai', amount: 2650 }] // 1000 extra above Diff sheet!
+    });
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-09', partNumber: 2, title: 'Part 2', status: 'DISBURSED',
+      allocations: [{ empCode: '25046', empName: 'Kamlaram', amount: 2300 }]
+    });
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-09', partNumber: 3, title: 'Part 3', status: 'DISBURSED',
+      allocations: [{ empCode: '25046', empName: 'Kamlaram', amount: 500 }]
+    });
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-09', partNumber: 4, title: 'Part 4', status: 'DISBURSED',
+      allocations: [{ empCode: '26471', empName: 'Mhanta Rai', amount: 100 }]
+    });
+
+    // Verify Card 5 Total Month Payout = Comp Paid (38000) + Batch Paid (2650 + 2300 + 500 + 100 = 5550) = 43550 (NOT Diff Target 4450)
+    const ledSep = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(ledSep.complianceTotal, 38000);
+    assert.equal(ledSep.diffTotal, 4450);
+    assert.equal(ledSep.totalBatchPaid, 5550);
+    assert.equal(ledSep.totalMonthSalary, 43550, 'Total Month Payout must equal Compliance Paid + Actual Diff Batch Paid');
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('43,550'));
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('Diff Paid'));
+
+    // Verify Audit Waterfall for 25046 after Part 1-4
+    aud = bA.mockWindow.ATPLSalaryPayout.buildEmpPayoutAudit('25046', '2026-09');
+    assert.equal(aud.diffAndAdjustments.netDiffTarget, 2800);
+    assert.equal(aud.diffAndAdjustments.increaseVsComp, 500);
+    assert.equal(aud.summary.totalDiffDisbursed, 2800);
+    assert.equal(aud.summary.grandTotalPaid, 23800);
+    assert.equal(aud.summary.pendingDiff, 0);
+    assert.equal(aud.batches.length, 4);
+    assert.equal(aud.batches[0].amountPaid, 0);
+    assert.equal(aud.batches[1].amountPaid, 2300);
+    assert.equal(aud.batches[2].amountPaid, 500);
+    assert.equal(aud.batches[3].amountPaid, 0);
+
+    // Open Audit UI tab and check rendered HTML includes breakdown
+    bA.mockWindow.ATPLSalaryPayout.openEmpAuditCheck('25046', '2026-09');
+    const htmlOut = bA.elements.salaryPayoutContainer.innerHTML;
+    assert.ok(htmlOut.includes('25,000'));
+    assert.ok(htmlOut.includes('21,000'));
+    assert.ok(htmlOut.includes('2,300'));
+    assert.ok(htmlOut.includes('2,800'));
+    assert.ok(htmlOut.includes('23,800'));
+    assert.ok(htmlOut.includes('Badha'));
   });
 });

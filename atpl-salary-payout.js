@@ -67,7 +67,8 @@
   var _legacyCompDiffCache = {};
   var state = {
     selectedMonth: currentMonthIso(),
-    activeTab: 'overview', // 'overview' | 'points' | 'compliance' | 'diff'
+    activeTab: 'overview', // 'overview' | 'points' | 'compliance' | 'diff' | 'audit'
+    auditEmpCode: '',
     searchQuery: '',
     overviewFilter: 'ALL', // 'ALL' | 'DIFF_PENDING' | 'LEFTOVER_SMALL' | 'HAS_POINTS' | 'RETURN_PENDING'
     monthSummaries: {},
@@ -943,7 +944,8 @@
       advanceDedTotal: empAdvanceDedSum,
       diffTotal: diffTotal,
       empMissedDiffSum: empMissedDiffSum,
-      totalMonthSalary: round2(complianceTotal + diffTotal),
+      totalActualPayout: round2(complianceTotal + totalBatchPaidAll),
+      totalMonthSalary: totalBatchPaidAll > 0 ? round2(complianceTotal + totalBatchPaidAll) : round2(complianceTotal + diffTotal),
       totalBatchPaid: totalBatchPaidAll,
       totalBatchPlanned: totalBatchPlannedAll,
       disbursedBatchCount: disbursedBatchCount,
@@ -983,6 +985,244 @@
   function setSearch(q) {
     state.searchQuery = String(q || '');
     renderUI();
+  }
+
+  function setAuditEmpCode(code) {
+    state.auditEmpCode = String(code || '').trim();
+    renderUI();
+  }
+
+  function openEmpAuditCheck(empCode, monthKey) {
+    if (monthKey) state.selectedMonth = String(monthKey).trim();
+    if (empCode !== undefined && empCode !== null) {
+      state.auditEmpCode = String(empCode).trim();
+    }
+    state.activeTab = 'audit';
+    renderUI();
+    if (typeof document !== 'undefined') {
+      var focusAuditInp = function() {
+        var inp = document.getElementById('spAuditCodeInput');
+        if (inp && typeof inp.focus === 'function') inp.focus();
+      };
+      if (typeof setTimeout === 'function') setTimeout(focusAuditInp, 20);
+      else focusAuditInp();
+    }
+  }
+
+  function buildEmpPayoutAudit(empCode, monthKey) {
+    var rawQuery = String(empCode || '').trim();
+    var mk = String(monthKey || state.selectedMonth).trim();
+    var ledger = computeMonthLedger(mk);
+    var nc = normalizeCode(rawQuery);
+    var em = findEmployeeByCode(rawQuery);
+    var row = ledger.rows.find(function(r) { return r.normCode === nc; }) || null;
+    if (!row && rawQuery && !em) {
+      var ql = rawQuery.toLowerCase();
+      row = ledger.rows.find(function(r) {
+        return String(r.empName || '').toLowerCase().indexOf(ql) >= 0;
+      }) || null;
+      if (row) {
+        nc = row.normCode;
+        em = findEmployeeByCode(row.empCode);
+      }
+    }
+    var dispCode = (row && row.empCode) || (em && em.empCode) || rawQuery;
+    if (!nc && dispCode) nc = normalizeCode(dispCode);
+    var empName = (row && row.empName) || (em && em.name) || (dispCode ? ('Employee ' + dispCode) : '');
+    var dept = (row && row.dept) || (em && em.dept) || '';
+    var desig = (row && row.desig) || (em && em.desig) || '';
+    var accountNo = (row && row.accountNo) || (em && em.accountNo) || '';
+    var ifsc = (row && row.ifsc) || (em && em.ifsc) || '';
+
+    // 1. Compliance Sheet breakdown
+    var manualAmount = round2(row ? row.manualAmount : 0);
+    var pfEmployee = round2(row ? row.pfEmployee : 0);
+    var esicEmployee = round2(row ? row.esicEmployee : 0);
+    var advanceDeduction = round2(row ? row.advanceDeduction : 0);
+    var totalCuts = round2(pfEmployee + esicEmployee + advanceDeduction);
+    var compliancePaid = round2(row ? row.complianceAmount : 0);
+    var expectedAfterCuts = manualAmount > 0 ? round2(manualAmount - totalCuts) : 0;
+    var calcComplianceDiff = manualAmount > 0 ? Math.max(0, round2(expectedAfterCuts - compliancePaid)) : 0;
+    var sheetComplianceDiff = round2(row ? (row.compDiffAmount || 0) : 0);
+    var complianceDiffBase = sheetComplianceDiff > 0 ? sheetComplianceDiff : calcComplianceDiff;
+
+    var compSheetEntries = [];
+    (ledger.complianceSheets || []).forEach(function(sh) {
+      var shRows = Array.isArray(sh.rows) ? sh.rows : [];
+      var hit = shRows.find(function(sr) { return normalizeCode(sr.empCode) === nc; });
+      if (hit) {
+        compSheetEntries.push({
+          sheetId: sh.id,
+          title: sh.title || sh.fileName || 'Compliance Sheet',
+          tabs: sh.selectedTabs || [],
+          manualAmount: round2(hit.manualAmount || 0),
+          pfEmployee: round2(hit.pfEmployee || 0),
+          esicEmployee: round2(hit.esicEmployee || 0),
+          advanceDeduction: round2(hit.advanceDeduction || 0),
+          complianceAmount: round2(hit.complianceAmount || 0),
+          compDiffAmount: round2(hit.compDiffAmount || 0)
+        });
+      }
+    });
+
+    // 2. Diff Sheets + Adjustments (Points + Missed Diff)
+    var diffSheetEntries = [];
+    var diffSheetsEmpSum = 0;
+    (ledger.diffSheets || []).forEach(function(sh, idx) {
+      var shRows = Array.isArray(sh.rows) ? sh.rows : [];
+      var amt = 0;
+      var matched = false;
+      shRows.forEach(function(sr) {
+        if (normalizeCode(sr.empCode) === nc) {
+          amt = round2(amt + (Number(sr.baseDiffAmount) || 0));
+          matched = true;
+        }
+      });
+      diffSheetsEmpSum = round2(diffSheetsEmpSum + amt);
+      diffSheetEntries.push({
+        index: idx + 1,
+        sheetId: sh.id,
+        title: sh.title || sh.fileName || ('Diff Sheet #' + (idx + 1)),
+        tabs: sh.selectedTabs || [],
+        found: matched,
+        diffAmount: amt
+      });
+    });
+
+    var baseDiffAmount = round2(row ? row.baseDiffAmount : diffSheetsEmpSum);
+    var missedDiffAmount = round2(row ? row.missedDiffAmount : 0);
+    var plusPoints = round2(row ? row.plusPoints : 0);
+    var minusPoints = round2(row ? row.minusPoints : 0);
+    var netPoints = round2(plusPoints - minusPoints);
+    var pointsList = row && Array.isArray(row.pointsList) ? row.pointsList : [];
+    var netDiffTarget = round2(row ? row.netDiffAmount : 0);
+    var increaseVsComp = round2(netDiffTarget - complianceDiffBase);
+
+    // 3. Part-Wise Batch Payments (Part 1, 2, 3, 4...)
+    var batchDetails = [];
+    var totalDiffDisbursed = 0;
+    var totalDiffPlanned = 0;
+    (ledger.batches || []).forEach(function(b) {
+      var allocs = Array.isArray(b.allocations) ? b.allocations : [];
+      var paidInPart = 0;
+      var partRemarks = [];
+      allocs.forEach(function(al) {
+        if (normalizeCode(al.empCode) === nc) {
+          var a = round2(Number(al.amount) || 0);
+          if (a > 0) {
+            paidInPart = round2(paidInPart + a);
+            if (al.remarks) partRemarks.push(String(al.remarks).trim());
+          }
+        }
+      });
+      var isDisbursed = b.status !== 'PLANNED';
+      if (paidInPart > 0) {
+        if (isDisbursed) totalDiffDisbursed = round2(totalDiffDisbursed + paidInPart);
+        else totalDiffPlanned = round2(totalDiffPlanned + paidInPart);
+      }
+      batchDetails.push({
+        batchId: b.id,
+        partNumber: b.partNumber,
+        title: b.title || ('Part ' + b.partNumber),
+        paymentDate: b.paymentDate || '',
+        mode: b.mode || '',
+        utr: b.utr || '',
+        status: b.status || 'DISBURSED',
+        amountPaid: paidInPart,
+        inBatch: paidInPart > 0,
+        remarks: partRemarks.join('; ')
+      });
+    });
+
+    var expectedTotalDiff = Math.max(complianceDiffBase, netDiffTarget);
+    var batchVarianceVsComp = round2(totalDiffDisbursed - complianceDiffBase);
+    var batchVarianceVsTarget = round2(totalDiffDisbursed - netDiffTarget);
+    var effectiveIncrease = netDiffTarget > 0 && increaseVsComp !== 0 ? increaseVsComp : (totalDiffDisbursed > 0 ? batchVarianceVsComp : increaseVsComp);
+    var grandTotalPaid = round2(compliancePaid + totalDiffDisbursed);
+    var pendingDiff = Math.max(0, round2(expectedTotalDiff - totalDiffDisbursed));
+    var empReturns = (ledger.returns || []).filter(function(ret) { return normalizeCode(ret.empCode) === nc; });
+
+    // 4. All Months History for this Emp Code
+    var allMonths = [];
+    listAvailableMonths().forEach(function(otherMk) {
+      var mLed = otherMk === mk ? ledger : computeMonthLedger(otherMk);
+      var mRow = mLed.rows.find(function(r) { return r.normCode === nc; });
+      if (!mRow) return;
+      var mMan = round2(mRow.manualAmount || 0);
+      var mCuts = round2((mRow.pfEmployee || 0) + (mRow.esicEmployee || 0) + (mRow.advanceDeduction || 0));
+      var mComp = round2(mRow.complianceAmount || 0);
+      var mCalcDiff = mMan > 0 ? Math.max(0, round2(mMan - mCuts - mComp)) : 0;
+      var mCompDiff = round2(mRow.compDiffAmount || 0) > 0 ? round2(mRow.compDiffAmount) : mCalcDiff;
+      var mDiffPaid = round2(mRow.diffPaid || 0);
+      var mExpected = Math.max(mCompDiff, round2(mRow.netDiffAmount || 0));
+      allMonths.push({
+        monthKey: otherMk,
+        label: formatMonthLabel(otherMk),
+        manualAmount: mMan,
+        pfEmployee: round2(mRow.pfEmployee || 0),
+        esicEmployee: round2(mRow.esicEmployee || 0),
+        compliancePaid: mComp,
+        compDiff: mCompDiff,
+        diffTarget: round2(mRow.netDiffAmount || 0),
+        diffPaid: mDiffPaid,
+        grandTotalPaid: round2(mComp + mDiffPaid),
+        pendingDiff: Math.max(0, round2(mExpected - mDiffPaid)),
+        partsCount: (mRow.batchBreakdown || []).length
+      });
+    });
+
+    return {
+      found: !!(row || em || allMonths.length),
+      monthKey: mk,
+      monthLabel: formatMonthLabel(mk),
+      empCode: dispCode,
+      normCode: nc,
+      empName: empName,
+      dept: dept,
+      desig: desig,
+      accountNo: accountNo,
+      ifsc: ifsc,
+      compliance: {
+        manualAmount: manualAmount,
+        pfEmployee: pfEmployee,
+        esicEmployee: esicEmployee,
+        advanceDeduction: advanceDeduction,
+        totalCuts: totalCuts,
+        expectedAfterCuts: expectedAfterCuts,
+        compliancePaid: compliancePaid,
+        calcComplianceDiff: calcComplianceDiff,
+        sheetComplianceDiff: sheetComplianceDiff,
+        complianceDiffBase: complianceDiffBase,
+        sheets: compSheetEntries
+      },
+      diffAndAdjustments: {
+        diffSheets: diffSheetEntries,
+        diffSheetsTotal: diffSheetsEmpSum,
+        baseDiffAmount: baseDiffAmount,
+        missedDiffAmount: missedDiffAmount,
+        points: pointsList,
+        plusPoints: plusPoints,
+        minusPoints: minusPoints,
+        netPoints: netPoints,
+        netDiffTarget: netDiffTarget,
+        increaseVsComp: increaseVsComp,
+        effectiveTotalDiff: expectedTotalDiff
+      },
+      batches: batchDetails,
+      returns: empReturns,
+      summary: {
+        compliancePaid: compliancePaid,
+        totalDiffDisbursed: totalDiffDisbursed,
+        totalDiffPlanned: totalDiffPlanned,
+        grandTotalPaid: grandTotalPaid,
+        expectedTotalDiff: expectedTotalDiff,
+        pendingDiff: pendingDiff,
+        batchVarianceVsComp: batchVarianceVsComp,
+        batchVarianceVsTarget: batchVarianceVsTarget,
+        effectiveIncrease: effectiveIncrease
+      },
+      allMonths: allMonths
+    };
   }
 
   function saveMonthSummary(payload) {
@@ -2554,7 +2794,12 @@
     h += '        <div style="padding:8px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
     h += '          <div style="font-size:11.5px;font-weight:700;color:#0f172a">Employee Diff Allocation (Amount + Remarks)</div>';
     h += '          <div style="display:flex;gap:6px;flex-wrap:wrap">';
-    h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'ALL\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Fill All Remaining</button>';
+    if (ledger.compDiffUncoveredTotal > 0) {
+      h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'DIFF_ONLY\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Fill Diff Sheet Only</button>';
+      h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'ALL\')" style="padding:4px 9px;border:1px solid #fcd34d;background:#fffbeb;color:#b45309;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Fill All (+ Comp Chhoota)</button>';
+    } else {
+      h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'ALL\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Fill All Remaining</button>';
+    }
     h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'LEFTOVER\')" style="padding:4px 9px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Only Leftover ≤ ₹500</button>';
     h += '            <button type="button" onclick="ATPLSalaryPayout.batchQuickSelect(\'CLEAR\')" style="padding:4px 9px;border:1px solid #cbd5e1;background:#fff;color:#64748b;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer">Clear All</button>';
     h += '          </div>';
@@ -2566,15 +2811,17 @@
       h += '            <tbody>';
       candidateRows.forEach(function(r) {
         var prevAlloc = existingAllocMap[r.normCode];
-        var avail = round2(r.diffRemaining + (r.compDiffUncovered || 0) + (prevAlloc ? prevAlloc.amount : 0));
+        var diffOnlyAvail = round2(r.diffRemaining + (prevAlloc ? prevAlloc.amount : 0));
+        var compChhoota = round2(r.compDiffUncovered || 0);
+        var avail = round2(diffOnlyAvail + compChhoota);
         var preChecked = !!(prevAlloc && prevAlloc.amount > 0) || (isLeftoverPreset && avail > 0 && avail <= 500);
         var preVal = (prevAlloc && prevAlloc.amount > 0) ? prevAlloc.amount : (preChecked ? avail : '');
         var preRem = (prevAlloc && prevAlloc.remarks) ? prevAlloc.remarks : '';
-        h += '              <tr class="sp-bat-row" data-code="' + esc(r.empCode) + '" data-name="' + esc(r.empName) + '" data-avail="' + avail + '" style="border-bottom:1px solid #f1f5f9">';
+        h += '              <tr class="sp-bat-row" data-code="' + esc(r.empCode) + '" data-name="' + esc(r.empName) + '" data-avail="' + avail + '" data-diff-avail="' + diffOnlyAvail + '" style="border-bottom:1px solid #f1f5f9">';
         h += '                <td style="padding:6px 10px"><input type="checkbox" class="sp-bat-chk"' + (preChecked ? ' checked' : '') + ' onchange="ATPLSalaryPayout.onBatchRowToggle(this)"></td>';
         h += '                <td style="padding:6px 10px;font-family:monospace;font-weight:700;color:#312e81">' + esc(r.empCode) + '</td>';
         h += '                <td style="padding:6px 10px">' + esc(r.empName) + (r.dept ? (' <span style="color:#64748b;font-size:10.5px">· ' + esc(r.dept) + '</span>') : '') + '</td>';
-        h += '                <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;color:' + (avail <= 500 ? '#c2410c' : '#334155') + ';font-weight:700">' + formatINR(avail) + '</td>';
+        h += '                <td style="padding:6px 10px;text-align:right;font-variant-numeric:tabular-nums;color:' + (avail <= 500 ? '#c2410c' : '#334155') + ';font-weight:700">' + formatINR(avail) + (compChhoota > 0 ? ('<div style="font-size:9.5px;color:#b45309">Diff ' + formatINR(diffOnlyAvail) + ' + Comp ' + formatINR(compChhoota) + '</div>') : '') + '</td>';
         h += '                <td style="padding:6px 10px;text-align:right"><input type="number" class="sp-bat-amt" min="0" step="1" value="' + esc(preVal) + '" oninput="ATPLSalaryPayout.recalcBatchModalTotal()" style="width:95px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700"></td>';
         h += '                <td style="padding:6px 10px"><input type="text" class="sp-bat-rem" value="' + esc(preRem) + '" placeholder="Remark" style="width:120px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px"></td>';
         h += '              </tr>';
@@ -2724,9 +2971,12 @@
       var chk = tr.querySelector('.sp-bat-chk');
       var inp = tr.querySelector('.sp-bat-amt');
       var avail = Number(tr.getAttribute('data-avail')) || 0;
-      var checkIt = mode === 'ALL' || (mode === 'LEFTOVER' && avail > 0 && avail <= 500);
+      var diffAvail = Number(tr.getAttribute('data-diff-avail'));
+      if (!Number.isFinite(diffAvail)) diffAvail = avail;
+      var fillVal = mode === 'DIFF_ONLY' ? diffAvail : avail;
+      var checkIt = mode === 'ALL' || (mode === 'DIFF_ONLY' && diffAvail > 0) || (mode === 'LEFTOVER' && avail > 0 && avail <= 500);
       if (chk) chk.checked = checkIt;
-      if (inp) inp.value = checkIt ? avail : '';
+      if (inp) inp.value = (checkIt && fillVal > 0) ? fillVal : '';
     });
     recalcBatchModalTotal();
   }
@@ -3276,6 +3526,7 @@
     h += '      <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'DIFF\')" style="height:34px;padding:0 12px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Upload Diff Sheet / Targets</button>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal(null,\'MISSED_DIFF\')" style="height:34px;padding:0 12px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Missed Diff</button>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.openPointModal()" style="height:34px;padding:0 12px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Emp Point (+/-)</button>';
+    h += '      <button type="button" onclick="ATPLSalaryPayout.openEmpAuditCheck()" style="height:34px;padding:0 12px;border:1px solid #a5b4fc;background:#eef2ff;color:#312e81;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🔍 Emp Payout Check</button>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.openBatchModal()" style="height:34px;padding:0 14px;border:none;background:#0f172a;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Diff Batch (Part ' + (ledger.batches.length + 1) + ')</button>';
     h += '      <button type="button" onclick="ATPLSalaryPayout.syncNow(true)" style="height:34px;padding:0 11px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Sync</button>';
     h += '    </div>';
@@ -3319,10 +3570,13 @@
     h += '      <div style="font-size:11px;color:' + (ledger.compDiffUncoveredTotal > 0 ? '#b45309' : '#475569') + ';margin-top:3px">' + esc(baakiSubTxt) + '</div>';
     h += '    </div>';
 
+    var totalPayoutSub = ledger.totalBatchPaid > 0
+      ? ('Comp ' + formatINR(ledger.complianceTotal) + ' + Diff Paid ' + formatINR(ledger.totalBatchPaid) + (ledger.diffBaakiTotal > 0 ? (' · Baaki ' + formatINR(ledger.diffBaakiTotal)) : ''))
+      : ('Comp ' + formatINR(ledger.complianceTotal) + ' + Diff Target ' + formatINR(ledger.diffTotal) + ' (Paid ₹0)');
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Total Month Payout (Comp + Diff)</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:#312e81;margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.totalMonthSalary) + '</div>';
-    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">Comp ' + formatINR(ledger.complianceTotal) + ' + Diff ' + formatINR(ledger.diffTotal) + '</div>';
+    h += '      <div style="font-size:11px;color:#475569;margin-top:3px">' + esc(totalPayoutSub) + '</div>';
     h += '    </div>';
     h += '  </div>';
 
@@ -3332,7 +3586,7 @@
       // Compliance Sheets Box
       h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
       h += '      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-      h += '        <div style="font-size:12px;font-weight:800;color:#15803d">Compliance Sheets / Manual (' + ledger.complianceSheets.length + ') · ' + formatINR(ledger.complianceTotal) + (ledger.compSheetDiffTotal > 0 ? (' <span style="color:#b45309">· Comp Diff Chhoota ' + formatINR(ledger.compSheetDiffTotal) + '</span>') : '') + '</div>';
+      h += '        <div style="font-size:12px;font-weight:800;color:#15803d">Compliance Sheets / Manual (' + ledger.complianceSheets.length + ') · ' + formatINR(ledger.complianceTotal) + (ledger.compSheetDiffTotal > 0 ? (' <span style="color:' + (ledger.compDiffUncoveredTotal > 0 ? '#b45309' : '#15803d') + '">· Comp Diff ' + formatINR(ledger.compSheetDiffTotal) + (ledger.compDiffUncoveredTotal > 0 ? (' (Chhoota ' + formatINR(ledger.compDiffUncoveredTotal) + ')') : ' (Covered)') + '</span>') : '') + '</div>';
       h += '        <button type="button" onclick="ATPLSalaryPayout.openImportAndTargetsModal(\'COMPLIANCE\')" style="padding:3px 9px;border:1px solid #86efac;background:#f0fdf4;color:#15803d;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">+ Sheet / Manual</button>';
       h += '      </div>';
       if (!ledger.complianceSheets.length) {
@@ -3387,7 +3641,8 @@
       { id: 'overview', label: 'Emp Ledger (' + ledger.rows.length + ')' },
       { id: 'points', label: 'Adjustment Points (' + ledger.points.length + ')' },
       { id: 'compliance', label: 'Compliance & Returns (' + ledger.complianceEmpCount + ' / ' + ledger.returns.length + ')' },
-      { id: 'diff', label: 'Diff Batches / Parts (' + ledger.batches.length + ')' }
+      { id: 'diff', label: 'Diff Batches / Parts (' + ledger.batches.length + ')' },
+      { id: 'audit', label: '🔍 Emp Check / Audit' }
     ];
     tabs.forEach(function(tb) {
       var active = state.activeTab === tb.id;
@@ -3453,6 +3708,7 @@
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1d4ed8;font-weight:700">' + formatINR(r.diffPaid) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:' + (r.isSmallLeftover ? '#c2410c' : rowLeftTotal > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(rowLeftTotal) + (r.isSmallLeftover ? ' (Left)' : (r.compDiffUncovered > 0 ? ' (Comp)' : '')) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:center;white-space:nowrap">';
+          h += '            <button type="button" onclick="ATPLSalaryPayout.openEmpAuditCheck(\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #a5b4fc;background:#eef2ff;color:#312e81;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Check</button>';
           h += '            <button type="button" onclick="ATPLSalaryPayout.openEmpSalaryModal(\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Edit</button>';
           h += '            <button type="button" onclick="ATPLSalaryPayout.openPointModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">+ Point</button>';
           h += '            <button type="button" onclick="ATPLSalaryPayout.openReturnModal(null,\'' + esc(r.empCode) + '\')" style="padding:4px 8px;border:1px solid #fde68a;background:#fffbeb;color:#b45309;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-right:3px">Return</button>';
@@ -3633,6 +3889,152 @@
       }
     }
 
+    // TAB 5: EMP PAYOUT CHECK / FULL SALARY + DIFF WATERFALL AUDIT
+    if (state.activeTab === 'audit') {
+      var auditQuery = String(state.auditEmpCode || '').trim();
+      var varianceRows = ledger.rows.filter(function(r) {
+        return r.compDiffUncovered > 0 || r.diffRemaining > 0 || r.plusPoints > 0 || r.minusPoints > 0 || (r.compDiffAmount > 0 && r.diffPaid !== r.compDiffAmount);
+      }).slice(0, 8);
+      h += '    <div style="padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;flex-direction:column;gap:10px">';
+      h += '      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+      h += '        <div><div style="font-size:13.5px;font-weight:800;color:#0f172a">Emp Code Payout Check &amp; Full Salary Waterfall (' + esc(formatMonthLabel(state.selectedMonth)) + ')</div><div style="font-size:11.5px;color:#64748b">Kisi bhi Emp Code ka Manual Salary, PF/ESIC Cuts, Compliance Net Payable, Diff Sheet/Points Increase aur Part 1-2-3-4 me kitna paisa gaya — sab ek jagah check karein.</div></div>';
+      h += '        <form onsubmit="event.preventDefault();ATPLSalaryPayout.setAuditEmpCode(document.getElementById(\'spAuditCodeInput\').value)" style="display:flex;gap:6px;align-items:center">';
+      h += '          <input id="spAuditCodeInput" type="text" value="' + esc(auditQuery) + '" placeholder="Emp Code ya Name daalein (e.g. 25046)" style="height:34px;padding:0 12px;border:1px solid #94a3b8;border-radius:8px;font-size:12.5px;font-weight:700;min-width:250px;background:#fff">';
+      h += '          <button type="submit" style="height:34px;padding:0 14px;border:none;background:#312e81;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Check Payout</button>';
+      if (auditQuery) {
+        h += '          <button type="button" onclick="ATPLSalaryPayout.setAuditEmpCode(\'\')" style="height:34px;padding:0 10px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Clear</button>';
+      }
+      h += '        </form>';
+      h += '      </div>';
+      var suggestPool = [];
+      if (auditQuery) {
+        var aql = auditQuery.toLowerCase();
+        suggestPool = ledger.rows.filter(function(r) {
+          return normalizeCode(r.empCode) === normalizeCode(auditQuery) || (r.empCode + ' ' + r.empName).toLowerCase().indexOf(aql) >= 0;
+        }).slice(0, 8);
+      } else {
+        suggestPool = varianceRows.length ? varianceRows : ledger.rows.slice(0, 8);
+      }
+      if (suggestPool.length) {
+        h += '      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px"><span style="color:#64748b;font-weight:700">' + (auditQuery ? 'Matches:' : 'Quick Check:') + '</span>';
+        suggestPool.forEach(function(sr) {
+          var isSel = auditQuery && normalizeCode(auditQuery) === sr.normCode;
+          h += '<button type="button" onclick="ATPLSalaryPayout.setAuditEmpCode(\'' + esc(sr.empCode) + '\')" style="padding:3px 9px;border:1px solid ' + (isSel ? '#312e81' : '#cbd5e1') + ';background:' + (isSel ? '#312e81' : '#fff') + ';color:' + (isSel ? '#fff' : '#0f172a') + ';border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">' + esc(sr.empCode) + ' · ' + esc(sr.empName) + '</button>';
+        });
+        h += '</div>';
+      }
+      h += '    </div>';
+
+      if (!auditQuery) {
+        h += '    <div style="padding:36px 20px;text-align:center;color:#64748b;font-size:12.5px">Upar box me koi <strong>Emp Code</strong> (jaise <code>25046</code>, <code>26468</code>) ya <strong>Name</strong> daalkar <strong>Check Payout</strong> par click karein — poora Compliance, Cuts, Diff Increase aur Part-by-Part payout khul jayega.</div>';
+      } else {
+        var audit = buildEmpPayoutAudit(auditQuery, state.selectedMonth);
+        if (!audit.found) {
+          h += '    <div style="padding:36px 20px;text-align:center;color:#dc2626;font-size:12.5px;font-weight:700">"' + esc(auditQuery) + '" ke liye ' + esc(audit.monthLabel) + ' ya Employee Master me koi record nahi mila.</div>';
+        } else {
+          var c = audit.compliance;
+          var da = audit.diffAndAdjustments;
+          var sm = audit.summary;
+          h += '    <div style="padding:16px;display:flex;flex-direction:column;gap:14px">';
+          h += '      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:12px 14px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px">';
+          h += '        <div><div style="font-size:15px;font-weight:800;color:#1e1b4b"><span style="font-family:monospace;background:#fff;padding:2px 7px;border-radius:6px;border:1px solid #c7d2fe;margin-right:6px">' + esc(audit.empCode) + '</span>' + esc(audit.empName) + '</div><div style="font-size:11.5px;color:#475569;margin-top:3px">' + esc(audit.dept || '-') + (audit.desig ? (' · ' + esc(audit.desig)) : '') + (audit.accountNo ? (' · A/C ' + esc(audit.accountNo)) : '') + (audit.ifsc ? (' (' + esc(audit.ifsc) + ')') : '') + '</div></div>';
+          h += '        <div style="font-size:12px;font-weight:800;padding:5px 11px;border-radius:8px;' + (sm.totalDiffDisbursed === 0 && sm.expectedTotalDiff > 0 ? 'background:#fef2f2;color:#dc2626;border:1px solid #fecaca' : sm.pendingDiff > 0 ? 'background:#fffbeb;color:#b45309;border:1px solid #fde68a' : 'background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0') + '">' + (sm.totalDiffDisbursed === 0 && sm.expectedTotalDiff > 0 ? ('₹0 Diff Gaya · ' + formatINR(sm.pendingDiff) + ' Baaki') : sm.pendingDiff > 0 ? (formatINR(sm.pendingDiff) + ' Baaki') : (sm.batchVarianceVsComp > 0 ? ('Clear + ' + formatINR(sm.batchVarianceVsComp) + ' Extra') : 'All Payout Clear')) + '</div>';
+          h += '      </div>';
+
+          h += '      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px">';
+          h += '        <div style="padding:11px 13px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9px"><div style="font-size:10.5px;font-weight:700;color:#166534">1. Compliance Bank Diya</div><div style="font-size:19px;font-weight:800;color:#15803d;margin-top:3px;font-variant-numeric:tabular-nums">' + formatINR(sm.compliancePaid) + '</div><div style="font-size:10.5px;color:#166534">Manual ' + formatINR(c.manualAmount) + ' · Cuts ' + formatINR(c.totalCuts) + '</div></div>';
+          h += '        <div style="padding:11px 13px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:9px"><div style="font-size:10.5px;font-weight:700;color:#1e40af">2. Diff Batches Me Gaya (Paid)</div><div style="font-size:19px;font-weight:800;color:' + (sm.totalDiffDisbursed > 0 ? '#1d4ed8' : '#dc2626') + ';margin-top:3px;font-variant-numeric:tabular-nums">' + formatINR(sm.totalDiffDisbursed) + '</div><div style="font-size:10.5px;color:#1e40af">' + (sm.totalDiffDisbursed > 0 ? (audit.batches.filter(function(b) { return b.inBatch && b.status !== 'PLANNED'; }).length + ' Part lot me paid' + (sm.totalDiffPlanned > 0 ? (' · Planned ' + formatINR(sm.totalDiffPlanned)) : '')) : 'Kisi bhi Part me ₹0 gaya') + '</div></div>';
+          h += '        <div style="padding:11px 13px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:9px"><div style="font-size:10.5px;font-weight:700;color:#312e81">3. Total Paisa Gaya (Comp + Diff)</div><div style="font-size:19px;font-weight:800;color:#312e81;margin-top:3px;font-variant-numeric:tabular-nums">' + formatINR(sm.grandTotalPaid) + '</div><div style="font-size:10.5px;color:#4338ca">' + formatINR(sm.compliancePaid) + ' + ' + formatINR(sm.totalDiffDisbursed) + '</div></div>';
+          h += '        <div style="padding:11px 13px;background:' + (sm.pendingDiff > 0 ? '#fef2f2' : '#f8fafc') + ';border:1px solid ' + (sm.pendingDiff > 0 ? '#fecaca' : '#e2e8f0') + ';border-radius:9px"><div style="font-size:10.5px;font-weight:700;color:#475569">4. Diff Baaki / Increase Check</div><div style="font-size:19px;font-weight:800;color:' + (sm.pendingDiff > 0 ? '#dc2626' : '#15803d') + ';margin-top:3px;font-variant-numeric:tabular-nums">' + formatINR(sm.pendingDiff) + '</div><div style="font-size:10.5px;color:#475569">' + (sm.effectiveIncrease > 0 ? ('+' + formatINR(sm.effectiveIncrease) + ' extra vs Comp Diff') : sm.effectiveIncrease < 0 ? (formatINR(Math.abs(sm.effectiveIncrease)) + ' kam vs Comp Diff') : 'Comp Diff ke barabar') + '</div></div>';
+          h += '      </div>';
+
+          h += '      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px">';
+          h += '        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;background:#fff">';
+          h += '          <div style="font-size:12px;font-weight:800;color:#15803d;margin-bottom:8px;border-bottom:1px solid #f1f5f9;padding-bottom:6px">Step 1 · Compliance Sheet Hisaab</div>';
+          h += '          <div style="display:flex;flex-direction:column;gap:5px;font-size:12px">';
+          h += '            <div style="display:flex;justify-content:space-between"><span>Manual Amount (Total Salary)</span><strong style="font-variant-numeric:tabular-nums">' + formatINR(c.manualAmount) + '</strong></div>';
+          h += '            <div style="display:flex;justify-content:space-between;color:#64748b"><span>(-) PF Cut (12%)</span><span style="font-variant-numeric:tabular-nums">- ' + formatINR(c.pfEmployee) + '</span></div>';
+          h += '            <div style="display:flex;justify-content:space-between;color:#64748b"><span>(-) ESIC Cut (0.75%)</span><span style="font-variant-numeric:tabular-nums">- ' + formatINR(c.esicEmployee) + '</span></div>';
+          if (c.advanceDeduction > 0) {
+            h += '            <div style="display:flex;justify-content:space-between;color:#64748b"><span>(-) Advance Deduction</span><span style="font-variant-numeric:tabular-nums">- ' + formatINR(c.advanceDeduction) + '</span></div>';
+          }
+          h += '            <div style="display:flex;justify-content:space-between;color:#15803d;font-weight:700;border-top:1px dashed #e2e8f0;padding-top:4px"><span>(-) Compliance Net Payable Paid</span><span style="font-variant-numeric:tabular-nums">- ' + formatINR(c.compliancePaid) + '</span></div>';
+          h += '            <div style="display:flex;justify-content:space-between;background:#fff7ed;padding:6px 8px;border-radius:6px;font-weight:800;color:#9a3412;margin-top:2px"><span>(=) Compliance Diff Bacha</span><span style="font-variant-numeric:tabular-nums">' + formatINR(c.complianceDiffBase) + '</span></div>';
+          if (c.sheetComplianceDiff > 0 && c.calcComplianceDiff > 0 && Math.abs(c.sheetComplianceDiff - c.calcComplianceDiff) > 1) {
+            h += '            <div style="font-size:10.5px;color:#b45309">Note: Formula (' + formatINR(c.calcComplianceDiff) + ') vs Sheet Diff Col (' + formatINR(c.sheetComplianceDiff) + ')</div>';
+          }
+          h += '          </div>';
+          h += '        </div>';
+
+          h += '        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;background:#fff">';
+          h += '          <div style="font-size:12px;font-weight:800;color:#1d4ed8;margin-bottom:8px;border-bottom:1px solid #f1f5f9;padding-bottom:6px">Step 2 · Diff Sheets &amp; Points Increase</div>';
+          h += '          <div style="display:flex;flex-direction:column;gap:5px;font-size:12px">';
+          if (!da.diffSheets.length) {
+            h += '            <div style="color:#64748b">Is mahine koi Diff Sheet upload nahi hai.</div>';
+          } else {
+            da.diffSheets.forEach(function(ds) {
+              h += '            <div style="display:flex;justify-content:space-between"><span>Sheet #' + ds.index + ' · ' + esc(ds.title) + '</span><strong style="font-variant-numeric:tabular-nums;color:' + (ds.diffAmount > 0 ? '#0f172a' : '#dc2626') + '">' + (ds.found ? formatINR(ds.diffAmount) : 'Missing (₹0)') + '</strong></div>';
+            });
+          }
+          if (da.missedDiffAmount > 0) {
+            h += '            <div style="display:flex;justify-content:space-between;color:#9a3412"><span>(+) Late / Missed Diff Add-On</span><strong style="font-variant-numeric:tabular-nums">+' + formatINR(da.missedDiffAmount) + '</strong></div>';
+          }
+          da.points.forEach(function(pt) {
+            var sign = pt.direction === 'LESS' ? '-' : (pt.direction === 'ADD' ? '+' : '');
+            h += '            <div style="display:flex;justify-content:space-between;color:' + (pt.direction === 'LESS' ? '#dc2626' : '#15803d') + '"><span>Point: ' + esc(pt.note || pt.direction) + '</span><strong style="font-variant-numeric:tabular-nums">' + sign + formatINR(pt.amount) + '</strong></div>';
+          });
+          h += '            <div style="display:flex;justify-content:space-between;background:#eff6ff;padding:6px 8px;border-radius:6px;font-weight:800;color:#1e40af;margin-top:2px"><span>(=) Final Diff Sheet Target</span><span style="font-variant-numeric:tabular-nums">' + formatINR(da.netDiffTarget) + '</span></div>';
+          if (da.increaseVsComp !== 0) {
+            h += '            <div style="font-size:11px;font-weight:700;color:' + (da.increaseVsComp > 0 ? '#15803d' : '#b45309') + '">' + (da.increaseVsComp > 0 ? ('↗ Compliance Diff (' + formatINR(c.complianceDiffBase) + ') se +' + formatINR(da.increaseVsComp) + ' Badha!') : ('↘ Compliance Diff (' + formatINR(c.complianceDiffBase) + ') se ' + formatINR(Math.abs(da.increaseVsComp)) + ' Kam/Chhoota')) + '</div>';
+          }
+          h += '          </div>';
+          h += '        </div>';
+
+          h += '        <div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;background:#fff">';
+          h += '          <div style="font-size:12px;font-weight:800;color:#312e81;margin-bottom:8px;border-bottom:1px solid #f1f5f9;padding-bottom:6px">Step 3 · Part-Wise Diff Payment (Part 1, 2, 3, 4...)</div>';
+          if (!audit.batches.length) {
+            h += '          <div style="font-size:12px;color:#dc2626;font-weight:700;padding:8px;background:#fef2f2;border-radius:6px">Abhi koi Diff Batch bana hi nahi hai · ₹0 Gaya</div>';
+          } else {
+            h += '          <div style="display:flex;flex-direction:column;gap:5px;font-size:12px">';
+            audit.batches.forEach(function(b) {
+              h += '            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 7px;border-radius:6px;background:' + (b.inBatch ? '#f0fdf4' : '#f8fafc') + '"><div><strong>Part ' + esc(b.partNumber) + '</strong> · <span style="color:#475569">' + esc(b.title) + '</span>' + (b.remarks ? (' <span style="color:#64748b;font-size:10.5px">(' + esc(b.remarks) + ')</span>') : '') + '</div><strong style="font-variant-numeric:tabular-nums;color:' + (b.inBatch ? (b.status === 'PLANNED' ? '#b45309' : '#15803d') : '#94a3b8') + '">' + (b.inBatch ? (formatINR(b.amountPaid) + (b.status === 'PLANNED' ? ' (Planned)' : '')) : '₹0') + '</strong></div>';
+            });
+            h += '            <div style="display:flex;justify-content:space-between;background:#eef2ff;padding:6px 8px;border-radius:6px;font-weight:800;color:#312e81;margin-top:2px"><span>(=) Total Diff Paid in Batches</span><span style="font-variant-numeric:tabular-nums">' + formatINR(sm.totalDiffDisbursed) + '</span></div>';
+            if (sm.batchVarianceVsTarget !== 0) {
+              h += '            <div style="font-size:11px;font-weight:700;color:' + (sm.batchVarianceVsTarget > 0 ? '#b45309' : '#dc2626') + '">' + (sm.batchVarianceVsTarget > 0 ? ('⚠ Batch me Diff Sheet se +' + formatINR(sm.batchVarianceVsTarget) + ' Zyada gaya') : ('Diff Sheet me ' + formatINR(Math.abs(sm.batchVarianceVsTarget)) + ' kam gaya')) + '</div>';
+            }
+            h += '          </div>';
+          }
+          h += '        </div>';
+          h += '      </div>';
+
+          if (audit.allMonths.length > 0) {
+            h += '      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;background:#fff">';
+            h += '        <div style="padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:800;color:#0f172a">All Months History — ' + esc(audit.empCode) + ' (' + esc(audit.empName) + ')</div>';
+            h += '        <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">';
+            h += '          <thead><tr style="background:#fff;border-bottom:1px solid #e2e8f0;color:#475569;font-size:10.5px;text-align:left"><th style="padding:7px 12px">Month</th><th style="padding:7px 10px;text-align:right">Manual</th><th style="padding:7px 10px;text-align:right">PF / ESIC</th><th style="padding:7px 10px;text-align:right">Compliance Paid</th><th style="padding:7px 10px;text-align:right">Comp Diff</th><th style="padding:7px 10px;text-align:right">Diff Target</th><th style="padding:7px 10px;text-align:right">Diff Paid (Parts)</th><th style="padding:7px 10px;text-align:right">Total Gaya</th><th style="padding:7px 10px;text-align:right">Baaki</th></tr></thead><tbody>';
+            audit.allMonths.forEach(function(am) {
+              var isCur = am.monthKey === audit.monthKey;
+              h += '          <tr style="border-bottom:1px solid #f1f5f9;' + (isCur ? 'background:#eef2ff;font-weight:700' : '') + '">';
+              h += '            <td style="padding:7px 12px"><button type="button" onclick="ATPLSalaryPayout.openEmpAuditCheck(\'' + esc(audit.empCode) + '\',\'' + esc(am.monthKey) + '\')" style="border:none;background:transparent;color:#312e81;font-weight:700;cursor:pointer;padding:0;text-decoration:underline">' + esc(am.label) + '</button></td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(am.manualAmount) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">PF ' + formatINR(am.pfEmployee) + ' / ESIC ' + formatINR(am.esicEmployee) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;color:#15803d;font-weight:700">' + formatINR(am.compliancePaid) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(am.compDiff) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(am.diffTarget) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;color:#1d4ed8;font-weight:700">' + formatINR(am.diffPaid) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800">' + formatINR(am.grandTotalPaid) + '</td>';
+              h += '            <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:' + (am.pendingDiff > 0 ? '#dc2626' : '#15803d') + '">' + formatINR(am.pendingDiff) + '</td>';
+              h += '          </tr>';
+            });
+            h += '          </tbody></table></div>';
+            h += '      </div>';
+          }
+          h += '    </div>';
+        }
+      }
+    }
+
     h += '  </div>';
     h += '</div>';
     container.innerHTML = h;
@@ -3651,6 +4053,9 @@
     setTab: setTab,
     setOverviewFilter: setOverviewFilter,
     setSearch: setSearch,
+    setAuditEmpCode: setAuditEmpCode,
+    openEmpAuditCheck: openEmpAuditCheck,
+    buildEmpPayoutAudit: buildEmpPayoutAudit,
     saveMonthSummary: saveMonthSummary,
     upsertEmpSalary: upsertEmpSalary,
     deleteEmpSalary: deleteEmpSalary,
