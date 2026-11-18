@@ -50,7 +50,7 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     assert(htmlContent.includes('id="vn-advance"'), 'Sidebar must have Advance Management link');
     assert(htmlContent.includes('id="page-advance"'), 'Page container must have page-advance');
     assert(htmlContent.includes('id="advanceModuleContainer"'), 'Module mount div advanceModuleContainer must exist');
-    assert(htmlContent.includes('src="atpl-advance-management.js"'), 'index.html must load atpl-advance-management.js');
+    assert(/src="atpl-advance-management\.js(\?[^"]*)?"/.test(htmlContent), 'index.html must load atpl-advance-management.js');
     assert(htmlContent.includes('ATPLAdvanceManager.processAllSalaryFiles'), 'handleFiles must trigger processAllSalaryFiles');
     assert(htmlContent.includes("b.closest('#advanceModuleContainer')"), 'HR doc history cleanup must protect Advance Employee History buttons');
   });

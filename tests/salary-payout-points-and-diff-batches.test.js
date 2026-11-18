@@ -78,7 +78,7 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.ok(htmlCode.includes('id="vn-salarypayout"'), 'Sidebar must include vn-salarypayout');
     assert.ok(htmlCode.includes('id="page-salarypayout"'), 'HTML must include page-salarypayout');
     assert.ok(htmlCode.includes('id="salaryPayoutContainer"'), 'HTML must include salaryPayoutContainer');
-    assert.ok(htmlCode.includes('src="atpl-salary-payout.js"'), 'HTML must load atpl-salary-payout.js');
+    assert.ok(/src="atpl-salary-payout\.js(\?[^"]*)?"/.test(htmlCode), 'HTML must load atpl-salary-payout.js');
     assert.ok(guardCode.includes('salarypayout:1'), 'Permission guard MASTER_READ must allow salarypayout');
     assert.ok(serverCode.includes("app.get('/api/sync/salary-payout'"), 'server.js must expose GET /api/sync/salary-payout');
     assert.ok(serverCode.includes("app.post('/api/sync/salary-payout'"), 'server.js must expose POST /api/sync/salary-payout');

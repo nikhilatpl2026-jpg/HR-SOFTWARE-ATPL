@@ -54,6 +54,7 @@
     pendingDiffFeedRows: [],
     stagedFormSlip: null,
     stagedModalSlip: null,
+    stagedSlipQueue: [],
     openSlipAdvanceId: null
   };
 
@@ -3700,8 +3701,48 @@
     return '<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px"><img src="' + slipPayload.dataUrl + '" alt="Signed Advance Slip" style="max-width:100%;max-height:360px;border-radius:6px;object-fit:contain;box-shadow:0 4px 12px rgba(15,23,42,0.12)"></div>';
   }
 
+  function renderStagedSlipQueueHtml(advanceId) {
+    var q = state.stagedSlipQueue || [];
+    if (!q.length) return '';
+    var h = '<div id="advStagedQueueBox" style="padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
+    h += '<span style="font-size:10px;font-weight:850;color:#15803d;text-transform:uppercase">Ready to Save (' + q.length + '):</span>';
+    q.forEach(function(item, idx) {
+      h += '<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:#fff;border:1px solid #86efac;font-size:10.5px;font-weight:700;color:#15803d">#' + (idx + 1) + ' ' + esc(item.fileName || 'Slip') + (item.advDate ? ' (' + esc(item.advDate) + ')' : '') + ' <button type="button" onclick="ATPLAdvanceManager.removeStagedSlipFromQueue(' + idx + ')" style="border:none;background:transparent;color:#dc2626;cursor:pointer;font-size:11px;font-weight:800;padding:0;line-height:1" title="Remove queued slip">✕</button></span>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  function removeStagedSlipFromQueue(idx) {
+    if (!Array.isArray(state.stagedSlipQueue)) state.stagedSlipQueue = [];
+    if (idx >= 0 && idx < state.stagedSlipQueue.length) {
+      state.stagedSlipQueue.splice(idx, 1);
+    }
+    var qWrap = document.getElementById('advStagedQueueWrap');
+    if (qWrap) qWrap.innerHTML = renderStagedSlipQueueHtml(state.openSlipAdvanceId);
+  }
+
   function startAddMoreSlip(advanceId) {
-    return openSlipModal(advanceId, null, true);
+    var prevQueue = Array.isArray(state.stagedSlipQueue) ? state.stagedSlipQueue.slice() : [];
+    var currStaged = state.stagedModalSlip;
+    if (currStaged && currStaged.dataUrl) {
+      var curDate = String((document.getElementById('advSlipAdvDate') || {}).value || '').trim();
+      var curSignedBy = String((document.getElementById('advSlipSignedBy') || {}).value || '').trim();
+      var curNote = String((document.getElementById('advSlipNote') || {}).value || '').trim();
+      prevQueue.push(Object.assign({}, currStaged, { advDate: curDate, signedBy: curSignedBy, note: curNote }));
+    }
+    openSlipModal(advanceId, null, true);
+    state.stagedSlipQueue = prevQueue;
+    var qWrap = document.getElementById('advStagedQueueWrap');
+    if (qWrap) qWrap.innerHTML = renderStagedSlipQueueHtml(advanceId);
+    if (!currStaged) {
+      var fileInp = document.getElementById('advSlipFileInput');
+      if (fileInp && typeof fileInp.focus === 'function') fileInp.focus();
+      var statusEl = document.getElementById('advSlipFileStatus');
+      if (statusEl && prevQueue.length === 0) {
+        statusEl.innerHTML = '<span style="color:#4338ca;font-weight:800">Ek saath 2+ photos/PDF select karein ya pehli slip chunein!</span>';
+      }
+    }
   }
 
   async function addMoreAdvDateFromModal(advanceId) {
@@ -3750,6 +3791,7 @@
     state.openSlipId = activeMeta ? activeMeta.slipId : null;
     state.addingMoreSlip = addMode;
     state.stagedModalSlip = null;
+    state.stagedSlipQueue = [];
     var modal = getOrCreateModal();
     if (!modal) return;
 
@@ -3773,19 +3815,22 @@
     content += '    <div style="padding:16px 22px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;background:#fff">';
     content += '      <div id="advSlipErrorBox" style="display:none;padding:9px 12px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:11.5px;font-weight:700"></div>';
 
+    content += '      <div style="padding:10px 12px;background:' + (slips.length > 0 ? '#f0fdf4' : '#f8fafc') + ';border:1px solid ' + (slips.length > 0 ? '#bbf7d0' : '#cbd5e1') + ';border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+    content += '        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
+    content += '          <span style="font-size:10px;font-weight:850;color:' + (slips.length > 0 ? '#15803d' : '#334155') + ';text-transform:uppercase;margin-right:4px">Saved Slips (' + slips.length + '):</span>';
     if (slips.length > 0) {
-      content += '      <div style="padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-      content += '        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">';
-      content += '          <span style="font-size:10px;font-weight:850;color:#15803d;text-transform:uppercase;margin-right:4px">Saved Slips (' + slips.length + '):</span>';
       slips.forEach(function(s, sIdx) {
         var isSel = !addMode && activeMeta && activeMeta.slipId === s.slipId;
         var sDateLbl = s.advDate ? s.advDate : (adv.advanceDate || '');
         content += '          <button type="button" onclick="ATPLAdvanceManager.openSlipModal(\'' + esc(adv.id) + '\',\'' + esc(s.slipId) + '\',false)" style="padding:5px 10px;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer;border:' + (isSel ? '1.5px solid #15803d' : '1px solid #cbd5e1') + ';background:' + (isSel ? '#15803d' : '#ffffff') + ';color:' + (isSel ? '#ffffff' : '#0f172a') + '">#' + (sIdx + 1) + (sDateLbl ? ' · ' + esc(sDateLbl) : '') + (s.signedBy ? ' · ' + esc(s.signedBy) : '') + '</button>';
       });
-      content += '        </div>';
-      content += '        <button type="button" id="advAddMoreSlipBtn" onclick="ATPLAdvanceManager.startAddMoreSlip(\'' + esc(adv.id) + '\')" style="padding:6px 12px;border-radius:8px;border:none;background:' + (addMode ? '#4f46e5' : '#1e293b') + ';color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">+ Add More Slip</button>';
-      content += '      </div>';
+    } else {
+      content += '          <span style="font-size:11px;color:#64748b">Slip #1 (Niche file chunein, ya ek saath multiple files / + Add More Slip karein)</span>';
     }
+    content += '        </div>';
+    content += '        <button type="button" id="advAddMoreSlipBtn" onclick="ATPLAdvanceManager.startAddMoreSlip(\'' + esc(adv.id) + '\')" style="padding:6px 12px;border-radius:8px;border:none;background:' + (addMode ? '#4f46e5' : '#1e293b') + ';color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap">+ Add More Slip</button>';
+    content += '      </div>';
+    content += '      <div id="advStagedQueueWrap">' + renderStagedSlipQueueHtml(adv.id) + '</div>';
 
     content += '      <div style="padding:10px 12px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;display:flex;flex-direction:column;gap:7px">';
     content += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
@@ -3831,7 +3876,7 @@
     content += '          </div>';
     content += '        </div>';
     content += '        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">';
-    content += '          <input type="file" id="advSlipFileInput" accept="image/*,.pdf" onchange="ATPLAdvanceManager.onSlipFileSelected(this)" style="flex:1;min-width:210px;font-size:11.5px;color:#334155">';
+    content += '          <input type="file" id="advSlipFileInput" accept="image/*,.pdf" multiple onchange="ATPLAdvanceManager.onSlipFileSelected(this)" style="flex:1;min-width:210px;font-size:11.5px;color:#334155">';
     content += '          <span id="advSlipFileStatus" style="font-size:10.5px;font-weight:700;color:#475569">' + (activeMeta ? ('Saved: ' + esc(activeMeta.fileName) + (activeMeta.size ? ' (' + formatSlipSize(activeMeta.size) + ')' : '')) : 'Photo / PDF select karein') + '</span>';
     content += '        </div>';
     content += '      </div>';
@@ -3890,17 +3935,31 @@
   }
 
   function onSlipFileSelected(input) {
-    var file = input && input.files && input.files[0];
+    var files = input && input.files ? Array.prototype.slice.call(input.files) : [];
     var statusEl = document.getElementById('advSlipFileStatus');
     var previewEl = document.getElementById('advSlipPreviewBox');
     var errEl = document.getElementById('advSlipErrorBox');
     if (errEl) errEl.style.display = 'none';
-    if (!file) return;
-    if (statusEl) statusEl.innerHTML = '<span style="color:#4f46e5">⏳ Compressing...</span>';
-    readAndCompressSlipFile(file).then(function(comp) {
-      state.stagedModalSlip = comp;
-      if (statusEl) statusEl.innerHTML = '<span style="color:#15803d">✅ Ready: ' + esc(comp.fileName) + ' (' + formatSlipSize(comp.size) + ')</span>';
-      if (previewEl) previewEl.innerHTML = renderSlipPreviewHtml(comp);
+    if (!files.length) return;
+    if (statusEl) statusEl.innerHTML = '<span style="color:#4f46e5">⏳ Compressing ' + (files.length > 1 ? (files.length + ' files...') : '...') + '</span>';
+    Promise.all(files.map(function(f) { return readAndCompressSlipFile(f); })).then(function(comps) {
+      if (!comps.length) return;
+      state.stagedModalSlip = comps[comps.length - 1];
+      if (comps.length > 1) {
+        if (!Array.isArray(state.stagedSlipQueue)) state.stagedSlipQueue = [];
+        for (var i = 0; i < comps.length - 1; i++) {
+          state.stagedSlipQueue.push(comps[i]);
+        }
+        var qWrap = document.getElementById('advStagedQueueWrap');
+        if (qWrap) qWrap.innerHTML = renderStagedSlipQueueHtml(state.openSlipAdvanceId);
+      }
+      var lastComp = comps[comps.length - 1];
+      if (statusEl) {
+        statusEl.innerHTML = comps.length > 1
+          ? ('<span style="color:#15803d">✅ ' + comps.length + ' Slips Ready (Latest: ' + esc(lastComp.fileName) + ')</span>')
+          : ('<span style="color:#15803d">✅ Ready: ' + esc(lastComp.fileName) + ' (' + formatSlipSize(lastComp.size) + ')</span>');
+      }
+      if (previewEl) previewEl.innerHTML = renderSlipPreviewHtml(lastComp);
     }).catch(function(err) {
       state.stagedModalSlip = null;
       showSlipModalError(err && err.message ? err.message : 'Slip file read nahi ho saki.');
@@ -3918,7 +3977,8 @@
     var isAppendMode = !!state.addingMoreSlip;
     var activeSlipId = !isAppendMode ? state.openSlipId : null;
 
-    if (!state.stagedModalSlip) {
+    var queueList = Array.isArray(state.stagedSlipQueue) ? state.stagedSlipQueue.slice() : [];
+    if (!state.stagedModalSlip && !queueList.length) {
       if (activeSlipId) {
         var existingPayload = await fetchAdvanceSlipData(advanceId, activeSlipId);
         if (existingPayload && existingPayload.dataUrl) {
@@ -3941,18 +4001,29 @@
       return { ok: false, error: 'NO_FILE_SELECTED' };
     }
 
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Uploading & Syncing...'; }
-    var res = await uploadAdvanceSlip(advanceId, Object.assign({}, state.stagedModalSlip, {
-      targetSlipId: activeSlipId,
-      append: isAppendMode,
-      advDate: advDate,
-      signedBy: signedBy,
-      note: note
-    }));
+    var toUpload = queueList.slice();
+    if (state.stagedModalSlip) {
+      toUpload.push(Object.assign({}, state.stagedModalSlip, { advDate: advDate, signedBy: signedBy, note: note }));
+    }
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '⏳ Uploading ' + (toUpload.length > 1 ? (toUpload.length + ' Slips') : '& Syncing') + '...'; }
+    var res = null;
+    for (var uIdx = 0; uIdx < toUpload.length; uIdx++) {
+      var item = toUpload[uIdx];
+      var itemAppend = uIdx === 0 ? isAppendMode : true;
+      var itemTargetId = (uIdx === 0 && !itemAppend) ? activeSlipId : null;
+      res = await uploadAdvanceSlip(advanceId, Object.assign({}, item, {
+        targetSlipId: itemTargetId,
+        append: itemAppend,
+        advDate: item.advDate || advDate,
+        signedBy: item.signedBy !== undefined ? item.signedBy : signedBy,
+        note: item.note !== undefined ? item.note : note
+      }));
+    }
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '☁️ Save & Sync Slip'; }
 
     if (res && res.ok) {
       state.stagedModalSlip = null;
+      state.stagedSlipQueue = [];
       state.addingMoreSlip = false;
       closeModal();
       if (window.showToast) {
@@ -5156,6 +5227,7 @@
     state.openSlipAdvanceId = null;
     state.stagedFormSlip = null;
     state.stagedModalSlip = null;
+    state.stagedSlipQueue = [];
     var modal = document.getElementById('advModal');
     if (modal) modal.innerHTML = '';
   }
@@ -6426,6 +6498,7 @@
     viewEmployeeHistory: viewEmployeeHistory,
     openSlipModal: openSlipModal,
     startAddMoreSlip: startAddMoreSlip,
+    removeStagedSlipFromQueue: removeStagedSlipFromQueue,
     addMoreAdvDate: addMoreAdvDate,
     removeMoreAdvDate: removeMoreAdvDate,
     addMoreAdvDateFromModal: addMoreAdvDateFromModal,

@@ -453,6 +453,8 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     const modalHtml1 = desktop.mockWindow._elements.advModal.innerHTML;
     assert.ok(modalHtml1.includes('advSlipAdvDate'), 'Slip modal must include Slip Adv Date input');
     assert.ok(modalHtml1.includes('advSlipMoreDateInput') && modalHtml1.includes('+ More Adv Date'), 'Slip modal must include + More Adv Date control');
+    assert.ok(modalHtml1.includes('advAddMoreSlipBtn') && modalHtml1.includes('+ Add More Slip'), 'Slip modal must show + Add More Slip even before 1st slip is uploaded');
+    assert.ok(modalHtml1.includes('multiple onchange="ATPLAdvanceManager.onSlipFileSelected'), 'Slip modal file picker must allow multiple files');
 
     // 2. Upload Slip #1 (Main Date 2026-10-10)
     const slip1DataUrl = 'data:image/jpeg;base64,' + Buffer.from('SLIP_ONE_BINARY_MOCK').toString('base64');
