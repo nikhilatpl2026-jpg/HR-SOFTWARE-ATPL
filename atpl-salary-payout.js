@@ -885,6 +885,25 @@
       }
     });
 
+    var empSheetDeltaMap = {};
+    diffSheets.forEach(function(sh, idx) {
+      var shRows = Array.isArray(sh.rows) ? sh.rows : [];
+      shRows.forEach(function(sr) {
+        var nc = normalizeCode(sr && sr.empCode);
+        if (!nc) return;
+        if (!empSheetDeltaMap[nc]) empSheetDeltaMap[nc] = [];
+        empSheetDeltaMap[nc].push({
+          index: idx + 1,
+          sheetId: sh.id,
+          title: sh.title || sh.fileName || ('Diff #' + (idx + 1)),
+          rawAmount: round2(Number(sr.rawSheetAmount !== undefined ? sr.rawSheetAmount : sr.baseDiffAmount) || 0),
+          baselineAmount: round2(Number(sr.baselineAmount) || 0),
+          deltaAdded: round2(Number(sr.deltaAdded !== undefined ? sr.deltaAdded : sr.baseDiffAmount) || 0),
+          reconciled: !!(sh.reconciled || sr.reconciled)
+        });
+      });
+    });
+
     // 5. Finalize per-employee Net Diff & Leftover
     var rows = Object.values(empMap).map(function(r) {
       if (!(r.compDiffAmount > 0) && legacyRowCompDiffMap[r.normCode] > 0) {
@@ -898,6 +917,7 @@
         ? Math.max(0, round2(r.compDiffAmount - Math.max(effectiveBaseDiff, r.diffPaid)))
         : 0;
       r.isSmallLeftover = r.diffRemaining > 0 && r.diffRemaining <= 500;
+      r.diffSheetBreakdown = empSheetDeltaMap[r.normCode] || [];
       return r;
     }).sort(function(a, b) {
       return String(a.empCode).localeCompare(String(b.empCode), undefined, { numeric: true });
@@ -1095,10 +1115,16 @@
     (ledger.diffSheets || []).forEach(function(sh, idx) {
       var shRows = Array.isArray(sh.rows) ? sh.rows : [];
       var amt = 0;
+      var baseAmt = 0;
+      var deltaAmt = 0;
+      var hasReconcile = !!sh.reconciled;
       var matched = false;
       shRows.forEach(function(sr) {
         if (normalizeCode(sr.empCode) === nc) {
-          amt = round2(amt + (Number(sr.baseDiffAmount) || 0));
+          amt = round2(amt + (Number(sr.rawSheetAmount !== undefined ? sr.rawSheetAmount : sr.baseDiffAmount) || 0));
+          baseAmt = round2(baseAmt + (Number(sr.baselineAmount) || 0));
+          deltaAmt = round2(deltaAmt + (Number(sr.deltaAdded !== undefined ? sr.deltaAdded : sr.baseDiffAmount) || 0));
+          if (sr.reconciled) hasReconcile = true;
           matched = true;
         }
       });
@@ -1109,7 +1135,11 @@
         title: sh.title || sh.fileName || ('Diff Sheet #' + (idx + 1)),
         tabs: sh.selectedTabs || [],
         found: matched,
-        diffAmount: amt
+        diffAmount: amt,
+        rawSheetAmount: amt,
+        baselineAmount: baseAmt,
+        deltaAdded: hasReconcile ? deltaAmt : amt,
+        reconciled: hasReconcile
       });
     });
 
@@ -1427,17 +1457,130 @@
     return true;
   }
 
+  function computeDiffReconcilePlan(monthKey, rowsList, opts) {
+    var mk = String(monthKey || state.selectedMonth).trim();
+    opts = opts || {};
+    var replaceExisting = !!opts.replaceExisting;
+    var paidMap = {};
+    getMonthBatches(mk).forEach(function(b) {
+      if (!b || b.status === 'CANCELLED') return;
+      (Array.isArray(b.allocations) ? b.allocations : []).forEach(function(al) {
+        var nc = normalizeCode(al && al.empCode);
+        var aAmt = round2(Number(al && al.amount) || 0);
+        if (nc && aAmt > 0) paidMap[nc] = round2((paidMap[nc] || 0) + aAmt);
+      });
+    });
+    var seenMaxByNorm = {};
+    var planRows = [];
+    var rawTotal = 0;
+    var baselineTotal = 0;
+    var deltaTotal = 0;
+    var increasedCount = 0;
+    var unchangedCount = 0;
+    var deltaAllocRows = [];
+
+    (Array.isArray(rowsList) ? rowsList : []).forEach(function(item) {
+      if (!item || !item.empCode) {
+        planRows.push(null);
+        return;
+      }
+      var code = String(item.empCode).trim();
+      var nc = normalizeCode(code);
+      var sal = state.empSalaries[mk + '::' + nc];
+      var rawAmt = round2(Number(item.baseDiffAmount) || 0);
+      var compDiffBase = round2(Number((sal && sal.compDiffAmount) || 0));
+      var prevBaseDiff = replaceExisting ? 0 : round2(Number((sal && sal.baseDiffAmount) || 0));
+      var prevPaid = round2(paidMap[nc] || 0);
+      var priorInSheet = seenMaxByNorm[nc] !== undefined ? seenMaxByNorm[nc] : 0;
+      var baselineAmt = round2(Math.max(compDiffBase, prevBaseDiff, prevPaid, priorInSheet));
+      var deltaAdded = Math.max(0, round2(rawAmt - baselineAmt));
+      if (rawAmt > priorInSheet) seenMaxByNorm[nc] = rawAmt;
+
+      rawTotal = round2(rawTotal + rawAmt);
+      baselineTotal = round2(baselineTotal + baselineAmt);
+      deltaTotal = round2(deltaTotal + deltaAdded);
+      if (deltaAdded > 0) {
+        increasedCount++;
+        deltaAllocRows.push({
+          empCode: code,
+          empName: String(item.empName || (sal && sal.empName) || ('Employee ' + code)).trim(),
+          amount: deltaAdded,
+          remarks: String(item.remarks || '').trim(),
+          accountNo: String(item.accountNo || (sal && sal.accountNo) || '').trim(),
+          ifsc: String(item.ifsc || (sal && sal.ifsc) || '').trim()
+        });
+      } else {
+        unchangedCount++;
+      }
+      planRows.push({
+        empCode: code,
+        normCode: nc,
+        empName: String(item.empName || (sal && sal.empName) || ('Employee ' + code)).trim(),
+        rawSheetAmount: rawAmt,
+        compDiffBase: compDiffBase,
+        prevBaseDiff: prevBaseDiff,
+        prevPaid: prevPaid,
+        baselineAmount: baselineAmt,
+        deltaAdded: deltaAdded
+      });
+    });
+
+    return {
+      monthKey: mk,
+      rows: planRows,
+      deltaAllocRows: deltaAllocRows,
+      totals: {
+        rawTotal: rawTotal,
+        baselineTotal: baselineTotal,
+        deltaTotal: deltaTotal,
+        increasedCount: increasedCount,
+        unchangedCount: unchangedCount,
+        rowCount: deltaAllocRows.length + unchangedCount
+      }
+    };
+  }
+
   function deleteUploadedSheet(sheetId) {
     var sh = sheetId && state.uploadedSheets[sheetId];
     if (!sh) return false;
     var mk = sh.monthKey;
     var kind = String(sh.kind || 'DIFF').toUpperCase();
+    var wasReconciled = !!sh.reconciled;
     var nowIso = new Date().toISOString();
+
+    Object.keys(state.diffBatches || {}).forEach(function(bid) {
+      var b = state.diffBatches[bid];
+      if (b && b.sourceSheetId === sheetId) {
+        delete state.diffBatches[bid];
+        state.tombstones[bid] = nowIso;
+      }
+    });
+    delete state.uploadedSheets[sheetId];
+    state.tombstones[sheetId] = nowIso;
+
+    var remainingDiffSheets = getMonthUploadedSheets(mk).filter(function(s) {
+      return s && (s.kind === 'DIFF' || s.kind === 'BOTH');
+    });
+    var useReconciledRecompute = kind !== 'COMPLIANCE' && (wasReconciled || remainingDiffSheets.some(function(s) { return !!s.reconciled; }));
+    var recomputedByNorm = {};
+    if (useReconciledRecompute) {
+      remainingDiffSheets.forEach(function(remSh) {
+        var remRows = Array.isArray(remSh.rows) ? remSh.rows : [];
+        remRows.forEach(function(rr) {
+          var nc = normalizeCode(rr && rr.empCode);
+          if (!nc) return;
+          var rVal = round2(Number(rr.rawSheetAmount !== undefined ? rr.rawSheetAmount : rr.baseDiffAmount) || 0);
+          var prevVal = recomputedByNorm[nc] || 0;
+          recomputedByNorm[nc] = remSh.reconciled ? Math.max(prevVal, rVal) : round2(prevVal + rVal);
+        });
+      });
+    }
 
     // Subtract ONLY this deleted sheet's per-employee contributions cleanly
     (Array.isArray(sh.rows) ? sh.rows : []).forEach(function(item) {
       if (!item || !item.empCode) return;
-      var eid = mk + '::' + normalizeCode(item.empCode);
+      var nc = normalizeCode(item.empCode);
+      var eid = mk + '::' + nc;
       var existing = state.empSalaries[eid];
       if (!existing) return;
       if (kind !== 'DIFF') {
@@ -1456,7 +1599,11 @@
         }
       }
       if (kind !== 'COMPLIANCE') {
-        existing.baseDiffAmount = Math.max(0, round2((Number(existing.baseDiffAmount) || 0) - (Number(item.baseDiffAmount) || 0)));
+        if (useReconciledRecompute) {
+          existing.baseDiffAmount = round2(recomputedByNorm[nc] || 0);
+        } else {
+          existing.baseDiffAmount = Math.max(0, round2((Number(existing.baseDiffAmount) || 0) - (Number(item.baseDiffAmount) || 0)));
+        }
       }
       if ((Number(existing.complianceAmount) || 0) === 0 && (Number(existing.baseDiffAmount) || 0) === 0 && (Number(existing.missedDiffAmount) || 0) === 0 && (Number(existing.manualAmount) || 0) === 0 && (Number(existing.compDiffAmount) || 0) === 0) {
         delete state.empSalaries[eid];
@@ -1466,15 +1613,6 @@
       }
     });
 
-    Object.keys(state.diffBatches || {}).forEach(function(bid) {
-      var b = state.diffBatches[bid];
-      if (b && b.sourceSheetId === sheetId) {
-        delete state.diffBatches[bid];
-        state.tombstones[bid] = nowIso;
-      }
-    });
-    delete state.uploadedSheets[sheetId];
-    state.tombstones[sheetId] = nowIso;
     saveToLocal();
     renderUI();
     pushCloudNow('uploaded_sheet_deleted');
@@ -1487,15 +1625,18 @@
     opts = opts || {};
     // DIFF sheets ADD onto previous Diff sheets by default! COMPLIANCE/BOTH replace stale same-type sheets by default.
     var replaceExisting = opts.replaceExisting !== undefined ? !!opts.replaceExisting : (kind !== 'DIFF');
+    var reconcileDelta = (kind === 'DIFF' && !!opts.reconcileDelta);
     if (!mk || !Array.isArray(rowsList) || !rowsList.length) return { ok: false, imported: 0 };
+    var recPlan = reconcileDelta ? computeDiffReconcilePlan(mk, rowsList, { replaceExisting: replaceExisting }) : null;
     var nowIso = new Date().toISOString();
     var incomingIds = {};
     var count = 0;
 
     var sheetCompSum = 0, sheetDiffSum = 0, sheetCompDiffSum = 0, sheetManualSum = 0, sheetPfSum = 0, sheetEsicSum = 0;
+    var sheetDeltaSum = 0, sheetBaselineSum = 0;
     var compactRows = [];
 
-    rowsList.forEach(function(item) {
+    rowsList.forEach(function(item, rowIdx) {
       if (!item || !item.empCode) return;
       var code = String(item.empCode).trim();
       var id = mk + '::' + normalizeCode(code);
@@ -1514,14 +1655,20 @@
       var rowAdvDed = round2(Number(item.advanceDeduction) || 0);
       var rowTotDed = round2(Number(item.totalDeduction) || 0);
       var rowCompDiff = kind === 'DIFF' ? 0 : round2(Number(item.compDiffAmount !== undefined ? item.compDiffAmount : (kind === 'BOTH' ? rowDiff : 0)) || 0);
+      var planRow = recPlan && recPlan.rows ? recPlan.rows[rowIdx] : null;
+      var rowBaseline = planRow ? planRow.baselineAmount : 0;
+      var rowDelta = planRow ? planRow.deltaAdded : rowDiff;
 
       var nextComp = kind === 'DIFF'
         ? ((prev && Number(prev.complianceAmount)) || 0)
         : rowComp;
-      // Additive DIFF mode (!replaceExisting) sums onto previous baseDiffAmount!
+      // Reconciled DIFF keeps max(prev, rawSheet) so 2000 after 1500 Comp/Prev only adds +500 delta!
+      var prevBaseVal = replaceExisting ? 0 : ((prev && Number(prev.baseDiffAmount)) || 0);
       var nextDiff = kind === 'COMPLIANCE'
         ? ((prev && Number(prev.baseDiffAmount)) || 0)
-        : (replaceExisting ? rowDiff : round2(((prev && Number(prev.baseDiffAmount)) || 0) + rowDiff));
+        : (reconcileDelta
+            ? Math.max(prevBaseVal, rowDiff)
+            : (replaceExisting ? rowDiff : round2(prevBaseVal + rowDiff)));
       var nextManual = rowManual > 0
         ? (kind === 'DIFF' && !replaceExisting && prev && Number(prev.manualAmount) > 0 ? Number(prev.manualAmount) : rowManual)
         : ((prev && Number(prev.manualAmount)) || 0);
@@ -1576,6 +1723,10 @@
       sheetManualSum = round2(sheetManualSum + rowManual);
       sheetPfSum = round2(sheetPfSum + (kind === 'DIFF' ? 0 : rowPf));
       sheetEsicSum = round2(sheetEsicSum + (kind === 'DIFF' ? 0 : rowEsic));
+      if (reconcileDelta) {
+        sheetDeltaSum = round2(sheetDeltaSum + rowDelta);
+        sheetBaselineSum = round2(sheetBaselineSum + rowBaseline);
+      }
       compactRows.push({
         empCode: code,
         empName: state.empSalaries[id].empName,
@@ -1584,6 +1735,10 @@
         remarks: String(item.remarks || '').trim(),
         complianceAmount: kind === 'DIFF' ? 0 : rowComp,
         baseDiffAmount: kind === 'COMPLIANCE' ? 0 : rowDiff,
+        rawSheetAmount: kind === 'COMPLIANCE' ? 0 : rowDiff,
+        baselineAmount: reconcileDelta ? rowBaseline : 0,
+        deltaAdded: kind === 'COMPLIANCE' ? 0 : (reconcileDelta ? rowDelta : rowDiff),
+        reconciled: reconcileDelta,
         compDiffAmount: kind === 'DIFF' ? 0 : rowCompDiff,
         manualAmount: rowManual,
         pfEmployee: kind === 'DIFF' ? 0 : rowPf,
@@ -1667,6 +1822,12 @@
         empCount: count,
         complianceAmount: sheetCompSum,
         diffAmount: sheetDiffSum,
+        rawDiffAmount: sheetDiffSum,
+        baselineTotal: reconcileDelta ? sheetBaselineSum : 0,
+        deltaDiffAmount: reconcileDelta ? sheetDeltaSum : sheetDiffSum,
+        increasedCount: reconcileDelta ? recPlan.totals.increasedCount : count,
+        unchangedCount: reconcileDelta ? recPlan.totals.unchangedCount : 0,
+        reconciled: reconcileDelta,
         compDiffAmount: sheetCompDiffSum,
         manualAmount: sheetManualSum,
         pfTotal: sheetPfSum,
@@ -1680,7 +1841,17 @@
       renderUI();
       pushCloudNow('bulk_import_' + kind.toLowerCase());
     }
-    return { ok: count > 0, imported: count, kind: kind, sheetId: sheetId };
+    return {
+      ok: count > 0,
+      imported: count,
+      kind: kind,
+      sheetId: sheetId,
+      reconciled: reconcileDelta,
+      rawTotal: sheetDiffSum,
+      baselineTotal: reconcileDelta ? sheetBaselineSum : 0,
+      deltaTotal: reconcileDelta ? sheetDeltaSum : sheetDiffSum,
+      deltaAllocations: reconcileDelta && recPlan ? recPlan.deltaAllocRows : []
+    };
   }
 
   function addOrUpdatePoint(payload) {
@@ -3263,7 +3434,34 @@
     if (t.compDiffTotal > 0 && !(t.diffTotal > 0)) h += '<span style="color:#b45309">Comp Diff (Chhoota): ' + formatINR(t.compDiffTotal) + '</span>';
     h += '</div>';
     h += '<button type="button" onclick="ATPLSalaryPayout.confirmPreviewImport()" style="padding:7px 14px;border:none;background:#15803d;color:#fff;border-radius:7px;font-size:12px;font-weight:800;cursor:pointer">Confirm &amp; Import (' + t.empCount + ' Emp)</button>';
-    h += '</div></div>';
+    h += '</div>';
+    var reconcileChk = document.getElementById('spImportReconcileChk');
+    var reconcileOn = (kind === 'DIFF') && (reconcileChk ? !!reconcileChk.checked : true);
+    if (reconcileOn && meta.rows && meta.rows.length > 0) {
+      var previewMk = String((document.getElementById('spImportMonthInp') || {}).value || state.selectedMonth).trim();
+      var previewRep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : false;
+      var plan = computeDiffReconcilePlan(previewMk, meta.rows, { replaceExisting: previewRep });
+      var pt = plan.totals;
+      var sampleChanged = plan.rows.filter(function(pr) { return pr && pr.deltaAdded > 0; }).slice(0, 4);
+      var sampleZero = plan.rows.filter(function(pr) { return pr && pr.deltaAdded === 0; }).slice(0, 2);
+      h += '<div style="margin-top:8px;padding:8px 10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:7px;font-size:11px;color:#0f172a">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
+      h += '<span style="font-weight:800;color:#1e40af">Smart Delta Check (Comp/Prev se sirf Change add hoga):</span>';
+      h += '<span style="font-variant-numeric:tabular-nums">Sheet ' + formatINR(pt.rawTotal) + ' · Pehle se ' + formatINR(pt.baselineTotal) + ' · <strong style="color:#15803d;background:#dcfce7;padding:1px 7px;border-radius:5px">Net Add (+Δ): +' + formatINR(pt.deltaTotal) + '</strong> (' + pt.increasedCount + ' Badhe · ' + pt.unchangedCount + ' ₹0)</span>';
+      h += '</div>';
+      if (sampleChanged.length || sampleZero.length) {
+        h += '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">';
+        sampleChanged.forEach(function(pr) {
+          h += '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700">' + esc(pr.empName || pr.empCode) + ': ' + formatINR(pr.baselineAmount) + ' → ' + formatINR(pr.rawSheetAmount) + ' (+' + formatINR(pr.deltaAdded) + ')</span>';
+        });
+        sampleZero.forEach(function(pr) {
+          h += '<span style="background:#e2e8f0;color:#475569;padding:2px 6px;border-radius:4px;font-weight:600">' + esc(pr.empName || pr.empCode) + ': ' + formatINR(pr.rawSheetAmount) + ' (₹0 Change)</span>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+    h += '</div>';
     box.innerHTML = h;
   }
 
@@ -3273,6 +3471,10 @@
     var repChk = document.getElementById('spImportReplaceChk');
     if (repChk && !state._userTouchedReplaceChk) {
       repChk.checked = (kind !== 'DIFF');
+    }
+    var recWrap = document.getElementById('spImportReconcileWrap');
+    if (recWrap) {
+      recWrap.style.display = (kind === 'DIFF') ? 'flex' : 'none';
     }
     var autoWrap = document.getElementById('spImportDiffAutoPayWrap');
     if (autoWrap) {
@@ -3308,6 +3510,8 @@
       return { ok: false, imported: 0, locked: true };
     }
     var rep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : (kind !== 'DIFF');
+    var recChk = document.getElementById('spImportReconcileChk');
+    var reconcileDelta = (kind === 'DIFF') && (recChk ? !!recChk.checked : true);
     var autoPayEl = document.getElementById('spImportDiffAutoPayChk');
     var autoPayDiff = (kind === 'DIFF' || kind === 'BOTH') && (autoPayEl ? !!autoPayEl.checked : (kind === 'DIFF'));
     var picked = getSelectedTabNamesFromModal();
@@ -3317,21 +3521,15 @@
       return { ok: false, imported: 0 };
     }
     state.selectedMonth = mk;
-    var res = bulkImportMonthSalaries(mk, meta.rows, wbObj.name, kind, { replaceExisting: rep, selectedTabs: meta.selectedSheets });
+    var res = bulkImportMonthSalaries(mk, meta.rows, wbObj.name, kind, {
+      replaceExisting: rep,
+      selectedTabs: meta.selectedSheets,
+      reconcileDelta: reconcileDelta
+    });
     if (res && res.ok && autoPayDiff) {
-      var paidDiffRows = meta.rows.filter(function(r) { return (Number(r.baseDiffAmount) || 0) > 0; });
-      if (paidDiffRows.length > 0) {
-        addOrUpdateDiffBatch({
-          monthKey: mk,
-          title: String(wbObj.name || 'Diff Sheet').replace(/\.(xlsx|xls|csv)$/i, ''),
-          lotType: 'PART_PAYMENT',
-          paymentDate: todayIso(),
-          mode: PAYMENT_MODES[0],
-          status: 'DISBURSED',
-          sourceSheetId: res.sheetId,
-          sourceFile: wbObj.name,
-          notes: 'Diff Sheet upload se Paid Payments me add (' + meta.selectedSheets.join(', ') + ')',
-          allocations: paidDiffRows.map(function(r) {
+      var batchAllocs = reconcileDelta
+        ? (res.deltaAllocations || [])
+        : meta.rows.filter(function(r) { return (Number(r.baseDiffAmount) || 0) > 0; }).map(function(r) {
             return {
               empCode: r.empCode,
               empName: r.empName,
@@ -3340,7 +3538,21 @@
               accountNo: r.accountNo || '',
               ifsc: r.ifsc || ''
             };
-          })
+          });
+      if (batchAllocs.length > 0) {
+        addOrUpdateDiffBatch({
+          monthKey: mk,
+          title: String(wbObj.name || 'Diff Sheet').replace(/\.(xlsx|xls|csv)$/i, '') + (reconcileDelta ? ' (Net Increase)' : ''),
+          lotType: 'PART_PAYMENT',
+          paymentDate: todayIso(),
+          mode: PAYMENT_MODES[0],
+          status: 'DISBURSED',
+          sourceSheetId: res.sheetId,
+          sourceFile: wbObj.name,
+          notes: reconcileDelta
+            ? ('Smart Delta (+Δ ' + formatINR(res.deltaTotal) + ' added above Comp/Prev ' + formatINR(res.baselineTotal) + ')')
+            : ('Diff Sheet upload se Paid Payments me add (' + meta.selectedSheets.join(', ') + ')'),
+          allocations: batchAllocs
         });
       }
     }
@@ -3348,7 +3560,11 @@
     closeModal();
     if (window.showToast) {
       var msg = '✅ ' + res.imported + ' employees (' + formatMonthLabel(mk) + ') imported · Net Pay ' + formatINR(meta.totals.complianceTotal);
-      if (meta.totals.diffTotal > 0) msg += ' · Diff ' + formatINR(meta.totals.diffTotal);
+      if (reconcileDelta) {
+        msg = '✅ Diff Sheet (' + formatMonthLabel(mk) + '): Sheet ' + formatINR(res.rawTotal) + ' me se sirf Badha Hua +' + formatINR(res.deltaTotal) + ' add hua (Already ' + formatINR(res.baselineTotal) + ' cover tha)!';
+      } else if (meta.totals.diffTotal > 0) {
+        msg += ' · Diff ' + formatINR(meta.totals.diffTotal);
+      }
       window.showToast(msg);
     }
     return res;
@@ -3376,7 +3592,7 @@
     h += '      <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc">';
     h += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
     h += '          <div style="font-size:12px;font-weight:800;color:#0f172a">1. Salary / Bank Payment Sheet Upload Karein (.xlsx / .csv)</div>';
-    h += '          <div style="display:flex;align-items:center;gap:6px"><label style="font-size:11px;font-weight:700;color:#475569">Target Month:</label><input type="month" id="spImportMonthInp" value="' + esc(state.selectedMonth) + '" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px;font-weight:700;background:#fff"></div>';
+    h += '          <div style="display:flex;align-items:center;gap:6px"><label style="font-size:11px;font-weight:700;color:#475569">Target Month:</label><input type="month" id="spImportMonthInp" onchange="ATPLSalaryPayout.onTabSelectionChange()" value="' + esc(state.selectedMonth) + '" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11.5px;font-weight:700;background:#fff"></div>';
     h += '        </div>';
     h += '        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
     h += '          <div><label style="font-size:11px;font-weight:700;color:#475569;margin-right:8px">Sheet Type:</label>';
@@ -3386,9 +3602,10 @@
     h += '              <option value="BOTH"' + (kind === 'BOTH' ? ' selected' : '') + '>Combined Salary Sheet (Compliance + Diff + PF + ESIC Dono)</option>';
     h += '            </select>';
     h += '          </div>';
-    h += '          <label style="font-size:11px;font-weight:700;color:#334155;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="spImportReplaceChk" onchange="ATPLSalaryPayout._markReplaceTouched()"' + (kind !== 'DIFF' ? ' checked' : '') + '> Purani ' + (kind === 'DIFF' ? 'Diff sheets replace karein (Untick = Sheet 1 + Sheet 2 Add hoga!)' : 'sheet replace karein (Exact total match)') + '</label>';
+    h += '          <label style="font-size:11px;font-weight:700;color:#334155;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="spImportReplaceChk" onchange="ATPLSalaryPayout._markReplaceTouched();ATPLSalaryPayout.onTabSelectionChange()"' + (kind !== 'DIFF' ? ' checked' : '') + '> Purani ' + (kind === 'DIFF' ? 'Diff sheets replace karein (Untick = Pehle ki sheet retain)' : 'sheet replace karein (Exact total match)') + '</label>';
     h += '        </div>';
-    h += '        <label id="spImportDiffAutoPayWrap" style="font-size:11px;font-weight:700;color:#1d4ed8;display:' + ((kind === 'DIFF' || kind === 'BOTH') ? 'flex' : 'none') + ';align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;padding:6px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px"><input type="checkbox" id="spImportDiffAutoPayChk" checked> Diff Sheet upload hote hi seedha <strong>Diff Me Di (Payments)</strong> me bhi add karein</label>';
+    h += '        <label id="spImportReconcileWrap" style="font-size:11px;font-weight:700;color:#065f46;display:' + (kind === 'DIFF' ? 'flex' : 'none') + ';align-items:center;gap:6px;cursor:pointer;margin-bottom:6px;padding:6px 9px;background:#ecfdf5;border:1px solid #86efac;border-radius:7px"><input type="checkbox" id="spImportReconcileChk" checked onchange="ATPLSalaryPayout.onTabSelectionChange()"> <span><strong>Smart Change Mode (Comp Diff / Pehle Sheet se minus):</strong> Har bande ka sirf <strong>Badha Hua (+Δ)</strong> amount add karein (Double add nahi hoga!)</span></label>';
+    h += '        <label id="spImportDiffAutoPayWrap" style="font-size:11px;font-weight:700;color:#1d4ed8;display:' + ((kind === 'DIFF' || kind === 'BOTH') ? 'flex' : 'none') + ';align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;padding:6px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px"><input type="checkbox" id="spImportDiffAutoPayChk" checked> Diff Sheet upload hote hi seedha <strong>Diff Me Di (Payments)</strong> me bhi add karein (Smart Mode me sirf Badha Hua +Δ jayega)</label>';
     if (compLocked && kind === 'COMPLIANCE') {
       h += '        <div style="margin-bottom:8px;padding:8px 10px;background:#fefce8;border:1px solid #fde047;border-radius:8px;font-size:11px;font-weight:700;color:#854d0e">🔒 Is mahine ki Compliance Sheet pehle se processed &amp; locked hai (sirf Bank Return allowed). Nayi sheet upload karne ke liye pehle Dashboard par Compliance card se Unlock ya Delete karein.</div>';
     }
@@ -3672,6 +3889,9 @@
       var code = String((r && r.empCode) || '').trim();
       var salRec = code ? state.empSalaries[mk + '::' + normalizeCode(code)] : null;
       var em = code ? findEmployeeByCode(code) : null;
+      var rawAmt = round2(Number((r && (r.rawSheetAmount !== undefined ? r.rawSheetAmount : r.baseDiffAmount)) || 0));
+      var basePrev = round2(Number((r && r.baselineAmount) || 0));
+      var deltaAmt = round2(Number((r && (r.deltaAdded !== undefined ? r.deltaAdded : r.baseDiffAmount)) || 0));
       return {
         sno: idx + 1,
         empCode: code,
@@ -3684,6 +3904,10 @@
         advanceDeduction: round2(Number((r && r.advanceDeduction) || 0)),
         complianceAmount: round2(Number((r && r.complianceAmount) || 0)),
         baseDiffAmount: round2(Number((r && r.baseDiffAmount) || 0)),
+        rawSheetAmount: rawAmt,
+        baselineAmount: basePrev,
+        deltaAdded: deltaAmt,
+        reconciled: !!(sh.reconciled || (r && r.reconciled)),
         compDiffAmount: round2(Number((r && r.compDiffAmount) || 0)),
         remarks: String((r && r.remarks) || (salRec && salRec.remarks) || '').trim()
       };
@@ -3705,16 +3929,19 @@
       return;
     }
     var kind = meta.kind;
+    var showDeltaCols = (kind === 'DIFF' && (meta.reconciled || rows.some(function(r) { return !!r.reconciled; })));
     var th = '<table style="width:100%;border-collapse:collapse;font-size:11.5px"><thead><tr style="position:sticky;top:0;background:#f8fafc;border-bottom:1px solid #cbd5e1;color:#475569;font-size:10.5px;text-align:left">';
     th += '<th style="padding:7px 9px">#</th><th style="padding:7px 9px">Emp Code</th><th style="padding:7px 9px">Name</th>';
     if (kind === 'COMPLIANCE' || kind === 'BOTH') {
       th += '<th style="padding:7px 9px;text-align:right">Manual (₹)</th><th style="padding:7px 9px;text-align:right">PF @12%</th><th style="padding:7px 9px;text-align:right">ESIC</th><th style="padding:7px 9px;text-align:right">Adv Ded</th><th style="padding:7px 9px;text-align:right">Net Payable (₹)</th><th style="padding:7px 9px;text-align:right">Diff. Amt</th>';
+    } else if (showDeltaCols) {
+      th += '<th style="padding:7px 9px">Bank A/C &amp; IFSC</th><th style="padding:7px 9px">Remarks</th><th style="padding:7px 9px;text-align:right">Comp / Prev (₹)</th><th style="padding:7px 9px;text-align:right">Sheet Amt (₹)</th><th style="padding:7px 9px;text-align:right">Is Sheet Se Add (+Δ)</th>';
     } else {
       th += '<th style="padding:7px 9px">Bank A/C &amp; IFSC</th><th style="padding:7px 9px">Remarks</th><th style="padding:7px 9px;text-align:right">' + (kind === 'BATCH' ? 'Paid Amount (₹)' : 'Diff Amount (₹)') + '</th>';
     }
     if (kind === 'COMPLIANCE' || kind === 'BOTH') th += '<th style="padding:7px 9px">Remarks</th>';
     th += '</tr></thead><tbody>';
-    var sumMan = 0, sumPf = 0, sumEsic = 0, sumAdv = 0, sumComp = 0, sumDiff = 0;
+    var sumMan = 0, sumPf = 0, sumEsic = 0, sumAdv = 0, sumComp = 0, sumDiff = 0, sumBase = 0, sumDelta = 0;
     filtered.forEach(function(r, idx) {
       sumMan = round2(sumMan + r.manualAmount);
       sumPf = round2(sumPf + r.pfEmployee);
@@ -3723,7 +3950,9 @@
       sumComp = round2(sumComp + r.complianceAmount);
       var rowDiffVal = (kind === 'COMPLIANCE') ? r.compDiffAmount : r.baseDiffAmount;
       sumDiff = round2(sumDiff + rowDiffVal);
-      th += '<tr style="border-bottom:1px solid #f1f5f9">';
+      sumBase = round2(sumBase + (r.baselineAmount || 0));
+      sumDelta = round2(sumDelta + (r.deltaAdded || 0));
+      th += '<tr style="border-bottom:1px solid #f1f5f9' + (showDeltaCols && r.deltaAdded > 0 ? ';background:#f0fdf4' : '') + '">';
       th += '<td style="padding:6px 9px;color:#64748b">' + (idx + 1) + '</td>';
       th += '<td style="padding:6px 9px;font-family:monospace;font-weight:800;color:#312e81">' + esc(r.empCode) + '</td>';
       th += '<td style="padding:6px 9px;font-weight:700;color:#0f172a">' + esc(r.empName) + '</td>';
@@ -3735,6 +3964,12 @@
         th += '<td style="padding:6px 9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#15803d">' + formatINR(r.complianceAmount) + '</td>';
         th += '<td style="padding:6px 9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:' + (rowDiffVal > 0 ? '#b45309' : '#64748b') + '">' + formatINR(rowDiffVal) + '</td>';
         th += '<td style="padding:6px 9px;color:#475569">' + esc(r.remarks || '-') + '</td>';
+      } else if (showDeltaCols) {
+        th += '<td style="padding:6px 9px;font-family:monospace;font-size:10.5px;color:#475569">' + esc(r.accountNo || '-') + (r.ifsc ? (' · ' + esc(r.ifsc)) : '') + '</td>';
+        th += '<td style="padding:6px 9px;color:#475569">' + esc(r.remarks || '-') + '</td>';
+        th += '<td style="padding:6px 9px;text-align:right;font-variant-numeric:tabular-nums;color:#64748b">' + formatINR(r.baselineAmount || 0) + '</td>';
+        th += '<td style="padding:6px 9px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#1d4ed8">' + formatINR(rowDiffVal) + '</td>';
+        th += '<td style="padding:6px 9px;text-align:right;font-variant-numeric:tabular-nums">' + (r.deltaAdded > 0 ? ('<span style="padding:2px 7px;border-radius:5px;background:#dcfce7;color:#15803d;font-weight:800">+' + formatINR(r.deltaAdded) + ' Added</span>') : '<span style="padding:2px 7px;border-radius:5px;background:#f1f5f9;color:#64748b;font-weight:700">₹0 (No Change)</span>') + '</td>';
       } else {
         th += '<td style="padding:6px 9px;font-family:monospace;font-size:10.5px;color:#475569">' + esc(r.accountNo || '-') + (r.ifsc ? (' · ' + esc(r.ifsc)) : '') + '</td>';
         th += '<td style="padding:6px 9px;color:#475569">' + esc(r.remarks || '-') + '</td>';
@@ -3748,6 +3983,8 @@
       var fh = '<span>Showing <strong>' + filtered.length + ' / ' + rows.length + '</strong> employees</span>';
       if (kind === 'COMPLIANCE' || kind === 'BOTH') {
         fh += '<span style="display:flex;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums"><span>Manual: <strong>' + formatINR(sumMan) + '</strong></span><span>PF: <strong>' + formatINR(sumPf) + '</strong></span><span>ESIC: <strong>' + formatINR(sumEsic) + '</strong></span><span style="color:#15803d">Net Payable: <strong>' + formatINR(sumComp) + '</strong></span><span style="color:#b45309">Diff: <strong>' + formatINR(sumDiff) + '</strong></span></span>';
+      } else if (showDeltaCols) {
+        fh += '<span style="display:flex;gap:12px;flex-wrap:wrap;font-variant-numeric:tabular-nums"><span>Comp/Prev: <strong>' + formatINR(sumBase) + '</strong></span><span style="color:#1d4ed8">Sheet Total: <strong>' + formatINR(sumDiff) + '</strong></span><span style="color:#15803d">Net Added (+Δ): <strong>+' + formatINR(sumDelta) + '</strong></span></span>';
       } else {
         fh += '<span style="color:#1d4ed8;font-variant-numeric:tabular-nums">Total Amount: <strong>' + formatINR(sumDiff) + '</strong></span>';
       }
@@ -3795,7 +4032,8 @@
     var primaryTotal = kind === 'COMPLIANCE' ? sh.complianceAmount : (kind === 'DIFF' ? sh.diffAmount : (sh.complianceAmount || sh.diffAmount));
     renderSheetViewerModal({
       kind: kind,
-      badgeLabel: kind === 'COMPLIANCE' ? 'COMPLIANCE SHEET' : (kind === 'DIFF' ? 'DIFF SHEET' : 'SALARY SHEET'),
+      reconciled: !!sh.reconciled,
+      badgeLabel: kind === 'COMPLIANCE' ? 'COMPLIANCE SHEET' : (kind === 'DIFF' ? (sh.reconciled ? 'DIFF SHEET (SMART DELTA)' : 'DIFF SHEET') : 'SALARY SHEET'),
       monthKey: sh.monthKey || state.selectedMonth,
       title: sh.title || sh.fileName || 'Uploaded Sheet',
       subLabel: (sh.selectedTabs && sh.selectedTabs.length) ? ('Tabs: ' + sh.selectedTabs.join(', ')) : (sh.entryMode === 'MANUAL' ? 'Manual Entry' : ''),
@@ -3967,10 +4205,21 @@
       } else {
         h += '      <div style="display:flex;flex-direction:column;gap:6px">';
         ledger.diffSheets.forEach(function(sh, idx) {
+          var subTxt = sh.entryMode === 'MANUAL' ? 'Manual Diff' : (sh.empCount + ' emp · ' + esc((sh.selectedTabs || []).join(', ') || sh.fileName));
+          if (sh.reconciled) {
+            subTxt += ' · Sheet ' + formatINR(sh.rawDiffAmount || sh.diffAmount) + ' · Prev ' + formatINR(sh.baselineTotal || 0) + ' (' + (sh.increasedCount || 0) + ' Badha, ' + (sh.unchangedCount || 0) + ' ₹0)';
+          } else if (sh.notes) {
+            subTxt += ' · ' + esc(sh.notes);
+          }
           h += '        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;font-size:11.5px">';
-          h += '          <div><div style="font-weight:700;color:#0f172a">#' + (idx + 1) + ' ' + esc(sh.title) + '</div><div style="font-size:10.5px;color:#64748b">' + (sh.entryMode === 'MANUAL' ? 'Manual Diff' : (sh.empCount + ' emp · ' + esc((sh.selectedTabs || []).join(', ') || sh.fileName))) + (sh.notes ? (' · ' + esc(sh.notes)) : '') + '</div></div>';
+          h += '          <div><div style="font-weight:700;color:#0f172a">#' + (idx + 1) + ' ' + esc(sh.title) + '</div><div style="font-size:10.5px;color:#64748b">' + subTxt + '</div></div>';
           h += '          <div style="display:flex;align-items:center;gap:6px;white-space:nowrap">';
-          h += '            <strong style="color:#1d4ed8;font-variant-numeric:tabular-nums">+' + formatINR(sh.diffAmount) + '</strong>';
+          if (sh.reconciled) {
+            var dVal = Number(sh.deltaDiffAmount) || 0;
+            h += '            <span style="padding:2px 7px;border-radius:5px;font-weight:800;font-variant-numeric:tabular-nums;background:' + (dVal > 0 ? '#dcfce7' : '#e2e8f0') + ';color:' + (dVal > 0 ? '#15803d' : '#475569') + '">' + (dVal > 0 ? ('+' + formatINR(dVal) + ' Added') : '₹0 Added') + '</span>';
+          } else {
+            h += '            <strong style="color:#1d4ed8;font-variant-numeric:tabular-nums">+' + formatINR(sh.diffAmount) + '</strong>';
+          }
           h += '            <button type="button" onclick="ATPLSalaryPayout.openUploadedSheetViewer(\'' + esc(sh.id) + '\')" style="padding:3px 7px;border:1px solid #a5b4fc;background:#eef2ff;color:#312e81;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer">View</button>';
           h += '            <button type="button" onclick="ATPLSalaryPayout.deleteUploadedSheet(\'' + esc(sh.id) + '\')" style="padding:3px 7px;border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer">Delete</button>';
           h += '          </div>';
@@ -4051,7 +4300,15 @@
           h += '          <td style="padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px;color:#475569">' + esc(statLabel) + '</td>';
           h += '          <td style="padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#15803d">' + formatINR(r.complianceAmount) + '</td>';
           var rowLeftTotal = round2(r.diffRemaining + (r.compDiffUncovered || 0));
-          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(r.effectiveBaseDiff) + (r.compDiffUncovered > 0 ? ('<div style="font-size:10px;color:#b45309;font-weight:700">Comp ' + formatINR(r.compDiffAmount) + '</div>') : '') + '</td>';
+          var sbChips = '';
+          if (r.diffSheetBreakdown && r.diffSheetBreakdown.length && r.diffSheetBreakdown.some(function(sb) { return !!sb.reconciled; })) {
+            sbChips = '<div style="margin-top:2px;display:flex;justify-content:flex-end;gap:3px;flex-wrap:wrap">' + r.diffSheetBreakdown.map(function(sb) {
+              var bg = sb.deltaAdded > 0 ? '#dcfce7' : '#f1f5f9';
+              var fg = sb.deltaAdded > 0 ? '#15803d' : '#64748b';
+              return '<span style="font-size:9.5px;padding:1px 5px;border-radius:4px;font-weight:700;background:' + bg + ';color:' + fg + '">#' + sb.index + ': ' + (sb.deltaAdded > 0 ? ('+' + formatINR(sb.deltaAdded)) : '₹0') + '</span>';
+            }).join('') + '</div>';
+          }
+          h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums">' + formatINR(r.effectiveBaseDiff) + (r.compDiffUncovered > 0 ? ('<div style="font-size:10px;color:#b45309;font-weight:700">Comp ' + formatINR(r.compDiffAmount) + '</div>') : '') + sbChips + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:' + (netPt > 0 ? '#15803d' : netPt < 0 ? '#dc2626' : '#64748b') + '">' + esc(ptLabel) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700">' + formatINR(r.netDiffAmount) + '</td>';
           h += '          <td style="padding:9px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1d4ed8;font-weight:700">' + formatINR(r.diffPaid) + '</td>';
@@ -4323,7 +4580,16 @@
             h += '            <div style="color:#64748b">Is mahine koi Diff Sheet upload nahi hai.</div>';
           } else {
             da.diffSheets.forEach(function(ds) {
-              h += '            <div style="display:flex;justify-content:space-between"><span>Sheet #' + ds.index + ' · ' + esc(ds.title) + '</span><strong style="font-variant-numeric:tabular-nums;color:' + (ds.diffAmount > 0 ? '#0f172a' : '#dc2626') + '">' + (ds.found ? formatINR(ds.diffAmount) : 'Missing (₹0)') + '</strong></div>';
+              if (ds.reconciled) {
+                var dBadge = ds.found
+                  ? (ds.deltaAdded > 0
+                      ? '<span style="padding:1px 7px;border-radius:5px;background:#dcfce7;color:#15803d;font-weight:800;font-size:11px">+' + formatINR(ds.deltaAdded) + ' Added</span>'
+                      : '<span style="padding:1px 7px;border-radius:5px;background:#f1f5f9;color:#64748b;font-weight:700;font-size:11px">₹0 Added</span>')
+                  : '<span style="color:#dc2626;font-weight:700">Missing (₹0)</span>';
+                h += '            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><div><span>Sheet #' + ds.index + ' · ' + esc(ds.title) + '</span>' + (ds.found ? (' <span style="font-size:10.5px;color:#64748b">(Sheet ' + formatINR(ds.diffAmount) + ', Prev ' + formatINR(ds.baselineAmount || 0) + ')</span>') : '') + '</div>' + dBadge + '</div>';
+              } else {
+                h += '            <div style="display:flex;justify-content:space-between"><span>Sheet #' + ds.index + ' · ' + esc(ds.title) + '</span><strong style="font-variant-numeric:tabular-nums;color:' + (ds.diffAmount > 0 ? '#0f172a' : '#dc2626') + '">' + (ds.found ? formatINR(ds.diffAmount) : 'Missing (₹0)') + '</strong></div>';
+              }
             });
           }
           if (da.missedDiffAmount > 0) {
@@ -4406,6 +4672,7 @@
     setAuditEmpCode: setAuditEmpCode,
     openEmpAuditCheck: openEmpAuditCheck,
     buildEmpPayoutAudit: buildEmpPayoutAudit,
+    computeDiffReconcilePlan: computeDiffReconcilePlan,
     saveMonthSummary: saveMonthSummary,
     upsertEmpSalary: upsertEmpSalary,
     deleteEmpSalary: deleteEmpSalary,

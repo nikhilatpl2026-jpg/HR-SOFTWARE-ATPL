@@ -1104,26 +1104,28 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledOct.totalBatchPaid, 15000, 'Manual Diff from UI must appear in Diff Payments directly');
     assert.equal(ledOct.totalMonthSalary, 40028);
 
-    // C) Upload Diff CSV via UI -> appends to Diff Sheets AND auto-adds to Diff Payments
+    // C) Upload Diff CSV via UI (Smart Delta ON: 00135 goes Comp Diff 188 -> 688, so only +500 delta adds to Paid!)
     viewerEls.spImportKindSel.value = 'DIFF';
     viewerEls.spImportReplaceChk.checked = false;
     viewerEls.spImportDiffAutoPayChk.checked = true;
-    const sampleDiffCsv = 'Emp Code,Name of employee,Diff Amount,Remarks\n00135,SAMPAT LAL,188,oct diff\n';
+    const sampleDiffCsv = 'Emp Code,Name of employee,Diff Amount,Remarks\n00135,SAMPAT LAL,688,oct diff\n';
     bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'oct diff.csv', _text: sampleDiffCsv }] });
+    assert.ok(viewerEls.spImportPreviewBox.innerHTML.includes('500'));
     const diffImp = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
     assert.equal(diffImp.ok, true);
+    assert.equal(diffImp.deltaTotal, 500);
 
     ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
     assert.equal(ledOct.diffSheets.length, 2);
-    assert.equal(ledOct.diffTotal, 15188);
-    assert.equal(ledOct.totalBatchPaid, 15188);
-    assert.equal(ledOct.totalMonthSalary, 40216);
+    assert.equal(ledOct.diffTotal, 15688);
+    assert.equal(ledOct.totalBatchPaid, 15500, 'Auto-paid batch must add ONLY +500 delta (688 - 188 Comp Diff)');
+    assert.equal(ledOct.totalMonthSalary, 40528);
 
     // D) Open In-App Batch Viewer cleanly (must auto-clear previous viewer search query!)
     const bRows = bA.mockWindow.ATPLSalaryPayout.openBatchSheetViewer(ledOct.batches[1].id);
     assert.equal(bRows.length, 1);
     assert.ok(viewerEls.spSheetViewerBody.innerHTML.includes('SAMPAT LAL'));
-    assert.ok(viewerEls.spSheetViewerFoot.innerHTML.includes('188'));
+    assert.ok(viewerEls.spSheetViewerFoot.innerHTML.includes('500'));
 
     // E) Deleting the Diff Sheet cleanly deletes both the sheet and its auto-linked Batch
     assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(diffImp.sheetId), true);
@@ -1131,5 +1133,127 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledOct.diffSheets.length, 1);
     assert.equal(ledOct.diffTotal, 15000);
     assert.equal(ledOct.totalBatchPaid, 15000);
+  });
+
+  await t.test('15. Smart Delta Diff Sheet Reconciliation: Comp Diff 5,48,612 (Nikhil 1500) -> Diff Sheet 7,32,886 (Nikhil 2000 = +500) -> Sheet 2 (Nikhil 2000 = ₹0)', async () => {
+    const bA = createBrowser('BrowserA_Delta', new Map());
+    const deltaEls = {
+      spSheetViewerBody: { innerHTML: '' },
+      spSheetViewerFoot: { innerHTML: '' },
+      spSheetViewerSearch: { value: '' },
+      spImportKindSel: { value: 'DIFF' },
+      spImportMonthInp: { value: '2026-09' },
+      spImportReplaceChk: { checked: false },
+      spImportReconcileChk: { checked: true },
+      spImportDiffAutoPayChk: { checked: true },
+      spImportPreviewBox: { innerHTML: '' }
+    };
+    const origGet = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => deltaEls[id] || origGet(id);
+    bA.mockWindow.document.querySelectorAll = () => [];
+    bA.mockWindow.FileReader = class {
+      readAsText(file) { this.onload && this.onload({ target: { result: file._text } }); }
+      readAsArrayBuffer(file) { this.onload && this.onload({ target: { result: file._buf } }); }
+    };
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-09');
+
+    // Step 1: Compliance Sheet with Comp Diff ₹5,48,612 (Nikhil = 1,500; Staff Pool = 5,47,112)
+    bA.mockWindow.ATPLSalaryPayout.bulkImportMonthSalaries('2026-09', [
+      { empCode: '9001', empName: 'Nikhil', manualAmount: 25000, pfEmployee: 1500, esicEmployee: 0, complianceAmount: 22000, compDiffAmount: 1500 },
+      { empCode: '9002', empName: 'Staff Pool', manualAmount: 8000000, pfEmployee: 0, esicEmployee: 0, complianceAmount: 7452888, compDiffAmount: 547112 }
+    ], 'Comp Sep 2026.csv', 'COMPLIANCE', { replaceExisting: true });
+
+    // User puts Chhoota Comp Diff ₹5,48,612 into Paid Batch Part 1
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-09',
+      partNumber: 1,
+      title: 'Part 1 - Comp Chhoota Diff Paid',
+      status: 'DISBURSED',
+      allocations: [
+        { empCode: '9001', empName: 'Nikhil', amount: 1500 },
+        { empCode: '9002', empName: 'Staff Pool', amount: 547112 }
+      ]
+    });
+
+    let led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(led.compSheetDiffTotal, 548612);
+    assert.equal(led.totalBatchPaid, 548612);
+
+    // Step 2: Upload Diff Sheet #1 totaling ₹7,32,886 (Nikhil = 2,000 -> +500; Staff Pool = 7,30,886 -> +1,83,774)
+    const diffSheet1Csv = [
+      'Employee ID,Name of employee,AMOUNT,Remarks',
+      '9001,Nikhil,2000,final diff sheet 1',
+      '9002,Staff Pool,730886,final diff sheet 1'
+    ].join('\n');
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'Diff Sheet Oct-26 FINAL.csv', _text: diffSheet1Csv }] });
+    assert.ok(deltaEls.spImportPreviewBox.innerHTML.includes('7,32,886'));
+    assert.ok(deltaEls.spImportPreviewBox.innerHTML.includes('5,48,612'));
+    assert.ok(deltaEls.spImportPreviewBox.innerHTML.includes('1,84,274'));
+    assert.ok(deltaEls.spImportPreviewBox.innerHTML.includes('500'));
+
+    const res1 = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(res1.ok, true);
+    assert.equal(res1.reconciled, true);
+    assert.equal(res1.rawTotal, 732886);
+    assert.equal(res1.baselineTotal, 548612);
+    assert.equal(res1.deltaTotal, 184274);
+
+    led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(led.diffTotal, 732886);
+    // CRITICAL ASSERTION: Paid MUST be 5,48,612 + 1,84,274 = 7,32,886 (NEVER 5,48,612 + 7,32,886 = 12,81,498!)
+    assert.equal(led.totalBatchPaid, 732886, 'Total Paid must NOT double-count 5,48,612 + 7,32,886!');
+    assert.equal(led.diffBaakiTotal, 0);
+
+    // Step 3: Upload Diff Sheet #2 where Nikhil is STILL 2,000 (0 increase!) and Staff Pool is STILL 7,30,886 (0 increase!)
+    const diffSheet2Csv = [
+      'Employee ID,Name of employee,AMOUNT,Remarks',
+      '9001,Nikhil,2000,revised sheet 2 no change',
+      '9002,Staff Pool,730886,revised sheet 2 no change'
+    ].join('\n');
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'Diff Sheet #2 Revised.csv', _text: diffSheet2Csv }] });
+    const res2 = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(res2.ok, true);
+    assert.equal(res2.deltaTotal, 0, 'Sheet #2 with same amounts must add ₹0 delta!');
+
+    led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(led.diffSheets.length, 2);
+    assert.equal(led.diffTotal, 732886, 'Diff Target must NOT double when Sheet #2 repeats same values!');
+    assert.equal(led.totalBatchPaid, 732886, 'Diff Paid must NOT create duplicate ₹0 batch!');
+
+    // Highlight checks: Dashboard Diff Box, Sheet Viewer, Emp Ledger & Audit Step 2
+    const dashHtml = bA.elements.salaryPayoutContainer.innerHTML;
+    assert.ok(dashHtml.includes('1,84,274 Added'), 'Dashboard Diff Box must highlight +₹1,84,274 Added on Sheet #1');
+    assert.ok(dashHtml.includes('₹0 Added'), 'Dashboard Diff Box must highlight ₹0 Added on Sheet #2');
+    assert.ok(dashHtml.includes('+₹500'), 'Emp Ledger must highlight +₹500 chip for Nikhil');
+
+    bA.mockWindow.ATPLSalaryPayout.openUploadedSheetViewer(res1.sheetId);
+    assert.ok(deltaEls.spSheetViewerBody.innerHTML.includes('+₹500 Added'));
+    bA.mockWindow.ATPLSalaryPayout.openUploadedSheetViewer(res2.sheetId);
+    assert.ok(deltaEls.spSheetViewerBody.innerHTML.includes('₹0 (No Change)'));
+
+    const nikhilAudit = bA.mockWindow.ATPLSalaryPayout.buildEmpPayoutAudit('9001', '2026-09');
+    assert.equal(nikhilAudit.diffAndAdjustments.diffSheets[0].deltaAdded, 500);
+    assert.equal(nikhilAudit.diffAndAdjustments.diffSheets[1].deltaAdded, 0);
+    assert.equal(nikhilAudit.summary.totalDiffDisbursed, 2000);
+    assert.equal(nikhilAudit.summary.pendingDiff, 0);
+    bA.mockWindow.ATPLSalaryPayout.openEmpAuditCheck('9001', '2026-09');
+    const auditHtml = bA.elements.salaryPayoutContainer.innerHTML;
+    assert.ok(auditHtml.includes('+₹500 Added'));
+    assert.ok(auditHtml.includes('₹0 Added'));
+
+    // Step 4: Deleting Sheet #2 (₹0 delta) must preserve Nikhil = 2,000 & total = 7,32,886 from Sheet #1!
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(res2.sheetId), true);
+    led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(led.diffSheets.length, 1);
+    assert.equal(led.diffTotal, 732886);
+    assert.equal(led.totalBatchPaid, 732886);
+
+    // Deleting Sheet #1 cleans up Sheet #1 + its auto-batch while leaving Part 1 (₹5,48,612) intact!
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(res1.sheetId), true);
+    led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-09');
+    assert.equal(led.diffSheets.length, 0);
+    assert.equal(led.diffTotal, 0);
+    assert.equal(led.totalBatchPaid, 548612);
   });
 });
