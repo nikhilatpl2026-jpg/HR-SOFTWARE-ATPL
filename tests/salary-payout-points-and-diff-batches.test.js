@@ -1038,4 +1038,98 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.ok(htmlOut.includes('23,800'));
     assert.ok(htmlOut.includes('Badha'));
   });
+
+  await t.test('14. Compliance CSV (incl. blank Emp ID off-roll rows), Diff Upload/Manual -> Paid Payments, & In-App Sheet Viewer', async () => {
+    const bA = createBrowser('BrowserA_Viewer', new Map());
+    const viewerEls = {
+      spSheetViewerBody: { innerHTML: '' },
+      spSheetViewerFoot: { innerHTML: '' },
+      spSheetViewerSearch: { value: '' },
+      spImportKindSel: { value: 'COMPLIANCE' },
+      spImportMonthInp: { value: '2026-10' },
+      spImportReplaceChk: { checked: true },
+      spImportPreviewBox: { innerHTML: '' },
+      spImportDiffAutoPayChk: { checked: true },
+      spManSheetKind: { value: 'DIFF' },
+      spManSheetTitle: { value: 'Oct Manual Diff Cash' },
+      spManSheetAmt: { value: '15000' },
+      spManSheetRem: { value: 'Cash diff lot' },
+      spManDiffAutoPayChk: { checked: true }
+    };
+    const origGet = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => viewerEls[id] || origGet(id);
+    bA.mockWindow.document.querySelectorAll = () => [];
+    bA.mockWindow.FileReader = class {
+      readAsText(file) { this.onload && this.onload({ target: { result: file._text } }); }
+      readAsArrayBuffer(file) { this.onload && this.onload({ target: { result: file._buf } }); }
+    };
+
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-10');
+
+    // A) Upload Compliance CSV with quoted commas, newline header, & blank Employee ID off-roll row (Babloo)
+    const sampleCompCsv = [
+      'S.No.,Employee ID,Name of employee,"Gross \nTotal \nSalary",Manual Amount,Diff. Amount,PF@12%,ESIC @0.75%,Advance Deduction,Total Deduction,Net Payable,Remarks',
+      '1,00135,SAMPAT LAL,27660,"27,660",188,2300,144,,2444,"25,028",onroll',
+      '2,,Babloo,15950,"15,950","15,950",0,0,0,0,0,off roll',
+      ',,Grand Total,,"43,610","16,138",2300,144,,2444,"25,028",',
+      'Prepared By HR Department,,,,,,,,,,,'
+    ].join('\n');
+
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'oct 2026.csv', _text: sampleCompCsv }] });
+    const compImp = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(compImp.ok, true);
+    assert.equal(compImp.imported, 2, 'Both coded row 00135 and blank-ID row Babloo must import (skipping Grand Total & Prepared By)');
+
+    let ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.complianceTotal, 25028, 'Compliance Net Payable must show directly in top KPI');
+    assert.equal(ledOct.manualTotal, 43610);
+    assert.equal(ledOct.compSheetDiffTotal, 16138, 'Full Compliance Diff including blank-ID Babloo must compute');
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('25,028'));
+    assert.ok(bA.elements.salaryPayoutContainer.innerHTML.includes('View'));
+
+    // Open In-App Viewer on the uploaded Compliance sheet and filter
+    const vRows = bA.mockWindow.ATPLSalaryPayout.openUploadedSheetViewer(compImp.sheetId);
+    assert.equal(vRows.length, 2);
+    assert.ok(viewerEls.spSheetViewerBody.innerHTML.includes('Babloo'));
+    assert.ok(viewerEls.spSheetViewerFoot.innerHTML.includes('25,028'));
+    viewerEls.spSheetViewerSearch.value = 'babloo';
+    bA.mockWindow.ATPLSalaryPayout.filterSheetViewerRows();
+    assert.ok(viewerEls.spSheetViewerFoot.innerHTML.includes('1 / 2'));
+
+    // B) Add Manual Diff via UI -> lands in Diff Sheets AND auto-adds to Diff Me Di (Paid)
+    bA.mockWindow.ATPLSalaryPayout.submitManualSheetEntry();
+    ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.diffTotal, 15000);
+    assert.equal(ledOct.totalBatchPaid, 15000, 'Manual Diff from UI must appear in Diff Payments directly');
+    assert.equal(ledOct.totalMonthSalary, 40028);
+
+    // C) Upload Diff CSV via UI -> appends to Diff Sheets AND auto-adds to Diff Payments
+    viewerEls.spImportKindSel.value = 'DIFF';
+    viewerEls.spImportReplaceChk.checked = false;
+    viewerEls.spImportDiffAutoPayChk.checked = true;
+    const sampleDiffCsv = 'Emp Code,Name of employee,Diff Amount,Remarks\n00135,SAMPAT LAL,188,oct diff\n';
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'oct diff.csv', _text: sampleDiffCsv }] });
+    const diffImp = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(diffImp.ok, true);
+
+    ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.diffSheets.length, 2);
+    assert.equal(ledOct.diffTotal, 15188);
+    assert.equal(ledOct.totalBatchPaid, 15188);
+    assert.equal(ledOct.totalMonthSalary, 40216);
+
+    // D) Open In-App Batch Viewer cleanly (must auto-clear previous viewer search query!)
+    const bRows = bA.mockWindow.ATPLSalaryPayout.openBatchSheetViewer(ledOct.batches[1].id);
+    assert.equal(bRows.length, 1);
+    assert.ok(viewerEls.spSheetViewerBody.innerHTML.includes('SAMPAT LAL'));
+    assert.ok(viewerEls.spSheetViewerFoot.innerHTML.includes('188'));
+
+    // E) Deleting the Diff Sheet cleanly deletes both the sheet and its auto-linked Batch
+    assert.equal(bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(diffImp.sheetId), true);
+    ledOct = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledOct.diffSheets.length, 1);
+    assert.equal(ledOct.diffTotal, 15000);
+    assert.equal(ledOct.totalBatchPaid, 15000);
+  });
 });
