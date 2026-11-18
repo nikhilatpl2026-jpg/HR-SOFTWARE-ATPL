@@ -4424,8 +4424,10 @@
     h += '    </div>';
 
     var baakiSubTxt = '';
+    var baakiBtnHtml = '';
     if (ledger.compDiffUncoveredTotal > 0) {
-      baakiSubTxt = 'Comp Sheet Diff Chhoota (' + ledger.compDiffUncoveredRows.length + ' emp): ' + formatINR(ledger.compDiffUncoveredTotal) + (ledger.diffRemainingTotal > 0 ? (' · Diff Sheet Baaki: ' + formatINR(ledger.diffRemainingTotal)) : '') + ' · <button type="button" onclick="ATPLSalaryPayout.setTab(\'overview\');ATPLSalaryPayout.setOverviewFilter(\'COMP_DIFF_CHHOOTA\')" style="border:none;background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:4px;cursor:pointer;text-decoration:underline">List Dekhein</button>';
+      baakiSubTxt = 'Comp Sheet Diff Chhoota (' + ledger.compDiffUncoveredRows.length + ' emp): ' + formatINR(ledger.compDiffUncoveredTotal) + (ledger.diffRemainingTotal > 0 ? (' · Diff Sheet Baaki: ' + formatINR(ledger.diffRemainingTotal)) : '');
+      baakiBtnHtml = ' · <button type="button" onclick="ATPLSalaryPayout.setTab(\'overview\');ATPLSalaryPayout.setOverviewFilter(\'COMP_DIFF_CHHOOTA\')" style="border:none;background:#fef3c7;color:#92400e;font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:4px;cursor:pointer;text-decoration:underline">List Dekhein</button>';
     } else if (ledger.smallLeftoverRows.length > 0) {
       baakiSubTxt = ledger.smallLeftoverRows.length + ' small leftover (≤₹500): ' + formatINR(ledger.smallLeftoverTotal);
     } else if (ledger.diffRemainingTotal > 0) {
@@ -4438,7 +4440,7 @@
     h += '    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px">';
     h += '      <div style="font-size:11px;font-weight:700;color:#64748b">Diff Baaki / Chhoota Hua</div>';
     h += '      <div style="font-size:21px;font-weight:800;color:' + (ledger.diffBaakiTotal > 0 ? '#dc2626' : '#15803d') + ';margin-top:4px;font-variant-numeric:tabular-nums">' + formatINR(ledger.diffBaakiTotal) + '</div>';
-    h += '      <div style="font-size:11px;color:' + (ledger.compDiffUncoveredTotal > 0 ? '#b45309' : '#475569') + ';margin-top:3px">' + esc(baakiSubTxt) + '</div>';
+    h += '      <div style="font-size:11px;color:' + (ledger.compDiffUncoveredTotal > 0 ? '#b45309' : '#475569') + ';margin-top:3px">' + esc(baakiSubTxt) + baakiBtnHtml + '</div>';
     h += '    </div>';
 
     var totalPayoutSub = ledger.totalBatchPaid > 0
