@@ -754,4 +754,77 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(ledB.rows.find(r => r.empCode === '25924').baseDiffAmount, 180000);
     assert.equal(ledB.rows.some(r => r.empCode === '26510'), false);
   });
+
+  await t.test('11. Working SHeet vs stale Sheet1, Oct Diff Bank Sheet (ALREADY GIVEN + #N/A + AMOUNT), & File Search Filter', () => {
+    const bA = createBrowser('BrowserA_Oct', cloud);
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    const octCompWb = {
+      name: 'Sent Compilance Sheet October-26 (1).xlsx',
+      sheets: {
+        'Sheet1': [
+          ['S.No.', 'Employee ID', 'Name of employee', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable', 'Remarks'],
+          [1, '00135', 'SAMPAT LAL', 27660, 188, 2300, 144, 46526, 'onroll'],
+          [2, '10582', 'TEJ PAL PRAJAPAT', 18500, 0, 1547, 97, 16830, 'onroll']
+        ],
+        'working SHeet': [
+          ['S.No.', 'Employee ID', 'Name of employee', 'Manual Amount', 'Diff. Amount', 'PF@12%', 'ESIC @0.75%', 'Net Payable', 'Remarks'],
+          [1, '00135', 'SAMPAT LAL', 27660, 188, 2300, 144, 7570000, 'onroll'],
+          [2, '10582', 'TEJ PAL PRAJAPAT', 18500, 0, 1547, 97, 24447, 'onroll'],
+          ['', '', 'Grand Total', 8527635, 596008, 146415, 7581, 7594447, '']
+        ]
+      }
+    };
+    const metaOct = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsWithMeta(octCompWb, 'COMPLIANCE');
+    assert.deepEqual(Array.from(metaOct.selectedSheets), ['working SHeet'], 'Must select active working SHeet instead of stale Sheet1');
+    assert.equal(metaOct.totals.complianceTotal, 7594447);
+    assert.equal(metaOct.totals.pfTotal, 3847);
+    assert.equal(metaOct.totals.esicTotal, 241);
+
+    const octDiffWb = {
+      name: 'BANK SHEET DIFF AMOUNT OCT MONTH -732886.xlsx',
+      sheets: {
+        'Sheet1': [
+          ['', 'BANK SHEET DIFF AMOUNT OCT MONTH -732886', '', '', '', '', '', '', ''],
+          [],
+          ['Employee ID', 'Name of employee', 'Catgrory 02', 'A.C NO ', 'IFSC CODE ', 'BANK NAME ', 'MANUAL AMOUNT', 'ALREADY GIVEN', 'AMOUNT'],
+          ['00135', 'SAMPAT LAL', 'STAFF NAME', '013501', 'BARB0', 'BOB', 27660, 25028, 711506],
+          ['25191', 'UMMIAD SINGH', 'CARD NO-6', '131018', 'HDFC0', 'HDFC', 21380, '#N/A', 21380],
+          ['TOTAL', '', '', '', '', '', 8156209, '', 732886],
+          ['', '', '', '', '', '', 'DIRECTOR SIGN', '', '']
+        ]
+      }
+    };
+    const metaDiff = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsWithMeta(octDiffWb, 'DIFF');
+    assert.equal(metaDiff.totals.empCount, 2);
+    assert.equal(metaDiff.totals.diffTotal, 732886);
+    assert.equal(metaDiff.totals.complianceTotal, 0);
+    assert.equal(metaDiff.primaryColumns.diffCol, 'AMOUNT');
+    assert.equal(metaDiff.primaryColumns.complianceCol, null);
+
+    // Even in BOTH mode, a Diff bank sheet (ALREADY GIVEN + AMOUNT without Net Payable) must not leak AMOUNT into complianceTotal
+    const metaDiffBoth = bA.mockWindow.ATPLSalaryPayout.extractSalaryRowsWithMeta(octDiffWb, 'BOTH');
+    assert.equal(metaDiffBoth.totals.diffTotal, 732886);
+    assert.equal(metaDiffBoth.totals.complianceTotal, 0);
+
+    // File Search Box filter test
+    bA.mockWindow.FILES.push(octCompWb, octDiffWb);
+    bA.mockWindow.ATPLSalaryPayout.openImportAndTargetsModal('COMPLIANCE');
+    assert.ok(bA.elements.salPayoutModal.innerHTML.includes('spImportFileSearch'), 'Search input must render inside Upload Modal');
+    const selEl = { value: octCompWb.name, innerHTML: '' };
+    const cntEl = { textContent: '' };
+    const origGet = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => {
+      if (id === 'spImportFileSel') return selEl;
+      if (id === 'spImportFileCount') return cntEl;
+      return origGet(id);
+    };
+    try {
+      const matched = bA.mockWindow.ATPLSalaryPayout.filterImportFileSelect('oct diff');
+      assert.deepEqual(Array.from(matched), ['BANK SHEET DIFF AMOUNT OCT MONTH -732886.xlsx']);
+      assert.equal(selEl.value, 'BANK SHEET DIFF AMOUNT OCT MONTH -732886.xlsx');
+      assert.ok(cntEl.textContent.startsWith('1 / '));
+    } finally {
+      bA.mockWindow.document.getElementById = origGet;
+    }
+  });
 });

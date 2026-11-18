@@ -1599,7 +1599,9 @@
   function parseNumeric(v) {
     if (typeof v === 'number' && Number.isFinite(v)) return v;
     if (typeof v !== 'string') return 0;
-    var cleaned = v.trim().replace(/\/-$/, '').replace(/[^\d.-]/g, '');
+    var raw = v.trim();
+    if (!raw || /^(#|err:|n\/a$|na$|nil$|null$|none$|-$)/i.test(raw)) return 0;
+    var cleaned = raw.replace(/\/-$/, '').replace(/[^\d.-]/g, '');
     if (!cleaned || cleaned === '-' || cleaned === '.') return 0;
     var n = Number(cleaned);
     return Number.isFinite(n) ? n : 0;
@@ -1618,13 +1620,13 @@
     return -1;
   }
 
-  function parseSingleSalarySheet(grid, sheetName, kind) {
+  function parseSingleSalarySheet(grid, sheetName, kind, fileName) {
     if (!Array.isArray(grid) || grid.length < 2) return null;
     var hdrIdx = -1;
     var mergedHeaders = null;
     var dataStartIdx = -1;
 
-    for (var r = 0; r < Math.min(grid.length, 16); r++) {
+    for (var r = 0; r < Math.min(grid.length, 25); r++) {
       var row = grid[r];
       if (!Array.isArray(row)) continue;
       var normRow = row.map(cleanHeader);
@@ -1685,6 +1687,12 @@
     var iGenericAmt = findHeaderIdx(h, [
       /^transfer\s*amt$/, /^transfer\s*amount$/, /^cr\s*amt$/, /^paid\s*amount$/, /^amount$/, /^amt$/, /^payable$/
     ], /\b(manual|diff|difference|gross|earning|deduction|pf|esic|advance|loan)\b/);
+    var iAlreadyGiven = findHeaderIdx(h, [/^already\s*given$/, /^already\s*paid$/, /\balready\s*(given|paid)\b/]);
+    var bannerText = String(fileName || '') + ' ' + String(sheetName || '');
+    for (var br = 0; br < hdrIdx; br++) {
+      if (Array.isArray(grid[br])) bannerText += ' ' + grid[br].join(' ');
+    }
+    var isDiffBankSheet = (iCompExplicit < 0) && (iAlreadyGiven >= 0 || (/\b(diff|difference)\b/i.test(bannerText) && iGenericAmt >= 0));
     var iComp = iCompExplicit >= 0 ? iCompExplicit : iGenericAmt;
 
     var iPfEmp = findHeaderIdx(h, [
@@ -1719,6 +1727,14 @@
       if (/^(total|grand\s*total|sub\s*total|sum|summary|page\s*total|net\s*total|sr\.?\s*no\.?|s\.?\s*no\.?|emp\s*code|employee\s*id)$/i.test(rawCode)) continue;
       if (/^(total|grand\s*total|sub\s*total|sum|summary|page\s*total|net\s*total)(\b|:)/i.test(rawName)) continue;
       if (/^(total|grand\s*total|sub\s*total|page\s*total)(\b|:)/i.test(cell0)) continue;
+      var hasRowTotalLabel = false;
+      for (var tc = 0; tc < Math.min(dataRow.length, 6); tc++) {
+        if (/^(total|grand\s*total|sub\s*total|page\s*total|net\s*total)(\b|:)/i.test(String(dataRow[tc] === null || dataRow[tc] === undefined ? '' : dataRow[tc]).trim())) {
+          hasRowTotalLabel = true;
+          break;
+        }
+      }
+      if (hasRowTotalLabel) continue;
 
       if (!rawCode && rawAcc) {
         var byAcc = findEmployeeByAccount(rawAcc);
@@ -1752,6 +1768,10 @@
       } else if (kind === 'BATCH') {
         payAmt = iDiff >= 0 && diffColVal > 0 ? diffColVal : (genAmtVal || compColVal || manColVal);
         if (payAmt <= 0) continue;
+      } else if (isDiffBankSheet) {
+        compVal = 0;
+        diffVal = iDiff >= 0 ? diffColVal : genAmtVal;
+        if (diffVal <= 0 && manColVal <= 0) continue;
       } else {
         compVal = iCompExplicit >= 0 ? compColVal : (diffColVal === 0 && manColVal === 0 ? genAmtVal : compColVal);
         diffVal = diffColVal;
@@ -1784,18 +1804,17 @@
       if (!seenInSheet[norm]) {
         seenInSheet[norm] = recObj;
         rows.push(recObj);
+        compSum = round2(compSum + compVal);
+        manualSum = round2(manualSum + manColVal);
+        diffSum = round2(diffSum + diffVal);
+        pfSum = round2(pfSum + pfEmpVal);
+        esicSum = round2(esicSum + esicEmpVal);
       } else if (kind === 'BATCH') {
         seenInSheet[norm].amount = round2(seenInSheet[norm].amount + payAmt);
         if (remVal && seenInSheet[norm].remarks.indexOf(remVal) < 0) {
           seenInSheet[norm].remarks = seenInSheet[norm].remarks ? (seenInSheet[norm].remarks + '; ' + remVal) : remVal;
         }
       }
-
-      compSum = round2(compSum + compVal);
-      manualSum = round2(manualSum + manColVal);
-      diffSum = round2(diffSum + diffVal);
-      pfSum = round2(pfSum + pfEmpVal);
-      esicSum = round2(esicSum + esicEmpVal);
     }
 
     if (!rows.length) return null;
@@ -1806,19 +1825,25 @@
     if (iManual >= 0) score += 45;
     if (iPfEmp >= 0 || iEsicEmp >= 0) score += 35;
     if (iDiff >= 0) score += 25;
-    if (/\b(fourmala|formula|final|compliance|master|main|salary|payroll|consolidated|workers|staff)\b/.test(lowName)) score += 25;
+    if (/\b(fourmala|formula|final|compliance|master|main|salary|payroll|consolidated|workers|staff|working\s*sheet|working)\b/.test(lowName)) score += 25;
     if (kind !== 'BATCH' && /\b(jiska|jisko|remove|rakh|non\s*hdfc|hdfc|icici|sbi|axis|neft|rtgs|bank\s*sheet|sheet\d+|copy|old|bak|backup)\b/.test(lowName)) score -= 75;
+
+    var dispCompIdx = (kind === 'DIFF' || (kind === 'BOTH' && isDiffBankSheet)) ? iCompExplicit : iComp;
+    var dispDiffCol = iDiff >= 0
+      ? String(grid[hdrIdx][iDiff] || 'Diff')
+      : (((kind === 'DIFF' || isDiffBankSheet) && iGenericAmt >= 0) ? String(grid[hdrIdx][iGenericAmt] || 'AMOUNT') : null);
 
     return {
       sheetName: sheetName,
       score: round2(score),
       rows: rows,
       hasExplicitComp: iCompExplicit >= 0,
+      isDiffBankSheet: isDiffBankSheet,
       columns: {
         codeCol: iCode >= 0 ? String(grid[hdrIdx][iCode] || 'Emp Code') : null,
-        complianceCol: iComp >= 0 ? String(grid[hdrIdx][iComp] || 'Net Payable') : null,
+        complianceCol: dispCompIdx >= 0 ? String(grid[hdrIdx][dispCompIdx] || 'Net Payable') : null,
         manualCol: iManual >= 0 ? String(grid[hdrIdx][iManual] || 'Manual') : null,
-        diffCol: iDiff >= 0 ? String(grid[hdrIdx][iDiff] || 'Diff') : null,
+        diffCol: dispDiffCol,
         pfCol: iPfEmp >= 0 ? String(grid[hdrIdx][iPfEmp] || 'PF 12%') : null,
         esicCol: iEsicEmp >= 0 ? String(grid[hdrIdx][iEsicEmp] || 'ESIC 0.75%') : null
       },
@@ -1839,8 +1864,8 @@
     var candidates = [];
     Object.keys(fileObj.sheets).forEach(function(sheetName) {
       var low = String(sheetName || '').toLowerCase();
-      if (/\b(summary|abstract|chart|challan|ecr|pf summary|esic summary|attendance|absent|ot sheet|pivot|rough|working)\b/.test(low)) return;
-      var parsed = parseSingleSalarySheet(fileObj.sheets[sheetName], sheetName, kind);
+      if (/\b(summary|abstract|chart|challan|ecr|pf summary|esic summary|attendance|absent|ot sheet|pivot|rough)\b/.test(low)) return;
+      var parsed = parseSingleSalarySheet(fileObj.sheets[sheetName], sheetName, kind, fileObj.name);
       if (parsed && parsed.rows.length > 0) candidates.push(parsed);
     });
     candidates.sort(function(a, b) { return b.score - a.score; });
@@ -2725,7 +2750,11 @@
     h += '</div>';
 
     // Tab Picker Checkboxes so user has 100% control if Excel has multiple tabs
-    h += '<div style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;background:#fff;border:1px solid #dcfce7;border-radius:7px;padding:6px 8px">';
+    var looksLikeDiffSheet = allTabs.some(function(tb) { return tb.isDiffBankSheet; }) || (/\bdiff(erence)?\b/i.test(String(wbObj.name || '')) && allTabs.every(function(tb) { return !tb.hasExplicitComp; }));
+    if (kind === 'COMPLIANCE' && looksLikeDiffSheet) {
+      h += '<div style="margin-bottom:6px;padding:6px 9px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:11px;font-weight:700;color:#92400e">⚠️ Yeh Diff Bank Sheet lag rahi hai (is me Net Payable column nahi hai). Agar yeh Diff sheet hai toh upar Sheet Type me "Diff Salary Sheet" select karein.</div>';
+    }
+        h += '<div style="margin-bottom:8px;display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;background:#fff;border:1px solid #dcfce7;border-radius:7px;padding:6px 8px">';
     allTabs.forEach(function(tab) {
       var isChecked = explicitTabs ? (explicitTabs.indexOf(tab.sheetName) >= 0) : !!tab.recommended;
       var valDisp = kind === 'DIFF' ? formatINR(tab.totals.diffTotal) : formatINR(tab.totals.complianceTotal);
@@ -2835,6 +2864,10 @@
       h += '        <div style="margin-bottom:8px;padding:8px 10px;background:#fefce8;border:1px solid #fde047;border-radius:8px;font-size:11px;font-weight:700;color:#854d0e">🔒 Is mahine ki Compliance Sheet pehle se processed &amp; locked hai (sirf Bank Return allowed). Nayi sheet upload karne ke liye pehle Dashboard par Compliance card se Unlock ya Delete karein.</div>';
     }
     if (loadedFiles.length) {
+      h += '        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">';
+      h += '          <input type="text" id="spImportFileSearch" value="" oninput="ATPLSalaryPayout.filterImportFileSelect(this.value)" placeholder="Search saved file (e.g. Oct, Diff, Compilance, 2026)..." style="flex:1;min-width:220px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:12px;box-sizing:border-box">';
+      h += '          <span id="spImportFileCount" style="font-size:11px;font-weight:700;color:#64748b;white-space:nowrap">' + loadedFiles.length + ' / ' + loadedFiles.length + ' files</span>';
+      h += '        </div>';
       h += '        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
       h += '          <select id="spImportFileSel" onchange="ATPLSalaryPayout.previewSelectedFileImport()" style="flex:1;min-width:200px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:12px">';
       loadedFiles.forEach(function(f) { h += '<option value="' + esc(f.name) + '">' + esc(f.name) + '</option>'; });
@@ -2886,6 +2919,36 @@
     h += '</div>';
     modal.innerHTML = h;
     if (loadedFiles.length) previewSelectedFileImport();
+  }
+
+  function filterImportFileSelect(query) {
+    var sel = document.getElementById('spImportFileSel');
+    var cntEl = document.getElementById('spImportFileCount');
+    var loadedFiles = getLoadedSalaryWorkbooks();
+    var tokens = String(query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    var matches = tokens.length
+      ? loadedFiles.filter(function(f) {
+          var nm = String((f && f.name) || '').toLowerCase();
+          return tokens.every(function(tok) { return nm.indexOf(tok) >= 0; });
+        })
+      : loadedFiles;
+    if (cntEl) cntEl.textContent = matches.length + ' / ' + loadedFiles.length + ' files';
+    if (!sel) return matches.map(function(f) { return f.name; });
+    var prevVal = String(sel.value || '');
+    if (!matches.length) {
+      sel.innerHTML = '<option value="">Koi matching file nahi mili</option>';
+      sel.value = '';
+      var box = document.getElementById('spImportPreviewBox');
+      if (box) box.innerHTML = '';
+      return [];
+    }
+    sel.innerHTML = matches.map(function(f) {
+      return '<option value="' + esc(f.name) + '">' + esc(f.name) + '</option>';
+    }).join('');
+    var stillPresent = matches.some(function(f) { return f.name === prevVal; });
+    sel.value = stillPresent ? prevVal : matches[0].name;
+    previewSelectedFileImport();
+    return matches.map(function(f) { return f.name; });
   }
 
   function runFileImport() {
@@ -3501,6 +3564,7 @@
     submitBatchModal: submitBatchModal,
     printBatch: printBatch,
     openImportAndTargetsModal: openImportAndTargetsModal,
+    filterImportFileSelect: filterImportFileSelect,
     runFileImport: runFileImport,
     handleDirectExcelUpload: handleDirectExcelUpload,
     submitTargetsOnly: submitTargetsOnly,
