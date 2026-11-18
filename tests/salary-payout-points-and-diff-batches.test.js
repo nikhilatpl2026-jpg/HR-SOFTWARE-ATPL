@@ -1256,4 +1256,102 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.equal(led.diffTotal, 0);
     assert.equal(led.totalBatchPaid, 548612);
   });
+
+  await t.test('16. Compliance Off-Roll Exact Total (Dummy Codes / Blank Name / Duplicate / Unlabeled Total) & Cross-Sheet NOID<->EmpCode Smart Delta Exact Match', async () => {
+    const bA = createBrowser('BrowserA_ExactReconcile', new Map());
+    const uiEls = {
+      spSheetViewerBody: { innerHTML: '' },
+      spSheetViewerFoot: { innerHTML: '' },
+      spSheetViewerSearch: { value: '' },
+      spImportKindSel: { value: 'COMPLIANCE' },
+      spImportMonthInp: { value: '2026-10' },
+      spImportReplaceChk: { checked: true },
+      spImportReconcileChk: { checked: true },
+      spImportDiffAutoPayChk: { checked: true },
+      spImportPreviewBox: { innerHTML: '' }
+    };
+    const origGet = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => uiEls[id] || origGet(id);
+    bA.mockWindow.document.querySelectorAll = () => [];
+    bA.mockWindow.FileReader = class {
+      readAsText(file) { this.onload && this.onload({ target: { result: file._text } }); }
+      readAsArrayBuffer(file) { this.onload && this.onload({ target: { result: file._buf } }); }
+    };
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-10');
+
+    // Compliance CSV with:
+    // - regular employee 00135 (25000 Net, 200 Comp Diff)
+    // - off-roll dummy codes "0" / "NA" / blank code (1774, 968, 487)
+    // - blank-name row with valid explicit code 00991 and diff (3871)
+    // - unlabeled Grand Total row at bottom summing Manual/Net/CompDiff (must be skipped!)
+    const compCsv = [
+      'Sr No,Emp Code,Employee Name,Account No,Manual Amount,Diff. Amount,PF@12%,ESIC@0.75%,Net Payable,Remarks',
+      '1,00135,SAMPAT LAL,11110001,27660,188,2300,144,25028,onroll',
+      '2,0,Raja kumar,,1774,1774,0,0,0,off roll',
+      '3,NA,Jaan Mohd.,,968,968,0,0,0,off roll',
+      '4,,R. K.,,487,487,0,0,0,off roll',
+      '5,00991,,99990001,3871,3871,0,0,0,off roll',
+      '6,OFF,Cash Worker,,9032,9032,0,0,0,off roll',
+      ',,,,43792,16320,2300,144,25028,'
+    ].join('\n');
+
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'Sent Compilance Sheet October-26.csv', _text: compCsv }] });
+    const compImp = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(compImp.ok, true);
+    assert.equal(compImp.imported, 6, 'All 6 employee rows must be extracted without dropping dummy codes or unlabeled rows');
+
+    let led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(led.manualTotal, 43792, 'Manual total must match Excel exactly');
+    assert.equal(led.compSheetDiffTotal, 16320, 'Comp Diff total must match Excel exactly');
+    assert.equal(led.complianceTotal, 25028);
+
+    // Simulate Part 1 Batch paying Comp Diff (16,320) where Raja kumar & Jaan Mohd. are stored with Compliance IDs
+    const compBatAllocs = led.rows.filter(r => r.compDiffAmount > 0).map(r => ({
+      empCode: r.empCode,
+      empName: r.empName,
+      accountNo: r.accountNo,
+      amount: r.compDiffAmount
+    }));
+    bA.mockWindow.ATPLSalaryPayout.addOrUpdateDiffBatch({
+      monthKey: '2026-10',
+      partNumber: 1,
+      title: 'Part 1 - Comp Diff',
+      status: 'DISBURSED',
+      allocations: compBatAllocs
+    });
+
+    // Now upload Diff Sheet where off-roll employees have real Bank Codes & Account Nos + slight name punctuation diffs:
+    // - Sampat Lal increased 188 -> 500 (+312)
+    // - Raja kumar (now code 00560) stayed 1774 -> +0
+    // - Jaan Mohd (no dot, now code 00561) increased 968 -> 1468 (+500)
+    // - R. K. stayed 487 -> +0
+    // - 00991 stayed 3871 -> +0
+    // - Cash Worker (now matched by account/name code 00562) stayed 9032 -> +0
+    // Sheet Total = 500 + 1774 + 1468 + 487 + 3871 + 9032 = 17,132
+    // Expected Baseline = 16,320, Expected Delta = +812, Final Paid = 16,320 + 812 = 17,132 === Diff Sheet Target!
+    uiEls.spImportKindSel.value = 'DIFF';
+    uiEls.spImportReplaceChk.checked = false;
+    const diffCsv = [
+      'Emp Code,Name of employee,Account No,AMOUNT,Remarks',
+      '00135,SAMPAT LAL,11110001,500,diff sheet',
+      '00560,Raja Kumar.,56000001,1774,diff sheet',
+      '00561,Jaan Mohd,56100001,1468,diff sheet',
+      '00563,R K,56300001,487,diff sheet',
+      '00991,Offroll 991,99990001,3871,diff sheet',
+      '00562,Cash Worker,56200001,9032,diff sheet'
+    ].join('\n');
+
+    bA.mockWindow.ATPLSalaryPayout.handleDirectExcelUpload({ files: [{ name: 'DIFF BANK SHEET OCT.csv', _text: diffCsv }] });
+    const diffImp = bA.mockWindow.ATPLSalaryPayout.confirmPreviewImport();
+    assert.equal(diffImp.ok, true);
+    assert.equal(diffImp.rawTotal, 17132);
+    assert.equal(diffImp.baselineTotal, 16320, 'Off-roll NOID/Account rows must match baseline without falling back to 0');
+    assert.equal(diffImp.deltaTotal, 812, 'Only +312 (Sampat) + +500 (Jaan Mohd) = +812 delta should be added');
+
+    led = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(led.diffTotal, 17132);
+    assert.equal(led.totalBatchPaid, 17132, 'Diff Me Di (Paid) must match Diff Sheet / Target (17,132) with zero double counting!');
+    assert.equal(led.diffBaakiTotal, 0);
+  });
 });

@@ -116,6 +116,32 @@
     return c.toLowerCase();
   }
 
+  function normalizeAccountNo(acc) {
+    var raw = String(acc === null || acc === undefined ? '' : acc).trim().replace(/\.0$/, '');
+    if (/^(na|n\/a|nil|none|null|cash|pending|-+)$/i.test(raw)) return '';
+    var clean = raw.replace(/[^a-z0-9]/gi, '').replace(/^0+/, '').toLowerCase();
+    return clean.length >= 4 ? clean : '';
+  }
+
+  function normalizePersonName(name) {
+    var s = String(name === null || name === undefined ? '' : name)
+      .toLowerCase()
+      .replace(/^\s*(mr|mrs|ms|miss|shri|smt|sh)\.?\s+/i, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (!s || /^(nil|na|n a|none|null|off roll|on roll|remarks?|note|notes)$/.test(s)) return '';
+    return s;
+  }
+
+  function isDummyEmpCode(code) {
+    var c = String(code === null || code === undefined ? '' : code).trim().replace(/\.0$/, '');
+    if (!c) return true;
+    if (/^[-_.\s]+$/.test(c)) return true;
+    if (/^0+$/.test(c)) return true;
+    if (/^(na|n\/a|nil|none|null|off|off\s*roll|on\s*roll|new|temp|temporary|cash|pending|blank)$/i.test(c)) return true;
+    return false;
+  }
+
   function formatMonthLabel(mk) {
     var m = String(mk || '').match(/^(\d{4})-(\d{2})$/);
     if (!m) return mk || '-';
@@ -186,14 +212,14 @@
   }
 
   function findEmployeeByName(name) {
-    var target = String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    var target = normalizePersonName(name);
     if (!target) return null;
     var list = getEmployeeMasterList();
     var matches = [];
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       if (!e) continue;
-      var nm = String(e.name || e.emp_name || e['Employee Name'] || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      var nm = normalizePersonName(e.name || e.emp_name || e['Employee Name'] || '');
       if (nm && nm === target) {
         matches.push({
           empCode: String(e.emp_id || e.empCode || e.code || e['Emp Code'] || '').trim(),
@@ -206,17 +232,34 @@
       }
     }
     if (matches.length === 1 && matches[0].empCode) return matches[0];
+    if (!matches.length) {
+      var salMatches = [];
+      Object.values(state.empSalaries || {}).forEach(function(s) {
+        if (!s || s.monthKey !== state.selectedMonth || state.tombstones[s.id]) return;
+        if (normalizePersonName(s.empName) === target && s.empCode) {
+          salMatches.push({
+            empCode: String(s.empCode).trim(),
+            name: String(s.empName || name).trim(),
+            dept: s.dept || '',
+            desig: s.desig || '',
+            accountNo: s.accountNo || '',
+            ifsc: s.ifsc || ''
+          });
+        }
+      });
+      if (salMatches.length === 1) return salMatches[0];
+    }
     return null;
   }
 
   function findEmployeeByAccount(accNo) {
-    var cleanAcc = String(accNo || '').replace(/\s+/g, '').replace(/^0+/, '');
+    var cleanAcc = normalizeAccountNo(accNo);
     if (!cleanAcc) return null;
     var list = getEmployeeMasterList();
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       if (!e) continue;
-      var ec = String(e.account_no || e.accountNo || e.bank_account || e['A/C No'] || '').replace(/\s+/g, '').replace(/^0+/, '');
+      var ec = normalizeAccountNo(e.account_no || e.accountNo || e.bank_account || e['A/C No'] || '');
       if (ec && ec === cleanAcc) {
         return {
           empCode: String(e.emp_id || e.empCode || e.code || '').trim(),
@@ -228,7 +271,103 @@
         };
       }
     }
+    var allSal = Object.values(state.empSalaries || {});
+    for (var j = 0; j < allSal.length; j++) {
+      var s = allSal[j];
+      if (!s || state.tombstones[s.id]) continue;
+      if (s.monthKey === state.selectedMonth && normalizeAccountNo(s.accountNo) === cleanAcc && s.empCode) {
+        return {
+          empCode: String(s.empCode).trim(),
+          name: String(s.empName || '').trim(),
+          dept: s.dept || '',
+          desig: s.desig || '',
+          accountNo: s.accountNo || '',
+          ifsc: s.ifsc || ''
+        };
+      }
+    }
     return null;
+  }
+
+  function isSyntheticCode(code) {
+    return /^(noid|noacc|row)_/i.test(String(code || '').trim());
+  }
+
+  function buildMonthIdentityIndex(monthKey) {
+    var mk = String(monthKey || state.selectedMonth).trim();
+    var existingNorms = {};
+    var accToNorms = {};
+    var nameToNorms = {};
+    var normToAcc = {};
+
+    function addEntry(nc, name, acc) {
+      if (!nc) return;
+      existingNorms[nc] = true;
+      var ca = normalizeAccountNo(acc);
+      if (ca) {
+        if (!normToAcc[nc]) normToAcc[nc] = ca;
+        if (!accToNorms[ca]) accToNorms[ca] = [];
+        if (accToNorms[ca].indexOf(nc) < 0) accToNorms[ca].push(nc);
+      }
+      var pn = normalizePersonName(name);
+      if (pn && !/^employee\s+/.test(pn)) {
+        if (!nameToNorms[pn]) nameToNorms[pn] = [];
+        if (nameToNorms[pn].indexOf(nc) < 0) nameToNorms[pn].push(nc);
+      }
+    }
+
+    Object.values(state.empSalaries || {}).forEach(function(s) {
+      if (!s || s.monthKey !== mk || state.tombstones[s.id]) return;
+      addEntry(normalizeCode(s.empCode), s.empName, s.accountNo);
+    });
+
+    getMonthBatches(mk).forEach(function(b) {
+      if (!b || b.status === 'CANCELLED') return;
+      (Array.isArray(b.allocations) ? b.allocations : []).forEach(function(al) {
+        if (!al || !al.empCode) return;
+        addEntry(normalizeCode(al.empCode), al.empName, al.accountNo);
+      });
+    });
+
+    return {
+      existingNorms: existingNorms,
+      accToNorms: accToNorms,
+      nameToNorms: nameToNorms,
+      normToAcc: normToAcc
+    };
+  }
+
+  function resolveCanonicalNorm(item, idIdx, usedNorms) {
+    var rawNc = normalizeCode(item && item.empCode);
+    if (!idIdx) return rawNc;
+    if (rawNc && idIdx.existingNorms[rawNc]) return rawNc;
+
+    var ca = normalizeAccountNo(item && item.accountNo);
+    if (ca && idIdx.accToNorms[ca] && idIdx.accToNorms[ca].length) {
+      var accList = idIdx.accToNorms[ca];
+      for (var i = 0; i < accList.length; i++) {
+        if (!usedNorms || !usedNorms[accList[i]]) return accList[i];
+      }
+      return accList[0];
+    }
+
+    var pn = normalizePersonName(item && item.empName);
+    if (pn && !/^employee\s+/.test(pn) && idIdx.nameToNorms[pn] && idIdx.nameToNorms[pn].length) {
+      var nmList = idIdx.nameToNorms[pn];
+      var incomingSynthetic = isSyntheticCode(rawNc);
+      var eligible = nmList.filter(function(cand) {
+        if (!incomingSynthetic && !isSyntheticCode(cand)) return false;
+        var candAcc = idIdx.normToAcc && idIdx.normToAcc[cand];
+        if (ca && candAcc && ca !== candAcc) return false;
+        return true;
+      });
+      for (var j = 0; j < eligible.length; j++) {
+        if (!usedNorms || !usedNorms[eligible[j]]) return eligible[j];
+      }
+      if (eligible.length === 1) return eligible[0];
+    }
+
+    return rawNc;
   }
 
   // ── CLOUD & LOCAL PERSISTENCE ENGINE ──
@@ -820,7 +959,24 @@
         var aAmt = round2(Number(al && al.amount) || 0);
         if (aAmt <= 0) return;
         allocSum = round2(allocSum + aAmt);
-        var row = ensureRow(al.empCode, { empCode: al.empCode, empName: al.empName });
+        var alNc = normalizeCode(al.empCode);
+        var row = alNc && empMap[alNc] ? empMap[alNc] : null;
+        if (!row) {
+          var alAcc = normalizeAccountNo(al.accountNo);
+          var alName = normalizePersonName(al.empName);
+          var allEmpRows = Object.values(empMap);
+          if (alAcc) {
+            var accHits = allEmpRows.filter(function(er) { return normalizeAccountNo(er.accountNo) === alAcc; });
+            if (accHits.length === 1) row = accHits[0];
+          }
+          if (!row && alName && !/^employee\s+/.test(alName)) {
+            var nameHits = allEmpRows.filter(function(er) { return normalizePersonName(er.empName) === alName; });
+            if (nameHits.length === 1) row = nameHits[0];
+          }
+          if (!row) {
+            row = ensureRow(al.empCode, { empCode: al.empCode, empName: al.empName, accountNo: al.accountNo });
+          }
+        }
         if (row && b.status !== 'CANCELLED') {
           row.diffPaid = round2(row.diffPaid + aAmt);
           row.batchBreakdown.push({
@@ -1060,14 +1216,18 @@
     var nc = normalizeCode(rawQuery);
     var em = findEmployeeByCode(rawQuery);
     var row = ledger.rows.find(function(r) { return r.normCode === nc; }) || null;
-    if (!row && rawQuery && !em) {
+    if (!row && rawQuery) {
+      var qAcc = normalizeAccountNo(rawQuery);
+      var qName = normalizePersonName(em ? em.name : rawQuery);
       var ql = rawQuery.toLowerCase();
       row = ledger.rows.find(function(r) {
-        return String(r.empName || '').toLowerCase().indexOf(ql) >= 0;
+        if (qAcc && normalizeAccountNo(r.accountNo) === qAcc) return true;
+        if (qName && normalizePersonName(r.empName) === qName) return true;
+        return !em && String(r.empName || '').toLowerCase().indexOf(ql) >= 0;
       }) || null;
       if (row) {
         nc = row.normCode;
-        em = findEmployeeByCode(row.empCode);
+        em = findEmployeeByCode(row.empCode) || em;
       }
     }
     var dispCode = (row && row.empCode) || (em && em.empCode) || rawQuery;
@@ -1461,16 +1621,26 @@
     var mk = String(monthKey || state.selectedMonth).trim();
     opts = opts || {};
     var replaceExisting = !!opts.replaceExisting;
+    var idIdx = buildMonthIdentityIndex(mk);
     var paidMap = {};
+    var paidByAcc = {};
+    var paidByName = {};
     getMonthBatches(mk).forEach(function(b) {
       if (!b || b.status === 'CANCELLED') return;
       (Array.isArray(b.allocations) ? b.allocations : []).forEach(function(al) {
         var nc = normalizeCode(al && al.empCode);
         var aAmt = round2(Number(al && al.amount) || 0);
-        if (nc && aAmt > 0) paidMap[nc] = round2((paidMap[nc] || 0) + aAmt);
+        if (nc && aAmt > 0) {
+          paidMap[nc] = round2((paidMap[nc] || 0) + aAmt);
+          var ca = normalizeAccountNo(al && al.accountNo);
+          if (ca) paidByAcc[ca] = round2((paidByAcc[ca] || 0) + aAmt);
+          var pn = normalizePersonName(al && al.empName);
+          if (pn && !/^employee\s+/.test(pn)) paidByName[pn] = round2((paidByName[pn] || 0) + aAmt);
+        }
       });
     });
     var seenMaxByNorm = {};
+    var usedNorms = {};
     var planRows = [];
     var rawTotal = 0;
     var baselineTotal = 0;
@@ -1484,13 +1654,16 @@
         planRows.push(null);
         return;
       }
-      var code = String(item.empCode).trim();
-      var nc = normalizeCode(code);
+      var nc = resolveCanonicalNorm(item, idIdx, usedNorms);
+      if (nc) usedNorms[nc] = true;
       var sal = state.empSalaries[mk + '::' + nc];
+      var code = String((sal && sal.empCode) || item.empCode).trim();
       var rawAmt = round2(Number(item.baseDiffAmount) || 0);
       var compDiffBase = round2(Number((sal && sal.compDiffAmount) || 0));
       var prevBaseDiff = replaceExisting ? 0 : round2(Number((sal && sal.baseDiffAmount) || 0));
-      var prevPaid = round2(paidMap[nc] || 0);
+      var itemAcc = normalizeAccountNo(item.accountNo);
+      var itemName = normalizePersonName(item.empName);
+      var prevPaid = round2(paidMap[nc] || (itemAcc && paidByAcc[itemAcc]) || (itemName && idIdx.nameToNorms[itemName] && idIdx.nameToNorms[itemName].length === 1 && paidByName[itemName]) || 0);
       var priorInSheet = seenMaxByNorm[nc] !== undefined ? seenMaxByNorm[nc] : 0;
       var baselineAmt = round2(Math.max(compDiffBase, prevBaseDiff, prevPaid, priorInSheet));
       var deltaAdded = Math.max(0, round2(rawAmt - baselineAmt));
@@ -1628,6 +1801,8 @@
     var reconcileDelta = (kind === 'DIFF' && !!opts.reconcileDelta);
     if (!mk || !Array.isArray(rowsList) || !rowsList.length) return { ok: false, imported: 0 };
     var recPlan = reconcileDelta ? computeDiffReconcilePlan(mk, rowsList, { replaceExisting: replaceExisting }) : null;
+    var idIdx = buildMonthIdentityIndex(mk);
+    var usedImportNorms = {};
     var nowIso = new Date().toISOString();
     var incomingIds = {};
     var count = 0;
@@ -1638,11 +1813,14 @@
 
     rowsList.forEach(function(item, rowIdx) {
       if (!item || !item.empCode) return;
-      var code = String(item.empCode).trim();
-      var id = mk + '::' + normalizeCode(code);
+      var planRow = recPlan && recPlan.rows ? recPlan.rows[rowIdx] : null;
+      var resolvedNc = (planRow && planRow.normCode) || (idIdx ? resolveCanonicalNorm(item, idIdx, usedImportNorms) : normalizeCode(item.empCode));
+      if (resolvedNc) usedImportNorms[resolvedNc] = true;
+      var id = mk + '::' + resolvedNc;
+      var prev = state.empSalaries[id];
+      var code = String((prev && prev.empCode) || (planRow && planRow.empCode) || item.empCode).trim();
       incomingIds[id] = true;
       var em = findEmployeeByCode(code);
-      var prev = state.empSalaries[id];
       delete state.tombstones[id];
 
       var rowComp = round2(Number(item.complianceAmount) || 0);
@@ -1655,7 +1833,6 @@
       var rowAdvDed = round2(Number(item.advanceDeduction) || 0);
       var rowTotDed = round2(Number(item.totalDeduction) || 0);
       var rowCompDiff = kind === 'DIFF' ? 0 : round2(Number(item.compDiffAmount !== undefined ? item.compDiffAmount : (kind === 'BOTH' ? rowDiff : 0)) || 0);
-      var planRow = recPlan && recPlan.rows ? recPlan.rows[rowIdx] : null;
       var rowBaseline = planRow ? planRow.baselineAmount : 0;
       var rowDelta = planRow ? planRow.deltaAdded : rowDiff;
 
@@ -2298,13 +2475,26 @@
       var totDedVal = iTotDed >= 0 ? Math.max(0, round2(parseNumeric(dataRow[iTotDed]))) : 0;
       var hasAnyMoney = compColVal > 0 || diffColVal > 0 || manColVal > 0 || genAmtVal > 0 || pfEmpVal > 0 || esicEmpVal > 0;
 
-      if ((!rawCode || /^[-_]+$/.test(rawCode) || !/^[a-z0-9_-]{1,16}$/i.test(rawCode)) && rawAcc) {
+      // Guard against unlabeled Excel Grand Total / Sub-Total rows (e.g. row 484 with blank Name & column sums)
+      if (!rawName && rows.length >= 2 && (
+        (compColVal > 0 && compSum > 0 && Math.abs(compColVal - compSum) <= 5) ||
+        (manColVal > 0 && manualSum > 0 && Math.abs(manColVal - manualSum) <= 5) ||
+        (diffColVal > 0 && diffSum > 0 && Math.abs(diffColVal - diffSum) <= 5) ||
+        (genAmtVal > 0 && ((diffSum > 0 && Math.abs(genAmtVal - diffSum) <= 5) || (compSum > 0 && Math.abs(genAmtVal - compSum) <= 5)))
+      )) continue;
+
+      if (isDummyEmpCode(rawCode)) rawCode = '';
+      var validExplicitCode = function(c) {
+        return !!c && !isDummyEmpCode(c) && /[a-z0-9]/i.test(c) && /^[a-z0-9_.\-\/\s]{1,32}$/i.test(c);
+      };
+
+      if (!validExplicitCode(rawCode) && rawAcc) {
         var byAcc = findEmployeeByAccount(rawAcc);
         if (byAcc && byAcc.empCode) rawCode = byAcc.empCode;
       }
       var generatedFromName = false;
-      if ((!rawCode || /^[-_]+$/.test(rawCode) || !/^[a-z0-9_-]{1,16}$/i.test(rawCode)) && rawName && hasAnyMoney) {
-        if (/[a-z]{2,}/i.test(rawName) && !/^(nil|na|n\/a|none|remarks?|note|notes|off\s*roll|on\s*roll)$/i.test(rawName)) {
+      if (!validExplicitCode(rawCode) && rawName && hasAnyMoney) {
+        if (/[a-z]/i.test(rawName) && !/^(nil|na|n\/a|none|remarks?|note|notes|off\s*roll|on\s*roll)$/i.test(rawName)) {
           var byName = findEmployeeByName(rawName);
           if (byName && byName.empCode) {
             rawCode = byName.empCode;
@@ -2318,9 +2508,21 @@
           }
         }
       }
-      if (!rawCode || /^[-_]+$/.test(rawCode) || (!generatedFromName && !/^[a-z0-9_-]{1,16}$/i.test(rawCode))) continue;
-      // If a name column exists, require either a real name OR an Employee Master match (prevents footer count cells like '1' or '338' from parsing as employees!)
-      if (iName >= 0 && !rawName && !findEmployeeByCode(rawCode)) continue;
+      if (!validExplicitCode(rawCode) && !generatedFromName && hasAnyMoney && rawAcc) {
+        var cleanAccKey = normalizeAccountNo(rawAcc);
+        if (cleanAccKey) {
+          rawCode = 'NOACC_' + cleanAccKey.toUpperCase().slice(0, 20);
+          generatedFromName = true;
+        }
+      }
+      var rowRemPreview = iRem >= 0 ? String(dataRow[iRem] || '').trim() : '';
+      if (!validExplicitCode(rawCode) && !generatedFromName && hasAnyMoney && (/^\d+$/.test(cell0) || rowRemPreview)) {
+        rawCode = 'ROW_' + rr;
+        generatedFromName = true;
+      }
+      if (!rawCode || isDummyEmpCode(rawCode) || (!generatedFromName && !validExplicitCode(rawCode))) continue;
+      // Only skip blank-name rows if they have no real salary money (footer count cells like '1' or '338')
+      if (iName >= 0 && !rawName && !findEmployeeByCode(rawCode) && !hasAnyMoney) continue;
 
       var compVal = 0;
       var diffVal = 0;
@@ -2386,6 +2588,37 @@
         if (remVal && seenInSheet[norm].remarks.indexOf(remVal) < 0) {
           seenInSheet[norm].remarks = seenInSheet[norm].remarks ? (seenInSheet[norm].remarks + '; ' + remVal) : remVal;
         }
+      } else {
+        var existingNameNorm = normalizePersonName(seenInSheet[norm].empName);
+        var incomingNameNorm = normalizePersonName(rawName);
+        if (existingNameNorm && incomingNameNorm && existingNameNorm !== incomingNameNorm) {
+          recObj.empCode = rawCode + '_R' + rr;
+          norm = normalizeCode(recObj.empCode);
+          seenInSheet[norm] = recObj;
+          rows.push(recObj);
+        } else {
+          var prevRec = seenInSheet[norm];
+          prevRec.manualAmount = round2((prevRec.manualAmount || 0) + manColVal);
+          prevRec.complianceAmount = round2((prevRec.complianceAmount || 0) + compVal);
+          prevRec.pfEmployee = round2((prevRec.pfEmployee || 0) + pfEmpVal);
+          prevRec.esicEmployee = round2((prevRec.esicEmployee || 0) + esicEmpVal);
+          prevRec.pfEmployer = round2((prevRec.pfEmployer || 0) + pfErVal);
+          prevRec.esicEmployer = round2((prevRec.esicEmployer || 0) + esicErVal);
+          prevRec.advanceDeduction = round2((prevRec.advanceDeduction || 0) + advDedVal);
+          prevRec.totalDeduction = round2((prevRec.totalDeduction || 0) + totDedVal);
+          prevRec.baseDiffAmount = round2((prevRec.baseDiffAmount || 0) + diffVal);
+          prevRec.compDiffAmount = round2((prevRec.compDiffAmount || 0) + compDiffVal);
+          prevRec.amount = round2((prevRec.amount || 0) + payAmt);
+          if (remVal && prevRec.remarks.indexOf(remVal) < 0) {
+            prevRec.remarks = prevRec.remarks ? (prevRec.remarks + '; ' + remVal) : remVal;
+          }
+        }
+        compSum = round2(compSum + compVal);
+        manualSum = round2(manualSum + manColVal);
+        diffSum = round2(diffSum + diffVal);
+        compDiffSum = round2(compDiffSum + compDiffVal);
+        pfSum = round2(pfSum + pfEmpVal);
+        esicSum = round2(esicSum + esicEmpVal);
       }
     }
 
@@ -3442,15 +3675,16 @@
       var previewRep = document.getElementById('spImportReplaceChk') ? !!document.getElementById('spImportReplaceChk').checked : false;
       var plan = computeDiffReconcilePlan(previewMk, meta.rows, { replaceExisting: previewRep });
       var pt = plan.totals;
-      var sampleChanged = plan.rows.filter(function(pr) { return pr && pr.deltaAdded > 0; }).slice(0, 4);
-      var sampleZero = plan.rows.filter(function(pr) { return pr && pr.deltaAdded === 0; }).slice(0, 2);
+      var allChanged = plan.rows.filter(function(pr) { return pr && pr.deltaAdded > 0; });
+      var sampleChanged = allChanged.slice(0, 100);
+      var sampleZero = plan.rows.filter(function(pr) { return pr && pr.deltaAdded === 0; }).slice(0, 4);
       h += '<div style="margin-top:8px;padding:8px 10px;background:#eff6ff;border:1px solid #93c5fd;border-radius:7px;font-size:11px;color:#0f172a">';
       h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
       h += '<span style="font-weight:800;color:#1e40af">Smart Delta Check (Comp/Prev se sirf Change add hoga):</span>';
       h += '<span style="font-variant-numeric:tabular-nums">Sheet ' + formatINR(pt.rawTotal) + ' · Pehle se ' + formatINR(pt.baselineTotal) + ' · <strong style="color:#15803d;background:#dcfce7;padding:1px 7px;border-radius:5px">Net Add (+Δ): +' + formatINR(pt.deltaTotal) + '</strong> (' + pt.increasedCount + ' Badhe · ' + pt.unchangedCount + ' ₹0)</span>';
       h += '</div>';
       if (sampleChanged.length || sampleZero.length) {
-        h += '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap">';
+        h += '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;max-height:110px;overflow-y:auto">';
         sampleChanged.forEach(function(pr) {
           h += '<span style="background:#dcfce7;color:#166534;padding:2px 6px;border-radius:4px;font-weight:700">' + esc(pr.empName || pr.empCode) + ': ' + formatINR(pr.baselineAmount) + ' → ' + formatINR(pr.rawSheetAmount) + ' (+' + formatINR(pr.deltaAdded) + ')</span>';
         });
