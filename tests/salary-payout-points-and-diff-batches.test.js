@@ -1443,4 +1443,142 @@ test('Salary Payout Dashboard: Emp Points, Compliance Bank Returns & Multi-Part 
     assert.ok(led.rows.some((r) => r.empCode === '9901' && r.netDiffAmount === 100));
     assert.ok(led.rows.some((r) => r.empCode === '9902' && r.netDiffAmount === 200));
   });
+
+  await t.test('18. Multi-Sheet Diff Reconciliation: No Double-Counting (596,006 -> 732,886 -> 132,000 Reduction), Shared Bank A/C Isolation, GREEN/RED UI, Source Sheet, Summary & CSV Export', async () => {
+    const bA = createBrowser('BrowserA_MultiSheetReconcile', new Map());
+    const uiEls = {
+      spSheetViewerBody: { innerHTML: '' },
+      spSheetViewerFoot: { innerHTML: '' },
+      spSheetViewerSearch: { value: '' },
+      spImportKindSel: { value: 'DIFF' },
+      spImportMonthInp: { value: '2026-10' },
+      spImportReplaceChk: { checked: false },
+      spImportReconcileChk: { checked: true },
+      spImportDiffAutoPayChk: { checked: false },
+      spImportPreviewBox: { innerHTML: '' },
+      salaryPayoutContainer: { innerHTML: '' },
+      salPayoutModal: { innerHTML: '' }
+    };
+    const origGet = bA.mockWindow.document.getElementById;
+    bA.mockWindow.document.getElementById = (id) => uiEls[id] || origGet(id);
+    bA.mockWindow.document.querySelectorAll = () => [];
+    vm.runInContext(payoutJs, vm.createContext(bA.mockWindow));
+    bA.mockWindow.ATPLSalaryPayout.setSelectedMonth('2026-10');
+
+    // Sheet 1: 596,006 total (incl. 2 employees sharing the SAME bank account 61040596066)
+    const sheet1Rows = [
+      { empCode: '25017', empName: 'AASU RAM', accountNo: '61040596066', ifsc: 'SBIN0001', baseDiffAmount: 2500 },
+      { empCode: '111', empName: 'Salman', accountNo: '61040596066', ifsc: 'SBIN0001', baseDiffAmount: 1500 },
+      { empCode: '00135', empName: 'SAMPAT LAL', accountNo: '10000135', ifsc: 'SBIN0001', baseDiffAmount: 5000 },
+      { empCode: '00387', empName: 'SURENDRA KUMAR', accountNo: '10000387', ifsc: 'SBIN0001', baseDiffAmount: 8000 },
+      { empCode: '00419', empName: 'BULLURAM', accountNo: '10000419', ifsc: 'SBIN0001', baseDiffAmount: 579006 }
+    ];
+    const r1 = bA.mockWindow.ATPLSalaryPayout.bulkImportMonthSalaries('2026-10', sheet1Rows, 'Diff_Sheet_1.csv', 'DIFF', {
+      replaceExisting: false,
+      reconcileDelta: true
+    });
+    assert.equal(r1.ok, true);
+    assert.equal(r1.newTotal, 596006);
+    let led1 = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(led1.diffTotal, 596006, 'Sheet 1 final total must equal 596,006');
+    assert.equal(led1.rows.find((r) => r.empCode === '25017').effectiveBaseDiff, 2500);
+    assert.equal(led1.rows.find((r) => r.empCode === '111').effectiveBaseDiff, 1500, 'Shared bank A/C must NOT collide');
+
+    // Sheet 2: 732,886 total (contains Sheet 1 employees: 25017 bumped 2500->3000 (+500), 111 same 1500, 00135 decreased 5000->4000 (-1000), 00387 same 8000, 00419 increased 579006->711386, plus NEW employee 26694=5000)
+    const sheet2Rows = [
+      { empCode: '25017', empName: 'AASU RAM', accountNo: '61040596066', ifsc: 'SBIN0001', baseDiffAmount: 3000 },
+      { empCode: '111', empName: 'Salman', accountNo: '61040596066', ifsc: 'SBIN0001', baseDiffAmount: 1500 },
+      { empCode: '00135', empName: 'SAMPAT LAL', accountNo: '10000135', ifsc: 'SBIN0001', baseDiffAmount: 4000 },
+      { empCode: '00387', empName: 'SURENDRA KUMAR', accountNo: '10000387', ifsc: 'SBIN0001', baseDiffAmount: 8000 },
+      { empCode: '00419', empName: 'BULLURAM', accountNo: '10000419', ifsc: 'SBIN0001', baseDiffAmount: 711386 },
+      { empCode: '26694', empName: 'PRADEEP', accountNo: '1607200100008867', ifsc: 'PUNB0001', baseDiffAmount: 5000 }
+    ];
+    const r2 = bA.mockWindow.ATPLSalaryPayout.bulkImportMonthSalaries('2026-10', sheet2Rows, 'Diff_Sheet_2_Oct.csv', 'DIFF', {
+      replaceExisting: false,
+      reconcileDelta: true
+    });
+    assert.equal(r2.ok, true);
+    assert.equal(r2.previousTotal, 596006);
+    assert.equal(r2.newTotal, 732886);
+    assert.equal(r2.netChange, 136880);
+    assert.equal(r2.increasedCount, 2, '25017 (+500) and 00419 (+132380)');
+    assert.equal(r2.decreasedCount, 1, '00135 (-1000)');
+    assert.equal(r2.newCount, 1, '26694 (5000)');
+    assert.equal(r2.unchangedCount, 2, '111 and 00387');
+
+    let led2 = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(led2.diffTotal, 732886, 'Sheet 2 final total MUST equal 732,886 (never ~1,200,000 double-counted)');
+    const rowNikhil = led2.rows.find((r) => r.empCode === '25017');
+    assert.equal(rowNikhil.prevDiffAmount, 2500);
+    assert.equal(rowNikhil.effectiveBaseDiff, 3000);
+    assert.equal(rowNikhil.deltaDiffAmount, 500);
+    assert.equal(rowNikhil.diffChangeType, 'INCREASED');
+    assert.ok(rowNikhil.diffSourceSheetLabel.includes('Sheet 2') && rowNikhil.diffSourceSheetLabel.includes('Diff_Sheet_2_Oct.csv'));
+    const rowDec = led2.rows.find((r) => r.empCode === '00135');
+    assert.equal(rowDec.prevDiffAmount, 5000);
+    assert.equal(rowDec.effectiveBaseDiff, 4000);
+    assert.equal(rowDec.deltaDiffAmount, -1000);
+    assert.equal(rowDec.diffChangeType, 'DECREASED');
+    const rowNew = led2.rows.find((r) => r.empCode === '26694');
+    assert.equal(rowNew.prevDiffAmount, 0);
+    assert.equal(rowNew.effectiveBaseDiff, 5000);
+    assert.equal(rowNew.deltaDiffAmount, 5000);
+    assert.equal(rowNew.diffChangeType, 'NEW');
+
+    // Sheet 3: Reduction sheet totaling 132,000 (00419 reduced 711386->120000, 00387 same 8000, 00135 same 4000; 25017, 111, 26694 dropped to 0)
+    const sheet3Rows = [
+      { empCode: '00419', empName: 'BULLURAM', accountNo: '10000419', ifsc: 'SBIN0001', baseDiffAmount: 120000 },
+      { empCode: '00387', empName: 'SURENDRA KUMAR', accountNo: '10000387', ifsc: 'SBIN0001', baseDiffAmount: 8000 },
+      { empCode: '00135', empName: 'SAMPAT LAL', accountNo: '10000135', ifsc: 'SBIN0001', baseDiffAmount: 4000 }
+    ];
+    const r3 = bA.mockWindow.ATPLSalaryPayout.bulkImportMonthSalaries('2026-10', sheet3Rows, 'Diff_Sheet_3_Reduced.csv', 'DIFF', {
+      replaceExisting: false,
+      reconcileDelta: true
+    });
+    assert.equal(r3.ok, true);
+    assert.equal(r3.previousTotal, 732886);
+    assert.equal(r3.newTotal, 132000);
+    assert.equal(r3.netChange, -600886);
+    assert.equal(r3.decreasedCount, 4, '00419 reduced + 3 dropped employees');
+
+    let led3 = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(led3.diffTotal, 132000, 'Sheet 3 final total MUST drop to exact 132,000 (reduction, never addition)');
+    assert.equal(led3.reconcileSummary.previousTotal, 732886);
+    assert.equal(led3.reconcileSummary.newTotal, 132000);
+    assert.equal(led3.reconcileSummary.netChange, -600886);
+    assert.equal(led3.reconcileSummary.decreasedCount, 4);
+    assert.equal(led3.rows.find((r) => r.empCode === '25017').effectiveBaseDiff, 0);
+    assert.equal(led3.rows.find((r) => r.empCode === '25017').diffChangeType, 'DECREASED');
+    assert.equal(led3.rows.find((r) => r.empCode === '25017').deltaDiffAmount, -3000);
+
+    // Check UI highlights, Summary strip, Source Sheet column, Sheet Viewer, and CSV Export
+    bA.mockWindow.ATPLSalaryPayout.renderUI();
+    const dashHtml = uiEls.salaryPayoutContainer.innerHTML;
+    assert.ok(dashHtml.includes('Reconciliation Summary'), 'Dashboard must show Reconciliation Summary');
+    assert.ok(dashHtml.includes('Previous Total:'), 'Summary must show Previous Total');
+    assert.ok(dashHtml.includes('New Total:'), 'Summary must show New Total');
+    assert.ok(dashHtml.includes('Net Change:'), 'Summary must show Net Change');
+    assert.ok(dashHtml.includes('Increased:'), 'Summary must show Increased count');
+    assert.ok(dashHtml.includes('Decreased:'), 'Summary must show Decreased count');
+    assert.ok(dashHtml.includes('Source Sheet'), 'Ledger must include Source Sheet column');
+    assert.ok(dashHtml.includes('#fef2f2'), 'Decreased employees must be highlighted in RED');
+    assert.ok(dashHtml.includes('Diff_Sheet_3_Reduced.csv'), 'Source Sheet must include filename');
+
+    bA.mockWindow.ATPLSalaryPayout.openUploadedSheetViewer(r2.sheetId);
+    const modalHtml = uiEls.salPayoutModal.innerHTML + uiEls.spSheetViewerBody.innerHTML + uiEls.spSheetViewerFoot.innerHTML;
+    assert.ok(modalHtml.includes('#f0fdf4') && modalHtml.includes('#fef2f2'), 'Sheet viewer must highlight increased in GREEN and decreased in RED');
+    assert.ok(modalHtml.includes('Diff_Sheet_2_Oct.csv') && modalHtml.includes('Sheet 2'), 'Sheet viewer must show Source Sheet');
+
+    const csvOut = bA.mockWindow.ATPLSalaryPayout.exportReconciliationCsv();
+    assert.ok(csvOut.includes('Status,Old Diff,New Diff,Delta'), 'Export CSV must have Status, Old Diff, New Diff, Delta columns');
+    assert.ok(csvOut.includes('Source Sheet,Upload Date'), 'Export CSV must have Source Sheet & Upload Date columns');
+    assert.ok(csvOut.includes('DECREASED') && csvOut.includes('Diff_Sheet_3_Reduced.csv'), 'Export CSV must include status and source sheet info');
+
+    // Deleting Sheet 3 restores Sheet 2 total 732,886 cleanly
+    bA.mockWindow.ATPLSalaryPayout.deleteUploadedSheet(r3.sheetId);
+    const ledRestored = bA.mockWindow.ATPLSalaryPayout.computeMonthLedger('2026-10');
+    assert.equal(ledRestored.diffTotal, 732886, 'Deleting Sheet 3 must restore Sheet 2 exact total 732,886');
+    assert.equal(ledRestored.rows.find((r) => r.empCode === '25017').effectiveBaseDiff, 3000);
+    assert.equal(ledRestored.rows.find((r) => r.empCode === '111').effectiveBaseDiff, 1500);
+  });
 });
