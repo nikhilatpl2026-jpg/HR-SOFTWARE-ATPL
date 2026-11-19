@@ -2119,6 +2119,83 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   .msr-st-hd { color: #b45309; font-weight: 700; }
   .msr-st-p { color: #000000; font-weight: 600; }
 
+  /* ══ UNIFORM ENTERPRISE SIDEBAR & CLEAN BADGES ══ */
+  #vnav:not(.nav-hidden):not(.collapsed) { width: 248px !important; }
+  #vnav .vitem {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    margin: 2px 8px !important;
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    background: transparent !important;
+    color: #334155 !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
+    border: 1px solid transparent !important;
+  }
+  #vnav .vitem:hover {
+    background: #f5f3ff !important;
+    color: #4338ca !important;
+    border-color: #e0e7ff !important;
+  }
+  #vnav .vitem.active {
+    background: #ede9fe !important;
+    color: #4338ca !important;
+    font-weight: 800 !important;
+    border-color: #c7d2fe !important;
+    box-shadow: inset 3px 0 0 #4f46e5 !important;
+  }
+  #vnav .vitem .vi {
+    width: 18px !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 13px !important;
+  }
+  #vnav .vitem .vbadge:not(.vnav-move-wrap) {
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+    font-size: 9px !important;
+    font-weight: 700 !important;
+    padding: 2px 7px !important;
+    border-radius: 999px !important;
+    letter-spacing: 0.35px !important;
+    line-height: 1.2 !important;
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+  #vnav .vitem .vbadge.vbadge-green {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    border-color: #a7f3d0 !important;
+  }
+  #vnav .vitem .vbadge.vbadge-blue {
+    background: #eff6ff !important;
+    color: #1d4ed8 !important;
+    border-color: #bfdbfe !important;
+  }
+  #vnav .vitem .vbadge.vbadge-indigo {
+    background: #eef2ff !important;
+    color: #4338ca !important;
+    border-color: #c7d2fe !important;
+  }
+  #vnav .vitem .vbadge.vbadge-count {
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    border-color: #cbd5e1 !important;
+  }
+  #vnav.collapsed #vnavSearchWrap { display: none !important; }
+  #vnav .vitem.vnav-search-hide { display: none !important; }
+
   /* ══ SIDEBAR MENU UP/DOWN REORDER ══ */
   #vnav.vnav-arrange-on .vitem { cursor: grab; position: relative; padding-right: 54px !important; }
   #vnav .vitem.vnav-dragging { opacity: 0.45; transform: scale(0.98); }
@@ -2537,6 +2614,9 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <button type="button" id="vnavResetOrderBtn" onclick="window.ATPLSidebarReorder && window.ATPLSidebarReorder.resetOrder()" title="Default order restore karein">↺</button>
     </div>
   </div>
+  <div id="vnavSearchWrap" style="padding:8px 10px 6px;border-bottom:1px solid #f1f5f9">
+    <input type="search" id="vnavSearchInput" placeholder="🔍 Search feature..." oninput="window.ATPLSidebarReorder && window.ATPLSidebarReorder.filterNav(this.value)" style="width:100%;padding:5px 9px!important;font-size:11px!important;border-radius:7px!important;border:1px solid #e2e8f0!important;background:#f8fafc!important;color:#334155!important;box-sizing:border-box" />
+  </div>
 
   <!-- DASHBOARD -->
   <div class="vnav-group">
@@ -2547,7 +2627,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem active" id="vn-cmd" onclick="goPage('cmd')"><span class="vi">⚡</span>Smart Commands</div>
       <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" hidden aria-hidden="true" style="display:none!important;color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
       <div class="vitem" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
-      <div class="vitem" id="vn-test" onclick="goPage('test')" style="background:rgba(99,102,241,0.15);color:#a5b4fc"><span class="vi">🧪</span>Test Feature</div>
+      <div class="vitem" id="vn-test" onclick="goPage('test')"><span class="vi">🧪</span>Test Feature</div>
     </div>
   </div>
 
@@ -2557,14 +2637,14 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>💰 Salary</span><span class="vnav-arrow" id="arr-sal">▾</span>
     </div>
     <div class="vnav-sub" id="cat-sal">
-      <div class="vitem" id="vn-mamsalary" onclick="goPage('mamsalary')" style="background:rgba(16,185,129,0.16);color:#34d399;font-weight:700"><span class="vi">🧾</span>Mam → Compliance <span class="vbadge" style="background:#059669">EXCEL</span></div>
+      <div class="vitem" id="vn-mamsalary" onclick="goPage('mamsalary')"><span class="vi">🧾</span>Mam → Compliance <span class="vbadge vbadge-green">EXCEL</span></div>
       <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
-      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;font-weight:600"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge" style="background:#6366f1">NEW</span></div>
+      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge vbadge-indigo">NEW</span></div>
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
-      <div class="vitem" id="vn-advance" onclick="goPage('advance')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">💳</span>Advance Management <span class="vbadge" id="advBadge" style="background:#10b981;display:none">0</span></div>
-      <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
-      <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')" style="background:rgba(14,165,233,0.16);color:#38bdf8;font-weight:700"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge" style="background:#0284c7">NEW</span></div>
+      <div class="vitem" id="vn-advance" onclick="goPage('advance')"><span class="vi">💳</span>Advance Management <span class="vbadge vbadge-count" id="advBadge" style="display:none">0</span></div>
+      <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
+      <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge vbadge-blue">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
 
@@ -2574,12 +2654,12 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>👥 Employee</span><span class="vnav-arrow" id="arr-emp">▾</span>
     </div>
     <div class="vnav-sub" id="cat-emp">
-      <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge" style="background:#10b981">LIVE</span></div>
+      <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge vbadge-green">LIVE</span></div>
       <div class="vitem" id="vn-dol" onclick="goPage('dol')" hidden aria-hidden="true" style="display:none!important"><span class="vi">📅</span>Date of Leaving</div>
       <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')" hidden aria-hidden="true" style="display:none!important"><span class="vi">✅</span>DOL Verifier</div>
       <div class="vitem" id="vn-ff" onclick="goPage('ff')"><span class="vi">📄</span>F&amp;F Settlement</div>
-      <div class="vitem" id="vn-empmaster" onclick="goPage('empmaster')"><span class="vi">🗂️</span>Employee Master <span class="vbadge" id="empMasterBadge" style="background:#6366f1">496</span></div>
-      <div class="vitem" id="vn-hrdocs" onclick="goPage('hrdocs')"><span class="vi">📚</span>HR Documents <span class="vbadge" id="hrDocsBadge" style="background:#0ea5e9;display:none">0</span></div>
+      <div class="vitem" id="vn-empmaster" onclick="goPage('empmaster')"><span class="vi">🗂️</span>Employee Master <span class="vbadge vbadge-count" id="empMasterBadge">496</span></div>
+      <div class="vitem" id="vn-hrdocs" onclick="goPage('hrdocs')"><span class="vi">📚</span>HR Documents <span class="vbadge vbadge-count" id="hrDocsBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-letter" onclick="goPage('letter')"><span class="vi">📝</span>Letter</div>
     </div>
   </div>
@@ -19810,13 +19890,38 @@ document.addEventListener('click', function(e) {
     }
   }
 
+  function filterNav(query) {
+    var q = String(query || '').toLowerCase().trim();
+    var doc = root.document;
+    if (!doc) return;
+    getContainers().forEach(function(box) {
+      var anyMatch = false;
+      Array.prototype.slice.call(box.children).forEach(function(el) {
+        if (!el.classList || !el.classList.contains('vitem')) return;
+        if (!q) {
+          el.classList.remove('vnav-search-hide');
+          anyMatch = true;
+        } else {
+          var txt = String(el.textContent || '').toLowerCase();
+          var hit = txt.indexOf(q) !== -1;
+          el.classList.toggle('vnav-search-hide', !hit);
+          if (hit) anyMatch = true;
+        }
+      });
+      if (q && anyMatch && box.classList && box.classList.contains('collapsed')) {
+        box.classList.remove('collapsed');
+      }
+    });
+  }
+
   root.ATPLSidebarReorder = {
     toggle: toggle,
     resetOrder: resetOrder,
     moveItem: moveItem,
     applyOrderMap: applyOrderMap,
     collectCurrentOrder: collectCurrentOrder,
-    bootstrap: bootstrap
+    bootstrap: bootstrap,
+    filterNav: filterNav
   };
 
   if (root.document && root.document.readyState === 'loading') {
@@ -19826,6 +19931,7 @@ document.addEventListener('click', function(e) {
   }
   setTimeout(bootstrap, 600);
   setTimeout(bootstrap, 1800);
+  setTimeout(bootstrap, 2450);
 })(window);
 </script>
 </body>
