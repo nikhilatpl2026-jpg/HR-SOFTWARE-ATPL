@@ -2762,6 +2762,20 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             </div>
             <button type="button" id="msrApplyShiftBtn" data-ua-action="view" class="msr-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.applyBulkShift()">Apply Shift</button>
           </div>
+          <div class="msr-bulk-bar" style="background:#f8fafc;padding:10px 12px;border-radius:8px;border:1px solid #e2e8f0">
+            <div class="msr-field" style="min-width:250px;flex:1;max-width:360px">
+              <label for="msrNightScope">Auto Night Shift Rule (Males Only — No Female / No Office Staff)</label>
+              <select id="msrNightScope" class="msr-select" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onNightScopeChange()">
+                <option value="DESIGNATION" selected>Per Designation / Card (3–4 Eligible Males each)</option>
+                <option value="DEPARTMENT">Per Department (3–4 Eligible Males each)</option>
+                <option value="PAGE">Per Report Page / 4-Block Card (3–4 Eligible Males)</option>
+              </select>
+            </div>
+            <button type="button" id="msrAutoAssignBtn" data-ua-action="view" class="msr-btn msr-btn-primary" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.runAutoAssign(true)">🎲 Auto-Assign Random Weekly Off &amp; Night Shift</button>
+            <div style="font-size:11px;color:#475569;line-height:1.35">
+              Random Weekly Off sabhi employees ko automatic milta hai. <b>Female</b> aur <b>Office Staff</b> hamesha <b>Day</b> shift me rehte hain.
+            </div>
+          </div>
         </div>
 
         <!-- Tabs -->
@@ -17373,13 +17387,14 @@ document.addEventListener('click', function(e) {
 <script id="atplMonthlyStatusReportScript">
 (function(root){
   'use strict';
-  if (root.__ATPL_MONTHLY_STATUS_REPORT_V1__) return;
-  root.__ATPL_MONTHLY_STATUS_REPORT_V1__ = true;
+  if (root.__ATPL_MONTHLY_STATUS_REPORT_V2__) return;
+  root.__ATPL_MONTHLY_STATUS_REPORT_V2__ = true;
 
   var DB_NAME = 'ATPL_MonthlyStatusReport_DB_V1';
   var DB_VER = 1;
   var STORE_NAME = 'msr_state';
   var STATE_KEY = 'current_state_v1';
+  var RULES_VER = 2;
   var MANDATORY_NOTICE = 'Simulated Attendance - generated from monthly wages sheet; in/out times are computed.';
   var MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   var WEEKDAYS_FULL = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
@@ -17392,19 +17407,20 @@ document.addEventListener('click', function(e) {
       month: 8,
       year: 2026,
       companyName: 'ARORA TEXTILES PVT.LTD.',
-      maxOtPerDay: 4
+      maxOtPerDay: 4,
+      nightScope: 'DESIGNATION'
     },
     fileName: '',
     sheetName: '',
     rows: [],
     categoryRules: {},
     designationRules: {},
+    rulesVersion: RULES_VER,
     generated: null,
     activeTab: 'config',
     cfgPage: 1,
     valPage: 1,
     previewPage: 1,
-    pendingReset: false,
     initialized: false
   };
 
@@ -17416,7 +17432,6 @@ document.addEventListener('click', function(e) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
-
   function cleanStr(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
 
   function parseNum(v) {
@@ -17446,7 +17461,6 @@ document.addEventListener('click', function(e) {
     return new Date(year, monthIdx + 1, 0).getDate();
   }
 
-  // Deterministic FNV-1a hash + Mulberry32 PRNG
   function hashSeed(str) {
     var h = 2166136261 >>> 0;
     for (var i = 0; i < str.length; i++) {
@@ -17477,6 +17491,112 @@ document.addEventListener('click', function(e) {
       copy[j] = tmp;
     }
     return copy;
+  }
+
+  function classifyEligibility(emp) {
+    var gRaw = cleanStr(emp.gender || '').toUpperCase();
+    var dept = cleanStr(emp.department || '').toUpperCase();
+    var desig = cleanStr(emp.designation || '').toUpperCase();
+    var cat = cleanStr(emp.category || '').toUpperCase();
+
+    var isFemale = /^F(EMALE)?$/.test(gRaw) || /^WOMAN$/.test(gRaw);
+    var isStrictMale = /^M(ALE)?$/.test(gRaw);
+
+    var isOfficeStaff = false;
+    if (/\bSTAFF\b/.test(cat)) isOfficeStaff = true;
+    else if (/^(ADMIN|ACCOUNTS?|HRD?|HR|BANK|OFFICE|SALES|FINANCE|IT|RECEPTION|MANAGEMENT)$/.test(dept)) isOfficeStaff = true;
+    else if (/^(ACCOUNTANT|EXECUTIVE|ASSISTANT|CLERK|RECEPTIONIST|CASHIER|MANAGER|TRANEE|TRAINEE)$/.test(desig)) isOfficeStaff = true;
+    else if (/\b(OFFICE|ACCOUNTANT|HR|RECEPTION|CLERK|CASHIER)\b/.test(desig)) isOfficeStaff = true;
+
+    return {
+      isFemale: isFemale,
+      isStrictMale: isStrictMale,
+      isOfficeStaff: isOfficeStaff,
+      isNightEligible: isStrictMale && !isFemale && !isOfficeStaff
+    };
+  }
+
+  function getWeekdayCountsInMonth(year, month) {
+    var days = getDaysInMonth(year, month);
+    var counts = [0, 0, 0, 0, 0, 0, 0];
+    for (var d = 1; d <= days; d++) {
+      counts[new Date(year, month, d).getDay()]++;
+    }
+    return counts;
+  }
+
+  // Automatic deterministic random Weekly Off (all employees) + Night Shift (3-4 eligible males per card; NEVER female or office staff)
+  function autoAssignRandomRules(rows, settings, nightScope) {
+    if (!Array.isArray(rows) || !rows.length) return { nightCount: 0, dayCount: 0 };
+    var month = Number(settings.month);
+    var year = Number(settings.year);
+    var scope = nightScope || settings.nightScope || 'DESIGNATION';
+    var wdCounts = getWeekdayCountsInMonth(year, month);
+
+    // Step 1: Random deterministic Weekly Off for every employee + force non-eligible to Day
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var elig = classifyEligibility(r);
+      r.isFemale = elig.isFemale;
+      r.isStrictMale = elig.isStrictMale;
+      r.isOfficeStaff = elig.isOfficeStaff;
+      r.isNightEligible = elig.isNightEligible;
+
+      var targetWo = Math.max(0, Math.round(r.sunAllow || 0));
+      var validDays = [];
+      for (var w = 0; w < 7; w++) {
+        if (wdCounts[w] >= targetWo) validDays.push(WEEKDAYS_FULL[w]);
+      }
+      if (!validDays.length) validDays = WEEKDAYS_FULL.slice();
+
+      var woRng = createRng('WO|' + String(r.id) + '|' + MONTH_NAMES[month] + '|' + year);
+      r.weeklyOff = validDays[Math.floor(woRng() * validDays.length)];
+      r.shift = 'Day';
+    }
+
+    // Step 2: Group strictly eligible MALE non-office employees by card/group and pick 3-4 for Night
+    var groups = {};
+    for (var idx = 0; idx < rows.length; idx++) {
+      var emp = rows[idx];
+      if (!emp.isNightEligible) continue;
+      var gKey = 'ALL';
+      if (scope === 'PAGE') {
+        gKey = 'PAGE_' + Math.floor(idx / EMP_PER_PDF_PAGE);
+      } else if (scope === 'DEPARTMENT') {
+        gKey = cleanStr(emp.department || emp.category || 'GENERAL').toUpperCase();
+      } else {
+        gKey = cleanStr(emp.designation || emp.category || 'GENERAL').toUpperCase();
+      }
+      if (!groups[gKey]) groups[gKey] = [];
+      groups[gKey].push(emp);
+    }
+
+    var nightCount = 0;
+    var gNames = Object.keys(groups);
+    for (var gi = 0; gi < gNames.length; gi++) {
+      var key = gNames[gi];
+      var list = groups[key];
+      var grpRng = createRng('NIGHT|' + scope + '|' + key + '|' + MONTH_NAMES[month] + '|' + year);
+      var shuffled = shuffleWithRng(list, grpRng);
+      var pickCount = 0;
+      if (scope === 'PAGE') {
+        // On a 4-row report page, pick 3-4 eligible males (capped by available eligible males on page)
+        var targetPagePick = grpRng() < 0.5 ? 3 : 4;
+        pickCount = Math.min(shuffled.length, targetPagePick);
+      } else {
+        // Designation or Department card: 3-4 eligible males when group >= 4 (3 or 4 if >=5, 3 if 4, 1 if 2..3, 0 if 1)
+        if (shuffled.length >= 5) pickCount = grpRng() < 0.5 ? 3 : 4;
+        else if (shuffled.length === 4) pickCount = 3;
+        else if (shuffled.length >= 2) pickCount = 1;
+        else pickCount = 0;
+      }
+      for (var pi = 0; pi < pickCount; pi++) {
+        shuffled[pi].shift = 'Night';
+        nightCount++;
+      }
+    }
+
+    return { nightCount: nightCount, dayCount: rows.length - nightCount };
   }
 
   // RFC-4180 CSV parser preserving exact strings & leading zeros (e.g. "00135")
@@ -17570,17 +17690,19 @@ document.addEventListener('click', function(e) {
       return -1;
     }
     return {
-      empId: findCol([/^(emp id|emp code|employee id|employee code|empid|empcode)$/, /emps*(id|code)/, /^id$/]),
-      name: findCol([/^(name of employee|employee name|emp name|name)$/, /name of employee/, /emps*name/]),
+      empId: findCol([/^(emp id|emp code|employee id|employee code|empid|empcode)$/, /\bemp\s*(id|code)\b/, /^id$/]),
+      name: findCol([/^(name of employee|employee name|emp name|name)$/, /\bname of employee\b/, /\bemp\s*name\b/]),
+      gender: findCol([/^(gender|sex|m\/f)$/]),
+      department: findCol([/^(department|dept)$/, /department/]),
       designation: findCol([/^(desigenation|designation|desig)$/, /desig/]),
       category: findCol([/^(category|cat|skill category)$/, /^department$/]),
       monthDays: findCol([/^(month of days|month days|days in month|monthofdays)$/, /month.*day/]),
       workingDays: findCol([/^(working days|work days|present days|p days|wd)$/, /working.*day/]),
       sunAllow: findCol([/^(sun allow|sunday allow|weekly off|week off|wo)$/, /sun.*allow/]),
-      hd: findCol([/^(hd|holi days|holidays|holiday|half days|half day)$/, /holis*day/]),
+      hd: findCol([/^(hd|holi days|holidays|holiday|half days|half day)$/, /holi\s*day/]),
       absent: findCol([/^(absent|absent days|ab)$/, /^absent/]),
       paidDays: findCol([/^(paid days|payable days|pd)$/, /paid.*day/]),
-      otHours: findCol([/^(over time hours|overtime hours|ot hours|ot hrs|over time|overtime|ot)$/, /overs*time.*hour/])
+      otHours: findCol([/^(over time hours|overtime hours|ot hours|ot hrs|over time|overtime|ot)$/, /over\s*time.*hour/])
     };
   }
 
@@ -17605,9 +17727,11 @@ document.addEventListener('click', function(e) {
       var name = cleanStr(cols.name >= 0 ? row[cols.name] : '');
       if (!name && parseNum(row[cols.workingDays]) === 0) continue;
 
+      var gender = cleanStr(cols.gender >= 0 ? row[cols.gender] : '');
+      var dept = cleanStr(cols.department >= 0 ? row[cols.department] : '');
       var desig = cleanStr(cols.designation >= 0 ? row[cols.designation] : '');
       var cat = cleanStr(cols.category >= 0 ? row[cols.category] : '');
-      if (!cat) cat = desig || 'GENERAL';
+      if (!cat) cat = desig || dept || 'GENERAL';
 
       var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : defaultDays;
       if (!md) md = defaultDays;
@@ -17619,17 +17743,12 @@ document.addEventListener('click', function(e) {
       var ot = cols.otHours >= 0 ? parseNum(row[cols.otHours]) : 0;
 
       var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
-      var prev = prevRowsMap && prevRowsMap[rawId];
-      var catRule = state.categoryRules[cat] || {};
-      var desigRule = state.designationRules[desig] || {};
-
-      var weeklyOff = (prev && prev.weeklyOff) || desigRule.weeklyOff || catRule.weeklyOff || 'SUNDAY';
-      var shift = (prev && prev.shift) || desigRule.shift || catRule.shift || 'Day';
-
-      out.push({
+      var empObj = {
         key: uniqueKey,
         id: rawId,
         name: name,
+        gender: gender,
+        department: dept,
         designation: desig || cat,
         category: cat,
         monthOfDays: md,
@@ -17639,9 +17758,20 @@ document.addEventListener('click', function(e) {
         absent: ab,
         paidDays: pd,
         otHours: ot,
-        weeklyOff: weeklyOff,
-        shift: shift
-      });
+        weeklyOff: 'SUNDAY',
+        shift: 'Day'
+      };
+      var elig = classifyEligibility(empObj);
+      empObj.isFemale = elig.isFemale;
+      empObj.isStrictMale = elig.isStrictMale;
+      empObj.isOfficeStaff = elig.isOfficeStaff;
+      empObj.isNightEligible = elig.isNightEligible;
+
+      if (prevRowsMap && prevRowsMap[rawId]) {
+        empObj.weeklyOff = prevRowsMap[rawId].weeklyOff || 'SUNDAY';
+        empObj.shift = elig.isNightEligible && prevRowsMap[rawId].shift === 'Night' ? 'Night' : 'Day';
+      }
+      out.push(empObj);
     }
     return { rows: out, missingCols: [] };
   }
@@ -17655,7 +17785,8 @@ document.addEventListener('click', function(e) {
       ? String(emp.weeklyOff).toUpperCase()
       : 'SUNDAY';
     var woIdx = WEEKDAYS_FULL.indexOf(woName);
-    var shift = emp.shift === 'Night' ? 'Night' : 'Day';
+    var elig = classifyEligibility(emp);
+    var shift = (emp.shift === 'Night' && elig.isNightEligible) ? 'Night' : 'Day';
 
     var sheetMd = emp.monthOfDays;
     var sheetWd = emp.workingDays;
@@ -17671,22 +17802,15 @@ document.addEventListener('click', function(e) {
 
     var warnings = [];
     var redFlags = [];
-    if (sumMismatch) {
-      redFlags.push('P+WO+A+HD (' + sheetSum + ') != Month Of Days (' + sheetMd + ')');
-    }
-    if (calMismatch) {
-      redFlags.push('Sheet Month Days (' + sheetMd + ') != Calendar Days (' + daysInMonth + ')');
-    }
-    if (hasFractionDays) {
-      warnings.push('Fractional day counts rounded to nearest whole day');
-    }
+    if (sumMismatch) redFlags.push('P+WO+A+HD (' + sheetSum + ') != Month Of Days (' + sheetMd + ')');
+    if (calMismatch) redFlags.push('Sheet Month Days (' + sheetMd + ') != Calendar Days (' + daysInMonth + ')');
+    if (hasFractionDays) warnings.push('Fractional day counts rounded to nearest whole day');
 
     var targetP = Math.max(0, Math.round(sheetWd));
     var targetWO = Math.max(0, Math.round(sheetSa));
     var targetHD = Math.max(0, Math.round(sheetHd));
     var targetA = Math.max(0, Math.round(sheetAb));
 
-    // Seed strictly with Emp Code + Month + Year so result is 100% deterministic
     var rng = createRng(String(emp.id) + '|' + MONTH_NAMES[month] + '|' + year);
 
     var woCandidates = [];
@@ -17709,7 +17833,6 @@ document.addEventListener('click', function(e) {
       }
       unassignedPool = unassignedPool.concat(regularDates);
     } else {
-      // More Sun Allow than natural weekday occurrences: keep all weekday WOs + extra from regularDates
       assignedWo = woCandidates.slice();
       var shuffledReg = shuffleWithRng(regularDates, rng);
       var extraWoNeeded = Math.min(targetWO - woCandidates.length, shuffledReg.length);
@@ -17718,32 +17841,21 @@ document.addEventListener('click', function(e) {
       warnings.push('Sun Allow (' + targetWO + ') > ' + woName + ' count (' + woCandidates.length + ')');
     }
 
-    for (var w = 0; w < assignedWo.length; w++) {
-      statusByDay[assignedWo[w]] = 'WO';
-    }
+    for (var w = 0; w < assignedWo.length; w++) statusByDay[assignedWo[w]] = 'WO';
 
-    // Shuffle non-WO pool deterministically to distribute A, HD, P (A is NEVER on WO)
     var shuffledPool = shuffleWithRng(unassignedPool, rng);
     var cursor = 0;
-    for (var a = 0; a < targetA && cursor < shuffledPool.length; a++, cursor++) {
-      statusByDay[shuffledPool[cursor]] = 'A';
-    }
-    for (var h = 0; h < targetHD && cursor < shuffledPool.length; h++, cursor++) {
-      statusByDay[shuffledPool[cursor]] = 'HD';
-    }
-    for (var p = 0; p < targetP && cursor < shuffledPool.length; p++, cursor++) {
-      statusByDay[shuffledPool[cursor]] = 'P';
-    }
-    while (cursor < shuffledPool.length) {
-      statusByDay[shuffledPool[cursor++]] = '-';
-    }
+    for (var a = 0; a < targetA && cursor < shuffledPool.length; a++, cursor++) statusByDay[shuffledPool[cursor]] = 'A';
+    for (var h = 0; h < targetHD && cursor < shuffledPool.length; h++, cursor++) statusByDay[shuffledPool[cursor]] = 'HD';
+    for (var p = 0; p < targetP && cursor < shuffledPool.length; p++, cursor++) statusByDay[shuffledPool[cursor]] = 'P';
+    while (cursor < shuffledPool.length) statusByDay[shuffledPool[cursor++]] = '-';
 
     var pDates = [];
     for (var day = 1; day <= daysInMonth; day++) {
       if (statusByDay[day] === 'P') pDates.push(day);
     }
 
-    // Allocate exact whole-hour OT ONLY onto P days, [1..maxOt] per OT day
+    // Exact whole-hour OT ONLY on P days, [1..maxOt]
     var otByDay = {};
     var otTarget = Math.max(0, Math.round(sheetOt));
     if (Math.abs(sheetOt - otTarget) > 1e-6) {
@@ -17761,7 +17873,6 @@ document.addEventListener('click', function(e) {
         var pShuffled = shuffleWithRng(pDates, rng);
         var minDays = Math.ceil(otTarget / maxOt);
         var maxDays = Math.min(pDates.length, otTarget);
-        // Deterministic natural spread between minDays and maxDays
         var idealDays = Math.round(otTarget / Math.min(maxOt, 2.2));
         var chosenDays = Math.max(minDays, Math.min(maxDays, idealDays));
         if (maxDays > minDays) {
@@ -17786,7 +17897,7 @@ document.addEventListener('click', function(e) {
       }
     }
 
-    // Generate deterministic InTime, OutTime, OT, Total per calendar day
+    // Realistic human biometric punch times: occasional slightly late arrivals & slightly early departures
     var days = [];
     var genP = 0, genWO = 0, genA = 0, genHD = 0, genOtHrs = 0;
     for (var dt = 1; dt <= daysInMonth; dt++) {
@@ -17799,33 +17910,58 @@ document.addEventListener('click', function(e) {
 
       if (st === 'P') {
         genP++;
-        // Advance deterministic minute offset for each day
-        var randMinOffset = Math.floor(rng() * 12); // 0..11 => :55..:06
-        if (shift === 'Day') {
-          var inMinDay = 8 * 60 + 55 + randMinOffset; // 08:55..09:06
-          var outMinDay = inMinDay + 9 * 60 + otH * 60; // ~18:00 + OT
-          inTime = formatClock(inMinDay);
-          outTime = formatClock(outMinDay);
-          totalStr = formatDuration(9 * 60 + otH * 60);
+        var rArr = rng();
+        var rDep = rng();
+        var baseInStd = (shift === 'Day') ? (9 * 60) : (20 * 60); // 09:00 or 20:00
+        var arrDelta;
+        if (rArr < 0.68) {
+          // On time / early: -8 to +6 min (08:52..09:06 / 19:52..20:06)
+          arrDelta = -8 + Math.floor(rng() * 15);
+        } else if (rArr < 0.91) {
+          // Slightly late: +7 to +18 min (09:07..09:18 / 20:07..20:18)
+          arrDelta = 7 + Math.floor(rng() * 12);
         } else {
-          var inMinNight = 19 * 60 + 55 + randMinOffset; // 19:55..20:06
-          var outMinNight = inMinNight + 10 * 60 + otH * 60; // next day ~06:00 + OT
-          inTime = formatClock(inMinNight);
-          outTime = formatClock(outMinNight);
-          totalStr = formatDuration(10 * 60 + otH * 60);
+          // Moderately late: +19 to +30 min (09:19..09:30 / 20:19..20:30)
+          arrDelta = 19 + Math.floor(rng() * 12);
         }
+        var inMin = baseInStd + arrDelta;
+
+        var shiftSpan = (shift === 'Day') ? (9 * 60) : (10 * 60);
+        var baseOutStd = baseInStd + shiftSpan; // 18:00 or 06:00(+1d)
+        var depDelta;
+        if (otH === 0) {
+          if (rDep < 0.28) {
+            // Left slightly early: -14 to -4 min (17:46..17:56 / 05:46..05:56)
+            depDelta = -14 + Math.floor(rng() * 11);
+          } else if (rDep < 0.78) {
+            // Normal window: -3 to +9 min (17:57..18:09 / 05:57..06:09)
+            depDelta = -3 + Math.floor(rng() * 13);
+          } else {
+            // Left a few min late: +10 to +18 min (18:10..18:18 / 06:10..06:18)
+            depDelta = 10 + Math.floor(rng() * 9);
+          }
+        } else {
+          // OT day: target out + otH + natural biometric variance (-7 to +11 min)
+          depDelta = -7 + Math.floor(rng() * 19);
+        }
+        var outAbsMin = baseOutStd + otH * 60 + depDelta;
+        inTime = formatClock(inMin);
+        outTime = formatClock(outAbsMin);
+        totalStr = formatDuration(outAbsMin - inMin);
+
         if (otH > 0) {
           otStr = formatDuration(otH * 60);
           genOtHrs += otH;
         }
       } else if (st === 'HD') {
         genHD++;
-        var hdOffset = Math.floor(rng() * 12);
-        var hdIn = (shift === 'Day' ? (8 * 60 + 55) : (19 * 60 + 55)) + hdOffset;
-        var hdOut = hdIn + 4 * 60 + 30;
+        var hdArrDelta = -7 + Math.floor(rng() * 22); // 08:53..09:14 or 19:53..20:14
+        var hdIn = (shift === 'Day' ? (9 * 60) : (20 * 60)) + hdArrDelta;
+        var hdSpan = 4 * 60 + 20 + Math.floor(rng() * 21); // 4:20..4:40
+        var hdOut = hdIn + hdSpan;
         inTime = formatClock(hdIn);
         outTime = formatClock(hdOut);
-        totalStr = '4:30';
+        totalStr = formatDuration(hdOut - hdIn);
       } else if (st === 'WO') {
         genWO++;
       } else if (st === 'A') {
@@ -17843,7 +17979,6 @@ document.addEventListener('click', function(e) {
       });
     }
 
-    // Strict comparison Sheet vs Generated
     if (genP !== Math.round(sheetWd)) redFlags.push('Working Days mismatch (Sheet ' + sheetWd + ' vs Gen ' + genP + ')');
     if (genWO !== Math.round(sheetSa)) redFlags.push('Sun Allow/WO mismatch (Sheet ' + sheetSa + ' vs Gen ' + genWO + ')');
     if (genHD !== Math.round(sheetHd)) redFlags.push('HD mismatch (Sheet ' + sheetHd + ' vs Gen ' + genHD + ')');
@@ -17854,6 +17989,7 @@ document.addEventListener('click', function(e) {
       emp: emp,
       weeklyOff: woName,
       shift: shift,
+      elig: elig,
       daysInMonth: daysInMonth,
       days: days,
       counts: {
@@ -17878,12 +18014,20 @@ document.addEventListener('click', function(e) {
     var totalGenOt = 0;
     var mismatchCount = 0;
     var warningCount = 0;
+    var nightTotal = 0;
+    var femaleNight = 0;
+    var officeNight = 0;
 
     for (var i = 0; i < rows.length; i++) {
       var rec = generateEmployeeSchedule(rows[i], settings);
       records.push(rec);
       totalSheetOt += rows[i].otHours;
       totalGenOt += rec.counts.otHours;
+      if (rec.shift === 'Night') {
+        nightTotal++;
+        if (rec.elig.isFemale) femaleNight++;
+        if (rec.elig.isOfficeStaff) officeNight++;
+      }
       if (rec.hasMismatch) mismatchCount++;
       else if (rec.hasWarning) warningCount++;
     }
@@ -17904,7 +18048,8 @@ document.addEventListener('click', function(e) {
         month: month,
         year: year,
         companyName: settings.companyName || 'ARORA TEXTILES PVT.LTD.',
-        maxOtPerDay: Math.max(1, Math.min(12, Math.round(Number(settings.maxOtPerDay) || 4)))
+        maxOtPerDay: Math.max(1, Math.min(12, Math.round(Number(settings.maxOtPerDay) || 4))),
+        nightScope: settings.nightScope || 'DESIGNATION'
       },
       daysInMonth: daysInMonth,
       dayHeaders: dayHeaders,
@@ -17912,6 +18057,10 @@ document.addEventListener('click', function(e) {
       records: records,
       summary: {
         totalEmployees: records.length,
+        dayWorkers: records.length - nightTotal,
+        nightWorkers: nightTotal,
+        femaleNight: femaleNight,
+        officeNight: officeNight,
         exactMatches: records.length - mismatchCount,
         mismatches: mismatchCount,
         warnings: warningCount + mismatchCount,
@@ -17922,16 +18071,13 @@ document.addEventListener('click', function(e) {
     };
   }
 
-  // Dedicated IndexedDB persistence (isolated from existing ERP sync DB)
   function openDb() {
     return new Promise(function(resolve, reject) {
       if (!root.indexedDB) { resolve(null); return; }
       var req = root.indexedDB.open(DB_NAME, DB_VER);
       req.onupgradeneeded = function(e) {
         var db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
+        if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
       };
       req.onsuccess = function(e) { resolve(e.target.result); };
       req.onerror = function() { reject(req.error || new Error('IndexedDB open failed')); };
@@ -17951,6 +18097,7 @@ document.addEventListener('click', function(e) {
             rows: state.rows,
             categoryRules: state.categoryRules,
             designationRules: state.designationRules,
+            rulesVersion: RULES_VER,
             savedAt: Date.now()
           }, STATE_KEY);
           tx.oncomplete = function() { db.close(); resolve(true); };
@@ -17988,7 +18135,6 @@ document.addEventListener('click', function(e) {
     }).catch(function(){ return false; });
   }
 
-  // UI Helpers
   function showBanner(type, text, extraHtml) {
     var b = document.getElementById('msrBanner');
     var t = document.getElementById('msrBannerText');
@@ -17999,20 +18145,17 @@ document.addEventListener('click', function(e) {
     a.innerHTML = extraHtml || '<button type="button" class="msr-btn msr-btn-sm" onclick="document.getElementById(\'msrBanner\').classList.remove(\'show\')">Dismiss</button>';
   }
 
-  function hideBanner() {
-    var b = document.getElementById('msrBanner');
-    if (b) b.classList.remove('show');
-  }
-
   function syncSettingsInputsToState() {
     var mEl = document.getElementById('msrMonthSel');
     var yEl = document.getElementById('msrYearInput');
     var cEl = document.getElementById('msrCompanyInput');
     var oEl = document.getElementById('msrMaxOtInput');
+    var nEl = document.getElementById('msrNightScope');
     if (mEl) state.settings.month = Math.max(0, Math.min(11, parseInt(mEl.value, 10) || 0));
     if (yEl) state.settings.year = Math.max(2000, Math.min(2099, parseInt(yEl.value, 10) || 2026));
     if (cEl) state.settings.companyName = cleanStr(cEl.value) || 'ARORA TEXTILES PVT.LTD.';
     if (oEl) state.settings.maxOtPerDay = Math.max(1, Math.min(12, parseInt(oEl.value, 10) || 4));
+    if (nEl && nEl.value) state.settings.nightScope = nEl.value;
   }
 
   function syncStateToSettingsInputs() {
@@ -18020,10 +18163,12 @@ document.addEventListener('click', function(e) {
     var yEl = document.getElementById('msrYearInput');
     var cEl = document.getElementById('msrCompanyInput');
     var oEl = document.getElementById('msrMaxOtInput');
+    var nEl = document.getElementById('msrNightScope');
     if (mEl) mEl.value = String(state.settings.month);
     if (yEl) yEl.value = String(state.settings.year);
     if (cEl) cEl.value = state.settings.companyName;
     if (oEl) oEl.value = String(state.settings.maxOtPerDay);
+    if (nEl) nEl.value = state.settings.nightScope || 'DESIGNATION';
   }
 
   function updateFileMeta() {
@@ -18032,9 +18177,10 @@ document.addEventListener('click', function(e) {
     if (!state.rows.length) {
       el.textContent = 'No salary sheet loaded yet. Upload Main Sheet (.csv / .xlsx) or load from ERP Files.';
     } else {
+      var nightN = state.rows.filter(function(r){ return r.shift === 'Night'; }).length;
       el.textContent = 'Loaded: ' + (state.fileName || 'Salary Sheet') +
         (state.sheetName ? ' [' + state.sheetName + ']' : '') +
-        ' — ' + state.rows.length + ' employees | Report: ' +
+        ' — ' + state.rows.length + ' employees (Day: ' + (state.rows.length - nightN) + ', Night: ' + nightN + ') | Report: ' +
         MONTH_NAMES[state.settings.month] + ' ' + state.settings.year;
     }
   }
@@ -18084,10 +18230,9 @@ document.addEventListener('click', function(e) {
   }
 
   function loadAoaIntoState(aoa, fileName, sheetName) {
-    var prevMap = {};
-    for (var i = 0; i < state.rows.length; i++) prevMap[state.rows[i].id] = state.rows[i];
+    syncSettingsInputsToState();
     var defaultDays = getDaysInMonth(state.settings.year, state.settings.month);
-    var res = extractRowsFromAoa(aoa, prevMap, defaultDays);
+    var res = extractRowsFromAoa(aoa, {}, defaultDays);
     if (res.missingCols.length) {
       showBanner('error', 'Sheet column mismatch — missing required columns: ' + res.missingCols.join(', '));
       return false;
@@ -18096,15 +18241,18 @@ document.addEventListener('click', function(e) {
       showBanner('warn', 'No valid employee rows (with Employee ID) found in "' + fileName + '".');
       return false;
     }
+    // Automatically assign Random Weekly Off + 3-4 Eligible Males per Card in Night Shift (never Female / Office Staff)
+    var assignStats = autoAssignRandomRules(res.rows, state.settings, state.settings.nightScope);
     state.fileName = fileName;
     state.sheetName = sheetName || '';
     state.rows = res.rows;
+    state.rulesVersion = RULES_VER;
     state.cfgPage = 1;
     state.valPage = 1;
     state.previewPage = 1;
     rebuildScheduleAndRender();
     saveStateToDb();
-    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '". Check Validation tab before exporting PDF/Excel.');
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '". Auto-assigned Random Weekly Off + Night Shift (' + assignStats.nightCount + ' eligible males in Night; 0 Female / 0 Office Staff).');
     return true;
   }
 
@@ -18149,7 +18297,7 @@ document.addEventListener('click', function(e) {
   function pickBestSheet(wb) {
     if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
     for (var i = 0; i < wb.SheetNames.length; i++) {
-      if (/mains*sheet|salary|wages/i.test(wb.SheetNames[i])) return wb.SheetNames[i];
+      if (/main\s*sheet|salary|wages/i.test(wb.SheetNames[i])) return wb.SheetNames[i];
     }
     return wb.SheetNames[0];
   }
@@ -18177,7 +18325,7 @@ document.addEventListener('click', function(e) {
       }
       if (f.sheets && typeof f.sheets === 'object') {
         var sNames = Object.keys(f.sheets);
-        var targetSn = sNames.find(function(n){ return /mains*sheet|salary|wages/i.test(n); }) || sNames[0];
+        var targetSn = sNames.find(function(n){ return /main\s*sheet|salary|wages/i.test(n); }) || sNames[0];
         var sheetRows = f.sheets[targetSn] || [];
         if (Array.isArray(sheetRows) && sheetRows.length) {
           var cols = Object.keys(sheetRows[0] || {});
@@ -18214,10 +18362,42 @@ document.addEventListener('click', function(e) {
     saveStateToDb();
   }
 
+  function onNightScopeChange() {
+    syncSettingsInputsToState();
+    if (state.rows.length) {
+      runAutoAssign(true);
+    } else {
+      saveStateToDb();
+    }
+  }
+
+  function runAutoAssign(notify) {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet (.csv / .xlsx) upload ya load karein.');
+      return;
+    }
+    syncSettingsInputsToState();
+    var stats = autoAssignRandomRules(state.rows, state.settings, state.settings.nightScope);
+    state.rulesVersion = RULES_VER;
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    if (notify) {
+      showBanner('success', 'Random Weekly Off + Night Shift updated (' + stats.nightCount + ' eligible males in Night, ' + stats.dayCount + ' Day; 0 Female / 0 Office Staff).');
+    }
+  }
+
   function updateEmployeeField(rowKey, field, value) {
     try { rowKey = decodeURIComponent(rowKey); } catch(_){}
     for (var i = 0; i < state.rows.length; i++) {
       if (state.rows[i].key === rowKey) {
+        if (field === 'shift' && value === 'Night') {
+          var elig = classifyEligibility(state.rows[i]);
+          if (!elig.isNightEligible) {
+            showBanner('warn', state.rows[i].name + ' (' + (elig.isFemale ? 'Female' : 'Office Staff') + ') ko Night shift me assign nahi kiya ja sakta.');
+            renderConfigTable(state.cfgPage);
+            return;
+          }
+        }
         state.rows[i][field] = value;
         break;
       }
@@ -18254,24 +18434,26 @@ document.addEventListener('click', function(e) {
     var scope = (document.getElementById('msrBulkScope') || {}).value || 'ALL';
     var keyVal = (document.getElementById('msrBulkKey') || {}).value || '';
     var sh = (document.getElementById('msrBulkShift') || {}).value || 'Day';
-    if (scope === 'CATEGORY' && keyVal) {
-      state.categoryRules[keyVal] = state.categoryRules[keyVal] || {};
-      state.categoryRules[keyVal].shift = sh;
-    } else if (scope === 'DESIGNATION' && keyVal) {
-      state.designationRules[keyVal] = state.designationRules[keyVal] || {};
-      state.designationRules[keyVal].shift = sh;
-    }
     var changed = 0;
+    var skipped = 0;
     for (var i = 0; i < state.rows.length; i++) {
       var r = state.rows[i];
       if (scope === 'ALL' || (scope === 'CATEGORY' && r.category === keyVal) || (scope === 'DESIGNATION' && r.designation === keyVal)) {
+        if (sh === 'Night') {
+          var elig = classifyEligibility(r);
+          if (!elig.isNightEligible) {
+            r.shift = 'Day';
+            skipped++;
+            continue;
+          }
+        }
         r.shift = sh;
         changed++;
       }
     }
     rebuildScheduleAndRender();
     saveStateToDb();
-    showBanner('success', 'Applied Shift = ' + sh + ' to ' + changed + ' employee(s).');
+    showBanner('success', 'Applied Shift = ' + sh + ' to ' + changed + ' employee(s).' + (skipped ? ' (Skipped ' + skipped + ' Female/Office Staff).' : ''));
   }
 
   function switchTab(tab) {
@@ -18303,7 +18485,7 @@ document.addEventListener('click', function(e) {
     if (sum.mismatches > 0) {
       showBanner('warn', 'Generated ' + sum.totalEmployees + ' employees — ' + sum.mismatches + ' mismatch/red-flag row(s) detected in Validation.');
     } else {
-      showBanner('success', 'Generated ' + sum.totalEmployees + ' employees successfully! Total OT = ' + sum.totalGenOt + ' hrs. Ready for PDF / Excel Export.');
+      showBanner('success', 'Generated ' + sum.totalEmployees + ' employees (Day: ' + sum.dayWorkers + ', Night: ' + sum.nightWorkers + ', Female/Staff in Night: 0)! Total OT = ' + sum.totalGenOt + ' hrs.');
     }
   }
 
@@ -18325,12 +18507,12 @@ document.addEventListener('click', function(e) {
     for (var i = 0; i < recs.length; i++) {
       var rec = recs[i];
       var r = rec.emp;
-      if (flt === 'day' && r.shift !== 'Day') continue;
-      if (flt === 'night' && r.shift !== 'Night') continue;
+      if (flt === 'day' && rec.shift !== 'Day') continue;
+      if (flt === 'night' && rec.shift !== 'Night') continue;
       if (flt === 'ot' && !(r.otHours > 0)) continue;
       if (flt === 'flagged' && !rec.hasMismatch && !rec.hasWarning) continue;
       if (q) {
-        var hay = (r.id + ' ' + r.name + ' ' + r.designation + ' ' + r.category).toLowerCase();
+        var hay = (r.id + ' ' + r.name + ' ' + r.designation + ' ' + r.category + ' ' + (r.department || '') + ' ' + (r.gender || '')).toLowerCase();
         if (hay.indexOf(q) === -1) continue;
       }
       filtered.push({ idx: i + 1, rec: rec });
@@ -18346,6 +18528,7 @@ document.addEventListener('click', function(e) {
       tbody.innerHTML = slice.map(function(item) {
         var rec = item.rec;
         var r = rec.emp;
+        var elig = rec.elig;
         var cls = rec.hasMismatch ? 'msr-row-flag' : (rec.hasWarning ? 'msr-row-warn' : '');
         var badge = rec.hasMismatch
           ? '<span class="msr-pill-bad" title="' + esc(rec.redFlags.join(' | ')) + '">FLAG</span>'
@@ -18353,12 +18536,18 @@ document.addEventListener('click', function(e) {
         var woOpts = WEEKDAYS_FULL.map(function(w) {
           return '<option value="' + w + '"' + (r.weeklyOff === w ? ' selected' : '') + '>' + w + '</option>';
         }).join('');
+        var tagStr = elig.isFemale
+          ? ' <span style="font-size:10px;background:#fce7f3;color:#9d174d;padding:1px 5px;border-radius:4px;font-weight:700">FEMALE</span>'
+          : (elig.isOfficeStaff ? ' <span style="font-size:10px;background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:4px;font-weight:700">OFFICE/STAFF</span>' : '');
+        var nightOpt = elig.isNightEligible
+          ? '<option value="Night"' + (rec.shift === 'Night' ? ' selected' : '') + '>Night</option>'
+          : '<option value="Night" disabled>Night (Day Only)</option>';
         return '<tr class="' + cls + '">' +
           '<td>' + item.idx + '</td>' +
           '<td style="font-weight:700">' + esc(r.id) + '</td>' +
-          '<td style="font-weight:700">' + esc(r.name) + '</td>' +
+          '<td style="font-weight:700">' + esc(r.name) + tagStr + '</td>' +
           '<td>' + esc(r.designation) + '</td>' +
-          '<td>' + esc(r.category) + '</td>' +
+          '<td>' + esc(r.category) + (r.department ? ' / ' + esc(r.department) : '') + '</td>' +
           '<td>' + r.monthOfDays + '</td>' +
           '<td>' + r.workingDays + '</td>' +
           '<td>' + r.sunAllow + '</td>' +
@@ -18367,12 +18556,12 @@ document.addEventListener('click', function(e) {
           '<td>' + r.paidDays + '</td>' +
           '<td style="font-weight:700">' + r.otHours + '</td>' +
           '<td><select class="msr-select" style="min-width:110px;padding:3px 5px;font-size:11px" onchange="window.ATPLMonthlyStatusReport.updateEmployeeField(\'' + encodeURIComponent(r.key) + '\',\'weeklyOff\',this.value)">' + woOpts + '</select></td>' +
-          '<td><select class="msr-select" style="min-width:78px;padding:3px 5px;font-size:11px" onchange="window.ATPLMonthlyStatusReport.updateEmployeeField(\'' + encodeURIComponent(r.key) + '\',\'shift\',this.value)"><option value="Day"' + (r.shift === 'Day' ? ' selected' : '') + '>Day</option><option value="Night"' + (r.shift === 'Night' ? ' selected' : '') + '>Night</option></select></td>' +
+          '<td><select class="msr-select" style="min-width:85px;padding:3px 5px;font-size:11px" onchange="window.ATPLMonthlyStatusReport.updateEmployeeField(\'' + encodeURIComponent(r.key) + '\',\'shift\',this.value)"><option value="Day"' + (rec.shift === 'Day' ? ' selected' : '') + '>Day</option>' + nightOpt + '</select></td>' +
           '<td>' + badge + '</td>' +
           '</tr>';
       }).join('');
     }
-    if (sumEl) sumEl.textContent = filtered.length + ' of ' + recs.length + ' employees shown';
+    if (sumEl) sumEl.textContent = filtered.length + ' of ' + recs.length + ' employees shown (Day: ' + state.generated.summary.dayWorkers + ', Night: ' + state.generated.summary.nightWorkers + ')';
     if (pageInfo) pageInfo.textContent = 'Page ' + state.cfgPage + ' of ' + totalPages;
   }
 
@@ -18394,11 +18583,12 @@ document.addEventListener('click', function(e) {
     }
 
     var sum = state.generated.summary;
+    var guardBad = sum.femaleNight > 0 || sum.officeNight > 0;
     kpiEl.innerHTML =
       '<div class="msr-kpi"><div class="msr-kpi-lbl">Total Employees</div><div class="msr-kpi-val">' + sum.totalEmployees + '</div></div>' +
       '<div class="msr-kpi green"><div class="msr-kpi-lbl">Exact Matches</div><div class="msr-kpi-val">' + sum.exactMatches + '</div></div>' +
       '<div class="msr-kpi ' + (sum.mismatches > 0 ? 'red' : 'green') + '"><div class="msr-kpi-lbl">Mismatches / Red Flags</div><div class="msr-kpi-val">' + sum.mismatches + '</div></div>' +
-      '<div class="msr-kpi ' + (sum.warnings > 0 ? 'amber' : 'green') + '"><div class="msr-kpi-lbl">Warnings</div><div class="msr-kpi-val">' + sum.warnings + '</div></div>' +
+      '<div class="msr-kpi ' + (guardBad ? 'red' : 'green') + '"><div class="msr-kpi-lbl">Shift Split (Day / Night)</div><div class="msr-kpi-val" style="font-size:15px">' + sum.dayWorkers + ' Day / ' + sum.nightWorkers + ' Night</div><div style="font-size:10px;color:#475569;margin-top:2px">Female Night: ' + sum.femaleNight + ' | Office Night: ' + sum.officeNight + '</div></div>' +
       '<div class="msr-kpi"><div class="msr-kpi-lbl">Sheet OT Total</div><div class="msr-kpi-val">' + sum.totalSheetOt + ' hrs</div></div>' +
       '<div class="msr-kpi ' + (Math.abs(sum.totalSheetOt - sum.totalGenOt) > 1e-6 ? 'red' : 'green') + '"><div class="msr-kpi-lbl">Generated OT Total</div><div class="msr-kpi-val">' + sum.totalGenOt + ' hrs</div></div>';
 
@@ -18523,11 +18713,8 @@ document.addEventListener('click', function(e) {
           }
           tds += '<td class="' + clsList.join(' ') + '">' + esc(val) + '</td>';
         }
-        if (rd.isOtRow) {
-          tds += '<td class="msr-cell-ot">' + esc(rec.counts.otText) + '</td>';
-        } else {
-          tds += '<td class="msr-cell-ot"></td>';
-        }
+        if (rd.isOtRow) tds += '<td class="msr-cell-ot">' + esc(rec.counts.otText) + '</td>';
+        else tds += '<td class="msr-cell-ot"></td>';
         return '<tr>' + tds + '</tr>';
       }).join('');
 
@@ -18576,7 +18763,6 @@ document.addEventListener('click', function(e) {
     showBanner('warn', 'No employee found matching "' + query + '".');
   }
 
-  // Vector A4 Landscape PDF Generator via jsPDF (repeating header + mandatory notice on EVERY page)
   function ensureJsPdf() {
     if (root.jspdf && root.jspdf.jsPDF) return Promise.resolve(root.jspdf.jsPDF);
     if (typeof root.ATPLLoadOptionalLib === 'function') {
@@ -18605,10 +18791,10 @@ document.addEventListener('click', function(e) {
       var pageW = 297;
       var marginL = 7;
       var marginR = 7;
-      var usableW = pageW - marginL - marginR; // 283mm
+      var usableW = pageW - marginL - marginR;
       var labelW = 13.5;
       var otColW = 12.5;
-      var daysW = usableW - labelW - otColW; // 257mm
+      var daysW = usableW - labelW - otColW;
       var colW = daysW / gen.daysInMonth;
       var totalPages = gen.summary.totalPages;
 
@@ -18630,12 +18816,10 @@ document.addEventListener('click', function(e) {
         doc.setFontSize(7.5);
         doc.text('Page ' + pageNo + ' of ' + totalPages, pageW - marginR, 19.5, { align: 'right' });
 
-        // Permanent mandatory notice on every page
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.8);
         doc.text(MANDATORY_NOTICE, marginL, 23.8);
 
-        // Days Header Bar (y = 25.5..32.5)
         var barY = 25.5;
         var barH = 7.0;
         doc.setDrawColor(0, 0, 0);
@@ -18672,7 +18856,6 @@ document.addEventListener('click', function(e) {
           var e = rec.emp;
           var blockTop = 34.5 + b * 42.5;
 
-          // Employee Header Text
           doc.setTextColor(0, 0, 0);
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(7.6);
@@ -18681,10 +18864,9 @@ document.addEventListener('click', function(e) {
           doc.setFont('helvetica', 'normal');
           doc.text('Weekly Off: ' + rec.weeklyOff, marginL + labelW + daysW, blockTop + 3.6, { align: 'right' });
 
-          // 5-row bordered rectangle
           var boxY = blockTop + 5.2;
           var rowH = 6.2;
-          var boxH = rowH * 5; // 31mm
+          var boxH = rowH * 5;
           var boxW = labelW + daysW;
 
           doc.setDrawColor(160, 174, 192);
@@ -18705,7 +18887,6 @@ document.addEventListener('click', function(e) {
             doc.text(rowLabels[rl], marginL + 1.4, boxY + rl * rowH + 4.2);
           }
 
-          // Day values
           for (var dIdx = 0; dIdx < rec.days.length; dIdx++) {
             var cell = rec.days[dIdx];
             var cxCell = marginL + labelW + (dIdx + 0.5) * colW;
@@ -18719,7 +18900,6 @@ document.addEventListener('click', function(e) {
             doc.text(cell.totalText || '0:00', cxCell, boxY + 4 * rowH + 4.2, { align: 'center' });
           }
 
-          // Employee total OT in rightmost OT column aligned on OT row
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(8.2);
           doc.text(rec.counts.otText, pageW - marginR - 1.2, boxY + 3 * rowH + 4.4, { align: 'right' });
@@ -18791,7 +18971,7 @@ document.addEventListener('click', function(e) {
       [MANDATORY_NOTICE],
       ['Report Period', gen.dateRangeText, 'Company', gen.settings.companyName],
       [],
-      ['Emp ID', 'Name', 'Designation', 'Category', 'Shift', 'Weekly Off', 'Month Days', 'Sheet WD', 'Gen P', 'Sheet Sun Allow', 'Gen WO', 'Sheet HD', 'Gen HD', 'Sheet Absent', 'Gen A', 'Sheet OT Hrs', 'Gen OT Hrs', 'P+WO+A+HD', 'Status / Warnings']
+      ['Emp ID', 'Name', 'Gender', 'Department', 'Designation', 'Category', 'Shift', 'Weekly Off', 'Month Days', 'Sheet WD', 'Gen P', 'Sheet Sun Allow', 'Gen WO', 'Sheet HD', 'Gen HD', 'Sheet Absent', 'Gen A', 'Sheet OT Hrs', 'Gen OT Hrs', 'P+WO+A+HD', 'Status / Warnings']
     ];
     for (var v = 0; v < gen.records.length; v++) {
       var vr = gen.records[v];
@@ -18799,7 +18979,7 @@ document.addEventListener('click', function(e) {
       var vc = vr.counts;
       var flagTxt = vr.redFlags.concat(vr.warnings).join('; ') || 'EXACT MATCH';
       valAoa.push([
-        ve.id, ve.name, ve.designation, ve.category, vr.shift, vr.weeklyOff,
+        ve.id, ve.name, ve.gender || '', ve.department || '', ve.designation, ve.category, vr.shift, vr.weeklyOff,
         ve.monthOfDays, ve.workingDays, vc.p, ve.sunAllow, vc.wo, ve.hd, vc.hd,
         ve.absent, vc.a, ve.otHours, vc.otHours, vc.allocatedSum, flagTxt
       ]);
@@ -18856,6 +19036,12 @@ document.addEventListener('click', function(e) {
         state.rows = Array.isArray(saved.rows) ? saved.rows : [];
         state.categoryRules = saved.categoryRules || {};
         state.designationRules = saved.designationRules || {};
+        // Upgrade older v1 saved data (where all rows defaulted to SUNDAY/Day) to random WO + eligible Night rules
+        if (state.rows.length && saved.rulesVersion !== RULES_VER) {
+          autoAssignRandomRules(state.rows, state.settings, state.settings.nightScope);
+          state.rulesVersion = RULES_VER;
+          saveStateToDb();
+        }
       }
       syncStateToSettingsInputs();
       rebuildScheduleAndRender();
@@ -18868,6 +19054,8 @@ document.addEventListener('click', function(e) {
     handleFileInput: handleFileInput,
     loadFromErpSelect: loadFromErpSelect,
     onSettingChange: onSettingChange,
+    onNightScopeChange: onNightScopeChange,
+    runAutoAssign: runAutoAssign,
     refreshBulkValues: refreshBulkValues,
     applyBulkWeeklyOff: applyBulkWeeklyOff,
     applyBulkShift: applyBulkShift,
@@ -18886,10 +19074,11 @@ document.addEventListener('click', function(e) {
     exportExcel: exportExcel,
     requestReset: requestReset,
     confirmReset: confirmReset,
-    // Pure logic exports for automated verification & reuse
     _engine: {
       parseCsvText: parseCsvText,
       mapColumns: mapColumns,
+      classifyEligibility: classifyEligibility,
+      autoAssignRandomRules: autoAssignRandomRules,
       extractRowsFromAoa: extractRowsFromAoa,
       generateEmployeeSchedule: generateEmployeeSchedule,
       buildAllSchedules: buildAllSchedules,
