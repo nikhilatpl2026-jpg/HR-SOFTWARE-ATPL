@@ -2036,6 +2036,89 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     background: rgba(56, 189, 248, 0.08);
     border-radius: 8px 8px 0 0;
   }
+
+  /* ══ MONTHLY STATUS REPORT (BASIC WORK DURATION) ══ */
+  #page-monthlystatus { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .msr-wrap { max-width: 1460px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; }
+  .msr-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(15,23,42,0.04); }
+  .msr-header-card { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #f8fafc; border: 1px solid #334155; }
+  .msr-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .msr-title { font-size: 18px; font-weight: 800; letter-spacing: -0.2px; color: #ffffff; margin: 0; }
+  .msr-sub { font-size: 12px; color: #cbd5e1; margin-top: 3px; }
+  .msr-mandatory-notice { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(251, 191, 36, 0.45); color: #fef3c7; font-size: 12px; font-weight: 700; letter-spacing: 0.15px; }
+  .msr-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .msr-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 7px; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .msr-btn:hover { background: #f1f5f9; }
+  .msr-btn-primary { background: #0284c7; border-color: #0284c7; color: #ffffff; }
+  .msr-btn-primary:hover { background: #0369a1; }
+  .msr-btn-success { background: #059669; border-color: #059669; color: #ffffff; }
+  .msr-btn-success:hover { background: #047857; }
+  .msr-btn-dark { background: #1e293b; border-color: #475569; color: #f8fafc; }
+  .msr-btn-dark:hover { background: #334155; }
+  .msr-btn-danger { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+  .msr-btn-danger:hover { background: #b91c1c; }
+  .msr-btn-sm { padding: 5px 10px; font-size: 11px; }
+  .msr-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .msr-grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 10px; }
+  .msr-field label { display: block; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+  .msr-input, .msr-select { width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; color: #0f172a; background: #ffffff; outline: none; box-sizing: border-box; }
+  .msr-input:focus, .msr-select:focus { border-color: #0284c7; box-shadow: 0 0 0 2px rgba(2,132,199,0.15); }
+  .msr-bulk-bar { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #cbd5e1; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+  .msr-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+  .msr-tab-btn { padding: 8px 14px; border-radius: 7px; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer; }
+  .msr-tab-btn.active { background: #0f172a; border-color: #0f172a; color: #ffffff; }
+  .msr-banner { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; display: none; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .msr-banner.show { display: flex; position: sticky; top: 8px; z-index: 30; box-shadow: 0 4px 12px rgba(15,23,42,0.12); }
+  .msr-banner.info { background: #e0f2fe; border: 1px solid #7dd3fc; color: #0c4a6e; }
+  .msr-banner.success { background: #dcfce7; border: 1px solid #86efac; color: #14532d; }
+  .msr-banner.warn { background: #fef3c7; border: 1px solid #fcd34d; color: #78350f; }
+  .msr-banner.error { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; }
+  .msr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .msr-kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: #f8fafc; }
+  .msr-kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.4px; }
+  .msr-kpi-val { font-size: 20px; font-weight: 800; color: #0f172a; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .msr-kpi.red { background: #fef2f2; border-color: #fecaca; }
+  .msr-kpi.red .msr-kpi-val { color: #b91c1c; }
+  .msr-kpi.green { background: #f0fdf4; border-color: #bbf7d0; }
+  .msr-kpi.green .msr-kpi-val { color: #15803d; }
+  .msr-kpi.amber { background: #fffbeb; border-color: #fde68a; }
+  .msr-kpi.amber .msr-kpi-val { color: #b45309; }
+  .msr-table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; max-height: 540px; overflow-y: auto; }
+  .msr-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .msr-table th { position: sticky; top: 0; z-index: 2; background: #f1f5f9; color: #334155; font-weight: 800; text-align: left; padding: 8px 9px; border-bottom: 1px solid #cbd5e1; white-space: nowrap; }
+  .msr-table td { padding: 6px 9px; border-bottom: 1px solid #e2e8f0; color: #0f172a; vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .msr-table tr.msr-row-flag { background: #fef2f2 !important; }
+  .msr-table tr.msr-row-flag td { color: #991b1b; border-bottom-color: #fecaca; }
+  .msr-table tr.msr-row-warn { background: #fffbeb; }
+  .msr-pill-ok { display: inline-block; padding: 2px 7px; border-radius: 4px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 10px; }
+  .msr-pill-bad { display: inline-block; padding: 2px 7px; border-radius: 4px; background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 10px; }
+  .msr-pill-warn { display: inline-block; padding: 2px 7px; border-radius: 4px; background: #fef3c7; color: #92400e; font-weight: 700; font-size: 10px; }
+  .msr-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12px; color: #475569; }
+
+  /* PDF Replica Sheet Preview */
+  .msr-pdf-shell { overflow-x: auto; padding: 8px; background: #e2e8f0; border-radius: 8px; }
+  .msr-pdf-page { background: #ffffff; color: #000000; width: 1100px; margin: 0 auto; padding: 18px 20px; box-shadow: 0 4px 16px rgba(15,23,42,0.16); font-family: Arial, Helvetica, sans-serif; box-sizing: border-box; }
+  .msr-pdf-top { position: relative; text-align: center; margin-bottom: 4px; }
+  .msr-pdf-title { font-size: 15px; font-weight: 700; color: #000; }
+  .msr-pdf-sim { position: absolute; right: 0; top: 1px; font-size: 10px; color: #222; font-weight: 600; }
+  .msr-pdf-range { font-size: 11px; color: #000; margin-top: 2px; }
+  .msr-pdf-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; color: #000; margin-top: 4px; }
+  .msr-pdf-disclaimer { font-size: 10px; font-weight: 700; color: #111; text-align: left; padding: 3px 6px; margin: 4px 0 6px 0; border-left: 3px solid #000; background: #f8fafc; }
+  .msr-pdf-days-tbl, .msr-pdf-emp-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; color: #000; }
+  .msr-pdf-days-tbl td { border: 1px solid #000; text-align: center; padding: 2px 1px; font-weight: 700; line-height: 1.15; }
+  .msr-pdf-emp-block { margin-top: 9px; page-break-inside: avoid; }
+  .msr-pdf-emp-hdr { display: flex; justify-content: space-between; font-size: 10px; font-weight: 700; padding: 2px 2px 3px 2px; color: #000; }
+  .msr-pdf-emp-tbl td { border-top: 1px solid #94a3b8; border-bottom: 1px solid #94a3b8; text-align: center; padding: 2px 1px; font-size: 8.5px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .msr-pdf-emp-tbl td.msr-cell-lbl { border-left: 1px solid #000; border-right: 1px solid #000; text-align: left; padding-left: 4px; font-weight: 700; background: #f8fafc; }
+  .msr-pdf-emp-tbl tr:first-child td:not(.msr-cell-ot) { border-top: 1px solid #000; }
+  .msr-pdf-emp-tbl tr:last-child td:not(.msr-cell-ot) { border-bottom: 1px solid #000; }
+  .msr-pdf-emp-tbl td.msr-cell-lastday { border-right: 1px solid #000; }
+  .msr-pdf-emp-tbl td.msr-cell-ot { border: none; text-align: right; padding-right: 4px; font-weight: 700; font-size: 10px; }
+  .msr-st-a { color: #b91c1c; font-weight: 700; }
+  .msr-st-wo { color: #0369a1; font-weight: 700; }
+  .msr-st-hd { color: #b45309; font-weight: 700; }
+  .msr-st-p { color: #000000; font-weight: 600; }
+
 </style>
 <script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
 
@@ -2442,6 +2525,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-advance" onclick="goPage('advance')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">💳</span>Advance Management <span class="vbadge" id="advBadge" style="background:#10b981;display:none">0</span></div>
       <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')" style="background:rgba(16,185,129,0.15);color:#34d399;font-weight:700"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
+      <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')" style="background:rgba(14,165,233,0.16);color:#38bdf8;font-weight:700"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
 
@@ -2582,6 +2666,229 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <!-- ══ PAGE: HR LETTERS & LEAVE APPLICATION ══ -->
     <div class="page" id="page-letter" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
       <div id="letterModuleContainer"></div>
+    </div>
+
+    <!-- ══ PAGE: MONTHLY STATUS REPORT (BASIC WORK DURATION) ══ -->
+    <div class="page" id="page-monthlystatus" style="flex-direction:column;overflow-y:auto;padding:18px;background:#f1f5f9;color:#0f172a;min-height:100%">
+      <div class="msr-wrap">
+
+        <!-- Header & Mandatory Notice -->
+        <div class="msr-card msr-header-card">
+          <div class="msr-title-row">
+            <div>
+              <h2 class="msr-title">🗓️ Monthly Status Report (Basic Work Duration)</h2>
+              <div class="msr-sub">Salary sheet (Main Sheet) se har employee ka deterministic din-wise Status, InTime, OutTime, OT aur Total report generate karein</div>
+            </div>
+            <div style="font-size:11px;color:#94a3b8;font-weight:700">IndexedDB Auto-Saved</div>
+          </div>
+          <div class="msr-mandatory-notice" id="msrMandatoryNotice">
+            Simulated Attendance - generated from monthly wages sheet; in/out times are computed.
+          </div>
+          <div class="msr-toolbar">
+            <input type="file" id="msrFileInput" accept=".csv,.xlsx,.xls" data-ua-action="upload" style="display:none" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.handleFileInput(this)" />
+            <button type="button" id="msrUploadBtn" data-ua-action="upload" class="msr-btn msr-btn-primary" onclick="document.getElementById('msrFileInput').click()">📂 Upload Salary Sheet (.csv / .xlsx)</button>
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.16)">
+              <select id="msrErpFileSelect" class="msr-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px"></select>
+              <button type="button" id="msrLoadErpBtn" data-ua-action="view" class="msr-btn msr-btn-dark msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.loadFromErpSelect()">📥 Load ERP Sheet</button>
+            </div>
+            <button type="button" id="msrGenerateBtn" data-ua-action="view" class="msr-btn msr-btn-success" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.generateAndOpenValidation()">⚡ Generate &amp; Validate</button>
+            <button type="button" id="msrExportPdfBtn" data-ua-action="view" class="msr-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.exportPDF()">📄 Export PDF (A4 Landscape)</button>
+            <button type="button" id="msrExportXlsxBtn" data-ua-action="view" class="msr-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.exportExcel()">📊 Export Excel (.xlsx)</button>
+            <button type="button" id="msrResetBtn" data-ua-action="view" class="msr-btn msr-btn-danger" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.requestReset()">↺ Reset Module Data</button>
+          </div>
+          <div id="msrFileMeta" style="margin-top:8px;font-size:11px;color:#cbd5e1">No salary sheet loaded yet.</div>
+        </div>
+
+        <!-- Inline Status / Confirmation Banner (No window.alert/confirm) -->
+        <div id="msrBanner" class="msr-banner">
+          <span id="msrBannerText"></span>
+          <span id="msrBannerActions" style="display:inline-flex;gap:6px;align-items:center"></span>
+        </div>
+
+        <!-- Settings & Bulk Category/Designation Rules -->
+        <div class="msr-card">
+          <div class="msr-grid-4">
+            <div class="msr-field">
+              <label for="msrMonthSel">Report Month</label>
+              <select id="msrMonthSel" class="msr-select" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onSettingChange()">
+                <option value="0">JAN</option><option value="1">FEB</option><option value="2">MAR</option>
+                <option value="3">APR</option><option value="4">MAY</option><option value="5">JUN</option>
+                <option value="6">JUL</option><option value="7">AUG</option><option value="8" selected>SEP</option>
+                <option value="9">OCT</option><option value="10">NOV</option><option value="11">DEC</option>
+              </select>
+            </div>
+            <div class="msr-field">
+              <label for="msrYearInput">Report Year</label>
+              <input type="number" id="msrYearInput" class="msr-input" value="2026" min="2000" max="2099" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onSettingChange()" />
+            </div>
+            <div class="msr-field">
+              <label for="msrCompanyInput">Company Name</label>
+              <input type="text" id="msrCompanyInput" class="msr-input" value="ARORA TEXTILES PVT.LTD." onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onSettingChange()" />
+            </div>
+            <div class="msr-field">
+              <label for="msrMaxOtInput">Max OT Per Day (hrs)</label>
+              <input type="number" id="msrMaxOtInput" class="msr-input" value="4" min="1" max="12" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onSettingChange()" />
+            </div>
+          </div>
+
+          <div class="msr-bulk-bar">
+            <div class="msr-field" style="min-width:170px">
+              <label for="msrBulkScope">Bulk Apply Target</label>
+              <select id="msrBulkScope" class="msr-select" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.refreshBulkValues()">
+                <option value="ALL">All Employees</option>
+                <option value="CATEGORY">By Category</option>
+                <option value="DESIGNATION">By Designation</option>
+              </select>
+            </div>
+            <div class="msr-field" style="min-width:190px;flex:1;max-width:280px">
+              <label for="msrBulkKey">Category / Designation Value</label>
+              <select id="msrBulkKey" class="msr-select"><option value="">(All Employees)</option></select>
+            </div>
+            <div class="msr-field" style="min-width:140px">
+              <label for="msrBulkWo">Weekly Off Day</label>
+              <select id="msrBulkWo" class="msr-select">
+                <option value="SUNDAY">SUNDAY</option><option value="MONDAY">MONDAY</option><option value="TUESDAY">TUESDAY</option>
+                <option value="WEDNESDAY">WEDNESDAY</option><option value="THURSDAY">THURSDAY</option><option value="FRIDAY">FRIDAY</option>
+                <option value="SATURDAY">SATURDAY</option>
+              </select>
+            </div>
+            <button type="button" id="msrApplyWoBtn" data-ua-action="view" class="msr-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.applyBulkWeeklyOff()">Apply Weekly Off</button>
+            <div class="msr-field" style="min-width:120px">
+              <label for="msrBulkShift">Shift Type</label>
+              <select id="msrBulkShift" class="msr-select">
+                <option value="Day">Day (~09:00–18:00)</option>
+                <option value="Night">Night (~20:00–06:00)</option>
+              </select>
+            </div>
+            <button type="button" id="msrApplyShiftBtn" data-ua-action="view" class="msr-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.applyBulkShift()">Apply Shift</button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="msr-tabs">
+          <button type="button" id="msrTabBtnConfig" class="msr-tab-btn active" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.switchTab('config')">1. Sheet &amp; Employee Shift / Weekly Off</button>
+          <button type="button" id="msrTabBtnValidation" class="msr-tab-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.switchTab('validation')">2. Validation Screen (Sheet vs Generated)</button>
+          <button type="button" id="msrTabBtnPreview" class="msr-tab-btn" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.switchTab('preview')">3. Report Preview (PDF Format)</button>
+        </div>
+
+        <!-- TAB 1: Employee Rules & Sheet View -->
+        <div id="msrTabConfig" class="msr-card">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1">
+              <input type="text" id="msrCfgSearch" class="msr-input" style="max-width:300px" placeholder="Search Emp ID, Name, Designation, Category..." oninput="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.renderConfigTable(1)" />
+              <select id="msrCfgFilter" class="msr-select" style="width:auto" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.renderConfigTable(1)">
+                <option value="all">All Rows</option>
+                <option value="day">Day Shift Only</option>
+                <option value="night">Night Shift Only</option>
+                <option value="ot">Has Over Time (&gt;0)</option>
+                <option value="flagged">Flagged / Mismatched Only</option>
+              </select>
+            </div>
+            <div id="msrCfgSummary" style="font-size:12px;font-weight:700;color:#334155">0 employees</div>
+          </div>
+          <div class="msr-table-wrap">
+            <table class="msr-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Emp ID</th>
+                  <th>Name</th>
+                  <th>Designation</th>
+                  <th>Category</th>
+                  <th>Month Days</th>
+                  <th>Working Days</th>
+                  <th>Sun Allow</th>
+                  <th>HD</th>
+                  <th>Absent</th>
+                  <th>Paid Days</th>
+                  <th>OT Hrs</th>
+                  <th>Weekly Off</th>
+                  <th>Shift</th>
+                  <th>Check</th>
+                </tr>
+              </thead>
+              <tbody id="msrCfgTbody">
+                <tr><td colspan="15" style="text-align:center;padding:24px;color:#64748b">Upload a Salary Sheet (.csv / .xlsx) or load from ERP files above to begin.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="msr-pager">
+            <span id="msrCfgPageInfo">Page 1 of 1</span>
+            <div style="display:flex;gap:6px">
+              <button type="button" id="msrCfgPrevBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changeCfgPage(-1)">◀ Prev</button>
+              <button type="button" id="msrCfgNextBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changeCfgPage(1)">Next ▶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Validation Screen (Before PDF/Excel Export) -->
+        <div id="msrTabValidation" class="msr-card" style="display:none">
+          <div class="msr-kpis" id="msrValKpis"></div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1">
+              <input type="text" id="msrValSearch" class="msr-input" style="max-width:280px" placeholder="Search validation rows..." oninput="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.renderValidationTable(1)" />
+              <select id="msrValFilter" class="msr-select" style="width:auto" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.renderValidationTable(1)">
+                <option value="all">All Employees</option>
+                <option value="issues">Mismatches &amp; Warnings Only</option>
+                <option value="ok">Exact Matches Only</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button type="button" id="msrValOpenPreviewBtn" class="msr-btn msr-btn-primary msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.switchTab('preview')">👁 Open PDF Preview</button>
+              <button type="button" id="msrValExportPdfBtn" class="msr-btn msr-btn-success msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.exportPDF()">📄 Export PDF</button>
+            </div>
+          </div>
+          <div class="msr-table-wrap">
+            <table class="msr-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Emp ID</th>
+                  <th>Name</th>
+                  <th>Shift / WO</th>
+                  <th>Month Days</th>
+                  <th>WD (Sheet / Gen)</th>
+                  <th>Sun Allow / WO (Sheet / Gen)</th>
+                  <th>HD (Sheet / Gen)</th>
+                  <th>Absent (Sheet / Gen)</th>
+                  <th>OT Hrs (Sheet / Gen)</th>
+                  <th>P+WO+A+HD</th>
+                  <th>Validation Result</th>
+                </tr>
+              </thead>
+              <tbody id="msrValTbody">
+                <tr><td colspan="12" style="text-align:center;padding:24px;color:#64748b">Click "Generate &amp; Validate" to inspect Sheet vs Generated comparisons.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="msr-pager">
+            <span id="msrValPageInfo">Page 1 of 1</span>
+            <div style="display:flex;gap:6px">
+              <button type="button" id="msrValPrevBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changeValPage(-1)">◀ Prev</button>
+              <button type="button" id="msrValNextBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changeValPage(1)">Next ▶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Report Preview (4 Employees / A4 Landscape Page Replica) -->
+        <div id="msrTabPreview" class="msr-card" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <button type="button" id="msrPrevPageBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changePreviewPage(-1)">◀ Prev Page</button>
+              <span style="font-size:12px;font-weight:700">Page <input type="number" id="msrPreviewPageInput" class="msr-input" style="width:68px;display:inline-block;padding:4px 6px" value="1" min="1" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.jumpPreviewPage(this.value)" /> of <span id="msrPreviewTotalPages">1</span></span>
+              <button type="button" id="msrNextPageBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.changePreviewPage(1)">Next Page ▶</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <input type="text" id="msrPreviewEmpJump" class="msr-input" style="width:210px;padding:5px 8px" placeholder="Jump to Emp Code or Name..." onkeydown="if(event.key==='Enter'){window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.jumpToEmployee(this.value);}" />
+              <button type="button" id="msrPreviewJumpBtn" class="msr-btn msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.jumpToEmployee(document.getElementById('msrPreviewEmpJump').value)">Find Employee</button>
+            </div>
+          </div>
+          <div class="msr-pdf-shell" id="msrPreviewContainer">
+            <div style="text-align:center;padding:30px;color:#475569;font-size:13px">Upload a salary sheet and click "Generate &amp; Validate" to preview report pages.</div>
+          </div>
+        </div>
+
+      </div>
     </div>
 
     <!-- ══ PAGE: SMART COMMANDS ══ -->
@@ -7052,7 +7359,7 @@ function goPage(name) {
   // Auto-expand the parent category of active item
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -7070,6 +7377,7 @@ function goPage(name) {
   if(name==='letter') { if(window.ATPLLettersManager && typeof window.ATPLLettersManager.renderUI==='function') window.ATPLLettersManager.renderUI(); }
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
+  if(name==='monthlystatus'){ if(window.ATPLMonthlyStatusReport && typeof window.ATPLMonthlyStatusReport.init==='function') window.ATPLMonthlyStatusReport.init(); }
   if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
   if(name==='files') renderAllFilesPage(true);
   if(name==='newjoin') populateNJSelects();
@@ -17061,6 +17369,1536 @@ document.addEventListener('click', function(e) {
       </div>
     </div>
 
+
+<script id="atplMonthlyStatusReportScript">
+(function(root){
+  'use strict';
+  if (root.__ATPL_MONTHLY_STATUS_REPORT_V1__) return;
+  root.__ATPL_MONTHLY_STATUS_REPORT_V1__ = true;
+
+  var DB_NAME = 'ATPL_MonthlyStatusReport_DB_V1';
+  var DB_VER = 1;
+  var STORE_NAME = 'msr_state';
+  var STATE_KEY = 'current_state_v1';
+  var MANDATORY_NOTICE = 'Simulated Attendance - generated from monthly wages sheet; in/out times are computed.';
+  var MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  var WEEKDAYS_FULL = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
+  var WEEKDAYS_SHORT = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  var PAGE_SIZE_TABLE = 50;
+  var EMP_PER_PDF_PAGE = 4;
+
+  var state = {
+    settings: {
+      month: 8,
+      year: 2026,
+      companyName: 'ARORA TEXTILES PVT.LTD.',
+      maxOtPerDay: 4
+    },
+    fileName: '',
+    sheetName: '',
+    rows: [],
+    categoryRules: {},
+    designationRules: {},
+    generated: null,
+    activeTab: 'config',
+    cfgPage: 1,
+    valPage: 1,
+    previewPage: 1,
+    pendingReset: false,
+    initialized: false
+  };
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function cleanStr(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim(); }
+
+  function parseNum(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var s = String(v == null ? '' : v).replace(/,/g, '').trim();
+    if (!s || s === '-' || /^na$/i.test(s)) return 0;
+    var n = Number(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  function formatDuration(mins) {
+    var m = Math.max(0, Math.round(mins || 0));
+    var h = Math.floor(m / 60);
+    var r = m % 60;
+    return h + ':' + pad2(r);
+  }
+
+  function formatClock(absMins) {
+    if (absMins == null || !isFinite(absMins)) return '';
+    var m = ((Math.round(absMins) % 1440) + 1440) % 1440;
+    var h = Math.floor(m / 60);
+    var r = m % 60;
+    return pad2(h) + ':' + pad2(r);
+  }
+
+  function getDaysInMonth(year, monthIdx) {
+    return new Date(year, monthIdx + 1, 0).getDate();
+  }
+
+  // Deterministic FNV-1a hash + Mulberry32 PRNG
+  function hashSeed(str) {
+    var h = 2166136261 >>> 0;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+
+  function createRng(seedStr) {
+    var a = hashSeed(seedStr);
+    if (a === 0) a = 0x9e3779b9;
+    return function() {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffleWithRng(arr, rng) {
+    var copy = arr.slice();
+    for (var i = copy.length - 1; i > 0; i--) {
+      var j = Math.floor(rng() * (i + 1));
+      var tmp = copy[i];
+      copy[i] = copy[j];
+      copy[j] = tmp;
+    }
+    return copy;
+  }
+
+  // RFC-4180 CSV parser preserving exact strings & leading zeros (e.g. "00135")
+  function parseCsvText(text) {
+    var rows = [];
+    var row = [];
+    var field = '';
+    var inQuotes = false;
+    var src = String(text || '');
+    if (src.charCodeAt(0) === 0xFEFF) src = src.slice(1);
+    for (var i = 0; i < src.length; i++) {
+      var ch = src[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (src[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          row.push(field);
+          field = '';
+        } else if (ch === '\r') {
+          if (src[i + 1] === '\n') i++;
+          row.push(field);
+          rows.push(row);
+          row = [];
+          field = '';
+        } else if (ch === '\n') {
+          row.push(field);
+          rows.push(row);
+          row = [];
+          field = '';
+        } else {
+          field += ch;
+        }
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function normHeader(h) {
+    return String(h == null ? '' : h)
+      .toLowerCase()
+      .replace(/[._-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function findHeaderRowIndex(aoa) {
+    var bestIdx = 0;
+    var bestScore = -1;
+    var limit = Math.min(20, aoa.length);
+    for (var r = 0; r < limit; r++) {
+      var cells = aoa[r] || [];
+      var joined = cells.map(normHeader);
+      var score = 0;
+      if (joined.some(function(c){ return /^(emp id|emp code|employee id|empid|empcode)$/.test(c); })) score += 4;
+      if (joined.some(function(c){ return /name of employee|emp name|employee name|^name$/.test(c); })) score += 3;
+      if (joined.some(function(c){ return /working days|work days/.test(c); })) score += 2;
+      if (joined.some(function(c){ return /month of days|month days/.test(c); })) score += 2;
+      if (joined.some(function(c){ return /sun allow|absent|over time|overtime/.test(c); })) score += 2;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = r;
+      }
+    }
+    return bestIdx;
+  }
+
+  function mapColumns(headerRow) {
+    var norm = (headerRow || []).map(normHeader);
+    function findCol(patterns) {
+      for (var p = 0; p < patterns.length; p++) {
+        var rx = patterns[p];
+        for (var i = 0; i < norm.length; i++) {
+          if (rx.test(norm[i])) return i;
+        }
+      }
+      return -1;
+    }
+    return {
+      empId: findCol([/^(emp id|emp code|employee id|employee code|empid|empcode)$/, /emps*(id|code)/, /^id$/]),
+      name: findCol([/^(name of employee|employee name|emp name|name)$/, /name of employee/, /emps*name/]),
+      designation: findCol([/^(desigenation|designation|desig)$/, /desig/]),
+      category: findCol([/^(category|cat|skill category)$/, /^department$/]),
+      monthDays: findCol([/^(month of days|month days|days in month|monthofdays)$/, /month.*day/]),
+      workingDays: findCol([/^(working days|work days|present days|p days|wd)$/, /working.*day/]),
+      sunAllow: findCol([/^(sun allow|sunday allow|weekly off|week off|wo)$/, /sun.*allow/]),
+      hd: findCol([/^(hd|holi days|holidays|holiday|half days|half day)$/, /holis*day/]),
+      absent: findCol([/^(absent|absent days|ab)$/, /^absent/]),
+      paidDays: findCol([/^(paid days|payable days|pd)$/, /paid.*day/]),
+      otHours: findCol([/^(over time hours|overtime hours|ot hours|ot hrs|over time|overtime|ot)$/, /overs*time.*hour/])
+    };
+  }
+
+  function extractRowsFromAoa(aoa, prevRowsMap, defaultDays) {
+    if (!Array.isArray(aoa) || aoa.length < 2) return { rows: [], missingCols: ['Sheet has no data rows'] };
+    var hdrIdx = findHeaderRowIndex(aoa);
+    var cols = mapColumns(aoa[hdrIdx]);
+    var missing = [];
+    if (cols.empId < 0) missing.push('Employee ID');
+    if (cols.name < 0) missing.push('Name');
+    if (cols.workingDays < 0) missing.push('Working Days');
+    if (cols.absent < 0) missing.push('Absent');
+    if (missing.length) return { rows: [], missingCols: missing };
+
+    var out = [];
+    var seenIds = {};
+    for (var r = hdrIdx + 1; r < aoa.length; r++) {
+      var row = aoa[r];
+      if (!row || !row.length) continue;
+      var rawId = String(row[cols.empId] == null ? '' : row[cols.empId]).trim();
+      if (!rawId || /^(total|grand total|sub total)$/i.test(rawId)) continue;
+      var name = cleanStr(cols.name >= 0 ? row[cols.name] : '');
+      if (!name && parseNum(row[cols.workingDays]) === 0) continue;
+
+      var desig = cleanStr(cols.designation >= 0 ? row[cols.designation] : '');
+      var cat = cleanStr(cols.category >= 0 ? row[cols.category] : '');
+      if (!cat) cat = desig || 'GENERAL';
+
+      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : defaultDays;
+      if (!md) md = defaultDays;
+      var wd = parseNum(row[cols.workingDays]);
+      var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : 0;
+      var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : 0;
+      var ab = parseNum(row[cols.absent]);
+      var pd = cols.paidDays >= 0 ? parseNum(row[cols.paidDays]) : (wd + sa + hd);
+      var ot = cols.otHours >= 0 ? parseNum(row[cols.otHours]) : 0;
+
+      var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
+      var prev = prevRowsMap && prevRowsMap[rawId];
+      var catRule = state.categoryRules[cat] || {};
+      var desigRule = state.designationRules[desig] || {};
+
+      var weeklyOff = (prev && prev.weeklyOff) || desigRule.weeklyOff || catRule.weeklyOff || 'SUNDAY';
+      var shift = (prev && prev.shift) || desigRule.shift || catRule.shift || 'Day';
+
+      out.push({
+        key: uniqueKey,
+        id: rawId,
+        name: name,
+        designation: desig || cat,
+        category: cat,
+        monthOfDays: md,
+        workingDays: wd,
+        sunAllow: sa,
+        hd: hd,
+        absent: ab,
+        paidDays: pd,
+        otHours: ot,
+        weeklyOff: weeklyOff,
+        shift: shift
+      });
+    }
+    return { rows: out, missingCols: [] };
+  }
+
+  function generateEmployeeSchedule(emp, settings) {
+    var month = Number(settings.month);
+    var year = Number(settings.year);
+    var maxOt = Math.max(1, Math.min(12, Math.round(Number(settings.maxOtPerDay) || 4)));
+    var daysInMonth = getDaysInMonth(year, month);
+    var woName = WEEKDAYS_FULL.indexOf(String(emp.weeklyOff || 'SUNDAY').toUpperCase()) >= 0
+      ? String(emp.weeklyOff).toUpperCase()
+      : 'SUNDAY';
+    var woIdx = WEEKDAYS_FULL.indexOf(woName);
+    var shift = emp.shift === 'Night' ? 'Night' : 'Day';
+
+    var sheetMd = emp.monthOfDays;
+    var sheetWd = emp.workingDays;
+    var sheetSa = emp.sunAllow;
+    var sheetHd = emp.hd;
+    var sheetAb = emp.absent;
+    var sheetOt = emp.otHours;
+
+    var sheetSum = sheetWd + sheetSa + sheetHd + sheetAb;
+    var sumMismatch = Math.abs(sheetSum - sheetMd) > 1e-6;
+    var calMismatch = Math.abs(sheetMd - daysInMonth) > 1e-6;
+    var hasFractionDays = (!Number.isInteger(sheetWd) || !Number.isInteger(sheetSa) || !Number.isInteger(sheetHd) || !Number.isInteger(sheetAb));
+
+    var warnings = [];
+    var redFlags = [];
+    if (sumMismatch) {
+      redFlags.push('P+WO+A+HD (' + sheetSum + ') != Month Of Days (' + sheetMd + ')');
+    }
+    if (calMismatch) {
+      redFlags.push('Sheet Month Days (' + sheetMd + ') != Calendar Days (' + daysInMonth + ')');
+    }
+    if (hasFractionDays) {
+      warnings.push('Fractional day counts rounded to nearest whole day');
+    }
+
+    var targetP = Math.max(0, Math.round(sheetWd));
+    var targetWO = Math.max(0, Math.round(sheetSa));
+    var targetHD = Math.max(0, Math.round(sheetHd));
+    var targetA = Math.max(0, Math.round(sheetAb));
+
+    // Seed strictly with Emp Code + Month + Year so result is 100% deterministic
+    var rng = createRng(String(emp.id) + '|' + MONTH_NAMES[month] + '|' + year);
+
+    var woCandidates = [];
+    var regularDates = [];
+    for (var d = 1; d <= daysInMonth; d++) {
+      var wd = new Date(year, month, d).getDay();
+      if (wd === woIdx) woCandidates.push(d);
+      else regularDates.push(d);
+    }
+
+    var statusByDay = {};
+    var assignedWo = [];
+    var unassignedPool = [];
+
+    if (targetWO <= woCandidates.length) {
+      var shuffledWo = shuffleWithRng(woCandidates, rng);
+      for (var i = 0; i < shuffledWo.length; i++) {
+        if (i < targetWO) assignedWo.push(shuffledWo[i]);
+        else unassignedPool.push(shuffledWo[i]);
+      }
+      unassignedPool = unassignedPool.concat(regularDates);
+    } else {
+      // More Sun Allow than natural weekday occurrences: keep all weekday WOs + extra from regularDates
+      assignedWo = woCandidates.slice();
+      var shuffledReg = shuffleWithRng(regularDates, rng);
+      var extraWoNeeded = Math.min(targetWO - woCandidates.length, shuffledReg.length);
+      for (var j = 0; j < extraWoNeeded; j++) assignedWo.push(shuffledReg[j]);
+      for (var k = extraWoNeeded; k < shuffledReg.length; k++) unassignedPool.push(shuffledReg[k]);
+      warnings.push('Sun Allow (' + targetWO + ') > ' + woName + ' count (' + woCandidates.length + ')');
+    }
+
+    for (var w = 0; w < assignedWo.length; w++) {
+      statusByDay[assignedWo[w]] = 'WO';
+    }
+
+    // Shuffle non-WO pool deterministically to distribute A, HD, P (A is NEVER on WO)
+    var shuffledPool = shuffleWithRng(unassignedPool, rng);
+    var cursor = 0;
+    for (var a = 0; a < targetA && cursor < shuffledPool.length; a++, cursor++) {
+      statusByDay[shuffledPool[cursor]] = 'A';
+    }
+    for (var h = 0; h < targetHD && cursor < shuffledPool.length; h++, cursor++) {
+      statusByDay[shuffledPool[cursor]] = 'HD';
+    }
+    for (var p = 0; p < targetP && cursor < shuffledPool.length; p++, cursor++) {
+      statusByDay[shuffledPool[cursor]] = 'P';
+    }
+    while (cursor < shuffledPool.length) {
+      statusByDay[shuffledPool[cursor++]] = '-';
+    }
+
+    var pDates = [];
+    for (var day = 1; day <= daysInMonth; day++) {
+      if (statusByDay[day] === 'P') pDates.push(day);
+    }
+
+    // Allocate exact whole-hour OT ONLY onto P days, [1..maxOt] per OT day
+    var otByDay = {};
+    var otTarget = Math.max(0, Math.round(sheetOt));
+    if (Math.abs(sheetOt - otTarget) > 1e-6) {
+      warnings.push('Fractional OT (' + sheetOt + ') rounded to ' + otTarget + 'h');
+    }
+
+    if (otTarget > 0) {
+      var maxCapacity = pDates.length * maxOt;
+      if (pDates.length === 0) {
+        redFlags.push('OT (' + otTarget + 'h) cannot fit: 0 Working Days (P)');
+      } else if (otTarget > maxCapacity) {
+        redFlags.push('OT (' + otTarget + 'h) exceeds max capacity (' + pDates.length + ' P days x ' + maxOt + 'h = ' + maxCapacity + 'h)');
+        for (var pi = 0; pi < pDates.length; pi++) otByDay[pDates[pi]] = maxOt;
+      } else {
+        var pShuffled = shuffleWithRng(pDates, rng);
+        var minDays = Math.ceil(otTarget / maxOt);
+        var maxDays = Math.min(pDates.length, otTarget);
+        // Deterministic natural spread between minDays and maxDays
+        var idealDays = Math.round(otTarget / Math.min(maxOt, 2.2));
+        var chosenDays = Math.max(minDays, Math.min(maxDays, idealDays));
+        if (maxDays > minDays) {
+          var jitter = Math.floor(rng() * Math.min(3, maxDays - minDays + 1));
+          chosenDays = Math.max(minDays, Math.min(maxDays, chosenDays + (rng() < 0.5 ? -jitter : jitter)));
+        }
+        var activeOtDates = pShuffled.slice(0, chosenDays);
+        for (var oi = 0; oi < activeOtDates.length; oi++) otByDay[activeOtDates[oi]] = 1;
+        var remOt = otTarget - activeOtDates.length;
+        var guard = 0;
+        while (remOt > 0 && guard < 10000) {
+          guard++;
+          var eligible = [];
+          for (var ei = 0; ei < activeOtDates.length; ei++) {
+            if (otByDay[activeOtDates[ei]] < maxOt) eligible.push(activeOtDates[ei]);
+          }
+          if (!eligible.length) break;
+          var pick = eligible[Math.floor(rng() * eligible.length)];
+          otByDay[pick] += 1;
+          remOt--;
+        }
+      }
+    }
+
+    // Generate deterministic InTime, OutTime, OT, Total per calendar day
+    var days = [];
+    var genP = 0, genWO = 0, genA = 0, genHD = 0, genOtHrs = 0;
+    for (var dt = 1; dt <= daysInMonth; dt++) {
+      var st = statusByDay[dt] || '-';
+      var otH = otByDay[dt] || 0;
+      var inTime = '';
+      var outTime = '';
+      var otStr = '';
+      var totalStr = '0:00';
+
+      if (st === 'P') {
+        genP++;
+        // Advance deterministic minute offset for each day
+        var randMinOffset = Math.floor(rng() * 12); // 0..11 => :55..:06
+        if (shift === 'Day') {
+          var inMinDay = 8 * 60 + 55 + randMinOffset; // 08:55..09:06
+          var outMinDay = inMinDay + 9 * 60 + otH * 60; // ~18:00 + OT
+          inTime = formatClock(inMinDay);
+          outTime = formatClock(outMinDay);
+          totalStr = formatDuration(9 * 60 + otH * 60);
+        } else {
+          var inMinNight = 19 * 60 + 55 + randMinOffset; // 19:55..20:06
+          var outMinNight = inMinNight + 10 * 60 + otH * 60; // next day ~06:00 + OT
+          inTime = formatClock(inMinNight);
+          outTime = formatClock(outMinNight);
+          totalStr = formatDuration(10 * 60 + otH * 60);
+        }
+        if (otH > 0) {
+          otStr = formatDuration(otH * 60);
+          genOtHrs += otH;
+        }
+      } else if (st === 'HD') {
+        genHD++;
+        var hdOffset = Math.floor(rng() * 12);
+        var hdIn = (shift === 'Day' ? (8 * 60 + 55) : (19 * 60 + 55)) + hdOffset;
+        var hdOut = hdIn + 4 * 60 + 30;
+        inTime = formatClock(hdIn);
+        outTime = formatClock(hdOut);
+        totalStr = '4:30';
+      } else if (st === 'WO') {
+        genWO++;
+      } else if (st === 'A') {
+        genA++;
+      }
+
+      days.push({
+        day: dt,
+        status: st,
+        inTime: inTime,
+        outTime: outTime,
+        otHours: otH,
+        otText: otStr,
+        totalText: totalStr
+      });
+    }
+
+    // Strict comparison Sheet vs Generated
+    if (genP !== Math.round(sheetWd)) redFlags.push('Working Days mismatch (Sheet ' + sheetWd + ' vs Gen ' + genP + ')');
+    if (genWO !== Math.round(sheetSa)) redFlags.push('Sun Allow/WO mismatch (Sheet ' + sheetSa + ' vs Gen ' + genWO + ')');
+    if (genHD !== Math.round(sheetHd)) redFlags.push('HD mismatch (Sheet ' + sheetHd + ' vs Gen ' + genHD + ')');
+    if (genA !== Math.round(sheetAb)) redFlags.push('Absent mismatch (Sheet ' + sheetAb + ' vs Gen ' + genA + ')');
+    if (Math.abs(genOtHrs - sheetOt) > 1e-6) redFlags.push('OT mismatch (Sheet ' + sheetOt + 'h vs Gen ' + genOtHrs + 'h)');
+
+    return {
+      emp: emp,
+      weeklyOff: woName,
+      shift: shift,
+      daysInMonth: daysInMonth,
+      days: days,
+      counts: {
+        p: genP,
+        wo: genWO,
+        hd: genHD,
+        a: genA,
+        otHours: genOtHrs,
+        otText: formatDuration(genOtHrs * 60),
+        allocatedSum: genP + genWO + genHD + genA
+      },
+      redFlags: redFlags,
+      warnings: warnings,
+      hasMismatch: redFlags.length > 0,
+      hasWarning: warnings.length > 0
+    };
+  }
+
+  function buildAllSchedules(rows, settings) {
+    var records = [];
+    var totalSheetOt = 0;
+    var totalGenOt = 0;
+    var mismatchCount = 0;
+    var warningCount = 0;
+
+    for (var i = 0; i < rows.length; i++) {
+      var rec = generateEmployeeSchedule(rows[i], settings);
+      records.push(rec);
+      totalSheetOt += rows[i].otHours;
+      totalGenOt += rec.counts.otHours;
+      if (rec.hasMismatch) mismatchCount++;
+      else if (rec.hasWarning) warningCount++;
+    }
+
+    var month = Number(settings.month);
+    var year = Number(settings.year);
+    var daysInMonth = getDaysInMonth(year, month);
+    var dayHeaders = [];
+    for (var d = 1; d <= daysInMonth; d++) {
+      dayHeaders.push({
+        day: d,
+        weekday: WEEKDAYS_SHORT[new Date(year, month, d).getDay()]
+      });
+    }
+
+    return {
+      settings: {
+        month: month,
+        year: year,
+        companyName: settings.companyName || 'ARORA TEXTILES PVT.LTD.',
+        maxOtPerDay: Math.max(1, Math.min(12, Math.round(Number(settings.maxOtPerDay) || 4)))
+      },
+      daysInMonth: daysInMonth,
+      dayHeaders: dayHeaders,
+      dateRangeText: '01 ' + MONTH_NAMES[month] + ' ' + year + ' To ' + pad2(daysInMonth) + ' ' + MONTH_NAMES[month] + ' ' + year,
+      records: records,
+      summary: {
+        totalEmployees: records.length,
+        exactMatches: records.length - mismatchCount,
+        mismatches: mismatchCount,
+        warnings: warningCount + mismatchCount,
+        totalSheetOt: totalSheetOt,
+        totalGenOt: totalGenOt,
+        totalPages: Math.max(1, Math.ceil(records.length / EMP_PER_PDF_PAGE))
+      }
+    };
+  }
+
+  // Dedicated IndexedDB persistence (isolated from existing ERP sync DB)
+  function openDb() {
+    return new Promise(function(resolve, reject) {
+      if (!root.indexedDB) { resolve(null); return; }
+      var req = root.indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = function(e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME);
+        }
+      };
+      req.onsuccess = function(e) { resolve(e.target.result); };
+      req.onerror = function() { reject(req.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  function saveStateToDb() {
+    return openDb().then(function(db) {
+      if (!db) return;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).put({
+            settings: state.settings,
+            fileName: state.fileName,
+            sheetName: state.sheetName,
+            rows: state.rows,
+            categoryRules: state.categoryRules,
+            designationRules: state.designationRules,
+            savedAt: Date.now()
+          }, STATE_KEY);
+          tx.oncomplete = function() { db.close(); resolve(true); };
+          tx.onerror = function() { db.close(); resolve(false); };
+        } catch(_) { resolve(false); }
+      });
+    }).catch(function(){ return false; });
+  }
+
+  function loadStateFromDb() {
+    return openDb().then(function(db) {
+      if (!db) return null;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(STORE_NAME, 'readonly');
+          var req = tx.objectStore(STORE_NAME).get(STATE_KEY);
+          req.onsuccess = function() { db.close(); resolve(req.result || null); };
+          req.onerror = function() { db.close(); resolve(null); };
+        } catch(_) { resolve(null); }
+      });
+    }).catch(function(){ return null; });
+  }
+
+  function clearStateInDb() {
+    return openDb().then(function(db) {
+      if (!db) return;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).delete(STATE_KEY);
+          tx.oncomplete = function() { db.close(); resolve(true); };
+          tx.onerror = function() { db.close(); resolve(false); };
+        } catch(_) { resolve(false); }
+      });
+    }).catch(function(){ return false; });
+  }
+
+  // UI Helpers
+  function showBanner(type, text, extraHtml) {
+    var b = document.getElementById('msrBanner');
+    var t = document.getElementById('msrBannerText');
+    var a = document.getElementById('msrBannerActions');
+    if (!b || !t || !a) return;
+    b.className = 'msr-banner show ' + (type || 'info');
+    t.textContent = text;
+    a.innerHTML = extraHtml || '<button type="button" class="msr-btn msr-btn-sm" onclick="document.getElementById(\'msrBanner\').classList.remove(\'show\')">Dismiss</button>';
+  }
+
+  function hideBanner() {
+    var b = document.getElementById('msrBanner');
+    if (b) b.classList.remove('show');
+  }
+
+  function syncSettingsInputsToState() {
+    var mEl = document.getElementById('msrMonthSel');
+    var yEl = document.getElementById('msrYearInput');
+    var cEl = document.getElementById('msrCompanyInput');
+    var oEl = document.getElementById('msrMaxOtInput');
+    if (mEl) state.settings.month = Math.max(0, Math.min(11, parseInt(mEl.value, 10) || 0));
+    if (yEl) state.settings.year = Math.max(2000, Math.min(2099, parseInt(yEl.value, 10) || 2026));
+    if (cEl) state.settings.companyName = cleanStr(cEl.value) || 'ARORA TEXTILES PVT.LTD.';
+    if (oEl) state.settings.maxOtPerDay = Math.max(1, Math.min(12, parseInt(oEl.value, 10) || 4));
+  }
+
+  function syncStateToSettingsInputs() {
+    var mEl = document.getElementById('msrMonthSel');
+    var yEl = document.getElementById('msrYearInput');
+    var cEl = document.getElementById('msrCompanyInput');
+    var oEl = document.getElementById('msrMaxOtInput');
+    if (mEl) mEl.value = String(state.settings.month);
+    if (yEl) yEl.value = String(state.settings.year);
+    if (cEl) cEl.value = state.settings.companyName;
+    if (oEl) oEl.value = String(state.settings.maxOtPerDay);
+  }
+
+  function updateFileMeta() {
+    var el = document.getElementById('msrFileMeta');
+    if (!el) return;
+    if (!state.rows.length) {
+      el.textContent = 'No salary sheet loaded yet. Upload Main Sheet (.csv / .xlsx) or load from ERP Files.';
+    } else {
+      el.textContent = 'Loaded: ' + (state.fileName || 'Salary Sheet') +
+        (state.sheetName ? ' [' + state.sheetName + ']' : '') +
+        ' — ' + state.rows.length + ' employees | Report: ' +
+        MONTH_NAMES[state.settings.month] + ' ' + state.settings.year;
+    }
+  }
+
+  function refreshErpFileDropdown() {
+    var sel = document.getElementById('msrErpFileSelect');
+    if (!sel) return;
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    if (!files.length) {
+      sel.innerHTML = '<option value="">-- No Uploaded ERP Files --</option>';
+      return;
+    }
+    var opts = ['<option value="">-- Pick Uploaded ERP File (' + files.length + ') --</option>'];
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!f || !f.name) continue;
+      opts.push('<option value="' + i + '">' + esc(f.name) + '</option>');
+    }
+    sel.innerHTML = opts.join('');
+  }
+
+  function refreshBulkValues() {
+    var scopeEl = document.getElementById('msrBulkScope');
+    var keyEl = document.getElementById('msrBulkKey');
+    if (!scopeEl || !keyEl) return;
+    var scope = scopeEl.value;
+    if (scope === 'ALL') {
+      keyEl.innerHTML = '<option value="">(All ' + state.rows.length + ' Employees)</option>';
+      keyEl.disabled = true;
+      return;
+    }
+    keyEl.disabled = false;
+    var counts = {};
+    for (var i = 0; i < state.rows.length; i++) {
+      var val = scope === 'CATEGORY' ? state.rows[i].category : state.rows[i].designation;
+      if (!val) val = 'UNSPECIFIED';
+      counts[val] = (counts[val] || 0) + 1;
+    }
+    var keys = Object.keys(counts).sort();
+    if (!keys.length) {
+      keyEl.innerHTML = '<option value="">-- No values loaded --</option>';
+      return;
+    }
+    keyEl.innerHTML = keys.map(function(k) {
+      return '<option value="' + esc(k) + '">' + esc(k) + ' (' + counts[k] + ')</option>';
+    }).join('');
+  }
+
+  function loadAoaIntoState(aoa, fileName, sheetName) {
+    var prevMap = {};
+    for (var i = 0; i < state.rows.length; i++) prevMap[state.rows[i].id] = state.rows[i];
+    var defaultDays = getDaysInMonth(state.settings.year, state.settings.month);
+    var res = extractRowsFromAoa(aoa, prevMap, defaultDays);
+    if (res.missingCols.length) {
+      showBanner('error', 'Sheet column mismatch — missing required columns: ' + res.missingCols.join(', '));
+      return false;
+    }
+    if (!res.rows.length) {
+      showBanner('warn', 'No valid employee rows (with Employee ID) found in "' + fileName + '".');
+      return false;
+    }
+    state.fileName = fileName;
+    state.sheetName = sheetName || '';
+    state.rows = res.rows;
+    state.cfgPage = 1;
+    state.valPage = 1;
+    state.previewPage = 1;
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '". Check Validation tab before exporting PDF/Excel.');
+    return true;
+  }
+
+  function handleFileInput(inputEl) {
+    var file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    var name = file.name || 'SalarySheet';
+    var lower = name.toLowerCase();
+    syncSettingsInputsToState();
+
+    if (lower.endsWith('.csv')) {
+      var readerTxt = new FileReader();
+      readerTxt.onload = function(ev) {
+        try {
+          var aoa = parseCsvText(ev.target.result);
+          loadAoaIntoState(aoa, name, 'CSV');
+        } catch (err) {
+          showBanner('error', 'CSV parse error: ' + err.message);
+        }
+        inputEl.value = '';
+      };
+      readerTxt.readAsText(file);
+    } else {
+      var readerBuf = new FileReader();
+      readerBuf.onload = function(ev) {
+        try {
+          if (!root.XLSX) throw new Error('Excel parser (XLSX) not available');
+          var wb = root.XLSX.read(new Uint8Array(ev.target.result), { type: 'array', raw: false });
+          var picked = pickBestSheet(wb);
+          var ws = wb.Sheets[picked];
+          var aoa = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+          loadAoaIntoState(aoa, name, picked);
+        } catch (err) {
+          showBanner('error', 'Excel parse error: ' + err.message);
+        }
+        inputEl.value = '';
+      };
+      readerBuf.readAsArrayBuffer(file);
+    }
+  }
+
+  function pickBestSheet(wb) {
+    if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      if (/mains*sheet|salary|wages/i.test(wb.SheetNames[i])) return wb.SheetNames[i];
+    }
+    return wb.SheetNames[0];
+  }
+
+  function loadFromErpSelect() {
+    var sel = document.getElementById('msrErpFileSelect');
+    if (!sel || sel.value === '') {
+      showBanner('warn', 'Pehle dropdown se koi uploaded ERP file select karein.');
+      return;
+    }
+    var idx = parseInt(sel.value, 10);
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    var f = files[idx];
+    if (!f) {
+      showBanner('error', 'Selected ERP file not found.');
+      return;
+    }
+    syncSettingsInputsToState();
+    try {
+      if (f.buf && root.XLSX) {
+        var wb = root.XLSX.read(new Uint8Array(f.buf), { type: 'array', raw: false });
+        var sn = pickBestSheet(wb);
+        var aoa = root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
+        if (loadAoaIntoState(aoa, f.name, sn)) return;
+      }
+      if (f.sheets && typeof f.sheets === 'object') {
+        var sNames = Object.keys(f.sheets);
+        var targetSn = sNames.find(function(n){ return /mains*sheet|salary|wages/i.test(n); }) || sNames[0];
+        var sheetRows = f.sheets[targetSn] || [];
+        if (Array.isArray(sheetRows) && sheetRows.length) {
+          var cols = Object.keys(sheetRows[0] || {});
+          var aoa2 = [cols].concat(sheetRows.map(function(obj){
+            return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
+          }));
+          loadAoaIntoState(aoa2, f.name, targetSn);
+          return;
+        }
+      }
+      showBanner('error', 'Unable to extract rows from "' + f.name + '".');
+    } catch (err) {
+      showBanner('error', 'Error reading ERP file: ' + err.message);
+    }
+  }
+
+  function rebuildScheduleAndRender() {
+    syncSettingsInputsToState();
+    updateFileMeta();
+    refreshBulkValues();
+    if (state.rows.length) {
+      state.generated = buildAllSchedules(state.rows, state.settings);
+    } else {
+      state.generated = null;
+    }
+    renderConfigTable(state.cfgPage);
+    renderValidationTable(state.valPage);
+    renderPreviewPage(state.previewPage);
+  }
+
+  function onSettingChange() {
+    syncSettingsInputsToState();
+    rebuildScheduleAndRender();
+    saveStateToDb();
+  }
+
+  function updateEmployeeField(rowKey, field, value) {
+    try { rowKey = decodeURIComponent(rowKey); } catch(_){}
+    for (var i = 0; i < state.rows.length; i++) {
+      if (state.rows[i].key === rowKey) {
+        state.rows[i][field] = value;
+        break;
+      }
+    }
+    rebuildScheduleAndRender();
+    saveStateToDb();
+  }
+
+  function applyBulkWeeklyOff() {
+    var scope = (document.getElementById('msrBulkScope') || {}).value || 'ALL';
+    var keyVal = (document.getElementById('msrBulkKey') || {}).value || '';
+    var wo = (document.getElementById('msrBulkWo') || {}).value || 'SUNDAY';
+    if (scope === 'CATEGORY' && keyVal) {
+      state.categoryRules[keyVal] = state.categoryRules[keyVal] || {};
+      state.categoryRules[keyVal].weeklyOff = wo;
+    } else if (scope === 'DESIGNATION' && keyVal) {
+      state.designationRules[keyVal] = state.designationRules[keyVal] || {};
+      state.designationRules[keyVal].weeklyOff = wo;
+    }
+    var changed = 0;
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      if (scope === 'ALL' || (scope === 'CATEGORY' && r.category === keyVal) || (scope === 'DESIGNATION' && r.designation === keyVal)) {
+        r.weeklyOff = wo;
+        changed++;
+      }
+    }
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    showBanner('success', 'Applied Weekly Off = ' + wo + ' to ' + changed + ' employee(s).');
+  }
+
+  function applyBulkShift() {
+    var scope = (document.getElementById('msrBulkScope') || {}).value || 'ALL';
+    var keyVal = (document.getElementById('msrBulkKey') || {}).value || '';
+    var sh = (document.getElementById('msrBulkShift') || {}).value || 'Day';
+    if (scope === 'CATEGORY' && keyVal) {
+      state.categoryRules[keyVal] = state.categoryRules[keyVal] || {};
+      state.categoryRules[keyVal].shift = sh;
+    } else if (scope === 'DESIGNATION' && keyVal) {
+      state.designationRules[keyVal] = state.designationRules[keyVal] || {};
+      state.designationRules[keyVal].shift = sh;
+    }
+    var changed = 0;
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      if (scope === 'ALL' || (scope === 'CATEGORY' && r.category === keyVal) || (scope === 'DESIGNATION' && r.designation === keyVal)) {
+        r.shift = sh;
+        changed++;
+      }
+    }
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    showBanner('success', 'Applied Shift = ' + sh + ' to ' + changed + ' employee(s).');
+  }
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    var map = {
+      config: ['msrTabConfig', 'msrTabBtnConfig'],
+      validation: ['msrTabValidation', 'msrTabBtnValidation'],
+      preview: ['msrTabPreview', 'msrTabBtnPreview']
+    };
+    Object.keys(map).forEach(function(k) {
+      var panel = document.getElementById(map[k][0]);
+      var btn = document.getElementById(map[k][1]);
+      if (panel) panel.style.display = (k === tab) ? 'block' : 'none';
+      if (btn) btn.classList.toggle('active', k === tab);
+    });
+    if (tab === 'validation') renderValidationTable(state.valPage);
+    if (tab === 'preview') renderPreviewPage(state.previewPage);
+  }
+
+  function generateAndOpenValidation() {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet (.csv / .xlsx) upload ya load karein.');
+      return;
+    }
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    switchTab('validation');
+    var sum = state.generated.summary;
+    if (sum.mismatches > 0) {
+      showBanner('warn', 'Generated ' + sum.totalEmployees + ' employees — ' + sum.mismatches + ' mismatch/red-flag row(s) detected in Validation.');
+    } else {
+      showBanner('success', 'Generated ' + sum.totalEmployees + ' employees successfully! Total OT = ' + sum.totalGenOt + ' hrs. Ready for PDF / Excel Export.');
+    }
+  }
+
+  function renderConfigTable(pageNum) {
+    var tbody = document.getElementById('msrCfgTbody');
+    var sumEl = document.getElementById('msrCfgSummary');
+    var pageInfo = document.getElementById('msrCfgPageInfo');
+    if (!tbody) return;
+    if (!state.rows.length || !state.generated) {
+      tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:24px;color:#64748b">Upload a Salary Sheet (.csv / .xlsx) or load from ERP files above to begin.</td></tr>';
+      if (sumEl) sumEl.textContent = '0 employees';
+      if (pageInfo) pageInfo.textContent = 'Page 1 of 1';
+      return;
+    }
+    var q = cleanStr((document.getElementById('msrCfgSearch') || {}).value || '').toLowerCase();
+    var flt = (document.getElementById('msrCfgFilter') || {}).value || 'all';
+    var recs = state.generated.records;
+    var filtered = [];
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i];
+      var r = rec.emp;
+      if (flt === 'day' && r.shift !== 'Day') continue;
+      if (flt === 'night' && r.shift !== 'Night') continue;
+      if (flt === 'ot' && !(r.otHours > 0)) continue;
+      if (flt === 'flagged' && !rec.hasMismatch && !rec.hasWarning) continue;
+      if (q) {
+        var hay = (r.id + ' ' + r.name + ' ' + r.designation + ' ' + r.category).toLowerCase();
+        if (hay.indexOf(q) === -1) continue;
+      }
+      filtered.push({ idx: i + 1, rec: rec });
+    }
+    var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE_TABLE));
+    state.cfgPage = Math.max(1, Math.min(totalPages, pageNum || 1));
+    var start = (state.cfgPage - 1) * PAGE_SIZE_TABLE;
+    var slice = filtered.slice(start, start + PAGE_SIZE_TABLE);
+
+    if (!slice.length) {
+      tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:20px;color:#64748b">No employees match current search/filter.</td></tr>';
+    } else {
+      tbody.innerHTML = slice.map(function(item) {
+        var rec = item.rec;
+        var r = rec.emp;
+        var cls = rec.hasMismatch ? 'msr-row-flag' : (rec.hasWarning ? 'msr-row-warn' : '');
+        var badge = rec.hasMismatch
+          ? '<span class="msr-pill-bad" title="' + esc(rec.redFlags.join(' | ')) + '">FLAG</span>'
+          : (rec.hasWarning ? '<span class="msr-pill-warn" title="' + esc(rec.warnings.join(' | ')) + '">WARN</span>' : '<span class="msr-pill-ok">OK</span>');
+        var woOpts = WEEKDAYS_FULL.map(function(w) {
+          return '<option value="' + w + '"' + (r.weeklyOff === w ? ' selected' : '') + '>' + w + '</option>';
+        }).join('');
+        return '<tr class="' + cls + '">' +
+          '<td>' + item.idx + '</td>' +
+          '<td style="font-weight:700">' + esc(r.id) + '</td>' +
+          '<td style="font-weight:700">' + esc(r.name) + '</td>' +
+          '<td>' + esc(r.designation) + '</td>' +
+          '<td>' + esc(r.category) + '</td>' +
+          '<td>' + r.monthOfDays + '</td>' +
+          '<td>' + r.workingDays + '</td>' +
+          '<td>' + r.sunAllow + '</td>' +
+          '<td>' + r.hd + '</td>' +
+          '<td>' + r.absent + '</td>' +
+          '<td>' + r.paidDays + '</td>' +
+          '<td style="font-weight:700">' + r.otHours + '</td>' +
+          '<td><select class="msr-select" style="min-width:110px;padding:3px 5px;font-size:11px" onchange="window.ATPLMonthlyStatusReport.updateEmployeeField(\'' + encodeURIComponent(r.key) + '\',\'weeklyOff\',this.value)">' + woOpts + '</select></td>' +
+          '<td><select class="msr-select" style="min-width:78px;padding:3px 5px;font-size:11px" onchange="window.ATPLMonthlyStatusReport.updateEmployeeField(\'' + encodeURIComponent(r.key) + '\',\'shift\',this.value)"><option value="Day"' + (r.shift === 'Day' ? ' selected' : '') + '>Day</option><option value="Night"' + (r.shift === 'Night' ? ' selected' : '') + '>Night</option></select></td>' +
+          '<td>' + badge + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    if (sumEl) sumEl.textContent = filtered.length + ' of ' + recs.length + ' employees shown';
+    if (pageInfo) pageInfo.textContent = 'Page ' + state.cfgPage + ' of ' + totalPages;
+  }
+
+  function changeCfgPage(delta) {
+    renderConfigTable(state.cfgPage + delta);
+  }
+
+  function renderValidationTable(pageNum) {
+    var kpiEl = document.getElementById('msrValKpis');
+    var tbody = document.getElementById('msrValTbody');
+    var pageInfo = document.getElementById('msrValPageInfo');
+    if (!tbody || !kpiEl) return;
+
+    if (!state.generated || !state.generated.records.length) {
+      kpiEl.innerHTML = '';
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:#64748b">Upload a Salary Sheet and click "Generate &amp; Validate" to inspect results.</td></tr>';
+      if (pageInfo) pageInfo.textContent = 'Page 1 of 1';
+      return;
+    }
+
+    var sum = state.generated.summary;
+    kpiEl.innerHTML =
+      '<div class="msr-kpi"><div class="msr-kpi-lbl">Total Employees</div><div class="msr-kpi-val">' + sum.totalEmployees + '</div></div>' +
+      '<div class="msr-kpi green"><div class="msr-kpi-lbl">Exact Matches</div><div class="msr-kpi-val">' + sum.exactMatches + '</div></div>' +
+      '<div class="msr-kpi ' + (sum.mismatches > 0 ? 'red' : 'green') + '"><div class="msr-kpi-lbl">Mismatches / Red Flags</div><div class="msr-kpi-val">' + sum.mismatches + '</div></div>' +
+      '<div class="msr-kpi ' + (sum.warnings > 0 ? 'amber' : 'green') + '"><div class="msr-kpi-lbl">Warnings</div><div class="msr-kpi-val">' + sum.warnings + '</div></div>' +
+      '<div class="msr-kpi"><div class="msr-kpi-lbl">Sheet OT Total</div><div class="msr-kpi-val">' + sum.totalSheetOt + ' hrs</div></div>' +
+      '<div class="msr-kpi ' + (Math.abs(sum.totalSheetOt - sum.totalGenOt) > 1e-6 ? 'red' : 'green') + '"><div class="msr-kpi-lbl">Generated OT Total</div><div class="msr-kpi-val">' + sum.totalGenOt + ' hrs</div></div>';
+
+    var q = cleanStr((document.getElementById('msrValSearch') || {}).value || '').toLowerCase();
+    var flt = (document.getElementById('msrValFilter') || {}).value || 'all';
+    var recs = state.generated.records;
+    var filtered = [];
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i];
+      if (flt === 'issues' && !rec.hasMismatch && !rec.hasWarning) continue;
+      if (flt === 'ok' && (rec.hasMismatch || rec.hasWarning)) continue;
+      if (q) {
+        var hay = (rec.emp.id + ' ' + rec.emp.name + ' ' + rec.emp.designation).toLowerCase();
+        if (hay.indexOf(q) === -1) continue;
+      }
+      filtered.push({ idx: i + 1, rec: rec });
+    }
+
+    var totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE_TABLE));
+    state.valPage = Math.max(1, Math.min(totalPages, pageNum || 1));
+    var start = (state.valPage - 1) * PAGE_SIZE_TABLE;
+    var slice = filtered.slice(start, start + PAGE_SIZE_TABLE);
+
+    if (!slice.length) {
+      tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#64748b">No validation rows match this filter.</td></tr>';
+    } else {
+      tbody.innerHTML = slice.map(function(item) {
+        var rec = item.rec;
+        var e = rec.emp;
+        var c = rec.counts;
+        var cls = rec.hasMismatch ? 'msr-row-flag' : (rec.hasWarning ? 'msr-row-warn' : '');
+        var msg = rec.redFlags.concat(rec.warnings).join('; ');
+        var statusHtml = rec.hasMismatch
+          ? '<span class="msr-pill-bad">RED FLAG</span> <span style="font-size:11px">' + esc(msg) + '</span>'
+          : (rec.hasWarning ? '<span class="msr-pill-warn">WARN</span> <span style="font-size:11px">' + esc(msg) + '</span>' : '<span class="msr-pill-ok">EXACT MATCH</span>');
+        return '<tr class="' + cls + '">' +
+          '<td>' + item.idx + '</td>' +
+          '<td style="font-weight:700">' + esc(e.id) + '</td>' +
+          '<td style="font-weight:700">' + esc(e.name) + '</td>' +
+          '<td>' + esc(rec.shift) + ' / ' + esc(rec.weeklyOff.slice(0,3)) + '</td>' +
+          '<td>' + e.monthOfDays + '</td>' +
+          '<td>' + e.workingDays + ' / <b>' + c.p + '</b></td>' +
+          '<td>' + e.sunAllow + ' / <b>' + c.wo + '</b></td>' +
+          '<td>' + e.hd + ' / <b>' + c.hd + '</b></td>' +
+          '<td>' + e.absent + ' / <b>' + c.a + '</b></td>' +
+          '<td>' + e.otHours + ' / <b>' + c.otHours + '</b></td>' +
+          '<td>' + c.allocatedSum + ' / ' + e.monthOfDays + '</td>' +
+          '<td>' + statusHtml + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+    if (pageInfo) pageInfo.textContent = 'Page ' + state.valPage + ' of ' + totalPages + ' (' + filtered.length + ' rows)';
+  }
+
+  function changeValPage(delta) {
+    renderValidationTable(state.valPage + delta);
+  }
+
+  function renderPreviewPage(pageNum) {
+    var box = document.getElementById('msrPreviewContainer');
+    var pageInput = document.getElementById('msrPreviewPageInput');
+    var totalEl = document.getElementById('msrPreviewTotalPages');
+    if (!box) return;
+
+    if (!state.generated || !state.generated.records.length) {
+      box.innerHTML = '<div style="text-align:center;padding:30px;color:#475569;font-size:13px">Upload a salary sheet and click "Generate &amp; Validate" to preview report pages.</div>';
+      if (totalEl) totalEl.textContent = '1';
+      if (pageInput) pageInput.value = '1';
+      return;
+    }
+
+    var gen = state.generated;
+    var totalPages = gen.summary.totalPages;
+    state.previewPage = Math.max(1, Math.min(totalPages, parseInt(pageNum, 10) || 1));
+    if (totalEl) totalEl.textContent = String(totalPages);
+    if (pageInput) pageInput.value = String(state.previewPage);
+
+    var start = (state.previewPage - 1) * EMP_PER_PDF_PAGE;
+    var pageRecs = gen.records.slice(start, start + EMP_PER_PDF_PAGE);
+    var dayW = (100 - 5.2 - 4.2) / gen.daysInMonth;
+
+    var colgroupHtml = '<colgroup><col style="width:5.2%">';
+    for (var i = 0; i < gen.daysInMonth; i++) colgroupHtml += '<col style="width:' + dayW.toFixed(4) + '%">';
+    colgroupHtml += '<col style="width:4.2%"></colgroup>';
+
+    var daysRowHtml = '<tr><td>Days</td>';
+    for (var d = 0; d < gen.dayHeaders.length; d++) {
+      var dh = gen.dayHeaders[d];
+      daysRowHtml += '<td>' + dh.day + '<br>' + dh.weekday + '</td>';
+    }
+    daysRowHtml += '<td>OT</td></tr>';
+
+    var blocksHtml = pageRecs.map(function(rec) {
+      var e = rec.emp;
+      var flagTag = rec.hasMismatch ? ' <span class="msr-pill-bad">MISMATCH</span>' : '';
+      var empHdr = '<div class="msr-pdf-emp-hdr">' +
+        '<span>Emp. Code &nbsp; ' + esc(e.id) + flagTag + '</span>' +
+        '<span>Emp. Name : &nbsp; ' + esc(e.name) + ' (' + esc(e.designation) + ')</span>' +
+        '<span>Weekly Off: ' + esc(rec.weeklyOff) + ' [' + esc(rec.shift) + ']</span>' +
+        '</div>';
+
+      var rowDefs = [
+        { label: 'Status', key: 'status', isStatus: true },
+        { label: 'InTime', key: 'inTime' },
+        { label: 'OutTime', key: 'outTime' },
+        { label: 'OT', key: 'otText', isOtRow: true },
+        { label: 'Total', key: 'totalText' }
+      ];
+
+      var trs = rowDefs.map(function(rd) {
+        var tds = '<td class="msr-cell-lbl">' + rd.label + '</td>';
+        for (var idx = 0; idx < rec.days.length; idx++) {
+          var cell = rec.days[idx];
+          var val = cell[rd.key] || '';
+          var clsList = [];
+          if (idx === rec.days.length - 1) clsList.push('msr-cell-lastday');
+          if (rd.isStatus) {
+            if (val === 'A') clsList.push('msr-st-a');
+            else if (val === 'WO') clsList.push('msr-st-wo');
+            else if (val === 'HD') clsList.push('msr-st-hd');
+            else if (val === 'P') clsList.push('msr-st-p');
+          }
+          tds += '<td class="' + clsList.join(' ') + '">' + esc(val) + '</td>';
+        }
+        if (rd.isOtRow) {
+          tds += '<td class="msr-cell-ot">' + esc(rec.counts.otText) + '</td>';
+        } else {
+          tds += '<td class="msr-cell-ot"></td>';
+        }
+        return '<tr>' + tds + '</tr>';
+      }).join('');
+
+      return '<div class="msr-pdf-emp-block">' + empHdr + '<table class="msr-pdf-emp-tbl">' + colgroupHtml + '<tbody>' + trs + '</tbody></table></div>';
+    }).join('');
+
+    box.innerHTML =
+      '<div class="msr-pdf-page">' +
+        '<div class="msr-pdf-top">' +
+          '<div class="msr-pdf-title">Monthly Status Report (Basic Work Duration)</div>' +
+          '<div class="msr-pdf-sim">Simulated Attendance</div>' +
+          '<div class="msr-pdf-range">' + esc(gen.dateRangeText) + '</div>' +
+        '</div>' +
+        '<div class="msr-pdf-meta">' +
+          '<div>Company: <b>' + esc(gen.settings.companyName) + '</b></div>' +
+          '<div>Page ' + state.previewPage + ' of ' + totalPages + '</div>' +
+        '</div>' +
+        '<div class="msr-pdf-disclaimer">' + esc(MANDATORY_NOTICE) + '</div>' +
+        '<table class="msr-pdf-days-tbl">' + colgroupHtml + '<tbody>' + daysRowHtml + '</tbody></table>' +
+        blocksHtml +
+      '</div>';
+  }
+
+  function changePreviewPage(delta) {
+    renderPreviewPage(state.previewPage + delta);
+  }
+
+  function jumpPreviewPage(val) {
+    renderPreviewPage(parseInt(val, 10) || 1);
+  }
+
+  function jumpToEmployee(query) {
+    if (!state.generated || !state.generated.records.length) return;
+    var q = cleanStr(query).toLowerCase();
+    if (!q) return;
+    var recs = state.generated.records;
+    for (var i = 0; i < recs.length; i++) {
+      var e = recs[i].emp;
+      if (e.id.toLowerCase().indexOf(q) >= 0 || e.name.toLowerCase().indexOf(q) >= 0) {
+        var pg = Math.floor(i / EMP_PER_PDF_PAGE) + 1;
+        renderPreviewPage(pg);
+        showBanner('info', 'Found ' + e.id + ' (' + e.name + ') on Page ' + pg + '.');
+        return;
+      }
+    }
+    showBanner('warn', 'No employee found matching "' + query + '".');
+  }
+
+  // Vector A4 Landscape PDF Generator via jsPDF (repeating header + mandatory notice on EVERY page)
+  function ensureJsPdf() {
+    if (root.jspdf && root.jspdf.jsPDF) return Promise.resolve(root.jspdf.jsPDF);
+    if (typeof root.ATPLLoadOptionalLib === 'function') {
+      return root.ATPLLoadOptionalLib('JSPDF', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+        .then(function() {
+          if (root.jspdf && root.jspdf.jsPDF) return root.jspdf.jsPDF;
+          throw new Error('jsPDF library failed to initialize');
+        });
+    }
+    return Promise.reject(new Error('Optional library loader unavailable'));
+  }
+
+  function exportPDF() {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet upload karein.');
+      return;
+    }
+    rebuildScheduleAndRender();
+    var gen = state.generated;
+    if (!gen || !gen.records.length) return;
+
+    showBanner('info', 'Generating A4 Landscape PDF (' + gen.summary.totalPages + ' pages)...');
+
+    return ensureJsPdf().then(function(JsPDFCtor) {
+      var doc = new JsPDFCtor({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+      var pageW = 297;
+      var marginL = 7;
+      var marginR = 7;
+      var usableW = pageW - marginL - marginR; // 283mm
+      var labelW = 13.5;
+      var otColW = 12.5;
+      var daysW = usableW - labelW - otColW; // 257mm
+      var colW = daysW / gen.daysInMonth;
+      var totalPages = gen.summary.totalPages;
+
+      function drawPageHeader(pageNo) {
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Monthly Status Report (Basic Work Duration)', pageW / 2, 10, { align: 'center' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.text('Simulated Attendance', pageW - marginR, 10, { align: 'right' });
+
+        doc.setFontSize(9.5);
+        doc.text(gen.dateRangeText, pageW / 2, 14.8, { align: 'center' });
+
+        doc.setFontSize(8.5);
+        doc.text('Company: ' + gen.settings.companyName, marginL, 19.5);
+        doc.setFontSize(7.5);
+        doc.text('Page ' + pageNo + ' of ' + totalPages, pageW - marginR, 19.5, { align: 'right' });
+
+        // Permanent mandatory notice on every page
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.8);
+        doc.text(MANDATORY_NOTICE, marginL, 23.8);
+
+        // Days Header Bar (y = 25.5..32.5)
+        var barY = 25.5;
+        var barH = 7.0;
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.25);
+        doc.rect(marginL, barY, usableW, barH);
+        doc.line(marginL + labelW, barY, marginL + labelW, barY + barH);
+        doc.line(marginL + labelW + daysW, barY, marginL + labelW + daysW, barY + barH);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.5);
+        doc.text('Days', marginL + labelW / 2, barY + 4.4, { align: 'center' });
+
+        for (var i = 0; i < gen.dayHeaders.length; i++) {
+          var cx = marginL + labelW + (i + 0.5) * colW;
+          var xLine = marginL + labelW + i * colW;
+          if (i > 0) doc.line(xLine, barY, xLine, barY + barH);
+          doc.setFontSize(6.2);
+          doc.text(String(gen.dayHeaders[i].day), cx, barY + 2.8, { align: 'center' });
+          doc.setFontSize(5.4);
+          doc.text(gen.dayHeaders[i].weekday, cx, barY + 5.7, { align: 'center' });
+        }
+
+        doc.setFontSize(7.2);
+        doc.text('OT', marginL + labelW + daysW + otColW / 2, barY + 4.5, { align: 'center' });
+      }
+
+      for (var p = 0; p < totalPages; p++) {
+        if (p > 0) doc.addPage('a4', 'landscape');
+        drawPageHeader(p + 1);
+
+        var chunk = gen.records.slice(p * EMP_PER_PDF_PAGE, (p + 1) * EMP_PER_PDF_PAGE);
+        for (var b = 0; b < chunk.length; b++) {
+          var rec = chunk[b];
+          var e = rec.emp;
+          var blockTop = 34.5 + b * 42.5;
+
+          // Employee Header Text
+          doc.setTextColor(0, 0, 0);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(7.6);
+          doc.text('Emp. Code  ' + e.id, marginL, blockTop + 3.6);
+          doc.text('Emp. Name :  ' + e.name + ' (' + e.designation + ')', marginL + 38, blockTop + 3.6);
+          doc.setFont('helvetica', 'normal');
+          doc.text('Weekly Off: ' + rec.weeklyOff, marginL + labelW + daysW, blockTop + 3.6, { align: 'right' });
+
+          // 5-row bordered rectangle
+          var boxY = blockTop + 5.2;
+          var rowH = 6.2;
+          var boxH = rowH * 5; // 31mm
+          var boxW = labelW + daysW;
+
+          doc.setDrawColor(160, 174, 192);
+          doc.setLineWidth(0.15);
+          for (var r = 1; r < 5; r++) {
+            doc.line(marginL, boxY + r * rowH, marginL + boxW, boxY + r * rowH);
+          }
+
+          doc.setDrawColor(0, 0, 0);
+          doc.setLineWidth(0.28);
+          doc.rect(marginL, boxY, boxW, boxH);
+          doc.line(marginL + labelW, boxY, marginL + labelW, boxY + boxH);
+
+          var rowLabels = ['Status', 'InTime', 'OutTime', 'OT', 'Total'];
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6.2);
+          for (var rl = 0; rl < 5; rl++) {
+            doc.text(rowLabels[rl], marginL + 1.4, boxY + rl * rowH + 4.2);
+          }
+
+          // Day values
+          for (var dIdx = 0; dIdx < rec.days.length; dIdx++) {
+            var cell = rec.days[dIdx];
+            var cxCell = marginL + labelW + (dIdx + 0.5) * colW;
+            doc.setFont('helvetica', cell.status === 'A' || cell.status === 'WO' ? 'bold' : 'normal');
+            doc.setFontSize(5.7);
+            doc.text(cell.status || '', cxCell, boxY + 0 * rowH + 4.2, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            if (cell.inTime) doc.text(cell.inTime, cxCell, boxY + 1 * rowH + 4.2, { align: 'center' });
+            if (cell.outTime) doc.text(cell.outTime, cxCell, boxY + 2 * rowH + 4.2, { align: 'center' });
+            if (cell.otText) doc.text(cell.otText, cxCell, boxY + 3 * rowH + 4.2, { align: 'center' });
+            doc.text(cell.totalText || '0:00', cxCell, boxY + 4 * rowH + 4.2, { align: 'center' });
+          }
+
+          // Employee total OT in rightmost OT column aligned on OT row
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8.2);
+          doc.text(rec.counts.otText, pageW - marginR - 1.2, boxY + 3 * rowH + 4.4, { align: 'right' });
+        }
+      }
+
+      var fileOut = 'Monthly_Status_Report_' + MONTH_NAMES[gen.settings.month] + '-' + gen.settings.year + '.pdf';
+      doc.save(fileOut);
+      showBanner('success', 'PDF exported: ' + fileOut + ' (' + totalPages + ' pages, A4 Landscape).');
+    }).catch(function(err) {
+      showBanner('error', 'PDF export failed: ' + err.message);
+    });
+  }
+
+  function exportExcel() {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet upload karein.');
+      return;
+    }
+    if (!root.XLSX) {
+      showBanner('error', 'Excel export library (XLSX) not available.');
+      return;
+    }
+    rebuildScheduleAndRender();
+    var gen = state.generated;
+    var aoa = [];
+
+    aoa.push(['Monthly Status Report (Basic Work Duration)', '', '', '', '', 'Simulated Attendance']);
+    aoa.push([gen.dateRangeText]);
+    aoa.push(['Company: ' + gen.settings.companyName]);
+    aoa.push([MANDATORY_NOTICE]);
+    aoa.push([]);
+
+    var hdrRow = ['Days'];
+    for (var d = 0; d < gen.dayHeaders.length; d++) {
+      hdrRow.push(gen.dayHeaders[d].day + ' ' + gen.dayHeaders[d].weekday);
+    }
+    hdrRow.push('OT');
+    aoa.push(hdrRow);
+
+    for (var i = 0; i < gen.records.length; i++) {
+      var rec = gen.records[i];
+      var e = rec.emp;
+      aoa.push(['Emp. Code ' + e.id, 'Emp. Name : ' + e.name + ' (' + e.designation + ')', '', '', 'Weekly Off: ' + rec.weeklyOff, 'Shift: ' + rec.shift]);
+
+      var rSt = ['Status'];
+      var rIn = ['InTime'];
+      var rOut = ['OutTime'];
+      var rOt = ['OT'];
+      var rTot = ['Total'];
+      for (var k = 0; k < rec.days.length; k++) {
+        var cell = rec.days[k];
+        rSt.push(cell.status);
+        rIn.push(cell.inTime);
+        rOut.push(cell.outTime);
+        rOt.push(cell.otText);
+        rTot.push(cell.totalText);
+      }
+      rSt.push('');
+      rIn.push('');
+      rOut.push('');
+      rOt.push(rec.counts.otText);
+      rTot.push('');
+      aoa.push(rSt, rIn, rOut, rOt, rTot, []);
+    }
+
+    var valAoa = [
+      ['Monthly Status Report - Validation Summary'],
+      [MANDATORY_NOTICE],
+      ['Report Period', gen.dateRangeText, 'Company', gen.settings.companyName],
+      [],
+      ['Emp ID', 'Name', 'Designation', 'Category', 'Shift', 'Weekly Off', 'Month Days', 'Sheet WD', 'Gen P', 'Sheet Sun Allow', 'Gen WO', 'Sheet HD', 'Gen HD', 'Sheet Absent', 'Gen A', 'Sheet OT Hrs', 'Gen OT Hrs', 'P+WO+A+HD', 'Status / Warnings']
+    ];
+    for (var v = 0; v < gen.records.length; v++) {
+      var vr = gen.records[v];
+      var ve = vr.emp;
+      var vc = vr.counts;
+      var flagTxt = vr.redFlags.concat(vr.warnings).join('; ') || 'EXACT MATCH';
+      valAoa.push([
+        ve.id, ve.name, ve.designation, ve.category, vr.shift, vr.weeklyOff,
+        ve.monthOfDays, ve.workingDays, vc.p, ve.sunAllow, vc.wo, ve.hd, vc.hd,
+        ve.absent, vc.a, ve.otHours, vc.otHours, vc.allocatedSum, flagTxt
+      ]);
+    }
+
+    var wb = root.XLSX.utils.book_new();
+    var ws1 = root.XLSX.utils.aoa_to_sheet(aoa);
+    var ws2 = root.XLSX.utils.aoa_to_sheet(valAoa);
+    root.XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Status Report');
+    root.XLSX.utils.book_append_sheet(wb, ws2, 'Validation Summary');
+    var outName = 'Monthly_Status_Report_' + MONTH_NAMES[gen.settings.month] + '-' + gen.settings.year + '.xlsx';
+    root.XLSX.writeFile(wb, outName);
+    showBanner('success', 'Excel exported: ' + outName + ' (Report + Validation Summary sheets).');
+  }
+
+  function requestReset() {
+    showBanner(
+      'warn',
+      'Reset stored Monthly Status Report sheet and overrides from IndexedDB?',
+      '<button type="button" class="msr-btn msr-btn-danger msr-btn-sm" onclick="window.ATPLMonthlyStatusReport.confirmReset()">Yes, Reset Data</button>' +
+      '<button type="button" class="msr-btn msr-btn-sm" onclick="document.getElementById(\'msrBanner\').classList.remove(\'show\')">Cancel</button>'
+    );
+  }
+
+  function confirmReset() {
+    state.rows = [];
+    state.fileName = '';
+    state.sheetName = '';
+    state.categoryRules = {};
+    state.designationRules = {};
+    state.generated = null;
+    state.cfgPage = 1;
+    state.valPage = 1;
+    state.previewPage = 1;
+    clearStateInDb();
+    rebuildScheduleAndRender();
+    showBanner('info', 'Monthly Status Report data cleared.');
+  }
+
+  function init() {
+    refreshErpFileDropdown();
+    if (state.initialized) {
+      syncStateToSettingsInputs();
+      updateFileMeta();
+      refreshBulkValues();
+      return;
+    }
+    state.initialized = true;
+    loadStateFromDb().then(function(saved) {
+      if (saved) {
+        if (saved.settings) state.settings = Object.assign(state.settings, saved.settings);
+        state.fileName = saved.fileName || '';
+        state.sheetName = saved.sheetName || '';
+        state.rows = Array.isArray(saved.rows) ? saved.rows : [];
+        state.categoryRules = saved.categoryRules || {};
+        state.designationRules = saved.designationRules || {};
+      }
+      syncStateToSettingsInputs();
+      rebuildScheduleAndRender();
+      refreshErpFileDropdown();
+    });
+  }
+
+  root.ATPLMonthlyStatusReport = {
+    init: init,
+    handleFileInput: handleFileInput,
+    loadFromErpSelect: loadFromErpSelect,
+    onSettingChange: onSettingChange,
+    refreshBulkValues: refreshBulkValues,
+    applyBulkWeeklyOff: applyBulkWeeklyOff,
+    applyBulkShift: applyBulkShift,
+    updateEmployeeField: updateEmployeeField,
+    switchTab: switchTab,
+    generateAndOpenValidation: generateAndOpenValidation,
+    renderConfigTable: renderConfigTable,
+    changeCfgPage: changeCfgPage,
+    renderValidationTable: renderValidationTable,
+    changeValPage: changeValPage,
+    renderPreviewPage: renderPreviewPage,
+    changePreviewPage: changePreviewPage,
+    jumpPreviewPage: jumpPreviewPage,
+    jumpToEmployee: jumpToEmployee,
+    exportPDF: exportPDF,
+    exportExcel: exportExcel,
+    requestReset: requestReset,
+    confirmReset: confirmReset,
+    // Pure logic exports for automated verification & reuse
+    _engine: {
+      parseCsvText: parseCsvText,
+      mapColumns: mapColumns,
+      extractRowsFromAoa: extractRowsFromAoa,
+      generateEmployeeSchedule: generateEmployeeSchedule,
+      buildAllSchedules: buildAllSchedules,
+      formatDuration: formatDuration,
+      formatClock: formatClock
+    }
+  };
+})(window);
+</script>
 </body>
 </html>
 
