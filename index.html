@@ -2800,6 +2800,20 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             </div>
             <div id="msrCfgSummary" style="font-size:12px;font-weight:700;color:#334155">0 employees</div>
           </div>
+          <div id="msrMapperBar" style="display:none;margin-bottom:10px;padding:10px 12px;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+              <div style="font-size:12px;font-weight:800;color:#0f172a">🧠 Smart Column Mapping <span id="msrMapperBadge" style="font-size:11px;font-weight:600;color:#0369a1"></span></div>
+              <div style="display:flex;gap:6px;align-items:center">
+                <label style="font-size:11px;font-weight:700;color:#475569">Worksheet:</label>
+                <select id="msrSheetSelect" class="msr-select" style="width:auto;min-width:140px;padding:4px 8px;font-size:11px" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.switchWorkbookSheet(this.value)"></select>
+                <label style="font-size:11px;font-weight:700;color:#475569">Header Row:</label>
+                <input type="number" id="msrHdrRowInput" class="msr-input" style="width:62px;padding:4px 6px;font-size:11px" min="1" max="50" value="1" />
+                <button type="button" id="msrApplyMapBtn" data-ua-action="view" class="msr-btn msr-btn-primary msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.applyManualColumnMap()">✅ Apply Mapping</button>
+                <button type="button" id="msrToggleMapBtn" data-ua-action="view" class="msr-btn msr-btn-sm" onclick="document.getElementById('msrMapperGrid').style.display=(document.getElementById('msrMapperGrid').style.display==='none'?'grid':'none')">⚙ Show/Hide Columns</button>
+              </div>
+            </div>
+            <div id="msrMapperGrid" style="display:none;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:8px;padding-top:6px;border-top:1px dashed #cbd5e1"></div>
+          </div>
           <div class="msr-table-wrap">
             <table class="msr-table">
               <thead>
@@ -17652,80 +17666,286 @@ document.addEventListener('click', function(e) {
   function normHeader(h) {
     return String(h == null ? '' : h)
       .toLowerCase()
-      .replace(/[._-]+/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
 
-  function findHeaderRowIndex(aoa) {
-    var bestIdx = 0;
-    var bestScore = -1;
-    var limit = Math.min(20, aoa.length);
-    for (var r = 0; r < limit; r++) {
-      var cells = aoa[r] || [];
-      var joined = cells.map(normHeader);
-      var score = 0;
-      if (joined.some(function(c){ return /^(emp id|emp code|employee id|empid|empcode)$/.test(c); })) score += 4;
-      if (joined.some(function(c){ return /name of employee|emp name|employee name|^name$/.test(c); })) score += 3;
-      if (joined.some(function(c){ return /working days|work days/.test(c); })) score += 2;
-      if (joined.some(function(c){ return /month of days|month days/.test(c); })) score += 2;
-      if (joined.some(function(c){ return /sun allow|absent|over time|overtime/.test(c); })) score += 2;
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = r;
+  // Build composite header text combining row r and row r+1 when Excel has 2-row/merged headers
+  function buildHeaderCandidates(aoa, r, useTwoRows) {
+    var row1 = aoa[r] || [];
+    var row2 = (useTwoRows && aoa[r + 1]) ? aoa[r + 1] : [];
+    var maxCols = Math.max(row1.length, row2.length);
+    var out = [];
+    for (var c = 0; c < maxCols; c++) {
+      var a = cleanStr(row1[c] == null ? '' : row1[c]);
+      var b = cleanStr(row2[c] == null ? '' : row2[c]);
+      if (useTwoRows && b && a !== b) {
+        out.push((a ? a + ' ' + b : b).trim());
+      } else {
+        out.push(a);
       }
     }
-    return bestIdx;
+    return out;
   }
 
-  function mapColumns(headerRow) {
-    var norm = (headerRow || []).map(normHeader);
-    function findCol(patterns) {
-      for (var p = 0; p < patterns.length; p++) {
-        var rx = patterns[p];
-        for (var i = 0; i < norm.length; i++) {
-          if (rx.test(norm[i])) return i;
-        }
-      }
+  function looksLikeDataRow(row) {
+    if (!row || !row.length) return false;
+    var numCount = 0;
+    var nonEmpty = 0;
+    for (var i = 0; i < row.length; i++) {
+      var s = cleanStr(row[i] == null ? '' : row[i]);
+      if (!s) continue;
+      nonEmpty++;
+      if (/^-?\d+(?:[.,]\d+)?$/.test(s.replace(/,/g, ''))) numCount++;
+    }
+    return nonEmpty >= 3 && numCount >= 3;
+  }
+
+  function scoreColumnForField(field, rawHeader, sampleValues) {
+    var h = normHeader(rawHeader);
+    if (!h) return -1;
+    var compact = h.replace(/\s+/g, '');
+    var tokens = h.split(' ');
+    function hasTok(rx) { return tokens.some(function(t){ return rx.test(t); }); }
+
+    // Global negative filters per field
+    if (field === 'empId') {
+      if (/\b(s no|sr no|sl no|sr|serial|sno|uan|pf|esi|esic|aadhaar|aadhar|pan|account|ac|bank|mobile|phone|ifsc)\b/.test(h)) return -1;
+      if (/^(emp id|emp code|employee id|employee code|emp no|employee no|empid|empcode|e code|ecode|eid|staff id|worker id)$/.test(h)) return 100;
+      if (/^(code|id|id no|card no|token no|punch id|enroll no|bio id|biometric id)$/.test(h)) return 88;
+      if (/\b(emp|employee|staff|worker)\b/.test(h) && /\b(id|code|no|num)\b/.test(h)) return 92;
+      if (/^(emp|code)$/.test(h)) return 75;
       return -1;
     }
-    return {
-      empId: findCol([/^(emp id|emp code|employee id|employee code|empid|empcode)$/, /\bemp\s*(id|code)\b/, /^id$/]),
-      name: findCol([/^(name of employee|employee name|emp name|name)$/, /\bname of employee\b/, /\bemp\s*name\b/]),
-      gender: findCol([/^(gender|sex|m\/f)$/]),
-      department: findCol([/^(department|dept)$/, /department/]),
-      designation: findCol([/^(desigenation|designation|desig)$/, /desig/]),
-      category: findCol([/^(category|cat|skill category)$/, /^department$/]),
-      monthDays: findCol([/^(month of days|month days|days in month|monthofdays)$/, /month.*day/]),
-      workingDays: findCol([/^(working days|work days|present days|p days|wd)$/, /working.*day/]),
-      sunAllow: findCol([/^(sun allow|sunday allow|weekly off|week off|wo)$/, /sun.*allow/]),
-      hd: findCol([/^(hd|holi days|holidays|holiday|half days|half day)$/, /holi\s*day/]),
-      absent: findCol([/^(absent|absent days|ab)$/, /^absent/]),
-      paidDays: findCol([/^(paid days|payable days|pd)$/, /paid.*day/]),
-      otHours: findCol([/^(over time hours|overtime hours|ot hours|ot hrs|over time|overtime|ot)$/, /over\s*time.*hour/])
-    };
+
+    if (field === 'name') {
+      if (/\b(father|fathers|husband|mother|spouse|nominee|bank|company|firm|dept|department|branch|city|state|user)\b/.test(h)) return -1;
+      if (/^(name of employee|employee name|emp name|worker name|staff name|full name|member name|empname|name)$/.test(h)) return 100;
+      if (/\bname\b/.test(h) && (/\b(emp|employee|worker|staff|person|candidate)\b/.test(h) || tokens.length <= 2)) return 85;
+      return -1;
+    }
+
+    if (field === 'gender') {
+      if (/^(gender|sex|m f|male female)$/.test(h)) return 100;
+      if (/\b(gender|sex)\b/.test(h)) return 85;
+      return -1;
+    }
+
+    if (field === 'department') {
+      if (/^(department|dept|dept name|section|unit|plant|division)$/.test(h)) return 100;
+      if (/\b(department|dept|section)\b/.test(h)) return 85;
+      return -1;
+    }
+
+    if (field === 'designation') {
+      if (/^(desigenation|designation|desig|post|job title|role|trade)$/.test(h)) return 100;
+      if (/desig/.test(h)) return 90;
+      return -1;
+    }
+
+    if (field === 'category') {
+      if (/^(category|catgrory|cat|skill category|worker category|grade|emp type|worker type)$/.test(h)) return 100;
+      if (/cat(egory|grory)?/.test(h) && tokens.length <= 3) return 85;
+      return -1;
+    }
+
+    // Check data values shape for numeric fields (avoid mapping text columns like Name/Father to Working Days!)
+    var numericRatio = 1;
+    if (sampleValues && sampleValues.length) {
+      var nEmpty = 0, nNum = 0;
+      for (var sv = 0; sv < sampleValues.length; sv++) {
+        var val = cleanStr(sampleValues[sv]);
+        if (!val || val === '-' || /^na$/i.test(val)) continue;
+        nEmpty++;
+        if (/^-?\d+(?:[.,]\d+)?$/.test(val.replace(/,/g, ''))) nNum++;
+      }
+      if (nEmpty > 0) numericRatio = nNum / nEmpty;
+      if (nEmpty >= 2 && numericRatio < 0.4) return -1;
+    }
+
+    if (field === 'monthDays') {
+      if (/\b(paid|payable|working|work|present|absent|leave|ot|over|earned|basic|hra|gross|net|pf|esi|amount|amt|salary|wages)\b/.test(h)) return -1;
+      if (/^(month of days|month days|days in month|monthofdays|calendar days|cal days|m days|mdays|md|divisor|total days)$/.test(h)) return 100;
+      if (hasTok(/month|cal|calendar|divisor/) && hasTok(/day|days/)) return 88;
+      if (/^(days)$/.test(h)) return 70;
+      return -1;
+    }
+
+    if (field === 'workingDays') {
+      if (/\b(amount|amt|wages|salary|rate|basic|hra|gross|net|pf|esi|esic|uan|bonus|incentive|food|ded|deduction|advance|loan|number|serial|sr no|s no)\b/.test(h)) return -1;
+      if (/^(working days|work days|actual working days|present days|duty days|days worked|worked days|p days|pdays|w days|wdays|wd|w d|att days|attendance days|total present|total working days|net working days|working day|work day|days present|no of working days|no of days present)$/.test(h)) return 100;
+      if (/^(present|attendance|total attendance|worked|att|p|pres|prs|duty|wrkg days|wkg days|workign days|workng days|wrk days|wrkdays|work d)$/.test(h)) return 90;
+      if (hasTok(/^(work|working|workign|workng|wrk|wrkg|wkg|worked|present|pres|presnt|presant|prs|duty|att|attendance)$/) && hasTok(/^(day|days|d|p|total|count)$/)) return 86;
+      if (compact === 'workingdays' || compact === 'workdays' || compact === 'presentdays' || compact === 'dutydays') return 95;
+      if (/\b(working|worked|present|presnt|duty|attendance)\b/.test(h) && !/month|paid|payable|absent|off|sunday|holi|ot|overtime/.test(h)) return 78;
+      return -1;
+    }
+
+    if (field === 'sunAllow') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(sun allow|sunday allow|weekly off|week off|weekoff|w off|w o|wo|sunday|sun|sun days|sundays|off days|paid off|rest days)$/.test(h)) return 100;
+      if (hasTok(/^(sun|sunday|wo|weekoff|weekly|off)$/) && !/month|paid|absent/.test(h)) return 82;
+      return -1;
+    }
+
+    if (field === 'hd') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(hd|h d|holi days|holidays|holiday|half day|half days|h day|ph|nh|paid holiday|national holiday|fest|festival)$/.test(h)) return 100;
+      if (/holi\s*day|half\s*day/.test(h)) return 88;
+      return -1;
+    }
+
+    if (field === 'absent') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(absent|absent days|absents|abs|ab|a|lwp|lop|unpaid days|absant|absenteeism)$/.test(h)) return 100;
+      if (hasTok(/^(absent|absant|abs|ab|lwp|lop)$/)) return 85;
+      return -1;
+    }
+
+    if (field === 'paidDays') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(paid days|payable days|pay days|total paid days|total paid|pd|p d|salary days|sal days|net days|net payable days|payble days)$/.test(h)) return 100;
+      if (hasTok(/^(paid|payable|pay|payble|sal)$/) && hasTok(/^(day|days|d)$/)) return 86;
+      return -1;
+    }
+
+    if (field === 'otHours') {
+      if (/\b(amount|amt|wages|salary|rate|pay|earned|bonus|rs|inr)\b/.test(h)) return -1;
+      if (/^(over time hours|overtime hours|over time hrs|overtime hrs|ot hours|ot hrs|ot hr|ot time|over time|overtime|ot|extra hours|extra hrs)$/.test(h)) return 100;
+      if (hasTok(/^(ot|overtime|over)$/) && !/amount|amt|wages|earned|rate/.test(h)) return 85;
+      return -1;
+    }
+    return -1;
   }
 
-  function extractRowsFromAoa(aoa, prevRowsMap, defaultDays) {
-    if (!Array.isArray(aoa) || aoa.length < 2) return { rows: [], missingCols: ['Sheet has no data rows'] };
-    var hdrIdx = findHeaderRowIndex(aoa);
-    var cols = mapColumns(aoa[hdrIdx]);
+  function mapColumns(headerRow, sampleDataRows) {
+    var fields = ['empId','name','workingDays','absent','sunAllow','hd','paidDays','otHours','monthDays','gender','department','designation','category'];
+    var colSamples = {};
+    var numCols = (headerRow || []).length;
+    for (var c = 0; c < numCols; c++) {
+      colSamples[c] = [];
+      if (sampleDataRows) {
+        for (var r = 0; r < sampleDataRows.length; r++) {
+          if (sampleDataRows[r] && c < sampleDataRows[r].length) colSamples[c].push(sampleDataRows[r][c]);
+        }
+      }
+    }
+
+    // Score every (field, col) pair and resolve greedily by highest confidence score
+    var candidates = [];
+    for (var fi = 0; fi < fields.length; fi++) {
+      var fld = fields[fi];
+      for (var ci = 0; ci < numCols; ci++) {
+        var sc = scoreColumnForField(fld, headerRow[ci], colSamples[ci]);
+        if (sc > 0) {
+          candidates.push({ field: fld, col: ci, score: sc, priority: fields.length - fi });
+        }
+      }
+    }
+    candidates.sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.priority - a.priority;
+    });
+
+    var cols = {};
+    fields.forEach(function(f){ cols[f] = -1; });
+    var claimedCols = {};
+    for (var k = 0; k < candidates.length; k++) {
+      var cand = candidates[k];
+      if (cols[cand.field] >= 0 || claimedCols[cand.col]) continue;
+      cols[cand.field] = cand.col;
+      claimedCols[cand.col] = cand.field;
+    }
+
+    // Fallback: if category wasn't found separately, share designation/department gracefully during row extraction
+    return cols;
+  }
+
+  function analyzeAoa(aoa, forcedHdrIdx) {
+    if (!Array.isArray(aoa) || aoa.length < 2) {
+      return { hdrIdx: 0, dataStartIdx: 1, headers: [], cols: mapColumns([]), score: -1, twoRowHeader: false };
+    }
+    var best = null;
+    var limit = Math.min(40, aoa.length - 1);
+    var indicesToCheck = [];
+    if (forcedHdrIdx != null && forcedHdrIdx >= 0 && forcedHdrIdx < aoa.length - 1) {
+      indicesToCheck = [forcedHdrIdx];
+    } else {
+      for (var r = 0; r < limit; r++) indicesToCheck.push(r);
+    }
+
+    for (var ii = 0; ii < indicesToCheck.length; ii++) {
+      var rIdx = indicesToCheck[ii];
+      var variants = [{ twoRow: false, hdrRow: buildHeaderCandidates(aoa, rIdx, false), dataStart: rIdx + 1 }];
+      if (rIdx + 2 < aoa.length && !looksLikeDataRow(aoa[rIdx + 1])) {
+        variants.push({ twoRow: true, hdrRow: buildHeaderCandidates(aoa, rIdx, true), dataStart: rIdx + 2 });
+      }
+      for (var v = 0; v < variants.length; v++) {
+        var vr = variants[v];
+        var samples = aoa.slice(vr.dataStart, vr.dataStart + 8);
+        var cols = mapColumns(vr.hdrRow, samples);
+        var score = 0;
+        if (cols.empId >= 0) score += 10;
+        if (cols.name >= 0) score += 9;
+        if (cols.workingDays >= 0) score += 10;
+        else if (cols.paidDays >= 0) score += 7;
+        if (cols.absent >= 0) score += 5;
+        if (cols.sunAllow >= 0) score += 5;
+        if (cols.monthDays >= 0) score += 4;
+        if (cols.otHours >= 0) score += 4;
+        if (cols.hd >= 0) score += 2;
+        if (cols.designation >= 0 || cols.category >= 0) score += 2;
+        if (vr.twoRow) score += 0.5;
+        if (!best || score > best.score) {
+          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, score: score, twoRowHeader: vr.twoRow };
+        }
+      }
+    }
+    return best;
+  }
+
+  function extractRowsFromAoa(aoa, prevRowsMap, defaultDays, forcedMap, forcedHdrIdx) {
+    if (!Array.isArray(aoa) || aoa.length < 2) {
+      return { rows: [], missingCols: ['Sheet has no data rows'], analysis: null, derivedNotes: [] };
+    }
+    var analysis = analyzeAoa(aoa, forcedHdrIdx);
+    var cols = forcedMap ? Object.assign({}, analysis.cols, forcedMap) : analysis.cols;
+
+    // Smart derivation if Working Days column isn't explicitly named, OR Absent isn't named
+    var canDeriveWdFromPaid = (cols.workingDays < 0 && cols.paidDays >= 0);
+    var canDeriveWdFromAbsent = (cols.workingDays < 0 && cols.paidDays < 0 && cols.absent >= 0);
     var missing = [];
-    if (cols.empId < 0) missing.push('Employee ID');
-    if (cols.name < 0) missing.push('Name');
-    if (cols.workingDays < 0) missing.push('Working Days');
-    if (cols.absent < 0) missing.push('Absent');
-    if (missing.length) return { rows: [], missingCols: missing };
+    if (cols.empId < 0 && cols.name < 0) missing.push('Employee ID / Name');
+    if (cols.workingDays < 0 && !canDeriveWdFromPaid && !canDeriveWdFromAbsent) missing.push('Working Days (or Paid Days / Absent)');
+
+    if (missing.length) {
+      return { rows: [], missingCols: missing, analysis: analysis, derivedNotes: [] };
+    }
+
+    var derivedNotes = [];
+    if (canDeriveWdFromPaid) derivedNotes.push('Working Days auto-derived from Paid Days - Sun Allow - HD');
+    else if (canDeriveWdFromAbsent) derivedNotes.push('Working Days auto-derived from Month Days - Absent - Sun Allow - HD');
+    if (cols.absent < 0) derivedNotes.push('Absent auto-derived from Month Days - Working Days - Sun Allow - HD');
+    if (cols.empId < 0) derivedNotes.push('Employee ID auto-generated sequentially (EMP001...)');
 
     var out = [];
     var seenIds = {};
-    for (var r = hdrIdx + 1; r < aoa.length; r++) {
+    var seqNo = 1;
+    for (var r = analysis.dataStartIdx; r < aoa.length; r++) {
       var row = aoa[r];
       if (!row || !row.length) continue;
-      var rawId = String(row[cols.empId] == null ? '' : row[cols.empId]).trim();
-      if (!rawId || /^(total|grand total|sub total)$/i.test(rawId)) continue;
+
       var name = cleanStr(cols.name >= 0 ? row[cols.name] : '');
-      if (!name && parseNum(row[cols.workingDays]) === 0) continue;
+      var rawId = cols.empId >= 0 ? String(row[cols.empId] == null ? '' : row[cols.empId]).trim() : '';
+      if (cols.empId >= 0) {
+        if (!rawId || /^(total|grand total|sub total|page total|summary)$/i.test(rawId)) continue;
+      } else {
+        if (!name || /^(total|grand total|sub total)$/i.test(name)) continue;
+        rawId = 'EMP' + String(seqNo++).padStart(3, '0');
+      }
+      if (!name && cols.workingDays >= 0 && parseNum(row[cols.workingDays]) === 0) continue;
+      if (!name) name = 'EMPLOYEE ' + rawId;
 
       var gender = cleanStr(cols.gender >= 0 ? row[cols.gender] : '');
       var dept = cleanStr(cols.department >= 0 ? row[cols.department] : '');
@@ -17735,11 +17955,23 @@ document.addEventListener('click', function(e) {
 
       var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : defaultDays;
       if (!md) md = defaultDays;
-      var wd = parseNum(row[cols.workingDays]);
+
       var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : 0;
       var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : 0;
-      var ab = parseNum(row[cols.absent]);
-      var pd = cols.paidDays >= 0 ? parseNum(row[cols.paidDays]) : (wd + sa + hd);
+      var pd = cols.paidDays >= 0 ? parseNum(row[cols.paidDays]) : null;
+      var ab = cols.absent >= 0 ? parseNum(row[cols.absent]) : null;
+      var wd;
+
+      if (cols.workingDays >= 0) {
+        wd = parseNum(row[cols.workingDays]);
+      } else if (canDeriveWdFromPaid) {
+        wd = Math.max(0, pd - sa - hd);
+      } else {
+        wd = Math.max(0, md - (ab || 0) - sa - hd);
+      }
+
+      if (ab == null) ab = Math.max(0, md - wd - sa - hd);
+      if (pd == null) pd = wd + sa + hd;
       var ot = cols.otHours >= 0 ? parseNum(row[cols.otHours]) : 0;
 
       var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
@@ -17773,7 +18005,7 @@ document.addEventListener('click', function(e) {
       }
       out.push(empObj);
     }
-    return { rows: out, missingCols: [] };
+    return { rows: out, missingCols: [], analysis: analysis, derivedNotes: derivedNotes, resolvedCols: cols };
   }
 
   function generateEmployeeSchedule(emp, settings) {
@@ -18229,22 +18461,94 @@ document.addEventListener('click', function(e) {
     }).join('');
   }
 
-  function loadAoaIntoState(aoa, fileName, sheetName) {
+  function colLetter(idx) {
+    if (idx < 0) return 'Auto';
+    var s = '';
+    var n = idx;
+    while (n >= 0) {
+      s = String.fromCharCode((n % 26) + 65) + s;
+      n = Math.floor(n / 26) - 1;
+    }
+    return 'Col ' + s;
+  }
+
+  function renderMapperBar(analysis, resolvedCols, derivedNotes) {
+    var bar = document.getElementById('msrMapperBar');
+    var badge = document.getElementById('msrMapperBadge');
+    var sheetSel = document.getElementById('msrSheetSelect');
+    var hdrIn = document.getElementById('msrHdrRowInput');
+    var grid = document.getElementById('msrMapperGrid');
+    if (!bar) return;
+
+    if (!state.rawAoa || !state.rawAoa.length) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'block';
+
+    if (sheetSel) {
+      var sNames = state.workbookSheets ? Object.keys(state.workbookSheets) : [state.sheetName || 'Sheet1'];
+      sheetSel.innerHTML = sNames.map(function(sn) {
+        return '<option value="' + esc(sn) + '"' + (sn === state.sheetName ? ' selected' : '') + '>' + esc(sn) + '</option>';
+      }).join('');
+    }
+    if (hdrIn && analysis) hdrIn.value = String((analysis.hdrIdx || 0) + 1);
+
+    if (badge) {
+      var parts = [];
+      if (resolvedCols) {
+        parts.push('ID: ' + colLetter(resolvedCols.empId));
+        parts.push('Name: ' + colLetter(resolvedCols.name));
+        parts.push('WD: ' + colLetter(resolvedCols.workingDays));
+        parts.push('WO: ' + colLetter(resolvedCols.sunAllow));
+        parts.push('Abs: ' + colLetter(resolvedCols.absent));
+        parts.push('OT: ' + colLetter(resolvedCols.otHours));
+      }
+      if (derivedNotes && derivedNotes.length) parts.push('(' + derivedNotes.join('; ') + ')');
+      badge.textContent = parts.join(' | ');
+    }
+
+    if (grid && analysis) {
+      var headers = analysis.headers || [];
+      var mapFields = [
+        ['empId', 'Employee ID'], ['name', 'Name'], ['workingDays', 'Working Days *'],
+        ['sunAllow', 'Sun Allow / WO'], ['hd', 'HD / Holidays'], ['absent', 'Absent'],
+        ['paidDays', 'Paid Days'], ['otHours', 'OT Hours'], ['monthDays', 'Month Of Days'],
+        ['gender', 'Gender'], ['department', 'Department'], ['designation', 'Designation'], ['category', 'Category']
+      ];
+      grid.innerHTML = mapFields.map(function(pair) {
+        var fKey = pair[0], fLbl = pair[1];
+        var cur = resolvedCols && resolvedCols[fKey] != null ? resolvedCols[fKey] : -1;
+        var opts = '<option value="-1"' + (cur < 0 ? ' selected' : '') + '>-- Auto / Derive / None --</option>';
+        for (var i = 0; i < headers.length; i++) {
+          var lbl = colLetter(i) + (headers[i] ? ': ' + cleanStr(headers[i]).slice(0, 26) : '');
+          opts += '<option value="' + i + '"' + (cur === i ? ' selected' : '') + '>' + esc(lbl) + '</option>';
+        }
+        return '<div class="msr-field"><label for="msrMap_' + fKey + '">' + esc(fLbl) + '</label><select id="msrMap_' + fKey + '" class="msr-select" style="padding:4px 6px;font-size:11px">' + opts + '</select></div>';
+      }).join('');
+    }
+  }
+
+  function loadAoaIntoState(aoa, fileName, sheetName, forcedMap, forcedHdrIdx) {
     syncSettingsInputsToState();
+    state.rawAoa = aoa;
+    state.fileName = fileName;
+    state.sheetName = sheetName || '';
     var defaultDays = getDaysInMonth(state.settings.year, state.settings.month);
-    var res = extractRowsFromAoa(aoa, {}, defaultDays);
+    var res = extractRowsFromAoa(aoa, {}, defaultDays, forcedMap, forcedHdrIdx);
+    renderMapperBar(res.analysis, res.resolvedCols || (res.analysis && res.analysis.cols), res.derivedNotes);
+
     if (res.missingCols.length) {
-      showBanner('error', 'Sheet column mismatch — missing required columns: ' + res.missingCols.join(', '));
+      var grid = document.getElementById('msrMapperGrid');
+      if (grid) grid.style.display = 'grid';
+      showBanner('error', 'Column auto-detect incomplete (' + res.missingCols.join(', ') + '). Neeche Smart Column Mapping se exact column choose karke Apply karein.');
       return false;
     }
     if (!res.rows.length) {
-      showBanner('warn', 'No valid employee rows (with Employee ID) found in "' + fileName + '".');
+      showBanner('warn', 'No valid employee rows found in "' + fileName + '". Worksheet ya Header Row check karein.');
       return false;
     }
-    // Automatically assign Random Weekly Off + 3-4 Eligible Males per Card in Night Shift (never Female / Office Staff)
     var assignStats = autoAssignRandomRules(res.rows, state.settings, state.settings.nightScope);
-    state.fileName = fileName;
-    state.sheetName = sheetName || '';
     state.rows = res.rows;
     state.rulesVersion = RULES_VER;
     state.cfgPage = 1;
@@ -18252,8 +18556,57 @@ document.addEventListener('click', function(e) {
     state.previewPage = 1;
     rebuildScheduleAndRender();
     saveStateToDb();
-    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '". Auto-assigned Random Weekly Off + Night Shift (' + assignStats.nightCount + ' eligible males in Night; 0 Female / 0 Office Staff).');
+    var noteMsg = res.derivedNotes && res.derivedNotes.length ? ' [' + res.derivedNotes.join('; ') + ']' : '';
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + ']. Auto-assigned Random WO + Night (' + assignStats.nightCount + ' eligible males).' + noteMsg);
     return true;
+  }
+
+  function switchWorkbookSheet(sn) {
+    if (!state.workbookSheets || !state.workbookSheets[sn]) return;
+    loadAoaIntoState(state.workbookSheets[sn], state.fileName, sn);
+  }
+
+  function applyManualColumnMap() {
+    if (!state.rawAoa || !state.rawAoa.length) return;
+    var hdrIn = document.getElementById('msrHdrRowInput');
+    var hdrIdx = hdrIn ? Math.max(0, (parseInt(hdrIn.value, 10) || 1) - 1) : 0;
+    var fields = ['empId','name','workingDays','sunAllow','hd','absent','paidDays','otHours','monthDays','gender','department','designation','category'];
+    var forcedMap = {};
+    fields.forEach(function(f) {
+      var el = document.getElementById('msrMap_' + f);
+      if (el) forcedMap[f] = parseInt(el.value, 10);
+    });
+    loadAoaIntoState(state.rawAoa, state.fileName, state.sheetName, forcedMap, hdrIdx);
+  }
+
+  function extractAllSheetsFromWorkbook(wb) {
+    var out = {};
+    if (!wb || !Array.isArray(wb.SheetNames) || !root.XLSX) return out;
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var sn = wb.SheetNames[i];
+      var ws = wb.Sheets[sn];
+      if (!ws) continue;
+      out[sn] = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    }
+    return out;
+  }
+
+  function pickBestSheet(wb, sheetsAoaMap) {
+    if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
+    var bestName = wb.SheetNames[0];
+    var bestRank = -1;
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var sn = wb.SheetNames[i];
+      var aoa = sheetsAoaMap ? sheetsAoaMap[sn] : root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
+      var an = analyzeAoa(aoa);
+      var rank = (an ? an.score : -1) * 10 + Math.min(50, (aoa && aoa.length) || 0);
+      if (/main\s*sheet|salary|wages|attendance|payroll/i.test(sn)) rank += 15;
+      if (rank > bestRank) {
+        bestRank = rank;
+        bestName = sn;
+      }
+    }
+    return bestName;
   }
 
   function handleFileInput(inputEl) {
@@ -18268,6 +18621,7 @@ document.addEventListener('click', function(e) {
       readerTxt.onload = function(ev) {
         try {
           var aoa = parseCsvText(ev.target.result);
+          state.workbookSheets = { CSV: aoa };
           loadAoaIntoState(aoa, name, 'CSV');
         } catch (err) {
           showBanner('error', 'CSV parse error: ' + err.message);
@@ -18281,10 +18635,10 @@ document.addEventListener('click', function(e) {
         try {
           if (!root.XLSX) throw new Error('Excel parser (XLSX) not available');
           var wb = root.XLSX.read(new Uint8Array(ev.target.result), { type: 'array', raw: false });
-          var picked = pickBestSheet(wb);
-          var ws = wb.Sheets[picked];
-          var aoa = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-          loadAoaIntoState(aoa, name, picked);
+          var allSheets = extractAllSheetsFromWorkbook(wb);
+          state.workbookSheets = allSheets;
+          var picked = pickBestSheet(wb, allSheets);
+          loadAoaIntoState(allSheets[picked] || [], name, picked);
         } catch (err) {
           showBanner('error', 'Excel parse error: ' + err.message);
         }
@@ -18292,14 +18646,6 @@ document.addEventListener('click', function(e) {
       };
       readerBuf.readAsArrayBuffer(file);
     }
-  }
-
-  function pickBestSheet(wb) {
-    if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
-    for (var i = 0; i < wb.SheetNames.length; i++) {
-      if (/main\s*sheet|salary|wages/i.test(wb.SheetNames[i])) return wb.SheetNames[i];
-    }
-    return wb.SheetNames[0];
   }
 
   function loadFromErpSelect() {
@@ -18319,20 +18665,30 @@ document.addEventListener('click', function(e) {
     try {
       if (f.buf && root.XLSX) {
         var wb = root.XLSX.read(new Uint8Array(f.buf), { type: 'array', raw: false });
-        var sn = pickBestSheet(wb);
-        var aoa = root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
-        if (loadAoaIntoState(aoa, f.name, sn)) return;
+        var allSheets = extractAllSheetsFromWorkbook(wb);
+        state.workbookSheets = allSheets;
+        var sn = pickBestSheet(wb, allSheets);
+        if (loadAoaIntoState(allSheets[sn] || [], f.name, sn)) return;
       }
       if (f.sheets && typeof f.sheets === 'object') {
         var sNames = Object.keys(f.sheets);
-        var targetSn = sNames.find(function(n){ return /main\s*sheet|salary|wages/i.test(n); }) || sNames[0];
-        var sheetRows = f.sheets[targetSn] || [];
-        if (Array.isArray(sheetRows) && sheetRows.length) {
+        var aoaMap = {};
+        var bestSn = sNames[0];
+        var bestScore = -1;
+        sNames.forEach(function(n) {
+          var sheetRows = f.sheets[n] || [];
+          if (!Array.isArray(sheetRows) || !sheetRows.length) return;
           var cols = Object.keys(sheetRows[0] || {});
           var aoa2 = [cols].concat(sheetRows.map(function(obj){
             return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
           }));
-          loadAoaIntoState(aoa2, f.name, targetSn);
+          aoaMap[n] = aoa2;
+          var sc = analyzeAoa(aoa2).score + (/main\s*sheet|salary|wages/i.test(n) ? 10 : 0);
+          if (sc > bestScore) { bestScore = sc; bestSn = n; }
+        });
+        state.workbookSheets = aoaMap;
+        if (bestSn && aoaMap[bestSn]) {
+          loadAoaIntoState(aoaMap[bestSn], f.name, bestSn);
           return;
         }
       }
@@ -19053,6 +19409,8 @@ document.addEventListener('click', function(e) {
     init: init,
     handleFileInput: handleFileInput,
     loadFromErpSelect: loadFromErpSelect,
+    switchWorkbookSheet: switchWorkbookSheet,
+    applyManualColumnMap: applyManualColumnMap,
     onSettingChange: onSettingChange,
     onNightScopeChange: onNightScopeChange,
     runAutoAssign: runAutoAssign,
@@ -19077,6 +19435,7 @@ document.addEventListener('click', function(e) {
     _engine: {
       parseCsvText: parseCsvText,
       mapColumns: mapColumns,
+      analyzeAoa: analyzeAoa,
       classifyEligibility: classifyEligibility,
       autoAssignRandomRules: autoAssignRandomRules,
       extractRowsFromAoa: extractRowsFromAoa,
