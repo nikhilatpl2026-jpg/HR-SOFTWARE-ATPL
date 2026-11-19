@@ -2231,6 +2231,88 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   }
   .vnav-move-btn:hover { background: #4f46e5; color: #ffffff; border-color: #4f46e5; }
 
+
+  /* ══ EMPLOYEE PAY SLIP GENERATOR (SAMPLE PDF FORMAT) ══ */
+  #page-payslip { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .psg-wrap { max-width: 1420px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .psg-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(15,23,42,0.06); }
+  .psg-header-card { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); color: #ffffff; border: none; }
+  .psg-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+  .psg-title { font-size: 18px; font-weight: 800; letter-spacing: -0.2px; color: #ffffff; margin: 0; }
+  .psg-sub { font-size: 12px; color: #cbd5e1; margin-top: 3px; }
+  .psg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+  .psg-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 7px; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .psg-btn:hover { background: #f1f5f9; }
+  .psg-btn-primary { background: #4f46e5; border-color: #4f46e5; color: #ffffff; }
+  .psg-btn-primary:hover { background: #4338ca; }
+  .psg-btn-success { background: #059669; border-color: #059669; color: #ffffff; }
+  .psg-btn-success:hover { background: #047857; }
+  .psg-btn-dark { background: #1e293b; border-color: #475569; color: #f8fafc; }
+  .psg-btn-dark:hover { background: #334155; }
+  .psg-btn-danger { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+  .psg-btn-danger:hover { background: #b91c1c; }
+  .psg-btn-sm { padding: 5px 10px; font-size: 11px; }
+  .psg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .psg-grid-5 { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 10px; }
+  .psg-field label { display: block; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+  .psg-input, .psg-select { width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; color: #0f172a; background: #ffffff; outline: none; box-sizing: border-box; }
+  .psg-input:focus, .psg-select:focus { border-color: #4f46e5; box-shadow: 0 0 0 2px rgba(79,70,229,0.15); }
+  .psg-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; }
+  .psg-tab-btn { padding: 8px 14px; border-radius: 7px; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer; }
+  .psg-tab-btn.active { background: #0f172a; border-color: #0f172a; color: #ffffff; }
+  .psg-banner { padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; display: none; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .psg-banner.show { display: flex; position: sticky; top: 8px; z-index: 30; box-shadow: 0 4px 12px rgba(15,23,42,0.12); }
+  .psg-banner.info { background: #e0f2fe; border: 1px solid #7dd3fc; color: #0c4a6e; }
+  .psg-banner.success { background: #dcfce7; border: 1px solid #86efac; color: #14532d; }
+  .psg-banner.warn { background: #fef3c7; border: 1px solid #fcd34d; color: #78350f; }
+  .psg-banner.error { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; }
+  .psg-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .psg-kpi { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: #f8fafc; }
+  .psg-kpi-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.4px; }
+  .psg-kpi-val { font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .psg-kpi.green { background: #f0fdf4; border-color: #bbf7d0; }
+  .psg-kpi.green .psg-kpi-val { color: #15803d; }
+  .psg-kpi.amber { background: #fffbeb; border-color: #fde68a; }
+  .psg-kpi.amber .psg-kpi-val { color: #b45309; }
+  .psg-kpi.indigo { background: #eef2ff; border-color: #c7d2fe; }
+  .psg-kpi.indigo .psg-kpi-val { color: #3730a3; }
+  .psg-table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; max-height: 520px; overflow-y: auto; }
+  .psg-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .psg-table th { position: sticky; top: 0; z-index: 2; background: #f1f5f9; color: #334155; font-weight: 800; text-align: left; padding: 8px 9px; border-bottom: 1px solid #cbd5e1; white-space: nowrap; }
+  .psg-table td { padding: 6px 9px; border-bottom: 1px solid #e2e8f0; color: #0f172a; vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .psg-table tr:hover td { background: #f8fafc; }
+  .psg-table tr.psg-row-warn td { background: #fffbeb; }
+  .psg-pill-ok { display: inline-block; padding: 2px 7px; border-radius: 4px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 10px; }
+  .psg-pill-warn { display: inline-block; padding: 2px 7px; border-radius: 4px; background: #fef3c7; color: #92400e; font-weight: 700; font-size: 10px; }
+  .psg-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12px; color: #475569; }
+  /* Exact Sample PDF A4 Portrait Preview Replica */
+  .psg-pdf-shell { overflow-x: auto; padding: 14px; background: #cbd5e1; border-radius: 8px; }
+  .psg-a4-page { width: 794px; min-height: 1122px; margin: 0 auto; background: #ffffff; padding: 26px 34px; box-sizing: border-box; box-shadow: 0 6px 22px rgba(15,23,42,0.18); display: flex; flex-direction: column; gap: 26px; color: #000000; font-family: Arial, Helvetica, "Noto Sans Devanagari", "Kohinoor Devanagari", "Mangal", sans-serif; }
+  .psg-slip-wrap { width: 100%; box-sizing: border-box; }
+  .psg-slip-tbl { width: 100%; border-collapse: collapse; table-layout: fixed; color: #000000; background: #ffffff; }
+  .psg-slip-tbl td { border: 1px solid #000000; padding: 3px 5px; vertical-align: middle; box-sizing: border-box; color: #000000; }
+  .psg-slip-title { text-align: center; font-size: 19px; font-weight: 700; padding: 6px 8px !important; letter-spacing: 0.1px; }
+  .psg-lbl-bi { font-size: 10.5px; line-height: 1.25; text-align: left; }
+  .psg-lbl-hi { display: block; font-size: 9.5px; font-weight: 600; color: #000000; }
+  .psg-lbl-en { display: block; font-size: 11.5px; font-weight: 700; color: #000000; }
+  .psg-val-name { text-align: center; font-size: 16.5px; font-weight: 700; letter-spacing: 0.2px; }
+  .psg-val-code { text-align: center; font-size: 16.5px; font-weight: 700; }
+  .psg-val-desig { text-align: center; font-size: 12.5px; font-weight: 700; padding: 5px 6px !important; }
+  .psg-val-ctr { text-align: center; font-size: 12.5px; font-weight: 700; }
+  .psg-val-num { text-align: center; font-size: 12.5px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  .psg-val-num-bold { text-align: center; font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .psg-sec-hdr { text-align: center; font-weight: 700; font-size: 11.5px; line-height: 1.28; padding: 4px !important; }
+  .psg-gap-row td { border-left: none !important; border-right: none !important; height: 9px; padding: 0 !important; background: #ffffff; }
+  .psg-sig-cell { vertical-align: top !important; text-align: center; height: 54px; padding: 4px 6px !important; }
+  .psg-sig-hi { display: block; font-size: 10px; font-weight: 600; }
+  .psg-sig-en { display: block; font-size: 12px; font-weight: 700; margin-top: 2px; }
+  #psgPrintArea { display: none; }
+  @media print {
+    body.psg-print-active > *:not(#psgPrintArea) { display: none !important; }
+    body.psg-print-active #psgPrintArea { display: block !important; background: #ffffff; }
+    body.psg-print-active .psg-a4-page { box-shadow: none !important; margin: 0 !important; padding: 0 !important; width: 100% !important; min-height: auto !important; page-break-after: always; break-after: page; gap: 22px; }
+    body.psg-print-active .psg-a4-page:last-child { page-break-after: auto; break-after: auto; }
+  }
 </style>
 <script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
 
@@ -2645,6 +2727,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-advance" onclick="goPage('advance')"><span class="vi">💳</span>Advance Management <span class="vbadge vbadge-count" id="advBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
       <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge vbadge-blue">NEW</span></div>
+      <div class="vitem" id="vn-payslip" onclick="goPage('payslip')"><span class="vi">🧾</span>Employee Pay Slip <span class="vbadge vbadge-green">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
 
@@ -3037,6 +3120,186 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 
       </div>
     </div>
+
+        <!-- ══ PAGE: EMPLOYEE PAY SLIP GENERATOR ══ -->
+    <div class="page" id="page-payslip" style="flex-direction:column;overflow-y:auto;padding:18px;background:#f1f5f9;color:#0f172a;min-height:100%">
+      <div class="psg-wrap">
+        <!-- Hero & Toolbar -->
+        <div class="psg-card psg-header-card">
+          <div class="psg-head-row">
+            <div>
+              <h2 class="psg-title">🧾 Employee Pay Slip Generator (Sample PDF Format)</h2>
+              <div class="psg-sub">Salary Sheet upload ya select karein — Smart column detection ke saath bilingual Hindi + English A4 Pay Slips aur PDF batch generate karein</div>
+            </div>
+            <div style="font-size:11px;color:#cbd5e1;font-weight:700">IndexedDB Auto-Saved</div>
+          </div>
+          <div class="psg-toolbar">
+            <input type="file" id="psgFileInput" accept=".csv,.xlsx,.xls" data-ua-action="upload" style="display:none" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.handleFileInput(this)" />
+            <button type="button" id="psgUploadBtn" data-ua-action="upload" class="psg-btn psg-btn-primary" onclick="document.getElementById('psgFileInput').click()">📂 Upload Salary Sheet (.csv / .xlsx)</button>
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.16)">
+              <select id="psgErpFileSelect" class="psg-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px"></select>
+              <button type="button" id="psgLoadErpBtn" data-ua-action="view" class="psg-btn psg-btn-dark psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.loadFromErpSelect()">📥 Load ERP Sheet</button>
+            </div>
+            <button type="button" id="psgPreviewTabGoBtn" data-ua-action="view" class="psg-btn psg-btn-success" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.openSlipPreview()">👁 View Pay Slips</button>
+            <button type="button" id="psgDownloadCurrentPdfBtn" data-ua-action="view" class="psg-btn" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.exportPDF('CURRENT')">📄 Current Emp PDF</button>
+            <button type="button" id="psgDownloadAllPdfBtn" data-ua-action="view" class="psg-btn" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.exportPDF('SELECTED_OR_ALL')">📚 Download All / Selected PDF</button>
+            <button type="button" id="psgPrintBtn" data-ua-action="view" class="psg-btn" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.printSlips('CURRENT')">🖨️ Print Pay Slip</button>
+            <button type="button" id="psgExportXlsxBtn" data-ua-action="view" class="psg-btn" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.exportExcel()">📊 Export Summary Excel</button>
+            <button type="button" id="psgResetBtn" data-ua-action="view" class="psg-btn psg-btn-danger" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.requestReset()">↺ Reset</button>
+          </div>
+          <div id="psgFileMeta" style="margin-top:8px;font-size:11px;color:#cbd5e1">No salary sheet loaded yet. Upload Salary Sheet (.csv / .xlsx) or load from ERP Files.</div>
+        </div>
+
+        <!-- Inline Status / Progress / Confirmation Banner (No window.alert/confirm) -->
+        <div id="psgBanner" class="psg-banner">
+          <span id="psgBannerText"></span>
+          <span id="psgBannerActions" style="display:inline-flex;gap:6px;align-items:center"></span>
+        </div>
+
+        <!-- Settings Bar -->
+        <div class="psg-card">
+          <div class="psg-grid-5">
+            <div class="psg-field">
+              <label for="psgMonthSel">Pay Slip Month</label>
+              <select id="psgMonthSel" class="psg-select" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onSettingChange()">
+                <option value="0">JANUARY (जनवरी)</option><option value="1">FEBRUARY (फरवरी)</option><option value="2">MARCH (मार्च)</option>
+                <option value="3">APRIL (अप्रैल)</option><option value="4">MAY (मई)</option><option value="5" selected>JUNE (जून)</option>
+                <option value="6">JULY (जुलाई)</option><option value="7">AUGUST (अगस्त)</option><option value="8">SEPTEMBER (सितंबर)</option>
+                <option value="9">OCTOBER (अक्टूबर)</option><option value="10">NOVEMBER (नवंबर)</option><option value="11">DECEMBER (दिसंबर)</option>
+              </select>
+            </div>
+            <div class="psg-field">
+              <label for="psgYearInput">Pay Slip Year</label>
+              <input type="number" id="psgYearInput" class="psg-input" value="2026" min="2000" max="2099" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onSettingChange()" />
+            </div>
+            <div class="psg-field">
+              <label for="psgCompanyInput">Company Title</label>
+              <input type="text" id="psgCompanyInput" class="psg-input" value="ARORA TEXTILES PVT.LTD," onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onSettingChange()" />
+            </div>
+            <div class="psg-field">
+              <label for="psgLayoutSel">A4 Page Layout</label>
+              <select id="psgLayoutSel" class="psg-select" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onSettingChange()">
+                <option value="TWIN" selected>2 Identical Copies / Page (Sample PDF)</option>
+                <option value="PAIR">2 Different Employees / Page (Save Paper)</option>
+                <option value="SINGLE">1 Pay Slip / Page</option>
+              </select>
+            </div>
+            <div class="psg-field">
+              <label for="psgEmpCodeSel">Emp Code &amp; Desig Format</label>
+              <select id="psgEmpCodeSel" class="psg-select" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onSettingChange()">
+                <option value="ORIGINAL" selected>Exact Sheet ID + Designation</option>
+                <option value="STRIP_ZERO">Strip Leading Zeros (e.g. 531) + Desig</option>
+                <option value="ORIGINAL_DEPT_DESIG">Exact Sheet ID + Dept - Designation</option>
+                <option value="STRIP_DEPT_DESIG">Strip Zeros + Dept - Designation</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="psg-tabs">
+          <button type="button" id="psgTabBtnList" class="psg-tab-btn active" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.switchTab('list')">1. Salary Sheet &amp; Employees</button>
+          <button type="button" id="psgTabBtnPreview" class="psg-tab-btn" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.switchTab('preview')">2. Pay Slip Preview (Sample PDF Format)</button>
+        </div>
+
+        <!-- TAB 1: EMPLOYEE LIST & SMART COLUMN MAPPER -->
+        <div id="psgTabList" class="psg-card">
+          <div id="psgKpis" class="psg-kpis">
+            <div class="psg-kpi"><div class="psg-kpi-lbl">Employees Loaded</div><div class="psg-kpi-val" id="psgKpiTotal">0</div></div>
+            <div class="psg-kpi indigo"><div class="psg-kpi-lbl">Total Gross Earned</div><div class="psg-kpi-val" id="psgKpiGross">0</div></div>
+            <div class="psg-kpi amber"><div class="psg-kpi-lbl">Total Deductions</div><div class="psg-kpi-val" id="psgKpiDed">0</div></div>
+            <div class="psg-kpi green"><div class="psg-kpi-lbl">Total Net Payable</div><div class="psg-kpi-val" id="psgKpiNet">0</div></div>
+            <div class="psg-kpi"><div class="psg-kpi-lbl">Reconcile Warnings</div><div class="psg-kpi-val" id="psgKpiWarn">0</div></div>
+          </div>
+
+          <!-- Smart Column Mapping Bar -->
+          <div id="psgMapperBar" style="display:none;margin-bottom:10px;padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #cbd5e1">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
+              <div style="font-size:12px;font-weight:800;color:#0f172a">🧠 Smart Column Mapping <span id="psgMapperBadge" style="font-weight:600;color:#475569;margin-left:6px"></span></div>
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+                <label for="psgSheetSelect" style="font-size:11px;font-weight:700;color:#475569">Worksheet:</label>
+                <select id="psgSheetSelect" class="psg-select" style="width:auto;min-width:140px;padding:4px 8px;font-size:11px" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.switchWorkbookSheet(this.value)"></select>
+                <label for="psgHdrRowInput" style="font-size:11px;font-weight:700;color:#475569">Header Row #:</label>
+                <input type="number" id="psgHdrRowInput" class="psg-input" style="width:62px;padding:4px 6px;font-size:11px" min="1" max="40" value="1" />
+                <button type="button" id="psgToggleMapperBtn" data-ua-action="view" class="psg-btn psg-btn-sm" onclick="var g=document.getElementById('psgMapperGrid');if(g)g.style.display=g.style.display==='none'?'grid':'none';">⚙ Edit Column Map</button>
+                <button type="button" id="psgApplyMapBtn" data-ua-action="view" class="psg-btn psg-btn-primary psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.applyManualColumnMap()">✅ Apply Mapping</button>
+              </div>
+            </div>
+            <div id="psgMapperGrid" style="display:none;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1"></div>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1">
+              <input type="text" id="psgListSearch" class="psg-input" style="max-width:280px" placeholder="Search Emp Code, Name, Designation, UAN..." oninput="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.renderListTable(1)" />
+              <select id="psgListFilter" class="psg-select" style="width:auto" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.renderListTable(1)">
+                <option value="all">All Employees</option>
+                <option value="selected">Selected Only</option>
+                <option value="warn">Reconciliation Warnings Only</option>
+                <option value="ot">Employees With OT (&gt;0)</option>
+                <option value="adv">Employees With Advance (&gt;0)</option>
+              </select>
+              <button type="button" id="psgSelectFilteredBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.selectAllFiltered(true)">☑ Select Filtered</button>
+              <button type="button" id="psgClearSelectBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.selectAllFiltered(false)">☐ Clear Selection</button>
+            </div>
+            <div id="psgListSummary" style="font-size:12px;font-weight:700;color:#334155">0 employees</div>
+          </div>
+
+          <div class="psg-table-wrap">
+            <table class="psg-table">
+              <thead>
+                <tr>
+                  <th style="width:32px"><input type="checkbox" id="psgSelectAllPageChk" aria-label="Select visible rows" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.toggleVisibleCheckboxes(this.checked)" /></th>
+                  <th>Emp Code</th>
+                  <th>Name</th>
+                  <th>Desig. &amp; Dept</th>
+                  <th>Days (M / Paid)</th>
+                  <th>Rate Gross</th>
+                  <th>Earn Basic / HRA</th>
+                  <th>Bonus / OT</th>
+                  <th>Total Earned</th>
+                  <th>PF / ESI / Adv</th>
+                  <th>Total Ded</th>
+                  <th>Net Payable</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="psgListTbody">
+                <tr><td colspan="14" style="text-align:center;padding:24px;color:#64748b">Upload a Salary Sheet (.csv / .xlsx) or load from ERP files above to generate Pay Slips.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="psg-pager">
+            <div id="psgListPageInfo">Page 1 of 1</div>
+            <div style="display:flex;gap:6px">
+              <button type="button" id="psgListPrevBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.changeListPage(-1)">◀ Prev</button>
+              <button type="button" id="psgListNextBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.changeListPage(1)">Next ▶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: LIVE A4 PAY SLIP PREVIEW -->
+        <div id="psgTabPreview" class="psg-card" style="display:none">
+          <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <button type="button" id="psgPrevEmpBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.changePreviewIndex(-1)">◀ Prev Slip</button>
+              <span style="font-size:12px;font-weight:700">Employee <input type="number" id="psgPreviewIndexInput" class="psg-input" style="width:68px;display:inline-block;padding:4px 6px" value="1" min="1" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.jumpPreviewIndex(this.value)" /> of <span id="psgPreviewTotalCount">0</span></span>
+              <button type="button" id="psgNextEmpBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.changePreviewIndex(1)">Next Slip ▶</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <input type="text" id="psgPreviewEmpJump" class="psg-input" style="width:210px;padding:5px 8px" placeholder="Jump to Emp Code or Name..." onkeydown="if(event.key==='Enter'){window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.jumpToEmployee(this.value);}" />
+              <button type="button" id="psgPreviewJumpBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.jumpToEmployee(document.getElementById('psgPreviewEmpJump').value)">Find</button>
+              <button type="button" id="psgPreviewPrintCurBtn" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.printSlips('CURRENT')">🖨️ Print This Page</button>
+              <button type="button" id="psgPreviewDownloadCurBtn" class="psg-btn psg-btn-primary psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.exportPDF('CURRENT')">📄 Download This PDF</button>
+            </div>
+          </div>
+          <div class="psg-pdf-shell" id="psgPreviewContainer">
+            <div style="text-align:center;padding:30px;color:#475569;font-size:13px">Upload a Salary Sheet to preview A4 bilingual Pay Slips.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="psgPrintArea" aria-hidden="true"></div>
 
     <!-- ══ PAGE: SMART COMMANDS ══ -->
     <div class="page active" id="page-cmd">
@@ -7506,7 +7769,7 @@ function goPage(name) {
   // Auto-expand the parent category of active item
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -7525,6 +7788,7 @@ function goPage(name) {
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='monthlystatus'){ if(window.ATPLMonthlyStatusReport && typeof window.ATPLMonthlyStatusReport.init==='function') window.ATPLMonthlyStatusReport.init(); }
+  if(name==='payslip'){ if(window.ATPLPaySlipGenerator && typeof window.ATPLPaySlipGenerator.init==='function') window.ATPLPaySlipGenerator.init(); }
   if(name==='challan') { if(window.initStatutoryChallanTab) window.initStatutoryChallanTab(); }
   if(name==='files') renderAllFilesPage(true);
   if(name==='newjoin') populateNJSelects();
@@ -19567,7 +19831,1937 @@ document.addEventListener('click', function(e) {
 })(window);
 </script>
 
-<script id="atplSidebarReorderScript">
+<script id="atplPaySlipGeneratorScript">
+(function(root) {
+  'use strict';
+  if (root.__ATPL_PAYSLIP_GENERATOR_V1__) return;
+  root.__ATPL_PAYSLIP_GENERATOR_V1__ = true;
+
+  var DB_NAME = 'ATPL_PaySlipGenerator_DB_V1';
+  var DB_VER = 1;
+  var STORE_NAME = 'payslip_state';
+  var STATE_KEY = 'active_state';
+  var MONTH_NAMES = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  var MONTH_FULL = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  var MONTH_HINDI = ['जनवरी','फरवरी','मार्च','अप्रैल','मई','जून','जुलाई','अगस्त','सितंबर','अक्टूबर','नवंबर','दिसंबर'];
+  var LIST_PAGE_SIZE = 50;
+
+  var ALL_MAP_FIELDS = [
+    ['empId', 'Emp Code *'],
+    ['name', 'Employee Name *'],
+    ['designation', 'Designation'],
+    ['department', 'Department'],
+    ['category', 'Category'],
+    ['monthDays', 'Month Days'],
+    ['paidDays', 'Total / Paid Days *'],
+    ['workingDays', 'Working Days (Fallback)'],
+    ['sunAllow', 'Sun Allow (Fallback)'],
+    ['hd', 'HD / Holidays (Fallback)'],
+    ['uan', 'UAN NO.'],
+    ['esic', 'ESI NO.'],
+    ['rateBasic', 'Rate Basic'],
+    ['rateHra', 'Rate HRA'],
+    ['rateBonus', 'Rate Bonus'],
+    ['rateOt', 'Rate Over Time'],
+    ['rateGross', 'Gross Total Salary (Rate)'],
+    ['earnBasic', 'Earn Basic'],
+    ['earnHra', 'Earn HRA'],
+    ['earnBonus', 'Earned Bonus'],
+    ['earnOt', 'Earned Over Time'],
+    ['otherAllow', 'Food / Other Allowance'],
+    ['incentive', 'Incentive'],
+    ['earnGross', 'Total Gross Earned Salary'],
+    ['pf', 'PF Deduction'],
+    ['esiAmt', 'ESI Deduction'],
+    ['advance', 'Advance Deduction'],
+    ['otherDed', 'Other Deduction'],
+    ['totalDed', 'Total Deduction'],
+    ['netPayable', 'Net Payable / Take Home']
+  ];
+
+  var state = {
+    settings: {
+      month: 5,
+      year: 2026,
+      companyName: 'ARORA TEXTILES PVT.LTD,',
+      layoutMode: 'TWIN',
+      empCodeMode: 'ORIGINAL'
+    },
+    fileName: '',
+    sheetName: '',
+    rawAoa: null,
+    workbookSheets: null,
+    lastAnalysis: null,
+    resolvedCols: null,
+    rows: [],
+    selectedKeys: {},
+    listPage: 1,
+    previewIdx: 0,
+    activeTab: 'list',
+    initialized: false
+  };
+
+  var hindiImgCache = {};
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function cleanStr(v) {
+    return String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+  }
+
+  function parseNum(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var s = String(v == null ? '' : v).replace(/[,₹\s]/g, '').replace(/^Rs\.?/i, '').trim();
+    if (!s || s === '-' || s === '--' || /^(na|n\/a|nil|none|null)$/i.test(s)) return 0;
+    var n = Number(s);
+    return isFinite(n) ? n : 0;
+  }
+
+  function roundMoney(v) {
+    var n = Math.round(Number(v) || 0);
+    return Object.is(n, -0) ? 0 : n;
+  }
+
+  function formatDaysVal(v) {
+    var n = Math.round((Number(v) || 0) * 100) / 100;
+    if (Math.abs(n - Math.round(n)) < 0.001) return String(Math.round(n));
+    return String(n);
+  }
+
+  function formatStatutoryId(val) {
+    var s = cleanStr(val);
+    if (!s || /^(na|n\/a|nil|none|null|not\s*applicable|-+|--|0+)$/i.test(s)) {
+      return 'Not Applicable';
+    }
+    if (/^[+-]?\d+(\.\d+)?e\+\d+$/i.test(s)) {
+      var n = Number(s);
+      if (isFinite(n) && n > 0 && n < 9007199254740991) {
+        return String(Math.round(n));
+      }
+    }
+    if (/^\d+\.0+$/.test(s)) {
+      s = s.replace(/\.0+$/, '');
+    }
+    return s;
+  }
+
+  function formatDisplayEmpCode(rawId, empCodeMode) {
+    var s = cleanStr(rawId);
+    if (!s) return '';
+    if (empCodeMode === 'STRIP_ZERO' || empCodeMode === 'STRIP_DEPT_DESIG') {
+      if (/^\d+$/.test(s)) {
+        var stripped = s.replace(/^0+/, '');
+        return stripped || '0';
+      }
+    }
+    return s;
+  }
+
+  function formatDesigDep(emp, empCodeMode) {
+    var useDeptDesig = (empCodeMode === 'ORIGINAL_DEPT_DESIG' || empCodeMode === 'STRIP_DEPT_DESIG');
+    var dept = cleanStr(emp.department);
+    var desig = cleanStr(emp.designation);
+    if (useDeptDesig) {
+      if (dept && desig && dept.toUpperCase() !== desig.toUpperCase()) return dept + ' - ' + desig;
+      return desig || dept || cleanStr(emp.category) || '-';
+    }
+    return desig || dept || cleanStr(emp.category) || '-';
+  }
+
+  function parseCsvText(text) {
+    var rows = [];
+    var row = [];
+    var field = '';
+    var inQuotes = false;
+    var src = String(text || '');
+    if (src.charCodeAt(0) === 0xFEFF) src = src.slice(1);
+    for (var i = 0; i < src.length; i++) {
+      var ch = src[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (src[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else {
+          field += ch;
+        }
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ',') { row.push(field); field = ''; }
+        else if (ch === '\r') {
+          if (src[i + 1] === '\n') i++;
+          row.push(field); rows.push(row); row = []; field = '';
+        } else if (ch === '\n') {
+          row.push(field); rows.push(row); row = []; field = '';
+        } else {
+          field += ch;
+        }
+      }
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function normHeader(h) {
+    return String(h == null ? '' : h)
+      .toLowerCase()
+      .replace(/[^a-z0-9%]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function detectMonthYear(fileName, sheetName, aoa) {
+    var monthMap = {
+      jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3,
+      may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7,
+      sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11
+    };
+    var sources = [];
+    if (Array.isArray(aoa)) {
+      for (var r = 0; r < Math.min(6, aoa.length); r++) {
+        sources.push((aoa[r] || []).join(' '));
+      }
+    }
+    if (sheetName) sources.push(sheetName);
+    if (fileName) sources.push(fileName);
+    var foundMonth = null;
+    var foundYear = null;
+    for (var i = 0; i < sources.length; i++) {
+      var txt = String(sources[i] || '').toLowerCase();
+      if (foundYear == null) {
+        var ym = txt.match(/\b(20[1-4]\d)\b/);
+        if (ym) foundYear = parseInt(ym[1], 10);
+      }
+      if (foundMonth == null) {
+        var tokens = txt.replace(/[^a-z]+/g, ' ').split(/\s+/);
+        for (var t = 0; t < tokens.length; t++) {
+          if (Object.prototype.hasOwnProperty.call(monthMap, tokens[t])) {
+            foundMonth = monthMap[tokens[t]];
+            break;
+          }
+        }
+      }
+    }
+    return { month: foundMonth, year: foundYear };
+  }
+
+  function looksLikeDataRow(row) {
+    if (!Array.isArray(row)) return false;
+    var nonEmpty = 0, numCells = 0, alphaCells = 0;
+    for (var i = 0; i < row.length; i++) {
+      var s = cleanStr(row[i]);
+      if (!s) continue;
+      nonEmpty++;
+      if (/^\d{1,5}(\.\d+)?$/.test(s.replace(/,/g, ''))) numCells++;
+      else if (/[a-z]/i.test(s) && s.length >= 3) alphaCells++;
+    }
+    return nonEmpty >= 4 && numCells >= 3 && alphaCells >= 1;
+  }
+
+  function buildHeaderCandidates(aoa, r, useTwoRows) {
+    var row1 = aoa[r] || [];
+    var row2 = (useTwoRows && aoa[r + 1]) ? aoa[r + 1] : [];
+    var maxCols = Math.max(row1.length, row2.length);
+    var out = [];
+    var carryTop = '';
+    var topNonEmpty = 0;
+    for (var k = 0; k < row1.length; k++) {
+      if (cleanStr(row1[k])) topNonEmpty++;
+    }
+    var allowCarry = useTwoRows && topNonEmpty > 0 && topNonEmpty <= Math.max(4, Math.floor(maxCols * 0.45));
+    var carrySpan = 0;
+    for (var c = 0; c < maxCols; c++) {
+      var a = cleanStr(row1[c] == null ? '' : row1[c]);
+      var b = cleanStr(row2[c] == null ? '' : row2[c]);
+      if (allowCarry) {
+        if (a) { carryTop = a; carrySpan = 0; }
+        else if (b && carryTop && carrySpan < 5) { a = carryTop; carrySpan++; }
+      }
+      if (a && b && normHeader(a) !== normHeader(b)) out.push(a + ' ' + b);
+      else out.push(b || a || '');
+    }
+    return out;
+  }
+
+  function scoreColumnForField(field, rawHeader, samples) {
+    var h = normHeader(rawHeader);
+    if (!h) return -1;
+    var words = h.split(' ');
+    var hasTok = function(rx) { return words.some(function(w){ return rx.test(w); }); };
+    var isEarnHdr = /\b(earn|earned|eran|payable|payble|eraned)\b/.test(h);
+    var isRateHdr = /\b(rate|actual|fixed|master|monthly|std|standard|ctc)\b/.test(h);
+
+    if (field === 'empId') {
+      if (/\b(uan|esic|esi|pf|aadhar|pan|bank|account|ifsc|mobile|phone|serial|sr|s no|sno)\b/.test(h)) return -1;
+      if (/^(emp id|emp code|employee id|employee code|emp no|employee no|staff id|worker id|card no|token no|code)$/.test(h)) return 110;
+      if (hasTok(/^(emp|employee|staff|worker)$/) && hasTok(/^(id|code|no|num)$/)) return 98;
+      if (h === 'id') return 72;
+      return -1;
+    }
+    if (field === 'name') {
+      if (/\b(father|husband|mother|spouse|company|bank|dept|department|sheet|file)\b/.test(h)) return -1;
+      if (/^(name of employee|employee name|emp name|worker name|staff name|full name|name)$/.test(h)) return 110;
+      if (hasTok(/^name$/) && !/\b(father|company|bank)\b/.test(h)) return 85;
+      return -1;
+    }
+    if (field === 'department') {
+      if (/^(department|dept|dep|section|division|unit|shop floor)$/.test(h)) return 105;
+      if (hasTok(/^(dept|department|dep|section)$/)) return 86;
+      return -1;
+    }
+    if (field === 'designation') {
+      if (/^(designation|desigenation|desig|post|trade|job title|desig dep|desig & dep)$/.test(h)) return 105;
+      if (/desig/.test(h)) return 90;
+      return -1;
+    }
+    if (field === 'category') {
+      if (/^(category|cat|grade|cadre|emp type|worker type)$/.test(h)) return 100;
+      return -1;
+    }
+    if (field === 'monthDays') {
+      if (/^(month of days|month days|days in month|total month days|month day|md)$/.test(h)) return 105;
+      if (hasTok(/^month/) && hasTok(/^(day|days)$/)) return 88;
+      return -1;
+    }
+    if (field === 'paidDays') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(paid days|payable days|pay days|total days|total paid days|salary days|sal days|net days|pd)$/.test(h)) return 108;
+      if (hasTok(/^(paid|payable|pay|payble|sal)$/) && hasTok(/^(day|days|d)$/)) return 88;
+      return -1;
+    }
+    if (field === 'workingDays') {
+      if (/\b(amount|amt|wages|salary|rate|paid|payable)\b/.test(h)) return -1;
+      if (/^(working days|work days|present days|present|worked days|wd)$/.test(h)) return 100;
+      return -1;
+    }
+    if (field === 'sunAllow') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(sun allow|sunday allow|weekly off|week off|wo|sun|sunday)$/.test(h)) return 100;
+      return -1;
+    }
+    if (field === 'hd') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(hd|holi days|holidays|holiday|half day|half days)$/.test(h)) return 95;
+      return -1;
+    }
+    if (field === 'uan') {
+      if (/^(uan no|uan number|uan|pf uan|universal account no|uan id)$/.test(h)) return 110;
+      if (hasTok(/^uan$/)) return 95;
+      return -1;
+    }
+    if (field === 'esic') {
+      if (/@|%|deduction|amount|amt/.test(h)) return -1;
+      if (/^(esic no|esi no|esic number|esi number|esic ip|ip no|esic id|esi id)$/.test(h)) return 110;
+      if (hasTok(/^(esic|esi)$/) && hasTok(/^(no|num|number|id|ip)$/)) return 100;
+      return -1;
+    }
+    if (field === 'rateBasic') {
+      if (isEarnHdr || /\b(ot|hra|bonus|gross|deduction)\b/.test(h)) return -1;
+      if (/^(rate basic|actual basic|fixed basic|master basic|monthly basic|basic salary|basic pay|basic)$/.test(h)) return 108;
+      if (hasTok(/^basic$/)) return 88;
+      return -1;
+    }
+    if (field === 'rateHra') {
+      if (isEarnHdr || /\b(basic|bonus|gross|ot)\b/.test(h)) return -1;
+      if (/^(rate hra|actual hra|fixed hra|master hra|monthly hra|hra|house rent allowance)$/.test(h)) return 108;
+      if (hasTok(/^hra$/)) return 88;
+      return -1;
+    }
+    if (field === 'rateBonus') {
+      if (isEarnHdr || /8\.33|%/.test(h)) return -1;
+      if (/^(rate bonus|actual bonus|fixed bonus|master bonus)$/.test(h)) return 105;
+      if (isRateHdr && hasTok(/^bonus$/)) return 92;
+      return -1;
+    }
+    if (field === 'rateOt') {
+      if (isEarnHdr || /\b(hour|hours|hrs|hr|amount|amt)\b/.test(h)) return -1;
+      if (/^(rate ot|actual ot|fixed ot|rate over time|actual over time|ot rate)$/.test(h)) return 105;
+      if (isRateHdr && (hasTok(/^ot$/) || /over\s*time/.test(h))) return 90;
+      return -1;
+    }
+    if (field === 'rateGross') {
+      if (isEarnHdr || /\b(net|deduction|take home)\b/.test(h)) return -1;
+      if (/^(gross total salary|gross salary|actual gross|rate gross|fixed gross|master gross|monthly gross|total rate salary|gross pay)$/.test(h)) return 108;
+      if (hasTok(/^gross$/) && !isEarnHdr) return 86;
+      return -1;
+    }
+    if (field === 'earnBasic') {
+      if (/\b(hra|bonus|gross|ot)\b/.test(h)) return -1;
+      if (/^(eran basic|earn basic|earned basic|payable basic|actual earned basic|basic earned)$/.test(h)) return 112;
+      if (isEarnHdr && hasTok(/^basic$/)) return 96;
+      if (h === 'basic' || h === 'basic salary') return 60;
+      return -1;
+    }
+    if (field === 'earnHra') {
+      if (/\b(basic|bonus|gross|ot)\b/.test(h)) return -1;
+      if (/^(earn hra|earned hra|eran hra|payable hra|hra earned)$/.test(h)) return 112;
+      if (isEarnHdr && hasTok(/^hra$/)) return 96;
+      if (h === 'hra') return 60;
+      return -1;
+    }
+    if (field === 'earnBonus') {
+      if (isRateHdr || /\b(gross|deduction)\b/.test(h)) return -1;
+      if (/^(earned bonus 8 33%|earned bonus 8 33|earned bonus|earn bonus|eran bonus|bonus amount|bonus)$/.test(h)) return 108;
+      if (hasTok(/^bonus$/) && !isRateHdr) return 90;
+      return -1;
+    }
+    if (field === 'earnOt') {
+      if (isRateHdr || /\b(hour|hours|hrs|hr)\b/.test(h)) return -1;
+      if (/^(earned over time amount|earned ot amount|earn ot amount|earned overtime|earned over time|ot amount|over time amount|overtime amount|ot wages|overtime pay)$/.test(h)) return 112;
+      if ((hasTok(/^ot$/) || /over\s*time|overtime/.test(h)) && /\b(amount|amt|wages|pay|earn|earned|eran)\b/.test(h)) return 95;
+      return -1;
+    }
+    if (field === 'otherAllow') {
+      if (/\b(sun|sunday|deduction|pf|esi)\b/.test(h)) return -1;
+      if (/^(food other allowance|other allowance|food allowance|conveyance|washing allowance|special allowance|misc allowance|allowances|allowance)$/.test(h)) return 102;
+      if (hasTok(/^allowance$/) && !/sun|sunday/.test(h)) return 85;
+      return -1;
+    }
+    if (field === 'incentive') {
+      if (/^(incentive|incentives|attendance award|performance bonus|reward)$/.test(h)) return 102;
+      return -1;
+    }
+    if (field === 'earnGross') {
+      if (/\b(net|deduction|take home)\b/.test(h)) return -1;
+      if (/^(total gross earned salary|total earned gross|total earned salary|total earnings|gross earned salary)$/.test(h)) return 116;
+      if (/^(eran gross salary|earn gross salary|earned gross salary|earned gross|eran gross|earn gross)$/.test(h)) return 94;
+      if (isEarnHdr && hasTok(/^gross$/)) return 84;
+      return -1;
+    }
+    if (field === 'pf') {
+      if (/\b(uan|no|num|number|employer)\b/.test(h)) return -1;
+      if (/^(pf 12%|pf @12%|pf deduction|pf amount|epf|pf|provident fund)$/.test(h) || /^pf\s*@/.test(h)) return 110;
+      if (hasTok(/^(pf|epf)$/)) return 95;
+      return -1;
+    }
+    if (field === 'esiAmt') {
+      if (/\b(no|num|number|ip|employer)\b/.test(h)) return -1;
+      if (/^(esic 0 75%|esic @0 75%|esi deduction|esic deduction|esi amount|esic amount|esic|esi)$/.test(h) || /^esic?\s*@/.test(h)) return 110;
+      if (hasTok(/^(esic|esi)$/) && /%|@|ded|amt|amount/.test(h)) return 96;
+      return -1;
+    }
+    if (field === 'advance') {
+      if (/^(advance deduction|advance|adv deduction|adv|loan deduction|loan)$/.test(h)) return 108;
+      if (hasTok(/^(advance|adv|loan)$/)) return 90;
+      return -1;
+    }
+    if (field === 'otherDed') {
+      if (/\b(pf|esi|esic|advance|total)\b/.test(h)) return -1;
+      if (/^(other deduction|other deductions|misc deduction|canteen|tds|fine|lwf|pt|professional tax)$/.test(h)) return 95;
+      return -1;
+    }
+    if (field === 'totalDed') {
+      if (/^(total deduction|total deductions|gross deduction|deduction total)$/.test(h)) return 112;
+      if (hasTok(/^total$/) && hasTok(/^(deduction|deductions|ded)$/)) return 96;
+      return -1;
+    }
+    if (field === 'netPayable') {
+      if (/^(net payable|net salary|net pay|monthly take home salary|take home salary|take home|net amount|in hand|payable amount)$/.test(h)) return 112;
+      if (hasTok(/^net$/) && hasTok(/^(payable|salary|pay|amt|amount)$/)) return 96;
+      return -1;
+    }
+    return -1;
+  }
+
+  function mapColumns(headerRow, sampleDataRows) {
+    var fields = ALL_MAP_FIELDS.map(function(p){ return p[0]; });
+    var numCols = (headerRow || []).length;
+    var colSamples = {};
+    for (var c = 0; c < numCols; c++) {
+      colSamples[c] = [];
+      if (sampleDataRows) {
+        for (var r = 0; r < sampleDataRows.length; r++) {
+          if (sampleDataRows[r] && c < sampleDataRows[r].length) colSamples[c].push(sampleDataRows[r][c]);
+        }
+      }
+    }
+    var candidates = [];
+    for (var fi = 0; fi < fields.length; fi++) {
+      var fld = fields[fi];
+      for (var ci = 0; ci < numCols; ci++) {
+        var sc = scoreColumnForField(fld, headerRow[ci], colSamples[ci]);
+        if (sc > 0) {
+          candidates.push({ field: fld, col: ci, score: sc, priority: fields.length - fi, colIdx: ci });
+        }
+      }
+    }
+    candidates.sort(function(a, b) {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      return a.colIdx - b.colIdx;
+    });
+    var cols = {};
+    fields.forEach(function(f){ cols[f] = -1; });
+    var claimedCols = {};
+    for (var k = 0; k < candidates.length; k++) {
+      var cand = candidates[k];
+      if (cols[cand.field] >= 0 || claimedCols[cand.col]) continue;
+      cols[cand.field] = cand.col;
+      claimedCols[cand.col] = cand.field;
+    }
+    return cols;
+  }
+
+  function analyzeAoa(aoa, forcedHdrIdx) {
+    if (!Array.isArray(aoa) || aoa.length < 2) {
+      return { hdrIdx: 0, dataStartIdx: 1, headers: [], cols: mapColumns([]), score: -1, twoRowHeader: false };
+    }
+    var best = null;
+    var limit = Math.min(40, aoa.length - 1);
+    var indicesToCheck = [];
+    if (forcedHdrIdx != null && forcedHdrIdx >= 0 && forcedHdrIdx < aoa.length - 1) {
+      indicesToCheck = [forcedHdrIdx];
+    } else {
+      for (var r = 0; r < limit; r++) indicesToCheck.push(r);
+    }
+    for (var ii = 0; ii < indicesToCheck.length; ii++) {
+      var rIdx = indicesToCheck[ii];
+      var variants = [{ twoRow: false, hdrRow: buildHeaderCandidates(aoa, rIdx, false), dataStart: rIdx + 1 }];
+      if (rIdx + 2 < aoa.length && !looksLikeDataRow(aoa[rIdx + 1])) {
+        variants.push({ twoRow: true, hdrRow: buildHeaderCandidates(aoa, rIdx, true), dataStart: rIdx + 2 });
+      }
+      for (var v = 0; v < variants.length; v++) {
+        var vr = variants[v];
+        var samples = aoa.slice(vr.dataStart, vr.dataStart + 8);
+        var cols = mapColumns(vr.hdrRow, samples);
+        var score = 0;
+        if (cols.empId >= 0) score += 10;
+        if (cols.name >= 0) score += 10;
+        if (cols.earnBasic >= 0 || cols.rateBasic >= 0) score += 10;
+        if (cols.earnGross >= 0 || cols.netPayable >= 0) score += 10;
+        if (cols.paidDays >= 0 || cols.workingDays >= 0) score += 6;
+        if (cols.pf >= 0) score += 4;
+        if (cols.esiAmt >= 0) score += 3;
+        if (cols.uan >= 0 || cols.esic >= 0) score += 3;
+        if (cols.monthDays >= 0) score += 3;
+        if (cols.designation >= 0) score += 2;
+        if (vr.twoRow) score += 0.5;
+        if (!best || score > best.score) {
+          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, score: score, twoRowHeader: vr.twoRow };
+        }
+      }
+    }
+    return best;
+  }
+
+  function extractRowsFromAoa(aoa, defaultMonthDays, forcedMap, forcedHdrIdx) {
+    if (!Array.isArray(aoa) || aoa.length < 2) {
+      return { rows: [], missingCols: ['Sheet has no data rows'], analysis: null, resolvedCols: null, notes: [] };
+    }
+    var analysis = analyzeAoa(aoa, forcedHdrIdx);
+    var cols = forcedMap ? Object.assign({}, analysis.cols, forcedMap) : analysis.cols;
+
+    var missing = [];
+    if (cols.empId < 0 && cols.name < 0) missing.push('Emp Code / Employee Name');
+    if (cols.rateBasic < 0 && cols.earnBasic < 0 && cols.earnGross < 0 && cols.netPayable < 0) {
+      missing.push('Salary Columns (Basic / Gross / Net Payable)');
+    }
+    if (missing.length) {
+      return { rows: [], missingCols: missing, analysis: analysis, resolvedCols: cols, notes: [] };
+    }
+
+    var notes = [];
+    if (cols.paidDays < 0 && cols.workingDays >= 0) notes.push('Total Days derived from Working + Sun Allow + HD');
+    if (cols.rateGross < 0) notes.push('Rate Total auto-summed');
+    if (cols.earnGross < 0) notes.push('Earned Total auto-summed');
+    if (cols.totalDed < 0) notes.push('Total Deduction auto-summed');
+    if (cols.netPayable < 0) notes.push('Net Payable auto-computed');
+
+    var out = [];
+    var seenIds = {};
+    var seq = 1;
+    for (var r = analysis.dataStartIdx; r < aoa.length; r++) {
+      var row = aoa[r];
+      if (!row || !row.length) continue;
+      var rawId = cols.empId >= 0 ? cleanStr(row[cols.empId]) : '';
+      var name = cols.name >= 0 ? cleanStr(row[cols.name]) : '';
+
+      // Skip blank / Total / Grand Total / Summary footer rows
+      if (!rawId && !name) continue;
+      if (/^(total|grand total|sub total|page total|summary|net total)$/i.test(rawId)) continue;
+      if (/^(total|grand total|sub total|page total|summary|net total)$/i.test(name)) continue;
+      if (cols.empId >= 0 && !rawId) continue;
+      if (!rawId) rawId = String(seq++);
+      if (!name) name = 'EMPLOYEE ' + rawId;
+
+      var dept = cols.department >= 0 ? cleanStr(row[cols.department]) : '';
+      var desig = cols.designation >= 0 ? cleanStr(row[cols.designation]) : '';
+      var cat = cols.category >= 0 ? cleanStr(row[cols.category]) : '';
+      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : (defaultMonthDays || 30);
+      if (!md) md = defaultMonthDays || 30;
+
+      var pd;
+      if (cols.paidDays >= 0) {
+        pd = parseNum(row[cols.paidDays]);
+      } else {
+        var wd = cols.workingDays >= 0 ? parseNum(row[cols.workingDays]) : 0;
+        var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : 0;
+        var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : 0;
+        pd = wd + sa + hd;
+      }
+
+      var uan = cols.uan >= 0 ? formatStatutoryId(row[cols.uan]) : 'Not Applicable';
+      var esic = cols.esic >= 0 ? formatStatutoryId(row[cols.esic]) : 'Not Applicable';
+
+      var rateBasic = roundMoney(cols.rateBasic >= 0 ? parseNum(row[cols.rateBasic]) : 0);
+      var rateHra = roundMoney(cols.rateHra >= 0 ? parseNum(row[cols.rateHra]) : 0);
+      var rateBonus = roundMoney(cols.rateBonus >= 0 ? parseNum(row[cols.rateBonus]) : 0);
+      var rateOt = roundMoney(cols.rateOt >= 0 ? parseNum(row[cols.rateOt]) : 0);
+      var rateSum = rateBasic + rateHra + rateBonus + rateOt;
+      var rateGross = cols.rateGross >= 0 ? roundMoney(parseNum(row[cols.rateGross])) : rateSum;
+
+      var earnBasic = roundMoney(cols.earnBasic >= 0 ? parseNum(row[cols.earnBasic]) : 0);
+      var earnHra = roundMoney(cols.earnHra >= 0 ? parseNum(row[cols.earnHra]) : 0);
+      var earnBonus = roundMoney(cols.earnBonus >= 0 ? parseNum(row[cols.earnBonus]) : 0);
+      var earnOt = roundMoney(cols.earnOt >= 0 ? parseNum(row[cols.earnOt]) : 0);
+      var otherAllow = roundMoney(cols.otherAllow >= 0 ? parseNum(row[cols.otherAllow]) : 0);
+      var incentive = roundMoney(cols.incentive >= 0 ? parseNum(row[cols.incentive]) : 0);
+      var extraEarn = otherAllow + incentive;
+      var earnFourSum = earnBasic + earnHra + earnBonus + earnOt;
+      var earnAllSum = earnFourSum + extraEarn;
+      var earnGross = cols.earnGross >= 0 ? roundMoney(parseNum(row[cols.earnGross])) : earnAllSum;
+
+      var pf = roundMoney(cols.pf >= 0 ? parseNum(row[cols.pf]) : 0);
+      var esiAmt = roundMoney(cols.esiAmt >= 0 ? parseNum(row[cols.esiAmt]) : 0);
+      var advance = roundMoney(cols.advance >= 0 ? parseNum(row[cols.advance]) : 0);
+      var otherDed = roundMoney(cols.otherDed >= 0 ? parseNum(row[cols.otherDed]) : 0);
+      var dedSum = pf + esiAmt + advance + otherDed;
+      var totalDed = cols.totalDed >= 0 ? roundMoney(parseNum(row[cols.totalDed])) : dedSum;
+
+      var netPayable = cols.netPayable >= 0 ? roundMoney(parseNum(row[cols.netPayable])) : (earnGross - totalDed);
+
+      // Reconcile math discrepancies (> Rs 2 tolerance beyond rounding)
+      var warnings = [];
+      if (cols.rateGross >= 0 && Math.abs(rateSum - rateGross) > 2) {
+        warnings.push('Rate sum (' + rateSum + ') != Gross (' + rateGross + ')');
+      }
+      if (cols.earnGross >= 0 && Math.abs(earnAllSum - earnGross) > 2) {
+        warnings.push('Earned sum (' + earnAllSum + ') != Total Earned (' + earnGross + ')');
+      }
+      if (cols.totalDed >= 0 && Math.abs(dedSum - totalDed) > 2) {
+        warnings.push('Ded sum (' + dedSum + ') != Total Ded (' + totalDed + ')');
+      }
+      if (cols.netPayable >= 0 && Math.abs((earnGross - totalDed) - netPayable) > 2) {
+        warnings.push('Gross-Ded (' + (earnGross - totalDed) + ') != Net (' + netPayable + ')');
+      }
+      if (extraEarn > 0) {
+        warnings.push('Includes Other Allow/Incentive: +' + extraEarn);
+      }
+      if (otherDed > 0) {
+        warnings.push('Includes Other Ded: +' + otherDed);
+      }
+
+      var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
+      out.push({
+        key: uniqueKey,
+        id: rawId,
+        name: name,
+        department: dept,
+        designation: desig,
+        category: cat,
+        monthDays: md,
+        paidDays: pd,
+        uan: uan,
+        esic: esic,
+        rateBasic: rateBasic,
+        rateHra: rateHra,
+        rateBonus: rateBonus,
+        rateOt: rateOt,
+        rateGross: rateGross,
+        earnBasic: earnBasic,
+        earnHra: earnHra,
+        earnBonus: earnBonus,
+        earnOt: earnOt,
+        otherAllow: otherAllow,
+        incentive: incentive,
+        earnGross: earnGross,
+        pf: pf,
+        esiAmt: esiAmt,
+        advance: advance,
+        otherDed: otherDed,
+        totalDed: totalDed,
+        netPayable: netPayable,
+        warnings: warnings
+      });
+    }
+
+    return { rows: out, missingCols: [], analysis: analysis, resolvedCols: cols, notes: notes };
+  }
+
+  function buildSlipViewData(emp, settings) {
+    var m = Math.max(0, Math.min(11, parseInt(settings.month, 10) || 0));
+    var y = parseInt(settings.year, 10) || 2026;
+    var rawCo = cleanStr(settings.companyName || 'ARORA TEXTILES PVT.LTD,');
+    var titleText = rawCo + ' Employee Pay Slip';
+    return {
+      titleText: titleText,
+      name: emp.name,
+      empCode: formatDisplayEmpCode(emp.id, settings.empCodeMode),
+      desigDep: formatDesigDep(emp, settings.empCodeMode),
+      monthHindiYear: MONTH_HINDI[m] + ' - ' + y,
+      monthEngYear: MONTH_FULL[m] + ' - ' + y,
+      monthDays: formatDaysVal(emp.monthDays),
+      totalDays: formatDaysVal(emp.paidDays),
+      uan: emp.uan || 'Not Applicable',
+      esic: emp.esic || 'Not Applicable',
+      rateBasic: String(emp.rateBasic),
+      rateHra: String(emp.rateHra),
+      rateBonus: String(emp.rateBonus),
+      rateOt: String(emp.rateOt),
+      rateGross: String(emp.rateGross),
+      earnBasic: String(emp.earnBasic),
+      earnHra: String(emp.earnHra),
+      earnBonus: String(emp.earnBonus + (emp.otherAllow || 0) + (emp.incentive || 0)),
+      earnOt: String(emp.earnOt),
+      earnGross: String(emp.earnGross),
+      pf: String(emp.pf),
+      esiAmt: String(emp.esiAmt),
+      advance: String(emp.advance + (emp.otherDed || 0)),
+      totalDed: String(emp.totalDed),
+      netPayable: String(emp.netPayable)
+    };
+  }
+
+  // IndexedDB persistence
+  function openDb() {
+    return new Promise(function(resolve) {
+      if (!root.indexedDB) return resolve(null);
+      try {
+        var req = root.indexedDB.open(DB_NAME, DB_VER);
+        req.onupgradeneeded = function(e) {
+          var db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = function(e) { resolve(e.target.result); };
+        req.onerror = function() { resolve(null); };
+      } catch(_) { resolve(null); }
+    });
+  }
+
+  function saveStateToDb() {
+    openDb().then(function(db) {
+      if (!db) return;
+      try {
+        var tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put({
+          id: STATE_KEY,
+          updatedAt: Date.now(),
+          settings: state.settings,
+          fileName: state.fileName,
+          sheetName: state.sheetName,
+          rows: state.rows,
+          selectedKeys: state.selectedKeys
+        });
+        tx.oncomplete = function() { db.close(); };
+        tx.onerror = function() { db.close(); };
+      } catch(_) {}
+    });
+  }
+
+  function loadStateFromDb() {
+    return openDb().then(function(db) {
+      if (!db) return null;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(STORE_NAME, 'readonly');
+          var req = tx.objectStore(STORE_NAME).get(STATE_KEY);
+          req.onsuccess = function() { db.close(); resolve(req.result || null); };
+          req.onerror = function() { db.close(); resolve(null); };
+        } catch(_) { resolve(null); }
+      });
+    }).catch(function(){ return null; });
+  }
+
+  function clearStateInDb() {
+    return openDb().then(function(db) {
+      if (!db) return;
+      return new Promise(function(resolve) {
+        try {
+          var tx = db.transaction(STORE_NAME, 'readwrite');
+          tx.objectStore(STORE_NAME).delete(STATE_KEY);
+          tx.oncomplete = function() { db.close(); resolve(true); };
+          tx.onerror = function() { db.close(); resolve(false); };
+        } catch(_) { resolve(false); }
+      });
+    }).catch(function(){ return false; });
+  }
+
+  function showBanner(type, text, extraHtml) {
+    var b = document.getElementById('psgBanner');
+    var t = document.getElementById('psgBannerText');
+    var a = document.getElementById('psgBannerActions');
+    if (!b || !t || !a) return;
+    b.className = 'psg-banner show ' + (type || 'info');
+    t.textContent = text;
+    a.innerHTML = extraHtml || '<button type="button" class="psg-btn psg-btn-sm" onclick="document.getElementById(\'psgBanner\').classList.remove(\'show\')">Dismiss</button>';
+  }
+
+  function syncSettingsInputsToState() {
+    var mEl = document.getElementById('psgMonthSel');
+    var yEl = document.getElementById('psgYearInput');
+    var cEl = document.getElementById('psgCompanyInput');
+    var lEl = document.getElementById('psgLayoutSel');
+    var eEl = document.getElementById('psgEmpCodeSel');
+    if (mEl) state.settings.month = Math.max(0, Math.min(11, parseInt(mEl.value, 10) || 0));
+    if (yEl) state.settings.year = Math.max(2000, Math.min(2099, parseInt(yEl.value, 10) || 2026));
+    if (cEl) state.settings.companyName = cleanStr(cEl.value) || 'ARORA TEXTILES PVT.LTD,';
+    if (lEl && lEl.value) state.settings.layoutMode = lEl.value;
+    if (eEl && eEl.value) state.settings.empCodeMode = eEl.value;
+  }
+
+  function syncStateToSettingsInputs() {
+    var mEl = document.getElementById('psgMonthSel');
+    var yEl = document.getElementById('psgYearInput');
+    var cEl = document.getElementById('psgCompanyInput');
+    var lEl = document.getElementById('psgLayoutSel');
+    var eEl = document.getElementById('psgEmpCodeSel');
+    if (mEl) mEl.value = String(state.settings.month);
+    if (yEl) yEl.value = String(state.settings.year);
+    if (cEl) cEl.value = state.settings.companyName;
+    if (lEl) lEl.value = state.settings.layoutMode || 'TWIN';
+    if (eEl) eEl.value = state.settings.empCodeMode || 'ORIGINAL';
+  }
+
+  function refreshErpFileDropdown() {
+    var sel = document.getElementById('psgErpFileSelect');
+    if (!sel) return;
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    if (!files.length) {
+      sel.innerHTML = '<option value="">-- No Uploaded ERP Files --</option>';
+      return;
+    }
+    var opts = ['<option value="">-- Pick Uploaded ERP File (' + files.length + ') --</option>'];
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (!f || !f.name) continue;
+      opts.push('<option value="' + i + '">' + esc(f.name) + '</option>');
+    }
+    sel.innerHTML = opts.join('');
+  }
+
+  function colLetter(idx) {
+    if (idx < 0) return 'Auto';
+    var s = '', n = idx;
+    while (n >= 0) {
+      s = String.fromCharCode((n % 26) + 65) + s;
+      n = Math.floor(n / 26) - 1;
+    }
+    return 'Col ' + s;
+  }
+
+  function renderMapperBar(analysis, resolvedCols, notes) {
+    var bar = document.getElementById('psgMapperBar');
+    var badge = document.getElementById('psgMapperBadge');
+    var sheetSel = document.getElementById('psgSheetSelect');
+    var hdrIn = document.getElementById('psgHdrRowInput');
+    var grid = document.getElementById('psgMapperGrid');
+    if (!bar) return;
+    if (!state.rawAoa || !state.rawAoa.length) {
+      bar.style.display = 'none';
+      return;
+    }
+    bar.style.display = 'block';
+    if (sheetSel) {
+      var sNames = state.workbookSheets ? Object.keys(state.workbookSheets) : [state.sheetName || 'Sheet1'];
+      sheetSel.innerHTML = sNames.map(function(sn) {
+        return '<option value="' + esc(sn) + '"' + (sn === state.sheetName ? ' selected' : '') + '>' + esc(sn) + '</option>';
+      }).join('');
+    }
+    if (hdrIn && analysis) hdrIn.value = String((analysis.hdrIdx || 0) + 1);
+    if (badge && resolvedCols) {
+      var pts = [
+        'ID: ' + colLetter(resolvedCols.empId),
+        'Name: ' + colLetter(resolvedCols.name),
+        'Days: ' + colLetter(resolvedCols.paidDays),
+        'RateGross: ' + colLetter(resolvedCols.rateGross),
+        'EarnGross: ' + colLetter(resolvedCols.earnGross),
+        'Net: ' + colLetter(resolvedCols.netPayable)
+      ];
+      if (notes && notes.length) pts.push('(' + notes.join('; ') + ')');
+      badge.textContent = pts.join(' | ');
+    }
+    if (grid && analysis) {
+      var headers = analysis.headers || [];
+      grid.innerHTML = ALL_MAP_FIELDS.map(function(pair) {
+        var fKey = pair[0], fLbl = pair[1];
+        var cur = resolvedCols && resolvedCols[fKey] != null ? resolvedCols[fKey] : -1;
+        var opts = '<option value="-1"' + (cur < 0 ? ' selected' : '') + '>-- Auto / None --</option>';
+        for (var i = 0; i < headers.length; i++) {
+          var lbl = colLetter(i) + (headers[i] ? ': ' + cleanStr(headers[i]).slice(0, 24) : '');
+          opts += '<option value="' + i + '"' + (cur === i ? ' selected' : '') + '>' + esc(lbl) + '</option>';
+        }
+        return '<div class="psg-field"><label for="psgMap_' + fKey + '">' + esc(fLbl) + '</label><select id="psgMap_' + fKey + '" class="psg-select" style="padding:4px 6px;font-size:11px">' + opts + '</select></div>';
+      }).join('');
+    }
+  }
+
+  function updateFileMetaAndKpis() {
+    var metaEl = document.getElementById('psgFileMeta');
+    var kTot = document.getElementById('psgKpiTotal');
+    var kGross = document.getElementById('psgKpiGross');
+    var kDed = document.getElementById('psgKpiDed');
+    var kNet = document.getElementById('psgKpiNet');
+    var kWarn = document.getElementById('psgKpiWarn');
+
+    var sumGross = 0, sumDed = 0, sumNet = 0, warnCount = 0;
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      sumGross += r.earnGross || 0;
+      sumDed += r.totalDed || 0;
+      sumNet += r.netPayable || 0;
+      if (r.warnings && r.warnings.length) warnCount++;
+    }
+    if (kTot) kTot.textContent = String(state.rows.length);
+    if (kGross) kGross.textContent = sumGross.toLocaleString('en-IN');
+    if (kDed) kDed.textContent = sumDed.toLocaleString('en-IN');
+    if (kNet) kNet.textContent = sumNet.toLocaleString('en-IN');
+    if (kWarn) kWarn.textContent = String(warnCount);
+
+    if (metaEl) {
+      if (!state.rows.length) {
+        metaEl.textContent = 'No salary sheet loaded yet. Upload Salary Sheet (.csv / .xlsx) or load from ERP Files.';
+      } else {
+        var selCnt = Object.keys(state.selectedKeys).filter(function(k){ return state.selectedKeys[k]; }).length;
+        metaEl.textContent = 'Loaded: ' + (state.fileName || 'Salary Sheet') +
+          (state.sheetName ? ' [' + state.sheetName + ']' : '') +
+          ' — ' + state.rows.length + ' employees | Pay Slip Period: ' +
+          MONTH_FULL[state.settings.month] + ' ' + state.settings.year +
+          (selCnt ? ' | Selected: ' + selCnt : '');
+      }
+    }
+  }
+
+  function loadAoaIntoState(aoa, fileName, sheetName, forcedMap, forcedHdrIdx, isNewFile) {
+    if (isNewFile) {
+      var detected = detectMonthYear(fileName, sheetName, aoa);
+      if (detected.month != null) {
+        state.settings.month = detected.month;
+        var mEl = document.getElementById('psgMonthSel');
+        if (mEl) mEl.value = String(detected.month);
+      }
+      if (detected.year != null) {
+        state.settings.year = detected.year;
+        var yEl = document.getElementById('psgYearInput');
+        if (yEl) yEl.value = String(detected.year);
+      }
+    }
+    syncSettingsInputsToState();
+    state.rawAoa = aoa;
+    state.fileName = fileName;
+    state.sheetName = sheetName || '';
+    var defaultDays = new Date(state.settings.year, state.settings.month + 1, 0).getDate();
+    var res = extractRowsFromAoa(aoa, defaultDays, forcedMap, forcedHdrIdx);
+    state.lastAnalysis = res.analysis;
+    state.resolvedCols = res.resolvedCols;
+    renderMapperBar(res.analysis, res.resolvedCols, res.notes);
+
+    if (res.missingCols.length) {
+      var grid = document.getElementById('psgMapperGrid');
+      if (grid) grid.style.display = 'grid';
+      showBanner('error', 'Column auto-detect incomplete (' + res.missingCols.join(', ') + '). Neeche Edit Column Map se select karke Apply karein.');
+      return false;
+    }
+    if (!res.rows.length) {
+      showBanner('warn', 'No valid employee rows found in "' + fileName + '". Worksheet ya Header Row check karein.');
+      return false;
+    }
+
+    state.rows = res.rows;
+    state.selectedKeys = {};
+    state.listPage = 1;
+    state.previewIdx = 0;
+    updateFileMetaAndKpis();
+    renderListTable(1);
+    renderPreview();
+    saveStateToDb();
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + '] for ' + MONTH_FULL[state.settings.month] + ' ' + state.settings.year + '.');
+    return true;
+  }
+
+  function extractAllSheetsFromWorkbook(wb) {
+    var out = {};
+    if (!wb || !Array.isArray(wb.SheetNames) || !root.XLSX) return out;
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var sn = wb.SheetNames[i];
+      var ws = wb.Sheets[sn];
+      if (!ws) continue;
+      out[sn] = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+    }
+    return out;
+  }
+
+  function pickBestSheet(wb, sheetsAoaMap) {
+    if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
+    var bestName = wb.SheetNames[0];
+    var bestRank = -1;
+    for (var i = 0; i < wb.SheetNames.length; i++) {
+      var sn = wb.SheetNames[i];
+      var aoa = sheetsAoaMap ? sheetsAoaMap[sn] : root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
+      var an = analyzeAoa(aoa);
+      var rank = (an ? an.score : -1) * 10 + Math.min(50, (aoa && aoa.length) || 0);
+      if (/main\s*sheet|salary|wages|payroll|pay\s*slip/i.test(sn)) rank += 15;
+      if (rank > bestRank) { bestRank = rank; bestName = sn; }
+    }
+    return bestName;
+  }
+
+  function handleFileInput(inputEl) {
+    var file = inputEl && inputEl.files && inputEl.files[0];
+    if (!file) return;
+    var name = file.name || 'SalarySheet';
+    var lower = name.toLowerCase();
+    syncSettingsInputsToState();
+    if (lower.endsWith('.csv')) {
+      var readerTxt = new FileReader();
+      readerTxt.onload = function(ev) {
+        try {
+          var aoa = parseCsvText(ev.target.result);
+          state.workbookSheets = { CSV: aoa };
+          loadAoaIntoState(aoa, name, 'CSV', null, null, true);
+        } catch (err) {
+          showBanner('error', 'CSV parse error: ' + err.message);
+        }
+        inputEl.value = '';
+      };
+      readerTxt.readAsText(file);
+    } else {
+      var readerBuf = new FileReader();
+      readerBuf.onload = function(ev) {
+        try {
+          if (!root.XLSX) throw new Error('Excel parser (XLSX) not available');
+          var wb = root.XLSX.read(new Uint8Array(ev.target.result), { type: 'array', raw: false });
+          var allSheets = extractAllSheetsFromWorkbook(wb);
+          state.workbookSheets = allSheets;
+          var picked = pickBestSheet(wb, allSheets);
+          loadAoaIntoState(allSheets[picked] || [], name, picked, null, null, true);
+        } catch (err) {
+          showBanner('error', 'Excel parse error: ' + err.message);
+        }
+        inputEl.value = '';
+      };
+      readerBuf.readAsArrayBuffer(file);
+    }
+  }
+
+  function loadFromErpSelect() {
+    var sel = document.getElementById('psgErpFileSelect');
+    if (!sel || sel.value === '') {
+      showBanner('warn', 'Pehle dropdown se koi uploaded ERP file select karein.');
+      return;
+    }
+    var idx = parseInt(sel.value, 10);
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    var f = files[idx];
+    if (!f) {
+      showBanner('error', 'Selected ERP file not found.');
+      return;
+    }
+    syncSettingsInputsToState();
+    try {
+      if (f.buf && root.XLSX) {
+        var wb = root.XLSX.read(new Uint8Array(f.buf), { type: 'array', raw: false });
+        var allSheets = extractAllSheetsFromWorkbook(wb);
+        state.workbookSheets = allSheets;
+        var sn = pickBestSheet(wb, allSheets);
+        if (loadAoaIntoState(allSheets[sn] || [], f.name, sn, null, null, true)) return;
+      }
+      if (f.sheets && typeof f.sheets === 'object') {
+        var sNames = Object.keys(f.sheets);
+        var aoaMap = {};
+        var bestSn = sNames[0];
+        var bestScore = -1;
+        sNames.forEach(function(n) {
+          var sheetRows = f.sheets[n] || [];
+          if (!Array.isArray(sheetRows) || !sheetRows.length) return;
+          var cols = Object.keys(sheetRows[0] || {});
+          var aoa2 = [cols].concat(sheetRows.map(function(obj){
+            return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
+          }));
+          aoaMap[n] = aoa2;
+          var sc = analyzeAoa(aoa2).score + (/main\s*sheet|salary|wages|payroll/i.test(n) ? 10 : 0);
+          if (sc > bestScore) { bestScore = sc; bestSn = n; }
+        });
+        state.workbookSheets = aoaMap;
+        if (bestSn && aoaMap[bestSn]) {
+          loadAoaIntoState(aoaMap[bestSn], f.name, bestSn, null, null, true);
+          return;
+        }
+      }
+      showBanner('error', 'Unable to extract rows from "' + f.name + '".');
+    } catch (err) {
+      showBanner('error', 'Error reading ERP file: ' + err.message);
+    }
+  }
+
+  function switchWorkbookSheet(sn) {
+    if (!state.workbookSheets || !state.workbookSheets[sn]) return;
+    loadAoaIntoState(state.workbookSheets[sn], state.fileName, sn, null, null, false);
+  }
+
+  function applyManualColumnMap() {
+    if (!state.rawAoa || !state.rawAoa.length) return;
+    var hdrIn = document.getElementById('psgHdrRowInput');
+    var hdrIdx = hdrIn ? Math.max(0, (parseInt(hdrIn.value, 10) || 1) - 1) : 0;
+    var forcedMap = {};
+    ALL_MAP_FIELDS.forEach(function(pair) {
+      var el = document.getElementById('psgMap_' + pair[0]);
+      if (el) forcedMap[pair[0]] = parseInt(el.value, 10);
+    });
+    loadAoaIntoState(state.rawAoa, state.fileName, state.sheetName, forcedMap, hdrIdx, false);
+  }
+
+  function getFilteredRows() {
+    var q = cleanStr((document.getElementById('psgListSearch') || {}).value || '').toLowerCase();
+    var flt = (document.getElementById('psgListFilter') || {}).value || 'all';
+    return state.rows.filter(function(r) {
+      if (flt === 'selected' && !state.selectedKeys[r.key]) return false;
+      if (flt === 'warn' && !(r.warnings && r.warnings.length)) return false;
+      if (flt === 'ot' && !(r.earnOt > 0)) return false;
+      if (flt === 'adv' && !(r.advance > 0)) return false;
+      if (q) {
+        var hay = (r.id + ' ' + r.name + ' ' + r.designation + ' ' + r.department + ' ' + r.uan + ' ' + r.esic).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderListTable(pageNum) {
+    var tbody = document.getElementById('psgListTbody');
+    var sumEl = document.getElementById('psgListSummary');
+    var pageInfo = document.getElementById('psgListPageInfo');
+    if (!tbody) return;
+    if (!state.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:24px;color:#64748b">Upload a Salary Sheet (.csv / .xlsx) or load from ERP files above to generate Pay Slips.</td></tr>';
+      if (sumEl) sumEl.textContent = '0 employees';
+      if (pageInfo) pageInfo.textContent = 'Page 1 of 1';
+      return;
+    }
+
+    var filtered = getFilteredRows();
+    var totalPages = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE));
+    state.listPage = Math.max(1, Math.min(totalPages, pageNum || state.listPage || 1));
+    var start = (state.listPage - 1) * LIST_PAGE_SIZE;
+    var slice = filtered.slice(start, start + LIST_PAGE_SIZE);
+
+    if (sumEl) sumEl.textContent = filtered.length + ' of ' + state.rows.length + ' employees';
+    if (pageInfo) pageInfo.textContent = 'Page ' + state.listPage + ' of ' + totalPages;
+
+    if (!slice.length) {
+      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:18px;color:#64748b">No employees match the current search/filter.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = slice.map(function(r) {
+      var dispCode = formatDisplayEmpCode(r.id, state.settings.empCodeMode);
+      var desigDep = formatDesigDep(r, state.settings.empCodeMode);
+      var warnTxt = r.warnings && r.warnings.length ? r.warnings.join('; ') : '';
+      var chk = state.selectedKeys[r.key] ? ' checked' : '';
+      var encKey = encodeURIComponent(r.key);
+      return '<tr class="' + (warnTxt ? 'psg-row-warn' : '') + '">' +
+        '<td><input type="checkbox" data-psg-key="' + esc(encKey) + '"' + chk + ' onchange="window.ATPLPaySlipGenerator.toggleRowSelect(\'' + encKey + '\',this.checked)" /></td>' +
+        '<td><strong>' + esc(dispCode) + '</strong></td>' +
+        '<td><strong>' + esc(r.name) + '</strong></td>' +
+        '<td>' + esc(desigDep) + '</td>' +
+        '<td>' + esc(formatDaysVal(r.monthDays)) + ' / <strong>' + esc(formatDaysVal(r.paidDays)) + '</strong></td>' +
+        '<td>' + r.rateGross + '</td>' +
+        '<td>' + r.earnBasic + ' / ' + r.earnHra + '</td>' +
+        '<td>' + r.earnBonus + ' / ' + r.earnOt + '</td>' +
+        '<td><strong>' + r.earnGross + '</strong></td>' +
+        '<td>' + r.pf + ' / ' + r.esiAmt + ' / ' + r.advance + '</td>' +
+        '<td>' + r.totalDed + '</td>' +
+        '<td><strong style="color:#15803d">' + r.netPayable + '</strong></td>' +
+        '<td>' + (warnTxt ? '<span class="psg-pill-warn" title="' + esc(warnTxt) + '">⚠ Note</span>' : '<span class="psg-pill-ok">✓ Exact</span>') + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<button type="button" class="psg-btn psg-btn-sm" onclick="window.ATPLPaySlipGenerator.previewEmployee(\'' + encKey + '\')">👁 Slip</button> ' +
+          '<button type="button" class="psg-btn psg-btn-primary psg-btn-sm" onclick="window.ATPLPaySlipGenerator.exportSingleEmployeePDF(\'' + encKey + '\')">📄 PDF</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function changeListPage(delta) {
+    renderListTable((state.listPage || 1) + delta);
+  }
+
+  function toggleRowSelect(encKey, checked) {
+    var k = decodeURIComponent(encKey);
+    if (checked) state.selectedKeys[k] = true;
+    else delete state.selectedKeys[k];
+    updateFileMetaAndKpis();
+    saveStateToDb();
+  }
+
+  function toggleVisibleCheckboxes(checked) {
+    var chks = document.querySelectorAll('#psgListTbody input[type="checkbox"][data-psg-key]');
+    for (var i = 0; i < chks.length; i++) {
+      var k = decodeURIComponent(chks[i].getAttribute('data-psg-key'));
+      chks[i].checked = checked;
+      if (checked) state.selectedKeys[k] = true;
+      else delete state.selectedKeys[k];
+    }
+    updateFileMetaAndKpis();
+    saveStateToDb();
+  }
+
+  function selectAllFiltered(checked) {
+    var filtered = getFilteredRows();
+    for (var i = 0; i < filtered.length; i++) {
+      if (checked) state.selectedKeys[filtered[i].key] = true;
+      else delete state.selectedKeys[filtered[i].key];
+    }
+    updateFileMetaAndKpis();
+    renderListTable(state.listPage);
+    saveStateToDb();
+    showBanner('info', (checked ? 'Selected ' : 'Cleared ') + filtered.length + ' employee(s).');
+  }
+
+  function renderSingleSlipHtml(d) {
+    return '<div class="psg-slip-wrap">' +
+      '<table class="psg-slip-tbl">' +
+        '<colgroup>' +
+          '<col style="width:16.2%" />' +
+          '<col style="width:16.0%" />' +
+          '<col style="width:16.0%" />' +
+          '<col style="width:18.6%" />' +
+          '<col style="width:15.4%" />' +
+          '<col style="width:17.8%" />' +
+        '</colgroup>' +
+        '<tbody>' +
+          '<tr><td colspan="6" class="psg-slip-title">' + esc(d.titleText) + '</td></tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">नाम</span><span class="psg-lbl-en">Name</span></td>' +
+            '<td colspan="5" class="psg-val-name">' + esc(d.name) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">कर्मचारी कोड</span><span class="psg-lbl-en">Employee Code</span></td>' +
+            '<td colspan="3" class="psg-val-code">' + esc(d.empCode) + '</td>' +
+            '<td class="psg-lbl-bi" style="text-align:center"><span class="psg-lbl-hi" style="text-align:center">महिना</span><span class="psg-lbl-en" style="text-align:center">Month</span></td>' +
+            '<td class="psg-val-ctr"></td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">विभाग व पद</span><span class="psg-lbl-en">Desig. &amp; Dep.</span></td>' +
+            '<td colspan="3" class="psg-val-desig">' + esc(d.desigDep) + '</td>' +
+            '<td class="psg-val-ctr">' + esc(d.monthHindiYear) + '</td>' +
+            '<td class="psg-val-ctr">' + esc(d.monthEngYear) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td colspan="6" style="padding:0;border:none">' +
+              '<table class="psg-slip-tbl" style="width:100%">' +
+                '<colgroup>' +
+                  '<col style="width:11.2%" /><col style="width:5.0%" />' +
+                  '<col style="width:16.0%" /><col style="width:7.7%" />' +
+                  '<col style="width:8.3%" /><col style="width:18.6%" />' +
+                  '<col style="width:8.3%" /><col style="width:24.9%" />' +
+                '</colgroup>' +
+                '<tbody>' +
+                  '<tr>' +
+                    '<td class="psg-lbl-bi" style="border-top:none"><span class="psg-lbl-hi">माह के दिन</span><span class="psg-lbl-en">Month Days</span></td>' +
+                    '<td class="psg-val-num" style="border-top:none">' + esc(d.monthDays) + '</td>' +
+                    '<td class="psg-lbl-bi" style="border-top:none"><span class="psg-lbl-hi">कुल देय दिन</span><span class="psg-lbl-en">Total Days</span></td>' +
+                    '<td class="psg-val-num" style="border-top:none">' + esc(d.totalDays) + '</td>' +
+                    '<td class="psg-lbl-en" style="border-top:none;text-align:center">UAN NO.</td>' +
+                    '<td class="psg-val-num" style="border-top:none">' + esc(d.uan) + '</td>' +
+                    '<td class="psg-lbl-en" style="border-top:none;text-align:center">ESI NO.</td>' +
+                    '<td class="psg-val-num" style="border-top:none">' + esc(d.esic) + '</td>' +
+                  '</tr>' +
+                '</tbody>' +
+              '</table>' +
+            '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td colspan="2" class="psg-sec-hdr"><span class="psg-lbl-hi" style="text-align:center">वेतन का विवरण</span>Salary Detail</td>' +
+            '<td colspan="2" class="psg-sec-hdr"><span class="psg-lbl-hi" style="text-align:center">भत्तो का विवरण</span>Earning Details</td>' +
+            '<td colspan="2" class="psg-sec-hdr"><span class="psg-lbl-hi" style="text-align:center">कटौतियों का विवरण</span>Deduction Details</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">मूल वेतन</span><span class="psg-lbl-en">Basic Salary</span></td>' +
+            '<td class="psg-val-num">' + esc(d.rateBasic) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">मूल वेतन</span><span class="psg-lbl-en">Basic Salary</span></td>' +
+            '<td class="psg-val-num">' + esc(d.earnBasic) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">पी.एफ.</span><span class="psg-lbl-en">PF</span></td>' +
+            '<td class="psg-val-num">' + esc(d.pf) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">मकान भत्ता</span><span class="psg-lbl-en">HRA</span></td>' +
+            '<td class="psg-val-num">' + esc(d.rateHra) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">मकान भत्ता</span><span class="psg-lbl-en">HRA</span></td>' +
+            '<td class="psg-val-num">' + esc(d.earnHra) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">ई.एस.आई.</span><span class="psg-lbl-en">ESI</span></td>' +
+            '<td class="psg-val-num">' + esc(d.esiAmt) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">बोनस</span><span class="psg-lbl-en">Bonus</span></td>' +
+            '<td class="psg-val-num">' + esc(d.rateBonus) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">बोनस</span><span class="psg-lbl-en">Bonus</span></td>' +
+            '<td class="psg-val-num">' + esc(d.earnBonus) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">अग्रिम भुगतान</span><span class="psg-lbl-en">Advance</span></td>' +
+            '<td class="psg-val-num">' + esc(d.advance) + '</td>' +
+          '</tr>' +
+          '<tr class="psg-gap-row"><td colspan="6"></td></tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">अतिरिक्त समय</span><span class="psg-lbl-en">Over Time</span></td>' +
+            '<td class="psg-val-num">' + esc(d.rateOt) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">अतिरिक्त समय</span><span class="psg-lbl-en">Over Time</span></td>' +
+            '<td class="psg-val-num">' + esc(d.earnOt) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">कुल कटौतियाँ</span><span class="psg-lbl-en">Total Deduction</span></td>' +
+            '<td class="psg-val-num-bold">' + esc(d.totalDed) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">कुल</span><span class="psg-lbl-en">Total</span></td>' +
+            '<td class="psg-val-num-bold">' + esc(d.rateGross) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">कुल</span><span class="psg-lbl-en">Total</span></td>' +
+            '<td class="psg-val-num-bold">' + esc(d.earnGross) + '</td>' +
+            '<td class="psg-lbl-bi"><span class="psg-lbl-hi">कुल प्राप्त मासिक वेतन</span><span class="psg-lbl-en">Monthly take home salary</span></td>' +
+            '<td class="psg-val-num-bold">' + esc(d.netPayable) + '</td>' +
+          '</tr>' +
+          '<tr>' +
+            '<td colspan="3" class="psg-sig-cell"><span class="psg-sig-hi">कर्मचारी के हस्ताक्षर</span><span class="psg-sig-en">Employee Signature</span></td>' +
+            '<td colspan="3" class="psg-sig-cell"><span class="psg-sig-hi">अधिकृत हस्ताक्षरकर्ता</span><span class="psg-sig-en">Authorised Signatory</span></td>' +
+          '</tr>' +
+        '</tbody>' +
+      '</table>' +
+    '</div>';
+  }
+
+  function renderPreview() {
+    var container = document.getElementById('psgPreviewContainer');
+    var idxInput = document.getElementById('psgPreviewIndexInput');
+    var totEl = document.getElementById('psgPreviewTotalCount');
+    if (!container) return;
+
+    if (!state.rows.length) {
+      if (totEl) totEl.textContent = '0';
+      if (idxInput) idxInput.value = '0';
+      container.innerHTML = '<div style="text-align:center;padding:30px;color:#475569;font-size:13px">Upload a Salary Sheet to preview A4 bilingual Pay Slips.</div>';
+      return;
+    }
+
+    state.previewIdx = Math.max(0, Math.min(state.rows.length - 1, state.previewIdx || 0));
+    if (totEl) totEl.textContent = String(state.rows.length);
+    if (idxInput) idxInput.value = String(state.previewIdx + 1);
+
+    var emp1 = state.rows[state.previewIdx];
+    var mode = state.settings.layoutMode || 'TWIN';
+    var slipsHtml = renderSingleSlipHtml(buildSlipViewData(emp1, state.settings));
+
+    if (mode === 'TWIN') {
+      slipsHtml += renderSingleSlipHtml(buildSlipViewData(emp1, state.settings));
+    } else if (mode === 'PAIR' && state.previewIdx + 1 < state.rows.length) {
+      slipsHtml += renderSingleSlipHtml(buildSlipViewData(state.rows[state.previewIdx + 1], state.settings));
+    }
+
+    container.innerHTML = '<div class="psg-a4-page">' + slipsHtml + '</div>';
+  }
+
+  function switchTab(tab) {
+    state.activeTab = tab;
+    var map = {
+      list: ['psgTabList', 'psgTabBtnList'],
+      preview: ['psgTabPreview', 'psgTabBtnPreview']
+    };
+    Object.keys(map).forEach(function(k) {
+      var panel = document.getElementById(map[k][0]);
+      var btn = document.getElementById(map[k][1]);
+      if (panel) panel.style.display = (k === tab) ? 'block' : 'none';
+      if (btn) btn.classList.toggle('active', k === tab);
+    });
+    if (tab === 'preview') renderPreview();
+    else renderListTable(state.listPage);
+  }
+
+  function openSlipPreview() {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet (.csv / .xlsx) upload ya load karein.');
+      return;
+    }
+    switchTab('preview');
+  }
+
+  function previewEmployee(encKey) {
+    var k = decodeURIComponent(encKey);
+    for (var i = 0; i < state.rows.length; i++) {
+      if (state.rows[i].key === k) {
+        state.previewIdx = i;
+        switchTab('preview');
+        return;
+      }
+    }
+  }
+
+  function changePreviewIndex(delta) {
+    if (!state.rows.length) return;
+    var step = (state.settings.layoutMode === 'PAIR') ? delta * 2 : delta;
+    state.previewIdx = Math.max(0, Math.min(state.rows.length - 1, state.previewIdx + step));
+    renderPreview();
+  }
+
+  function jumpPreviewIndex(val) {
+    if (!state.rows.length) return;
+    var n = parseInt(val, 10) || 1;
+    state.previewIdx = Math.max(0, Math.min(state.rows.length - 1, n - 1));
+    renderPreview();
+  }
+
+  function jumpToEmployee(query) {
+    if (!state.rows.length) return;
+    var q = cleanStr(query).toLowerCase();
+    if (!q) return;
+    for (var i = 0; i < state.rows.length; i++) {
+      var e = state.rows[i];
+      if (e.id.toLowerCase().indexOf(q) >= 0 || e.name.toLowerCase().indexOf(q) >= 0) {
+        state.previewIdx = i;
+        renderPreview();
+        showBanner('info', 'Showing ' + e.id + ' (' + e.name + ') — #' + (i + 1));
+        return;
+      }
+    }
+    showBanner('warn', 'No employee found matching "' + query + '".');
+  }
+
+  function onSettingChange() {
+    syncSettingsInputsToState();
+    updateFileMetaAndKpis();
+    renderListTable(state.listPage);
+    renderPreview();
+    saveStateToDb();
+  }
+
+  // Devanagari crisp 4x DPI canvas bitmap generator for jsPDF (cached once per phrase)
+  function getHindiBitmap(key, text, fontPx) {
+    var cacheKey = key + '|' + text + '|' + (fontPx || 32);
+    if (hindiImgCache[cacheKey]) return hindiImgCache[cacheKey];
+    if (typeof document === 'undefined') return null;
+
+    var px = fontPx || 32;
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    var fontSpec = '700 ' + px + 'px "Noto Sans Devanagari", "Kohinoor Devanagari", "Nirmala UI", "Mangal", Arial, sans-serif';
+    ctx.font = fontSpec;
+    var m = ctx.measureText(text);
+    var padX = 6;
+    var padY = Math.ceil(px * 0.35);
+    var w = Math.max(10, Math.ceil(m.width) + padX * 2);
+    var h = Math.max(14, Math.ceil(px * 1.45) + padY);
+    canvas.width = w;
+    canvas.height = h;
+    ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.font = fontSpec;
+    ctx.fillStyle = '#000000';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, padX, Math.round(h / 2) + 1);
+
+    // Scale down ~4x into crisp mm (96 DPI -> 4x = ~384 DPI)
+    var mmPerPx = 25.4 / 384;
+    var obj = {
+      alias: 'psg_hi_' + cacheKey.replace(/[^a-z0-9_]/gi, '_'),
+      dataUrl: canvas.toDataURL('image/png'),
+      wMm: w * mmPerPx,
+      hMm: h * mmPerPx
+    };
+    hindiImgCache[cacheKey] = obj;
+    return obj;
+  }
+
+  function ensureJsPdf() {
+    if (root.jspdf && root.jspdf.jsPDF) return Promise.resolve(root.jspdf.jsPDF);
+    if (typeof root.ATPLLoadOptionalLib === 'function') {
+      return root.ATPLLoadOptionalLib('JSPDF', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+        .then(function() {
+          if (root.jspdf && root.jspdf.jsPDF) return root.jspdf.jsPDF;
+          throw new Error('jsPDF library failed to initialize');
+        });
+    }
+    return Promise.reject(new Error('Optional library loader unavailable'));
+  }
+
+  function drawBilingualCell(doc, x, y, w, h, hiKey, hiText, enText, alignCenter, enBold, enSize) {
+    var hi = getHindiBitmap(hiKey, hiText, 30);
+    if (hi) {
+      var targetH = Math.min(3.1, hi.hMm);
+      var targetW = hi.wMm * (targetH / hi.hMm);
+      var maxW = w - 2.0;
+      if (targetW > maxW) {
+        targetH = targetH * (maxW / targetW);
+        targetW = maxW;
+      }
+      var imgX = alignCenter ? (x + (w - targetW) / 2) : (x + 1.3);
+      var imgY = y + 0.9;
+      doc.addImage(hi.dataUrl, 'PNG', imgX, imgY, targetW, targetH, hi.alias, 'FAST');
+    }
+    doc.setFont('helvetica', enBold === false ? 'normal' : 'bold');
+    doc.setFontSize(enSize || 8.4);
+    var enY = y + h - 1.5;
+    if (alignCenter) {
+      doc.text(enText, x + w / 2, enY, { align: 'center', maxWidth: w - 1.5 });
+    } else {
+      doc.text(enText, x + 1.4, enY, { maxWidth: w - 2.2 });
+    }
+  }
+
+  function drawSlipOnPdf(doc, d, startY) {
+    var x0 = 11.0;
+    var W = 188.0;
+    // Column widths matching JUNE_PAYSLIP_316c07ca.pdf proportions:
+    // [30.5, 30.0, 30.0, 35.0, 29.0, 33.5] = 188.0mm
+    var cW = [30.5, 30.0, 30.0, 35.0, 29.0, 33.5];
+    var cX = [x0];
+    for (var i = 0; i < cW.length; i++) cX.push(cX[i] + cW[i]);
+
+    var hTitle = 9.0;
+    var hName = 9.5;
+    var hCode = 8.2;
+    var hDesig = 12.2;
+    var hDays = 9.6;
+    var hSec = 8.4;
+    var hRow = 8.6;
+    var gapH = 2.4;
+    var hOt = 8.6;
+    var hTot = 12.2;
+    var hSig = 16.5;
+
+    var y = startY;
+    doc.setDrawColor(0, 0, 0);
+    doc.setTextColor(0, 0, 0);
+    doc.setLineWidth(0.28);
+
+    // 1. Title Row
+    doc.rect(x0, y, W, hTitle);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13.5);
+    doc.text(d.titleText, x0 + W / 2, y + 6.1, { align: 'center', maxWidth: W - 4 });
+    y += hTitle;
+
+    // 2. Name Row
+    doc.rect(x0, y, cW[0], hName);
+    doc.rect(cX[1], y, W - cW[0], hName);
+    drawBilingualCell(doc, x0, y, cW[0], hName, 'name', 'नाम', 'Name', false, true, 8.6);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12.2);
+    doc.text(d.name, cX[1] + (W - cW[0]) / 2, y + 6.2, { align: 'center', maxWidth: W - cW[0] - 4 });
+    y += hName;
+
+    // 3. Employee Code | Month Row
+    var midW = cW[1] + cW[2] + cW[3];
+    doc.rect(x0, y, cW[0], hCode);
+    doc.rect(cX[1], y, midW, hCode);
+    doc.rect(cX[4], y, cW[4], hCode);
+    doc.rect(cX[5], y, cW[5], hCode);
+    drawBilingualCell(doc, x0, y, cW[0], hCode, 'empcode', 'कर्मचारी कोड', 'Employee Code', false, true, 8.3);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12.2);
+    doc.text(d.empCode, cX[1] + midW / 2, y + 5.6, { align: 'center', maxWidth: midW - 4 });
+    var hiMonthLbl = getHindiBitmap('month_lbl', 'महिना', 30);
+    if (hiMonthLbl) {
+      var mhH = Math.min(3.1, hiMonthLbl.hMm);
+      var mhW = hiMonthLbl.wMm * (mhH / hiMonthLbl.hMm);
+      doc.addImage(hiMonthLbl.dataUrl, 'PNG', cX[4] + (cW[4] - mhW) / 2, y + 2.4, mhW, mhH, hiMonthLbl.alias, 'FAST');
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.8);
+    doc.text('Month', cX[5] + cW[5] / 2, y + 5.2, { align: 'center' });
+    y += hCode;
+
+    // 4. Desig. & Dep. | Hindi Month - Year | Eng Month - Year
+    doc.rect(x0, y, cW[0], hDesig);
+    doc.rect(cX[1], y, midW, hDesig);
+    doc.rect(cX[4], y, cW[4], hDesig);
+    doc.rect(cX[5], y, cW[5], hDesig);
+    drawBilingualCell(doc, x0, y, cW[0], hDesig, 'desig', 'विभाग व पद', 'Desig. & Dep.', false, true, 8.3);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text(d.desigDep, cX[1] + midW / 2, y + 7.2, { align: 'center', maxWidth: midW - 4 });
+    var hiMonthYear = getHindiBitmap('mhy_' + d.monthHindiYear, d.monthHindiYear, 32);
+    if (hiMonthYear) {
+      var myH = Math.min(3.5, hiMonthYear.hMm);
+      var myW = hiMonthYear.wMm * (myH / hiMonthYear.hMm);
+      if (myW > cW[4] - 2) { myH *= (cW[4] - 2) / myW; myW = cW[4] - 2; }
+      doc.addImage(hiMonthYear.dataUrl, 'PNG', cX[4] + (cW[4] - myW) / 2, y + (hDesig - myH) / 2, myW, myH, hiMonthYear.alias, 'FAST');
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.2);
+    doc.text(d.monthEngYear, cX[5] + cW[5] / 2, y + 7.0, { align: 'center', maxWidth: cW[5] - 2 });
+    y += hDesig;
+
+    // 5. 8-cell strip: Month Days | Total Days | UAN NO. | ESI NO.
+    var dWidths = [21.0, 9.5, 30.0, 14.5, 15.5, 35.0, 15.5, 47.0]; // sum = 188.0mm
+    var dX = x0;
+    for (var di = 0; di < dWidths.length; di++) {
+      doc.rect(dX, y, dWidths[di], hDays);
+      dX += dWidths[di];
+    }
+    var curDx = x0;
+    drawBilingualCell(doc, curDx, y, dWidths[0], hDays, 'mdays', 'माह के दिन', 'Month Days', false, true, 7.6);
+    curDx += dWidths[0];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+    doc.text(d.monthDays, curDx + dWidths[1] / 2, y + 6.0, { align: 'center' });
+    curDx += dWidths[1];
+    drawBilingualCell(doc, curDx, y, dWidths[2], hDays, 'tdays', 'कुल देय दिन', 'Total Days', false, true, 8.0);
+    curDx += dWidths[2];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+    doc.text(d.totalDays, curDx + dWidths[3] / 2, y + 6.0, { align: 'center' });
+    curDx += dWidths[3];
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    doc.text('UAN NO.', curDx + dWidths[4] / 2, y + 6.0, { align: 'center' });
+    curDx += dWidths[4];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.0);
+    doc.text(d.uan, curDx + dWidths[5] / 2, y + 6.0, { align: 'center', maxWidth: dWidths[5] - 1.5 });
+    curDx += dWidths[5];
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.2);
+    doc.text('ESI NO.', curDx + dWidths[6] / 2, y + 6.0, { align: 'center' });
+    curDx += dWidths[6];
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.0);
+    doc.text(d.esic, curDx + dWidths[7] / 2, y + 6.0, { align: 'center', maxWidth: dWidths[7] - 1.5 });
+    y += hDays;
+
+    // 6. Section Headers: Salary Detail | Earning Details | Deduction Details
+    doc.rect(cX[0], y, cW[0] + cW[1], hSec);
+    doc.rect(cX[2], y, cW[2] + cW[3], hSec);
+    doc.rect(cX[4], y, cW[4] + cW[5], hSec);
+    drawBilingualCell(doc, cX[0], y, cW[0] + cW[1], hSec, 'sec_sal', 'वेतन का विवरण', 'Salary Detail', true, true, 8.6);
+    drawBilingualCell(doc, cX[2], y, cW[2] + cW[3], hSec, 'sec_earn', 'भत्तो का विवरण', 'Earning Details', true, true, 8.6);
+    drawBilingualCell(doc, cX[4], y, cW[4] + cW[5], hSec, 'sec_ded', 'कटौतियों का विवरण', 'Deduction Details', true, true, 8.6);
+    y += hSec;
+
+    // 7. Upper 3-row block (Basic, HRA, Bonus)
+    var upperRows = [
+      ['basic', 'मूल वेतन', 'Basic Salary', d.rateBasic, d.earnBasic, 'pf', 'पी.एफ.', 'PF', d.pf],
+      ['hra', 'मकान भत्ता', 'HRA', d.rateHra, d.earnHra, 'esi', 'ई.एस.आई.', 'ESI', d.esiAmt],
+      ['bonus', 'बोनस', 'Bonus', d.rateBonus, d.earnBonus, 'adv', 'अग्रिम भुगतान', 'Advance', d.advance]
+    ];
+    for (var ur = 0; ur < upperRows.length; ur++) {
+      var u = upperRows[ur];
+      for (var col = 0; col < 6; col++) doc.rect(cX[col], y, cW[col], hRow);
+      drawBilingualCell(doc, cX[0], y, cW[0], hRow, u[0], u[1], u[2], false, true, 8.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+      doc.text(u[3], cX[1] + cW[1] / 2, y + 5.6, { align: 'center' });
+      drawBilingualCell(doc, cX[2], y, cW[2], hRow, u[0], u[1], u[2], false, true, 8.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+      doc.text(u[4], cX[3] + cW[3] / 2, y + 5.6, { align: 'center' });
+      drawBilingualCell(doc, cX[4], y, cW[4], hRow, u[5], u[6], u[7], false, true, 8.2);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+      doc.text(u[8], cX[5] + cW[5] / 2, y + 5.6, { align: 'center' });
+      y += hRow;
+    }
+
+    // Thin white band separating upper 3 rows and lower 2 rows (exact Sample PDF style)
+    y += gapH;
+
+    // 8. Row 4: Over Time & Total Deduction
+    for (var col4 = 0; col4 < 6; col4++) doc.rect(cX[col4], y, cW[col4], hOt);
+    drawBilingualCell(doc, cX[0], y, cW[0], hOt, 'ot', 'अतिरिक्त समय', 'Over Time', false, true, 8.2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+    doc.text(d.rateOt, cX[1] + cW[1] / 2, y + 5.6, { align: 'center' });
+    drawBilingualCell(doc, cX[2], y, cW[2], hOt, 'ot', 'अतिरिक्त समय', 'Over Time', false, true, 8.2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.2);
+    doc.text(d.earnOt, cX[3] + cW[3] / 2, y + 5.6, { align: 'center' });
+    drawBilingualCell(doc, cX[4], y, cW[4], hOt, 'totded', 'कुल कटौतियाँ', 'Total Deduction', false, true, 8.0);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.2);
+    doc.text(d.totalDed, cX[5] + cW[5] / 2, y + 5.6, { align: 'center' });
+    y += hOt;
+
+    // 9. Row 5: Total & Monthly take home salary
+    for (var col5 = 0; col5 < 6; col5++) doc.rect(cX[col5], y, cW[col5], hTot);
+    drawBilingualCell(doc, cX[0], y, cW[0], hTot, 'tot', 'कुल', 'Total', false, true, 8.5);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text(d.rateGross, cX[1] + cW[1] / 2, y + 7.2, { align: 'center' });
+    drawBilingualCell(doc, cX[2], y, cW[2], hTot, 'tot', 'कुल', 'Total', false, true, 8.5);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+    doc.text(d.earnGross, cX[3] + cW[3] / 2, y + 7.2, { align: 'center' });
+
+    // Multi-line Monthly take home salary cell
+    var hiNet = getHindiBitmap('net', 'कुल प्राप्त मासिक वेतन', 28);
+    if (hiNet) {
+      var hnH = Math.min(2.8, hiNet.hMm);
+      var hnW = hiNet.wMm * (hnH / hiNet.hMm);
+      if (hnW > cW[4] - 1.8) { hnH *= (cW[4] - 1.8) / hnW; hnW = cW[4] - 1.8; }
+      doc.addImage(hiNet.dataUrl, 'PNG', cX[4] + 1.2, y + 0.9, hnW, hnH, hiNet.alias, 'FAST');
+    }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.8);
+    doc.text('Monthly take', cX[4] + 1.3, y + 7.2);
+    doc.text('home salary', cX[4] + 1.3, y + 10.6);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9.8);
+    doc.text(d.netPayable, cX[5] + cW[5] / 2, y + 7.4, { align: 'center' });
+    y += hTot;
+
+    // 10. Signature Row
+    var sigLeftW = cW[0] + cW[1] + cW[2];
+    var sigRightW = W - sigLeftW;
+    doc.rect(x0, y, sigLeftW, hSig);
+    doc.rect(x0 + sigLeftW, y, sigRightW, hSig);
+    drawBilingualCell(doc, x0, y, sigLeftW, 8.5, 'sig_emp', 'कर्मचारी के हस्ताक्षर', 'Employee Signature', true, true, 8.6);
+    drawBilingualCell(doc, x0 + sigLeftW, y, sigRightW, 8.5, 'sig_auth', 'अधिकृत हस्ताक्षरकर्ता', 'Authorised Signatory', true, true, 8.6);
+  }
+
+  function resolveTargetEmployees(scope) {
+    if (!state.rows.length) return [];
+    if (scope === 'CURRENT') {
+      var emp = state.rows[state.previewIdx || 0];
+      return emp ? [emp] : [];
+    }
+    var selKeys = Object.keys(state.selectedKeys).filter(function(k){ return state.selectedKeys[k]; });
+    if (selKeys.length > 0) {
+      return state.rows.filter(function(r){ return !!state.selectedKeys[r.key]; });
+    }
+    return state.rows.slice();
+  }
+
+  function exportSingleEmployeePDF(encKey) {
+    var k = decodeURIComponent(encKey);
+    for (var i = 0; i < state.rows.length; i++) {
+      if (state.rows[i].key === k) {
+        state.previewIdx = i;
+        return exportPDF('CURRENT');
+      }
+    }
+  }
+
+  function exportPDF(scope) {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet (.csv / .xlsx) upload ya load karein.');
+      return;
+    }
+    syncSettingsInputsToState();
+    var targetList = resolveTargetEmployees(scope || 'SELECTED_OR_ALL');
+    if (!targetList.length) return;
+
+    var mode = state.settings.layoutMode || 'TWIN';
+    var pagesSpec = [];
+    if (mode === 'PAIR') {
+      for (var i = 0; i < targetList.length; i += 2) {
+        pagesSpec.push(targetList.slice(i, i + 2));
+      }
+    } else if (mode === 'SINGLE') {
+      for (var s = 0; s < targetList.length; s++) {
+        pagesSpec.push([targetList[s]]);
+      }
+    } else {
+      for (var t = 0; t < targetList.length; t++) {
+        pagesSpec.push([targetList[t], targetList[t]]);
+      }
+    }
+
+    showBanner('info', 'Preparing A4 Portrait Pay Slip PDF (' + pagesSpec.length + ' page(s), ' + targetList.length + ' employee(s))...');
+    return ensureJsPdf().then(function(JsPDFCtor) {
+      var doc = new JsPDFCtor({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      var pIdx = 0;
+      function processBatch() {
+        var batchEnd = Math.min(pagesSpec.length, pIdx + 25);
+        for (; pIdx < batchEnd; pIdx++) {
+          if (pIdx > 0) doc.addPage('a4', 'portrait');
+          var pair = pagesSpec[pIdx];
+          drawSlipOnPdf(doc, buildSlipViewData(pair[0], state.settings), 9.5);
+          if (pair[1]) {
+            drawSlipOnPdf(doc, buildSlipViewData(pair[1], state.settings), 152.5);
+          }
+        }
+        if (pIdx < pagesSpec.length) {
+          showBanner('info', 'Generating PDF: Page ' + pIdx + ' of ' + pagesSpec.length + '...');
+          return new Promise(function(resolve){ setTimeout(resolve, 0); }).then(processBatch);
+        }
+        var suffix = targetList.length === 1
+          ? ('_' + cleanStr(targetList[0].id).replace(/[^a-z0-9_-]/gi, '') + '_' + cleanStr(targetList[0].name).replace(/[^a-z0-9_-]/gi, '_'))
+          : '_ALL';
+        var fileOut = 'PaySlips_' + MONTH_NAMES[state.settings.month] + '-' + state.settings.year + suffix + '.pdf';
+        doc.save(fileOut);
+        showBanner('success', 'PDF exported: ' + fileOut + ' (' + pagesSpec.length + ' pages, ' + targetList.length + ' employee(s)).');
+      }
+      return processBatch();
+    }).catch(function(err) {
+      showBanner('error', 'PDF export failed: ' + err.message);
+    });
+  }
+
+  function printSlips(scope) {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet (.csv / .xlsx) upload ya load karein.');
+      return;
+    }
+    syncSettingsInputsToState();
+    var targetList = resolveTargetEmployees(scope || 'CURRENT');
+    if (!targetList.length) return;
+    if (targetList.length > 60) {
+      showBanner('warn', 'Direct print me 60 employees tak best rehta hai; bade batch ke liye "Download All / Selected PDF" use karein. Printing first 60...');
+      targetList = targetList.slice(0, 60);
+    }
+    var printArea = document.getElementById('psgPrintArea');
+    if (!printArea) return;
+
+    var mode = state.settings.layoutMode || 'TWIN';
+    var pagesHtml = [];
+    if (mode === 'PAIR') {
+      for (var i = 0; i < targetList.length; i += 2) {
+        var h = renderSingleSlipHtml(buildSlipViewData(targetList[i], state.settings));
+        if (targetList[i + 1]) h += renderSingleSlipHtml(buildSlipViewData(targetList[i + 1], state.settings));
+        pagesHtml.push('<div class="psg-a4-page">' + h + '</div>');
+      }
+    } else if (mode === 'SINGLE') {
+      for (var s = 0; s < targetList.length; s++) {
+        pagesHtml.push('<div class="psg-a4-page">' + renderSingleSlipHtml(buildSlipViewData(targetList[s], state.settings)) + '</div>');
+      }
+    } else {
+      for (var t = 0; t < targetList.length; t++) {
+        var slip = renderSingleSlipHtml(buildSlipViewData(targetList[t], state.settings));
+        pagesHtml.push('<div class="psg-a4-page">' + slip + slip + '</div>');
+      }
+    }
+
+    printArea.innerHTML = pagesHtml.join('');
+    var pgStyle = document.getElementById('psgPrintPageStyle');
+    if (!pgStyle) {
+      pgStyle = document.createElement('style');
+      pgStyle.id = 'psgPrintPageStyle';
+      pgStyle.textContent = '@page { size: A4 portrait; margin: 8mm 10mm; }';
+      document.head.appendChild(pgStyle);
+    }
+    document.body.classList.add('psg-print-active');
+    var cleanup = function() {
+      document.body.classList.remove('psg-print-active');
+      printArea.innerHTML = '';
+      var ps = document.getElementById('psgPrintPageStyle');
+      if (ps && ps.parentNode) ps.parentNode.removeChild(ps);
+    };
+    root.addEventListener('afterprint', cleanup, { once: true });
+    setTimeout(function() {
+      try { root.print(); } catch(_) { cleanup(); }
+    }, 60);
+  }
+
+  function exportExcel() {
+    if (!state.rows.length) {
+      showBanner('warn', 'Pehle Salary Sheet upload karein.');
+      return;
+    }
+    if (!root.XLSX) {
+      showBanner('error', 'Excel library (XLSX) not available.');
+      return;
+    }
+    syncSettingsInputsToState();
+    var aoa = [[
+      'Emp Code', 'Employee Name', 'Desig. & Dep.', 'Month', 'Month Days', 'Total Days',
+      'UAN NO.', 'ESI NO.', 'Rate Basic', 'Rate HRA', 'Rate Bonus', 'Rate OT', 'Rate Gross Total',
+      'Earn Basic', 'Earn HRA', 'Earn Bonus', 'Earn OT', 'Total Earned Gross',
+      'PF', 'ESI', 'Advance', 'Total Deduction', 'Monthly Take Home (Net Payable)', 'Reconcile Notes'
+    ]];
+    for (var i = 0; i < state.rows.length; i++) {
+      var r = state.rows[i];
+      var d = buildSlipViewData(r, state.settings);
+      aoa.push([
+        d.empCode, d.name, d.desigDep, d.monthEngYear, r.monthDays, r.paidDays,
+        d.uan, d.esic, r.rateBasic, r.rateHra, r.rateBonus, r.rateOt, r.rateGross,
+        r.earnBasic, r.earnHra, Number(d.earnBonus), r.earnOt, r.earnGross,
+        r.pf, r.esiAmt, Number(d.advance), r.totalDed, r.netPayable,
+        (r.warnings && r.warnings.length) ? r.warnings.join('; ') : 'EXACT'
+      ]);
+    }
+    var wb = root.XLSX.utils.book_new();
+    var ws = root.XLSX.utils.aoa_to_sheet(aoa);
+    root.XLSX.utils.book_append_sheet(wb, ws, 'PaySlip Summary');
+    var outName = 'PaySlip_Summary_' + MONTH_NAMES[state.settings.month] + '-' + state.settings.year + '.xlsx';
+    root.XLSX.writeFile(wb, outName);
+    showBanner('success', 'Excel exported: ' + outName);
+  }
+
+  function requestReset() {
+    showBanner(
+      'warn',
+      'Reset stored Employee Pay Slip sheet and settings from IndexedDB?',
+      '<button type="button" class="psg-btn psg-btn-danger psg-btn-sm" onclick="window.ATPLPaySlipGenerator.confirmReset()">Yes, Reset Data</button>' +
+      '<button type="button" class="psg-btn psg-btn-sm" onclick="document.getElementById(\'psgBanner\').classList.remove(\'show\')">Cancel</button>'
+    );
+  }
+
+  function confirmReset() {
+    state.rows = [];
+    state.fileName = '';
+    state.sheetName = '';
+    state.rawAoa = null;
+    state.workbookSheets = null;
+    state.selectedKeys = {};
+    state.listPage = 1;
+    state.previewIdx = 0;
+    clearStateInDb();
+    var bar = document.getElementById('psgMapperBar');
+    if (bar) bar.style.display = 'none';
+    updateFileMetaAndKpis();
+    renderListTable(1);
+    renderPreview();
+    showBanner('info', 'Pay Slip Generator data cleared.');
+  }
+
+  function init() {
+    refreshErpFileDropdown();
+    if (state.initialized) {
+      syncStateToSettingsInputs();
+      updateFileMetaAndKpis();
+      return;
+    }
+    state.initialized = true;
+    loadStateFromDb().then(function(saved) {
+      if (saved) {
+        if (saved.settings) state.settings = Object.assign(state.settings, saved.settings);
+        state.fileName = saved.fileName || '';
+        state.sheetName = saved.sheetName || '';
+        state.rows = Array.isArray(saved.rows) ? saved.rows : [];
+        state.selectedKeys = saved.selectedKeys || {};
+      }
+      syncStateToSettingsInputs();
+      updateFileMetaAndKpis();
+      renderListTable(state.listPage);
+      renderPreview();
+      refreshErpFileDropdown();
+    });
+  }
+
+  root.ATPLPaySlipGenerator = {
+    init: init,
+    handleFileInput: handleFileInput,
+    loadFromErpSelect: loadFromErpSelect,
+    switchWorkbookSheet: switchWorkbookSheet,
+    applyManualColumnMap: applyManualColumnMap,
+    onSettingChange: onSettingChange,
+    switchTab: switchTab,
+    openSlipPreview: openSlipPreview,
+    previewEmployee: previewEmployee,
+    renderListTable: renderListTable,
+    changeListPage: changeListPage,
+    toggleRowSelect: toggleRowSelect,
+    toggleVisibleCheckboxes: toggleVisibleCheckboxes,
+    selectAllFiltered: selectAllFiltered,
+    changePreviewIndex: changePreviewIndex,
+    jumpPreviewIndex: jumpPreviewIndex,
+    jumpToEmployee: jumpToEmployee,
+    exportSingleEmployeePDF: exportSingleEmployeePDF,
+    exportPDF: exportPDF,
+    printSlips: printSlips,
+    exportExcel: exportExcel,
+    requestReset: requestReset,
+    confirmReset: confirmReset,
+    _engine: {
+      parseCsvText: parseCsvText,
+      detectMonthYear: detectMonthYear,
+      formatStatutoryId: formatStatutoryId,
+      formatDisplayEmpCode: formatDisplayEmpCode,
+      mapColumns: mapColumns,
+      analyzeAoa: analyzeAoa,
+      extractRowsFromAoa: extractRowsFromAoa,
+      buildSlipViewData: buildSlipViewData
+    }
+  };
+})(window);
+</script><script id="atplSidebarReorderScript">
 (function(root){
   'use strict';
   if (root.__ATPL_SIDEBAR_REORDER_V1__) return;
