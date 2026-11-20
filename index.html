@@ -3727,8 +3727,16 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
           <div class="page-sub">Saari previously uploaded files yahan dikhti hain — search karo ya click karke data dekho</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:260px">
+          <select id="allFilesYearFilter" onchange="setAllFilesYearFilter(this.value)" title="Filter files by Year" style="height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:700;color:#0f172a;background:#fff;cursor:pointer;outline:none">
+            <option value="ALL">📅 All Years</option>
+          </select>
+          <select id="allFilesSortMode" onchange="setAllFilesSortMode(this.value)" title="File sequence order" style="height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:700;color:#0f172a;background:#fff;cursor:pointer;outline:none">
+            <option value="seq_asc">📅 Month Sequence (Jan → Dec)</option>
+            <option value="seq_desc">📅 Latest Month First</option>
+            <option value="upload_desc">🕒 Latest Uploaded First</option>
+          </select>
           <div style="position:relative;display:flex;align-items:center">
-            <input type="search" id="allFilesSearchInput" placeholder="🔍 Search file name, sheet, month..." oninput="filterAllFilesList(this.value)" autocomplete="off" style="min-width:260px;height:36px;padding:0 32px 0 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:600;color:#0f172a;background:#fff;outline:none">
+            <input type="search" id="allFilesSearchInput" placeholder="🔍 Search file name, sheet, month..." oninput="filterAllFilesList(this.value)" autocomplete="off" style="min-width:240px;height:36px;padding:0 32px 0 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:12px;font-weight:600;color:#0f172a;background:#fff;outline:none">
             <button type="button" id="allFilesSearchClearBtn" onclick="clearAllFilesSearch()" title="Clear search" style="display:none;position:absolute;right:6px;border:none;background:#e2e8f0;color:#475569;width:20px;height:20px;border-radius:50%;font-size:11px;font-weight:700;cursor:pointer;line-height:1">✕</button>
           </div>
           <span id="allFilesSearchCount" style="font-size:11px;font-weight:700;color:#64748b;white-space:nowrap"></span>
@@ -5619,10 +5627,163 @@ function renderViewerSheet(fi, si) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ALL FILES PAGE (LAZY LOADED & MEMOIZED)
+// ALL FILES PAGE (LAZY LOADED, YEAR FILTER & MONTH SEQUENCE)
 // ═══════════════════════════════════════════════════════════════
 window.__allFilesNeedsRender = true;
 window.__allFilesSearchQuery = window.__allFilesSearchQuery || '';
+window.__allFilesYearFilter = window.__allFilesYearFilter || 'ALL';
+window.__allFilesMonthFilter = window.__allFilesMonthFilter || 'ALL';
+window.__allFilesSortMode = window.__allFilesSortMode || 'seq_asc';
+
+var ALL_FILES_MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var ALL_FILES_MONTH_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function normalizeAllFilesMonthToken(tok) {
+  if (!tok) return 0;
+  var s = String(tok).toLowerCase().replace(/[^a-z]/g, '');
+  if (!s) return 0;
+  if (s.indexOf('jan') === 0) return 1;
+  if (s.indexOf('feb') === 0) return 2;
+  if (s.indexOf('mar') === 0) return 3;
+  if (s.indexOf('apr') === 0) return 4;
+  if (s === 'may') return 5;
+  if (s.indexOf('jun') === 0) return 6;
+  if (s.indexOf('jul') === 0) return 7;
+  if (s.indexOf('aug') === 0) return 8;
+  if (s.indexOf('sep') === 0) return 9;
+  if (s.indexOf('oct') === 0) return 10;
+  if (s.indexOf('nov') === 0) return 11;
+  if (s.indexOf('dec') === 0) return 12;
+  return 0;
+}
+
+function normalizeAllFilesYearNum(raw) {
+  if (raw == null || raw === '') return 0;
+  var n = parseInt(String(raw), 10);
+  if (isNaN(n)) return 0;
+  if (n >= 20 && n <= 45) return 2000 + n;
+  if (n >= 2015 && n <= 2045) return n;
+  return 0;
+}
+
+function parsePeriodFromText(txt) {
+  var s = String(txt || '').replace(/[()\[\],]/g, ' ');
+  var monthRe = '(?:january|jan|february|febr|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)';
+  // 1. Month + Year (e.g., Feb-25, MAY-25, MARCH 2025, Sept'24, May2026, June-2025)
+  var r1 = new RegExp('\\b(' + monthRe + ')[\\s\\-_.\'\\/]*(20[1-4]\\d|[2-4]\\d)\\b', 'i');
+  var m1 = s.match(r1);
+  if (m1) {
+    var mo1 = normalizeAllFilesMonthToken(m1[1]);
+    var yr1 = normalizeAllFilesYearNum(m1[2]);
+    if (mo1 && yr1) return { year: yr1, month: mo1 };
+  }
+  // 2. Year + Month (e.g., 2025-Mar, 2025_March)
+  var r2 = new RegExp('\\b(20[1-4]\\d)[\\s\\-_.\\/]*(' + monthRe + ')\\b', 'i');
+  var m2 = s.match(r2);
+  if (m2) {
+    var yr2 = normalizeAllFilesYearNum(m2[1]);
+    var mo2 = normalizeAllFilesMonthToken(m2[2]);
+    if (mo2 && yr2) return { year: yr2, month: mo2 };
+  }
+  // 3. Numeric YYYY-MM or MM-YYYY (ignore leading serial prefixes like 01-ARORA)
+  var m3 = s.match(/\b(20[1-4]\d)[\s\-_\/](0?[1-9]|1[0-2])\b/);
+  if (m3) return { year: parseInt(m3[1], 10), month: parseInt(m3[2], 10) };
+  var m4 = s.match(/\b(0?[1-9]|1[0-2])[\s\-_\/](20[1-4]\d)\b/);
+  if (m4) return { year: parseInt(m4[2], 10), month: parseInt(m4[1], 10) };
+
+  // 4. Separate Month and 4-digit Year anywhere in text
+  var rMonOnly = new RegExp('\\b(' + monthRe + ')\\b', 'i');
+  var mm = s.match(rMonOnly);
+  var ym = s.match(/\b(20[1-4]\d)\b/);
+  return {
+    year: ym ? parseInt(ym[1], 10) : 0,
+    month: mm ? normalizeAllFilesMonthToken(mm[1]) : 0
+  };
+}
+
+function extractAllFilesPeriod(f, origIdx) {
+  var name = (f && f.name) ? String(f.name) : '';
+  var sheets = typeof safeGetSheetNames === 'function' ? safeGetSheetNames(f) : [];
+  var pName = parsePeriodFromText(name);
+  var year = pName.year;
+  var month = pName.month;
+
+  if ((!year || !month) && sheets.length) {
+    var pSheet = parsePeriodFromText(sheets.join(' '));
+    if (!month && pSheet.month) month = pSheet.month;
+    if (!year && pSheet.year) year = pSheet.year;
+  }
+
+  // Fallback to explicit metadata or savedAt timestamp year if filename/sheet lacked year
+  var yearSource = year ? 'name' : '';
+  if (!year && f && f.periodYear) {
+    var py = normalizeAllFilesYearNum(f.periodYear);
+    if (py) { year = py; yearSource = 'meta'; }
+  }
+  if (!year && f && f.savedAt) {
+    var dt = new Date(f.savedAt);
+    if (!isNaN(dt.getTime())) {
+      year = dt.getFullYear();
+      yearSource = 'upload';
+    }
+  }
+
+  var savedTs = 0;
+  if (f && f.savedAt) {
+    var parsedTs = Date.parse(f.savedAt);
+    if (!isNaN(parsedTs)) savedTs = parsedTs;
+  }
+
+  var label = month && year
+    ? (ALL_FILES_MONTH_SHORT[month - 1] + ' ' + year)
+    : (month ? ALL_FILES_MONTH_SHORT[month - 1] : (year ? String(year) : 'Other'));
+
+  return {
+    origIdx: origIdx,
+    year: year || 0,
+    yearKey: year ? String(year) : 'Other',
+    month: month || 0,
+    monthLabel: month ? ALL_FILES_MONTH_SHORT[month - 1] : '',
+    monthFull: month ? ALL_FILES_MONTH_FULL[month - 1] : '',
+    label: label,
+    yearSource: yearSource,
+    savedTs: savedTs
+  };
+}
+window.extractAllFilesPeriod = extractAllFilesPeriod;
+
+function setAllFilesYearFilter(yr) {
+  window.__allFilesYearFilter = yr || 'ALL';
+  window.__allFilesMonthFilter = 'ALL';
+  renderAllFilesPage(true);
+}
+window.setAllFilesYearFilter = setAllFilesYearFilter;
+
+function setAllFilesMonthFilter(mo) {
+  var next = String(mo || 'ALL');
+  if (window.__allFilesMonthFilter === next) next = 'ALL';
+  window.__allFilesMonthFilter = next;
+  renderAllFilesPage(true);
+}
+window.setAllFilesMonthFilter = setAllFilesMonthFilter;
+
+function setAllFilesSortMode(mode) {
+  window.__allFilesSortMode = mode || 'seq_asc';
+  renderAllFilesPage(true);
+}
+window.setAllFilesSortMode = setAllFilesSortMode;
+
+function scrollToAllFilesCard(origIdx) {
+  var el = document.getElementById('all-files-card-' + origIdx);
+  if (!el) return;
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) { el.scrollIntoView(); }
+  el.style.boxShadow = '0 0 0 3px #4f46e5, 0 10px 26px rgba(79,70,229,0.22)';
+  setTimeout(function() {
+    el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+  }, 1600);
+}
+window.scrollToAllFilesCard = scrollToAllFilesCard;
+
 function filterAllFilesList(query) {
   window.__allFilesSearchQuery = String(query || '');
   var q = window.__allFilesSearchQuery.trim().toLowerCase();
@@ -5640,7 +5801,10 @@ function filterAllFilesList(query) {
   }
   var countEl = document.getElementById('allFilesSearchCount');
   if (countEl) {
-    countEl.textContent = total > 0 ? (q ? (matched + ' of ' + total + ' files') : (total + ' files')) : '';
+    var yrTag = window.__allFilesYearFilter && window.__allFilesYearFilter !== 'ALL' ? (' · ' + window.__allFilesYearFilter) : '';
+    var moNum = parseInt(window.__allFilesMonthFilter, 10);
+    var moTag = (!isNaN(moNum) && moNum >= 1 && moNum <= 12) ? (' ' + ALL_FILES_MONTH_SHORT[moNum - 1]) : '';
+    countEl.textContent = total > 0 ? ((q ? (matched + ' of ' + total + ' files') : (total + ' files')) + yrTag + moTag) : (yrTag ? ('0 files' + yrTag + moTag) : '');
   }
   var emptyEl = document.getElementById('allFilesNoMatch');
   if (emptyEl) {
@@ -5648,12 +5812,24 @@ function filterAllFilesList(query) {
   }
 }
 window.filterAllFilesList = filterAllFilesList;
+
 function clearAllFilesSearch() {
   var inp = document.getElementById('allFilesSearchInput');
   if (inp) { inp.value = ''; inp.focus(); }
   filterAllFilesList('');
 }
 window.clearAllFilesSearch = clearAllFilesSearch;
+
+function resetAllFilesFilters() {
+  window.__allFilesYearFilter = 'ALL';
+  window.__allFilesMonthFilter = 'ALL';
+  var inp = document.getElementById('allFilesSearchInput');
+  if (inp) inp.value = '';
+  window.__allFilesSearchQuery = '';
+  renderAllFilesPage(true);
+}
+window.resetAllFilesFilters = resetAllFilesFilters;
+
 function renderAllFilesPage(force) {
   var pg = document.getElementById('page-files');
   if (!force && (!pg || !pg.classList.contains('active'))) {
@@ -5665,25 +5841,180 @@ function renderAllFilesPage(force) {
   if (!area) return;
   var allFiles = getAllLoadedSalaryFiles();
   if (!allFiles.length) {
-    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:10px 20px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Sync Browsers</button></div></div>';
+    area.innerHTML = '<div class="empty"><div class="empty-ico">💾</div><div class="empty-txt">Koi file upload nahi hui abhi<br><span style="font-size:11px;color:#94a3b8">Sidebar se files upload karo · Cloud se auto-sync active hai</span></div><div style="margin-top:14px"><button type="button" onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:10px 20px;background:#4F46E5;color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">🔄 Sync Browsers</button></div></div>';
     var countEl = document.getElementById('allFilesSearchCount');
     if (countEl) countEl.textContent = '';
     return;
   }
-  var html = '<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center;flex-wrap:wrap">';
-  var totalSheets = 0, totalRows = 0;
-  allFiles.forEach(function(f) {
-    totalSheets += safeGetSheetNames(f).length;
-    totalRows += safeGetWorkbookRows(f);
+
+  // Enrich every file with extracted Year/Month while preserving original index
+  var yearCounts = {};
+  var enriched = [];
+  allFiles.forEach(function(f, origIdx) {
+    if (!f) return;
+    var p = extractAllFilesPeriod(f, origIdx);
+    yearCounts[p.yearKey] = (yearCounts[p.yearKey] || 0) + 1;
+    enriched.push({ file: f, origIdx: origIdx, period: p });
   });
-  html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + allFiles.length + '</div><div class="card-lbl">Total Files</div></div>';
+
+  // Available years sorted newest first, 'Other' last
+  var years = Object.keys(yearCounts).sort(function(a, b) {
+    if (a === 'Other') return 1;
+    if (b === 'Other') return -1;
+    return Number(b) - Number(a);
+  });
+
+  // Validate active Year filter
+  var activeYear = window.__allFilesYearFilter || 'ALL';
+  if (activeYear !== 'ALL' && !yearCounts[activeYear]) {
+    activeYear = 'ALL';
+    window.__allFilesYearFilter = 'ALL';
+    window.__allFilesMonthFilter = 'ALL';
+  }
+  var activeMonth = window.__allFilesMonthFilter || 'ALL';
+  var sortMode = window.__allFilesSortMode || 'seq_asc';
+
+  // Sync top header dropdowns
+  var yrSel = document.getElementById('allFilesYearFilter');
+  if (yrSel) {
+    yrSel.innerHTML = '<option value="ALL">📅 All Years (' + enriched.length + ')</option>' +
+      years.map(function(y) {
+        var safeY = typeof esc === 'function' ? esc(y) : y;
+        return '<option value="' + safeY + '">📅 ' + safeY + ' (' + yearCounts[y] + ')</option>';
+      }).join('');
+    yrSel.value = activeYear;
+  }
+  var sortSel = document.getElementById('allFilesSortMode');
+  if (sortSel) sortSel.value = sortMode;
+
+  // Files matching activeYear (for top 12-month calendar overview)
+  var yearPool = activeYear === 'ALL'
+    ? enriched.slice()
+    : enriched.filter(function(item) { return item.period.yearKey === activeYear; });
+
+  // Sort helper (chronological month sequence inside year, independent of upload sequence)
+  function sortItems(arr) {
+    return arr.slice().sort(function(a, b) {
+      var pa = a.period, pb = b.period;
+      if (sortMode === 'upload_desc') {
+        return (pb.savedTs - pa.savedTs) || (a.origIdx - b.origIdx);
+      }
+      if (sortMode === 'seq_desc') {
+        var ya = pa.year || 0, yb = pb.year || 0;
+        if (ya !== yb) return yb - ya;
+        var ma = pa.month || 0, mb = pb.month || 0;
+        if (ma !== mb) return mb - ma;
+        return String(a.file.name || '').localeCompare(String(b.file.name || ''));
+      }
+      // Default 'seq_asc': latest year first when All Years, then Month Jan (1) -> Dec (12), undated (99) last
+      var yA = pa.year || 0, yB = pb.year || 0;
+      if (yA !== yB) return yB - yA;
+      var mA = pa.month || 99, mB = pb.month || 99;
+      if (mA !== mB) return mA - mB;
+      return String(a.file.name || '').localeCompare(String(b.file.name || ''));
+    });
+  }
+
+  var sequencedYearPool = sortItems(yearPool);
+
+  // Month breakdown for the active Year (or across all files)
+  var monthBuckets = {};
+  for (var mIdx = 1; mIdx <= 12; mIdx++) monthBuckets[mIdx] = [];
+  var undatedCount = 0;
+  sequencedYearPool.forEach(function(item) {
+    if (item.period.month >= 1 && item.period.month <= 12) {
+      monthBuckets[item.period.month].push(item);
+    } else {
+      undatedCount++;
+    }
+  });
+
+  // Apply activeMonth filter for the main file card list
+  var displayItems = sequencedYearPool.filter(function(item) {
+    if (activeMonth === 'ALL') return true;
+    if (activeMonth === 'NONE') return !(item.period.month >= 1 && item.period.month <= 12);
+    return String(item.period.month) === String(activeMonth);
+  });
+
+  // KPI metrics reflect current visible Year scope
+  var html = '<div style="display:flex;gap:12px;margin-bottom:14px;align-items:center;flex-wrap:wrap">';
+  var totalSheets = 0, totalRows = 0;
+  displayItems.forEach(function(item) {
+    totalSheets += safeGetSheetNames(item.file).length;
+    totalRows += safeGetWorkbookRows(item.file);
+  });
+  html += '<div class="card info" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#4F46E5">' + displayItems.length + '</div><div class="card-lbl">' + (activeYear === 'ALL' ? 'Total Files' : (activeYear + ' Files')) + '</div></div>';
   html += '<div class="card safe" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#059669">' + totalSheets + '</div><div class="card-lbl">Total Sheets</div></div>';
   html += '<div class="card warn" style="flex:1;min-width:140px"><div class="card-val" style="font-size:24px;font-weight:800;color:#D97706">' + totalRows.toLocaleString() + '</div><div class="card-lbl">Total Rows</div></div>';
-  html += '<div><button onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:12px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(79,70,229,0.3)">🔄 Cross-Browser Live Sync</button></div>';
+  html += '<div><button type="button" onclick="if(window.triggerManualCrossBrowserSync) window.triggerManualCrossBrowserSync(); else if(window.ATPLCloudSharedStorageV1) window.ATPLCloudSharedStorageV1.syncNow(true)" style="padding:12px 18px;background:linear-gradient(135deg,#4F46E5,#6366F1);color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(79,70,229,0.3)">🔄 Cross-Browser Live Sync</button></div>';
   html += '</div>';
 
-  allFiles.forEach(function(f, i) {
-    if (!f) return;
+  // Top Year Filter + Uploaded Files Sequence Overview Card
+  html += '<div id="allFilesYearOverview" style="background:#ffffff;border:1px solid #dbeafe;border-radius:14px;padding:12px 14px;margin-bottom:14px;box-shadow:0 2px 10px rgba(15,23,42,0.04)">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
+  html += '<div style="font-size:12px;font-weight:800;color:#0f172a;display:flex;align-items:center;gap:6px">';
+  html += '<span>📅 ' + (activeYear === 'ALL' ? 'Year Filter &amp; Uploaded Files Sequence' : (activeYear + ' — Uploaded Files &amp; Month Sequence (Jan → Dec)')) + '</span>';
+  html += '<span style="padding:2px 8px;border-radius:999px;background:#eef2ff;color:#4338ca;font-size:10px;font-weight:800">' + sequencedYearPool.length + ' files</span>';
+  html += '</div>';
+  if (activeYear !== 'ALL' || activeMonth !== 'ALL') {
+    html += '<button type="button" onclick="resetAllFilesFilters()" style="padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-size:10px;font-weight:700;cursor:pointer">↺ Show All Years</button>';
+  }
+  html += '</div>';
+
+  // Year quick filter pills
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+  var allBtnActive = activeYear === 'ALL';
+  html += '<button type="button" onclick="setAllFilesYearFilter(\'ALL\')" style="padding:5px 12px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;border:1px solid ' + (allBtnActive ? '#4f46e5' : '#cbd5e1') + ';background:' + (allBtnActive ? '#4f46e5' : '#f8fafc') + ';color:' + (allBtnActive ? '#fff' : '#334155') + '">All Years (' + enriched.length + ')</button>';
+  years.forEach(function(y) {
+    var safeY = typeof esc === 'function' ? esc(y) : y;
+    var isAct = activeYear === y;
+    html += '<button type="button" onclick="setAllFilesYearFilter(\'' + safeY + '\')" style="padding:5px 12px;border-radius:999px;font-size:11px;font-weight:800;cursor:pointer;border:1px solid ' + (isAct ? '#4f46e5' : '#cbd5e1') + ';background:' + (isAct ? '#4f46e5' : '#ffffff') + ';color:' + (isAct ? '#fff' : '#334155') + '">📅 ' + safeY + ' (' + yearCounts[y] + ')</button>';
+  });
+  html += '</div>';
+
+  // 12-Month Sequence Strip (Jan -> Dec) showing uploaded vs missing months
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:6px;margin-bottom:10px">';
+  for (var m = 1; m <= 12; m++) {
+    var cnt = monthBuckets[m].length;
+    var isMoActive = String(activeMonth) === String(m);
+    var moBg = isMoActive ? '#4f46e5' : (cnt > 0 ? '#ecfdf5' : '#f8fafc');
+    var moBorder = isMoActive ? '#4f46e5' : (cnt > 0 ? '#6ee7b7' : '#e2e8f0');
+    var moColor = isMoActive ? '#ffffff' : (cnt > 0 ? '#065f46' : '#94a3b8');
+    html += '<button type="button" onclick="setAllFilesMonthFilter(\'' + m + '\')" title="' + ALL_FILES_MONTH_FULL[m - 1] + ': ' + cnt + ' file(s)" style="padding:5px 6px;border-radius:8px;border:1px ' + (cnt > 0 || isMoActive ? 'solid' : 'dashed') + ' ' + moBorder + ';background:' + moBg + ';color:' + moColor + ';font-size:10px;font-weight:800;cursor:pointer;text-align:center">';
+    html += (cnt > 0 ? '✓ ' : '') + ALL_FILES_MONTH_SHORT[m - 1] + ' <span style="opacity:0.8">(' + cnt + ')</span>';
+    html += '</button>';
+  }
+  if (undatedCount > 0) {
+    var isNoneAct = activeMonth === 'NONE';
+    html += '<button type="button" onclick="setAllFilesMonthFilter(\'NONE\')" style="padding:5px 6px;border-radius:8px;border:1px solid ' + (isNoneAct ? '#4f46e5' : '#cbd5e1') + ';background:' + (isNoneAct ? '#4f46e5' : '#f8fafc') + ';color:' + (isNoneAct ? '#fff' : '#475569') + ';font-size:10px;font-weight:800;cursor:pointer;text-align:center">Other (' + undatedCount + ')</button>';
+  }
+  html += '</div>';
+
+  // Top Uploaded Files Sequence Summary List for the selected year
+  html += '<div style="border-top:1px dashed #e2e8f0;padding-top:9px">';
+  html += '<div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">' + (activeYear === 'ALL' ? 'Uploaded Files Sequence' : (activeYear + ' Mein Uploaded Files (' + displayItems.length + ') — Click karke jump karo')) + ':</div>';
+  if (!displayItems.length) {
+    html += '<div style="font-size:11px;color:#94a3b8;padding:4px 0">Is month ke liye koi file uploaded nahi hai.</div>';
+  } else {
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    displayItems.forEach(function(item, seqIdx) {
+      var safeN = typeof esc === 'function' ? esc(item.file.name || ('File ' + (seqIdx + 1))) : (item.file.name || '');
+      var badge = item.period.label !== 'Other' ? item.period.label : 'No Date';
+      html += '<button type="button" onclick="scrollToAllFilesCard(' + item.origIdx + ')" style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;border:1px solid #c7d2fe;background:#eef2ff;color:#312e81;font-size:10px;font-weight:700;cursor:pointer;max-width:100%">';
+      html += '<span style="background:#4f46e5;color:#fff;border-radius:5px;padding:1px 5px;font-size:9px;font-weight:800">#' + (seqIdx + 1) + '</span>';
+      html += '<span style="background:#fff;color:#4338ca;border-radius:5px;padding:1px 5px;font-size:9px;font-weight:800">' + badge + '</span>';
+      html += '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px">' + safeN + '</span>';
+      html += '</button>';
+    });
+    html += '</div>';
+  }
+  html += '</div></div>';
+
+  // Render sequenced file cards while keeping exact origIdx for View & Edit / Delete
+  displayItems.forEach(function(item, seqIdx) {
+    var f = item.file;
+    var i = item.origIdx;
+    var p = item.period;
     try {
       var rows = safeGetWorkbookRows(f);
       var sheetNames = safeGetSheetNames(f);
@@ -5691,25 +6022,33 @@ function renderAllFilesPage(force) {
       var savedAt = f.savedAt ? new Date(f.savedAt).toLocaleString('en-IN') : '';
       var fName = (f && f.name) ? String(f.name) : ('File ' + (i + 1));
       var safeName = typeof esc === 'function' ? esc(fName) : fName;
-      var searchHay = typeof esc === 'function' ? esc((fName + ' ' + sheetNames.join(' ') + ' ' + savedAt).toLowerCase()) : (fName + ' ' + sheetNames.join(' ')).toLowerCase();
-      html += '<div class="all-files-card" data-search-text="' + searchHay + '" style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04)">';
+      var periodSearch = (p.monthFull ? (p.monthFull + ' ' + p.monthLabel + ' ') : '') + (p.year ? (p.year + ' ') : '') + p.label;
+      var searchHay = typeof esc === 'function'
+        ? esc((fName + ' ' + sheetNames.join(' ') + ' ' + savedAt + ' ' + periodSearch).toLowerCase())
+        : (fName + ' ' + sheetNames.join(' ') + ' ' + periodSearch).toLowerCase();
+
+      html += '<div id="all-files-card-' + i + '" class="all-files-card" data-search-text="' + searchHay + '" data-year="' + p.yearKey + '" data-month="' + p.month + '" style="background:#fff;border:1px solid #EEF2FF;border-radius:16px;margin-bottom:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);transition:box-shadow .2s ease">';
       html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#4F46E5,#6366F1);display:flex;align-items:center;gap:10px">';
-      html += '<div style="font-size:20px">📊</div>';
-      html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + safeName + '</div>';
-      html += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:1px">' + numSheets + ' sheets • ' + rows.toLocaleString() + ' rows' + (savedAt?' • '+savedAt:'') + '</div></div>';
+      html += '<div style="min-width:28px;height:28px;border-radius:8px;background:rgba(255,255,255,0.2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900">#' + (seqIdx + 1) + '</div>';
+      html += '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + safeName + '</div>';
+      if (p.label && p.label !== 'Other') {
+        html += '<span style="padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.22);border:1px solid rgba(255,255,255,0.32);color:#fff;font-size:10px;font-weight:800;white-space:nowrap">📅 ' + p.label + '</span>';
+      }
+      html += '</div>';
+      html += '<div style="font-size:10px;color:rgba(255,255,255,0.75);margin-top:2px">' + numSheets + ' sheets • ' + rows.toLocaleString() + ' rows' + (savedAt ? ' • Uploaded: ' + savedAt : '') + '</div></div>';
       html += '<div style="display:flex;gap:8px;align-items:center">';
       if (f.__advanceDeductionSummary && f.__advanceDeductionSummary.count > 0) {
-        html += '<button onclick="goPage(\'advance\');if(window.ATPLAdvanceManager){ATPLAdvanceManager.setTab(\'deductions\');ATPLAdvanceManager.setSearch(\'' + safeName + '\');}" style="padding:6px 12px;background:#10b981;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="View Advance Deductions">💳 ' + f.__advanceDeductionSummary.count + ' Advances Deducted</button>';
+        html += '<button type="button" onclick="goPage(\'advance\');if(window.ATPLAdvanceManager){ATPLAdvanceManager.setTab(\'deductions\');ATPLAdvanceManager.setSearch(\'' + safeName + '\');}" style="padding:6px 12px;background:#10b981;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="View Advance Deductions">💳 ' + f.__advanceDeductionSummary.count + ' Advances Deducted</button>';
       }
-      html += '<button onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
-      html += '<button onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
+      html += '<button type="button" onclick="openInlineViewer(' + i + ',0)" style="padding:6px 14px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600">👁 View &amp; Edit</button>';
+      html += '<button type="button" onclick="event.stopPropagation();rmFile(' + i + ')" style="padding:6px 14px;background:#ef4444;border:none;color:#fff;border-radius:20px;cursor:pointer;font-size:11px;font-weight:700" title="Delete from all devices">🗑 Delete</button>';
       html += '</div></div>';
       html += '<div style="padding:8px 16px;display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #EEF2FF;background:#F8FAFF">';
       sheetNames.forEach(function(sn, si) {
         var ws = f.wb && f.wb.Sheets && f.wb.Sheets[sn];
         var shRows = (ws && typeof window.fastSheetRowCount === 'function') ? window.fastSheetRowCount(ws) : (f.sheets && f.sheets[sn] ? Math.max(0, f.sheets[sn].length - 1) : 0);
         var safeSn = typeof esc === 'function' ? esc(sn) : sn;
-        html += '<span onclick="openInlineViewer(' + i + ',' + si + ')" style="padding:3px 10px;background:#EEF2FF;color:#4F46E5;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer">' + safeSn + ' <span style="opacity:0.6">('+shRows+')</span></span>';
+        html += '<span onclick="openInlineViewer(' + i + ',' + si + ')" style="padding:3px 10px;background:#EEF2FF;color:#4F46E5;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer">' + safeSn + ' <span style="opacity:0.6">(' + shRows + ')</span></span>';
       });
       html += '</div>';
       html += '<div id="inline-viewer-' + i + '" style="display:none"></div>';
