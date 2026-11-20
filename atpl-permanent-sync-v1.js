@@ -57,6 +57,11 @@
           jobs.push(window.ATPLMobileSharedHardFix.pullMaster());
         }
 
+        // 4b. Sync HR Letters (Leave & Bank Letters)
+        if (window.ATPLLettersManager && typeof window.ATPLLettersManager.syncNow === 'function') {
+          jobs.push(window.ATPLLettersManager.syncNow(true));
+        }
+
         await Promise.allSettled(jobs);
 
         // 5. Ensure IndexedDB Files are hydrated without blocking CPU (Reuse cached workbooks)

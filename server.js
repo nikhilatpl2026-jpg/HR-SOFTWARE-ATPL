@@ -180,6 +180,16 @@ let syncAdvanceSlipsMem = {}; // slipId/advanceId -> signed advance slip payload
 let syncPendingDiffs = readJsonFile('pending_diff_vouchers.json', {}); // id -> pending diff amount / cash adv voucher record
 let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {}); // id -> deleted_at ISO
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
+let syncLeaveLetterTombstones = readJsonFile('leave_letter_tombstones.json', {}); // id -> deleted_at ISO
+if (syncLeaveLetters && typeof syncLeaveLetters === 'object' && syncLeaveLetterTombstones && typeof syncLeaveLetterTombstones === 'object') {
+  Object.keys(syncLeaveLetterTombstones).forEach(tid => {
+    if (syncLeaveLetterTombstones[tid] && syncLeaveLetters[tid]) {
+      const tTs = Date.parse(syncLeaveLetterTombstones[tid]) || 0;
+      const rTs = Date.parse(syncLeaveLetters[tid].updatedAt || syncLeaveLetters[tid].createdAt || 0) || 0;
+      if (tTs >= rTs) delete syncLeaveLetters[tid];
+    }
+  });
+}
 let syncComplianceSheets = readJsonFile('compliance_sheets.json', {}); // id (e.g. monthKey) -> generated/edited compliance workbook snapshot
 let syncComplianceTombstones = readJsonFile('compliance_tombstones.json', {}); // id -> deleted_at ISO
 let syncSalaryPayout = readJsonFile('salary_payout.json', { monthSummaries: {}, uploadedSheets: {}, empSalaries: {}, points: {}, returns: {}, diffBatches: {}, tombstones: {} });
@@ -2192,7 +2202,9 @@ app.delete('/api/sync/pending-diff/:id', (req, res) => {
 function forwardLeaveLettersToCloud() {
   try {
     const payload = {
+      version: 1,
       letters: Object.values(syncLeaveLetters),
+      tombstones: syncLeaveLetterTombstones,
       updatedAt: new Date().toISOString()
     };
     const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
@@ -2205,18 +2217,28 @@ function forwardLeaveLettersToCloud() {
 }
 
 app.get('/api/sync/leave-letters', (req, res) => {
-  return res.json({ ok: true, records: Object.values(syncLeaveLetters) });
+  return res.json({
+    ok: true,
+    records: Object.values(syncLeaveLetters),
+    tombstones: syncLeaveLetterTombstones
+  });
 });
 
 app.post('/api/sync/leave-letter', (req, res) => {
   try {
     const record = req.body || {};
     if (!record || !record.id) return res.status(400).json({ ok: false, error: 'Record ID required' });
-    syncLeaveLetters[record.id] = Object.assign({}, record, {
-      updatedAt: record.updatedAt || new Date().toISOString()
-    });
+    const updatedAt = record.updatedAt || new Date().toISOString();
+    const recTs = Date.parse(updatedAt) || Date.now();
+    const tombTs = syncLeaveLetterTombstones[record.id] ? (Date.parse(syncLeaveLetterTombstones[record.id]) || 0) : 0;
+    if (tombTs && tombTs >= recTs) {
+      return res.json({ ok: true, ignoredTombstoned: true, id: record.id });
+    }
+    delete syncLeaveLetterTombstones[record.id];
+    syncLeaveLetters[record.id] = Object.assign({}, record, { updatedAt });
     incrementVersion();
     writeJsonFile('leave_letters.json', syncLeaveLetters);
+    writeJsonFile('leave_letter_tombstones.json', syncLeaveLetterTombstones);
     broadcastEvent('leave_letter_saved', syncLeaveLetters[record.id]);
     forwardLeaveLettersToCloud();
     return res.json({ ok: true, saved: true, id: record.id });
@@ -2225,15 +2247,63 @@ app.post('/api/sync/leave-letter', (req, res) => {
   }
 });
 
+app.post('/api/sync/leave-letters/bulk', (req, res) => {
+  try {
+    const body = req.body || {};
+    const incoming = Array.isArray(body.records) ? body.records : [];
+    const inTombs = (body.tombstones && typeof body.tombstones === 'object') ? body.tombstones : {};
+    Object.keys(inTombs).forEach(id => {
+      if (!id || !inTombs[id]) return;
+      const nTs = Date.parse(inTombs[id]) || Date.now();
+      const oTs = syncLeaveLetterTombstones[id] ? (Date.parse(syncLeaveLetterTombstones[id]) || 0) : 0;
+      if (nTs > oTs) syncLeaveLetterTombstones[id] = new Date(nTs).toISOString();
+    });
+    incoming.forEach(rec => {
+      if (!rec || !rec.id) return;
+      const updatedAt = rec.updatedAt || rec.createdAt || new Date().toISOString();
+      const rTs = Date.parse(updatedAt) || 0;
+      const tTs = syncLeaveLetterTombstones[rec.id] ? (Date.parse(syncLeaveLetterTombstones[rec.id]) || 0) : 0;
+      if (tTs && (!rTs || tTs >= rTs)) return;
+      if (tTs && rTs > tTs) delete syncLeaveLetterTombstones[rec.id];
+      const ex = syncLeaveLetters[rec.id];
+      const eTs = ex ? (Date.parse(ex.updatedAt || ex.createdAt || 0) || 0) : 0;
+      if (!ex || rTs >= eTs) {
+        syncLeaveLetters[rec.id] = Object.assign({}, rec, { updatedAt });
+      }
+    });
+    Object.keys(syncLeaveLetterTombstones).forEach(id => {
+      const rec = syncLeaveLetters[id];
+      if (!rec) return;
+      const tTs = Date.parse(syncLeaveLetterTombstones[id]) || 0;
+      const rTs = Date.parse(rec.updatedAt || rec.createdAt || 0) || 0;
+      if (tTs >= rTs) delete syncLeaveLetters[id];
+    });
+    incrementVersion();
+    writeJsonFile('leave_letters.json', syncLeaveLetters);
+    writeJsonFile('leave_letter_tombstones.json', syncLeaveLetterTombstones);
+    forwardLeaveLettersToCloud();
+    return res.json({
+      ok: true,
+      records: Object.values(syncLeaveLetters),
+      tombstones: syncLeaveLetterTombstones
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.delete('/api/sync/leave-letter/:id', (req, res) => {
   try {
     const id = decodeURIComponent(req.params.id || '');
+    const deletedAt = new Date().toISOString();
     delete syncLeaveLetters[id];
+    syncLeaveLetterTombstones[id] = deletedAt;
     incrementVersion();
     writeJsonFile('leave_letters.json', syncLeaveLetters);
-    broadcastEvent('leave_letter_deleted', { id: id, deleted_at: new Date().toISOString() });
+    writeJsonFile('leave_letter_tombstones.json', syncLeaveLetterTombstones);
+    broadcastEvent('leave_letter_deleted', { id: id, deleted_at: deletedAt });
     forwardLeaveLettersToCloud();
-    return res.json({ ok: true, deleted: true, id });
+    return res.json({ ok: true, deleted: true, id, deleted_at: deletedAt });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }

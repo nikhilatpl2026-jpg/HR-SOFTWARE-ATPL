@@ -239,3 +239,151 @@ test('Bank Account Opening Letter (SBI) option, exact Hindi template, letterhead
   assert.ok(bankDoc.includes('atpl-letterhead-spacer'));
   assert.equal(mgr.deleteRecord(savedBank.id), true);
 });
+
+test('switching letter format or Emp Code never overwrites previous letter history and defaults to All Records view', () => {
+  const { mgr } = bootLettersModule([
+    { emp_id: '25447', name: 'Kamlesh Kumar', desig: 'BLEND MASTER', dept: 'Quality' },
+    { emp_id: '00135', name: 'SAMPAT LAL', father: 'SOHAN LAL', aadhaar_no: '1234 5678 9012', pan_no: 'ABCDE1234F', address: 'Khara' }
+  ]);
+
+  assert.equal(mgr.state.historyScope, 'all');
+
+  // 1. Save Leave Letter for 25447
+  mgr.setFormField('empCode', '25447');
+  mgr.setFormField('fromDate', '2026-11-15');
+  mgr.setFormField('toDate', '2026-11-18');
+  const leaveRec = mgr.saveCurrentLetter();
+  assert.ok(leaveRec && leaveRec.id);
+
+  // 2. Switch format to BANK without clicking + New Letter -> must create a separate BANK record, NOT overwrite LEAVE!
+  mgr.setFormField('letterType', 'BANK');
+  const bankRec = mgr.saveCurrentLetter();
+  assert.ok(bankRec && bankRec.id);
+  assert.notEqual(bankRec.id, leaveRec.id);
+  assert.equal(mgr.state.records.length, 2);
+
+  // 3. Change Emp Code to 00135 without clicking + New Letter -> must create a new record for 00135
+  mgr.setFormField('empCode', '00135');
+  const bankRec2 = mgr.saveCurrentLetter();
+  assert.notEqual(bankRec2.id, bankRec.id);
+  assert.equal(mgr.state.records.length, 3);
+
+  // 4. Save Bank Letter without empCode (English name -> auto-Hindi deduplication)
+  mgr.startNewLetter();
+  mgr.setFormField('empCode', '');
+  mgr.setFormField('empName', 'Ramesh Sharma');
+  mgr.setFormField('fatherName', 'Mohan Lal');
+  const noCodeBank1 = mgr.saveCurrentLetter();
+  assert.ok(noCodeBank1 && noCodeBank1.id);
+  assert.equal(noCodeBank1.empName, 'रमेश शर्मा');
+  assert.equal(mgr.state.records.length, 4);
+
+  // Saving again with English name (before blur) updates instead of creating duplicate
+  mgr.state.editingId = null;
+  mgr.setFormField('empName', 'Ramesh Sharma');
+  mgr.setFormField('aadhaarNo', '9999 8888 7777');
+  const noCodeBank2 = mgr.saveCurrentLetter();
+  assert.equal(noCodeBank2.id, noCodeBank1.id);
+  assert.equal(mgr.state.records.length, 4);
+  assert.equal(mgr.getFilteredHistory().length, 4);
+
+  // Type filter filters LEAVE vs BANK cleanly
+  mgr.state.historyTypeFilter = 'BANK';
+  assert.equal(mgr.getFilteredHistory().length, 3);
+  mgr.state.historyTypeFilter = 'LEAVE';
+  assert.equal(mgr.getFilteredHistory().length, 1);
+  mgr.state.historyTypeFilter = 'ALL';
+});
+
+test('cross-browser cloud sync via ATPLGoogleSync ATPL_LEAVE_LETTERS_DATA.json syncs Bank & Leave letters and tombstones', async () => {
+  // Shared mock Google Drive file store across Browser A and Browser B
+  const driveFiles = new Map();
+  function mkCloudBrowser(employees) {
+    const local = mkStorage();
+    const doc = {
+      readyState: 'complete',
+      hidden: false,
+      head: { appendChild: () => {} },
+      body: { appendChild: () => {}, removeChild: () => {} },
+      getElementById: () => null,
+      createElement: () => ({ id: '', style: {}, click: () => {} }),
+      addEventListener: () => {}
+    };
+    const win = {
+      localStorage: local,
+      document: doc,
+      EM: { data: employees || [] },
+      addEventListener: () => {},
+      setTimeout: () => 1,
+      ATPLGoogleSync: {
+        callGoogleBackend: async (action, params) => {
+          if (action === 'uploadFile') {
+            driveFiles.set(params.fileName, {
+              fileBase64: params.fileBase64,
+              updatedAt: new Date().toISOString()
+            });
+            return { ok: true, version: driveFiles.size };
+          }
+          if (action === 'downloadFile') {
+            const hit = driveFiles.get(params.fileName);
+            if (!hit) return { ok: true, fileBase64: '' };
+            return { ok: true, fileBase64: hit.fileBase64 };
+          }
+          return null;
+        }
+      }
+    };
+    win.window = win;
+    vm.runInNewContext(read('atpl-letters-v1.js'), Object.assign(win, { window: win }));
+    return { mgr: win.ATPLLettersManager, local };
+  }
+
+  const emps = [
+    { emp_id: '25447', name: 'Kamlesh Kumar', desig: 'BLEND MASTER', dept: 'Quality' },
+    { emp_id: '00135', name: 'SAMPAT LAL', father: 'SOHAN LAL', aadhaar_no: '1234 5678 9012', pan_no: 'ABCDE1234F', address: 'Gram Khara, Bikaner' }
+  ];
+
+  const browserA = mkCloudBrowser(emps);
+  const browserB = mkCloudBrowser(emps);
+
+  // Browser A saves a Leave Letter + Hindi Bank Letter
+  browserA.mgr.setFormField('empCode', '25447');
+  browserA.mgr.setFormField('fromDate', '2026-11-10');
+  browserA.mgr.setFormField('toDate', '2026-11-12');
+  const leaveA = browserA.mgr.saveCurrentLetter();
+
+  browserA.mgr.startNewLetter();
+  browserA.mgr.setFormField('letterType', 'BANK');
+  browserA.mgr.setFormField('empCode', '00135');
+  const bankA = browserA.mgr.saveCurrentLetter();
+
+  await browserA.mgr.syncNow(true);
+  assert.ok(driveFiles.has('ATPL_LEAVE_LETTERS_DATA.json'));
+
+  // Browser B syncs and receives both letters with Devanagari preserved
+  const syncResB = await browserB.mgr.syncNow(true);
+  assert.equal(syncResB.synced, true);
+  assert.equal(browserB.mgr.state.records.length, 2);
+  const syncedBank = browserB.mgr.state.records.find((r) => r.id === bankA.id);
+  assert.ok(syncedBank);
+  assert.equal(syncedBank.empName, 'संपत लाल');
+
+  // Browser B saves an additional Bank Letter while Browser A also has its letters -> Read-Modify-Write preserves all
+  browserB.mgr.startNewLetter();
+  browserB.mgr.setFormField('letterType', 'BANK');
+  browserB.mgr.setFormField('empCode', '');
+  browserB.mgr.setFormField('empName', 'Mohan Singh');
+  const bankB = browserB.mgr.saveCurrentLetter();
+  await browserB.mgr.syncNow(true);
+
+  await browserA.mgr.syncNow(true);
+  assert.equal(browserA.mgr.state.records.length, 3);
+
+  // Browser A deletes leaveA -> tombstone propagates to Browser B cleanly
+  browserA.mgr.deleteRecord(leaveA.id);
+  await browserA.mgr.syncNow(true);
+  await browserB.mgr.syncNow(true);
+  assert.equal(browserB.mgr.state.records.some((r) => r.id === leaveA.id), false);
+  assert.equal(browserB.mgr.state.records.some((r) => r.id === bankA.id), true);
+  assert.equal(browserB.mgr.state.records.some((r) => r.id === bankB.id), true);
+});

@@ -17,6 +17,11 @@
 
   var STORAGE_KEY = 'ATPL_LeaveLettersV1';
   var TOMBSTONE_KEY = 'ATPL_LeaveLettersTombstonesV1';
+  var PENDING_KEY = 'ATPL_LeaveLettersPendingV1';
+  var CLOUD_FILENAME = 'ATPL_LEAVE_LETTERS_DATA.json';
+  var DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbxiaKVtVJUWqDPtI-9iecG0LE817SfbbQNfUaZouw8sgYr3f1zRffutMu_UGnV-vqy-oA/exec';
+  var IDB_NAME = 'ATPL_LETTERS_DB_V1';
+  var IDB_STORE = 'kv';
   var CHANNEL_NAME = 'ATPL_ERP_TRIGGER_BUS';
   var SIGNED_BY_OPTIONS = ['Sarthak ji', 'Manish ji', 'Ayush ji'];
 
@@ -292,13 +297,24 @@
       .replace(/'/g, '&#39;');
   }
 
+  var MY_CLIENT_ID = 'ltr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  var lastCloudSyncAtMs = 0;
+  var lastSeenDriveFileTs = 0;
+  var activeSyncPromise = null;
+  var activePushPromise = null;
+  var pendingPushQueued = false;
+
   var state = {
     records: [],
     tombstones: {},
-    historyScope: 'employee', // 'employee' | 'all'
+    pending: { saves: {}, deletes: {} },
+    historyScope: 'all', // 'all' | 'employee'
+    historyTypeFilter: 'ALL', // 'ALL' | 'LEAVE' | 'BANK'
     historySearch: '',
     statusMessage: '',
     statusTone: 'info',
+    syncStatus: 'idle', // 'idle' | 'syncing' | 'synced' | 'pending' | 'offline'
+    lastSyncAt: '',
     returnDateManual: false,
     editingId: null,
     form: {
@@ -327,6 +343,137 @@
       autoHindi: true
     }
   };
+
+  function parseTsMs(v) {
+    if (!v) return 0;
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var ms = Date.parse(String(v));
+    return isFinite(ms) ? ms : 0;
+  }
+
+  function normalizeNameKey(str) {
+    return String(str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function getGasUrl() {
+    try {
+      var custom = (window.localStorage && window.localStorage.getItem('ATPL_CUSTOM_GAS_URL')) || '';
+      if (custom && custom.trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(custom.trim())) {
+        return custom.trim();
+      }
+      if (window.ATPL_CUSTOM_GAS_URL && String(window.ATPL_CUSTOM_GAS_URL).trim()) {
+        return String(window.ATPL_CUSTOM_GAS_URL).trim();
+      }
+      if (window.ATPL_GAS_URL && String(window.ATPL_GAS_URL).trim() && /^https:\/\/script\.google\.com\/macros\/s\//.test(String(window.ATPL_GAS_URL).trim())) {
+        return String(window.ATPL_GAS_URL).trim();
+      }
+    } catch (_) {}
+    return DEFAULT_GAS_URL;
+  }
+
+  var B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+
+  function utf8ToB64(str) {
+    if (typeof Buffer !== 'undefined') {
+      try { return Buffer.from(str, 'utf8').toString('base64'); } catch (_) {}
+    }
+    if (typeof btoa !== 'undefined') {
+      try { return btoa(unescape(encodeURIComponent(str))); } catch (_) {}
+    }
+    var utf8Bytes = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c < 128) utf8Bytes.push(c);
+      else if (c < 2048) {
+        utf8Bytes.push(192 | (c >> 6), 128 | (c & 63));
+      } else if (c < 65536) {
+        utf8Bytes.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
+      } else {
+        utf8Bytes.push(240 | (c >> 18), 128 | ((c >> 12) & 63), 128 | ((c >> 6) & 63), 128 | (c & 63));
+      }
+    }
+    var res = '';
+    for (var j = 0; j < utf8Bytes.length; j += 3) {
+      var b1 = utf8Bytes[j];
+      var b2 = j + 1 < utf8Bytes.length ? utf8Bytes[j + 1] : NaN;
+      var b3 = j + 2 < utf8Bytes.length ? utf8Bytes[j + 2] : NaN;
+      res += B64_CHARS.charAt(b1 >> 2);
+      res += B64_CHARS.charAt(((b1 & 3) << 4) | (isNaN(b2) ? 0 : (b2 >> 4)));
+      res += isNaN(b2) ? '=' : B64_CHARS.charAt(((b2 & 15) << 2) | (isNaN(b3) ? 0 : (b3 >> 6)));
+      res += isNaN(b3) ? '=' : B64_CHARS.charAt(b3 & 63);
+    }
+    return res;
+  }
+
+  function b64ToUtf8(b64) {
+    if (!b64 || typeof b64 !== 'string') return '';
+    var clean = b64.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+    if (typeof Buffer !== 'undefined') {
+      try { return Buffer.from(clean, 'base64').toString('utf8'); } catch (_) {}
+    }
+    if (typeof atob !== 'undefined') {
+      try { return decodeURIComponent(escape(atob(clean))); } catch (_) {}
+    }
+    var bytes = [];
+    for (var i = 0; i < clean.length; i += 4) {
+      var enc1 = B64_CHARS.indexOf(clean.charAt(i));
+      var enc2 = B64_CHARS.indexOf(clean.charAt(i + 1));
+      var enc3 = clean.charAt(i + 2) === '=' ? -1 : B64_CHARS.indexOf(clean.charAt(i + 2));
+      var enc4 = clean.charAt(i + 3) === '=' ? -1 : B64_CHARS.indexOf(clean.charAt(i + 3));
+      bytes.push((enc1 << 2) | (enc2 >> 4));
+      if (enc3 !== -1) bytes.push(((enc2 & 15) << 4) | (enc3 >> 2));
+      if (enc4 !== -1) bytes.push(((enc3 & 3) << 6) | enc4);
+    }
+    var out = '', k = 0;
+    while (k < bytes.length) {
+      var c1 = bytes[k++];
+      if (c1 < 128) out += String.fromCharCode(c1);
+      else if (c1 > 191 && c1 < 224) {
+        var c2 = bytes[k++];
+        out += String.fromCharCode(((c1 & 31) << 6) | (c2 & 63));
+      } else {
+        var c2b = bytes[k++];
+        var c3b = bytes[k++];
+        out += String.fromCharCode(((c1 & 15) << 12) | ((c2b & 63) << 6) | (c3b & 63));
+      }
+    }
+    return out;
+  }
+
+  function callGoogleBackend(action, params) {
+    if (window.ATPLGoogleSync && typeof window.ATPLGoogleSync.callGoogleBackend === 'function') {
+      return Promise.resolve().then(function () {
+        return window.ATPLGoogleSync.callGoogleBackend(action, params);
+      }).then(function (res) {
+        if (res != null) return res;
+        return directGasPost(action, params);
+      }).catch(function () {
+        return directGasPost(action, params);
+      });
+    }
+    return directGasPost(action, params);
+  }
+
+  function directGasPost(action, params) {
+    var endpoint = getGasUrl();
+    if (!endpoint || typeof window.fetch !== 'function') return Promise.resolve(null);
+    var p = Object.assign({ action: action, sender: MY_CLIENT_ID, _ts: Date.now() }, params || {});
+    var controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timeoutId = controller ? setTimeout(function () { try { controller.abort(); } catch (_) {} }, 18000) : null;
+    return window.fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(p),
+      signal: controller ? controller.signal : undefined
+    }).then(function (res) {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!res || !res.ok) return null;
+      return res.json().catch(function () { return null; });
+    }).catch(function () {
+      if (timeoutId) clearTimeout(timeoutId);
+      return null;
+    });
+  }
 
   function getEmployeeMasterList() {
     var list = [];
@@ -409,16 +556,136 @@
     return hits;
   }
 
+  function ensurePendingShape(p) {
+    var obj = (p && typeof p === 'object') ? p : {};
+    return {
+      saves: (obj.saves && typeof obj.saves === 'object') ? obj.saves : {},
+      deletes: (obj.deletes && typeof obj.deletes === 'object') ? obj.deletes : {}
+    };
+  }
+
+  function getPendingCount() {
+    var p = ensurePendingShape(state.pending);
+    return Object.keys(p.saves).length + Object.keys(p.deletes).length;
+  }
+
+  function hasPending() {
+    return getPendingCount() > 0;
+  }
+
+  function setPendingSave(id, updatedAt) {
+    if (!id) return;
+    state.pending = ensurePendingShape(state.pending);
+    state.pending.saves[id] = updatedAt || new Date().toISOString();
+    delete state.pending.deletes[id];
+  }
+
+  function setPendingDelete(id, deletedAt) {
+    if (!id) return;
+    state.pending = ensurePendingShape(state.pending);
+    state.pending.deletes[id] = deletedAt || new Date().toISOString();
+    delete state.pending.saves[id];
+  }
+
+  function openLettersIdb() {
+    try {
+      var idb = window.indexedDB;
+      if (!idb || typeof idb.open !== 'function') return Promise.resolve(null);
+      return new Promise(function (resolve) {
+        try {
+          var req = idb.open(IDB_NAME, 1);
+          req.onupgradeneeded = function () {
+            try {
+              var db = req.result;
+              if (!db.objectStoreNames.contains(IDB_STORE)) {
+                db.createObjectStore(IDB_STORE);
+              }
+            } catch (_) {}
+          };
+          req.onsuccess = function () { resolve(req.result); };
+          req.onerror = function () { resolve(null); };
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    } catch (_) {
+      return Promise.resolve(null);
+    }
+  }
+
+  function idbWriteState(records, tombstones, pending) {
+    return openLettersIdb().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(IDB_STORE, 'readwrite');
+          var store = tx.objectStore(IDB_STORE);
+          store.put(Array.isArray(records) ? records : [], 'records');
+          store.put((tombstones && typeof tombstones === 'object') ? tombstones : {}, 'tombstones');
+          store.put(ensurePendingShape(pending), 'pending');
+          tx.oncomplete = function () { try { db.close(); } catch (_) {} resolve(true); };
+          tx.onerror = function () { try { db.close(); } catch (_) {} resolve(false); };
+        } catch (_) {
+          try { db.close(); } catch (_) {}
+          resolve(false);
+        }
+      });
+    });
+  }
+
+  function idbReadState() {
+    return openLettersIdb().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve) {
+        try {
+          var tx = db.transaction(IDB_STORE, 'readonly');
+          var store = tx.objectStore(IDB_STORE);
+          var rReq = store.get('records');
+          var tReq = store.get('tombstones');
+          var pReq = store.get('pending');
+          tx.oncomplete = function () {
+            try { db.close(); } catch (_) {}
+            resolve({
+              records: Array.isArray(rReq.result) ? rReq.result : [],
+              tombstones: (tReq.result && typeof tReq.result === 'object') ? tReq.result : {},
+              pending: ensurePendingShape(pReq.result)
+            });
+          };
+          tx.onerror = function () { try { db.close(); } catch (_) {} resolve(null); };
+        } catch (_) {
+          try { db.close(); } catch (_) {}
+          resolve(null);
+        }
+      });
+    });
+  }
+
+  function normalizeRecordShape(r) {
+    if (!r || typeof r !== 'object' || !r.id) return null;
+    var out = Object.assign({}, r);
+    out.letterType = (String(out.letterType || 'LEAVE').toUpperCase() === 'BANK') ? 'BANK' : 'LEAVE';
+    if (!out.updatedAt) out.updatedAt = out.createdAt || new Date().toISOString();
+    return out;
+  }
+
   function loadFromLocalStorage() {
     try {
       if (!window.localStorage) return;
       var raw = window.localStorage.getItem(STORAGE_KEY);
       var parsed = raw ? JSON.parse(raw) : [];
       var tombRaw = window.localStorage.getItem(TOMBSTONE_KEY);
-      state.tombstones = tombRaw ? (JSON.parse(tombRaw) || {}) : {};
+      var parsedTombs = tombRaw ? (JSON.parse(tombRaw) || {}) : {};
+      var pendRaw = window.localStorage.getItem(PENDING_KEY);
+      state.pending = pendRaw ? ensurePendingShape(JSON.parse(pendRaw)) : { saves: {}, deletes: {} };
+      state.tombstones = (parsedTombs && typeof parsedTombs === 'object') ? parsedTombs : {};
       if (Array.isArray(parsed)) {
-        state.records = parsed.filter(function (r) {
-          return r && r.id && !state.tombstones[r.id];
+        state.records = parsed.map(normalizeRecordShape).filter(function (r) {
+          if (!r || !r.id) return false;
+          var tTs = parseTsMs(state.tombstones[r.id]);
+          var rTs = parseTsMs(r.updatedAt || r.createdAt);
+          if (state.tombstones[r.id] && (!rTs || tTs >= rTs)) return false;
+          if (state.tombstones[r.id] && rTs > tTs) delete state.tombstones[r.id];
+          return true;
         });
       }
     } catch (_) {
@@ -428,20 +695,50 @@
 
   function saveToLocalStorage() {
     try {
-      if (!window.localStorage) return;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-      window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(state.tombstones || {}));
+      if (window.localStorage) {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
+        window.localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(state.tombstones || {}));
+        window.localStorage.setItem(PENDING_KEY, JSON.stringify(ensurePendingShape(state.pending)));
+      }
     } catch (_) {}
+    idbWriteState(state.records, state.tombstones, state.pending).catch(function () {});
+  }
+
+  function hydrateFromIndexedDb() {
+    return idbReadState().then(function (idbState) {
+      if (!idbState) return false;
+      var idbPend = ensurePendingShape(idbState.pending);
+      state.pending = {
+        saves: Object.assign({}, idbPend.saves, ensurePendingShape(state.pending).saves),
+        deletes: Object.assign({}, idbPend.deletes, ensurePendingShape(state.pending).deletes)
+      };
+      var res = mergeAuthoritativeState(idbState.records || [], idbState.tombstones || {}, { preferLocal: true });
+      if (res.changed) {
+        saveToLocalStorage();
+        refreshHistoryDom();
+      }
+      return true;
+    }).catch(function () { return false; });
   }
 
   function broadcastLocalEvent(type, payload) {
+    var msg = { type: type, action: type, payload: payload, details: payload, sender: MY_CLIENT_ID, ts: Date.now() };
     try {
       if (typeof window.BroadcastChannel === 'function') {
         var ch = new window.BroadcastChannel(CHANNEL_NAME);
-        ch.postMessage({ type: type, payload: payload, ts: Date.now() });
+        ch.postMessage(msg);
         ch.close();
       }
     } catch (_) {}
+    try {
+      if (window.localStorage) {
+        window.__ATPL_INTERNAL_STORAGE_WRITE = true;
+        window.localStorage.setItem('ATPL_TRIGGER_EVENT', JSON.stringify(msg));
+        window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+      }
+    } catch (_) {
+      window.__ATPL_INTERNAL_STORAGE_WRITE = false;
+    }
   }
 
   function notifyToast(msg) {
@@ -455,39 +752,300 @@
     state.statusTone = tone || 'info';
   }
 
-  function mergeServerRecords(serverList) {
-    if (!Array.isArray(serverList)) return;
-    var map = {};
-    state.records.forEach(function (r) {
-      if (r && r.id && !state.tombstones[r.id]) map[r.id] = r;
+  function mergeAuthoritativeState(remoteList, remoteTombstones, opts) {
+    opts = opts || {};
+    var remoteArr = Array.isArray(remoteList) ? remoteList.map(normalizeRecordShape).filter(Boolean) : [];
+    var rTombs = (remoteTombstones && typeof remoteTombstones === 'object') ? remoteTombstones : {};
+    var pend = ensurePendingShape(state.pending);
+
+    // 1. Merge tombstones keeping latest deletion timestamp per ID
+    var mergedTombs = {};
+    function takeTomb(id, tsVal) {
+      if (!id || !tsVal) return;
+      var nextMs = parseTsMs(tsVal) || Date.now();
+      var prevMs = parseTsMs(mergedTombs[id]);
+      if (!mergedTombs[id] || nextMs > prevMs) {
+        mergedTombs[id] = new Date(nextMs).toISOString();
+      }
+    }
+    Object.keys(state.tombstones || {}).forEach(function (id) { takeTomb(id, state.tombstones[id]); });
+    Object.keys(rTombs).forEach(function (id) { takeTomb(id, rTombs[id]); });
+    Object.keys(pend.deletes).forEach(function (id) { takeTomb(id, pend.deletes[id]); });
+
+    // 2. Merge records keeping newest updatedAt per ID
+    var localMap = {};
+    (state.records || []).forEach(function (raw) {
+      var r = normalizeRecordShape(raw);
+      if (r && r.id) localMap[r.id] = r;
     });
-    serverList.forEach(function (sr) {
-      if (!sr || !sr.id || state.tombstones[sr.id]) return;
-      var ex = map[sr.id];
-      if (!ex || String(sr.updatedAt || '') >= String(ex.updatedAt || '')) {
-        map[sr.id] = sr;
+    var remoteMap = {};
+    remoteArr.forEach(function (r) {
+      if (r && r.id) remoteMap[r.id] = r;
+    });
+
+    var allIds = {};
+    Object.keys(localMap).forEach(function (id) { allIds[id] = true; });
+    Object.keys(remoteMap).forEach(function (id) { allIds[id] = true; });
+
+    var mergedRecords = [];
+    var localAhead = false;
+
+    Object.keys(allIds).forEach(function (id) {
+      var l = localMap[id] || null;
+      var r = remoteMap[id] || null;
+      var chosen = null;
+
+      if (l && r) {
+        var lTs = parseTsMs(l.updatedAt || l.createdAt);
+        var rTs = parseTsMs(r.updatedAt || r.createdAt);
+        if (lTs > rTs || (lTs === rTs && (pend.saves[id] || opts.preferLocal))) {
+          chosen = l;
+          if (lTs > rTs) localAhead = true;
+        } else {
+          chosen = r;
+        }
+      } else if (l) {
+        chosen = l;
+        localAhead = true;
+      } else if (r) {
+        chosen = r;
+      }
+
+      if (!chosen) return;
+      var cTs = parseTsMs(chosen.updatedAt || chosen.createdAt);
+      var tTs = mergedTombs[id] ? parseTsMs(mergedTombs[id]) : 0;
+
+      if (tTs && (!cTs || tTs >= cTs)) {
+        // Tombstone wins; if remote still carries it, remote needs our tombstone push
+        if (r && !rTombs[id]) localAhead = true;
+        return;
+      }
+      if (tTs && cTs > tTs) {
+        // Record is newer than deletion tombstone -> revive & clean tombstone
+        delete mergedTombs[id];
+        localAhead = true;
+      }
+      mergedRecords.push(chosen);
+    });
+
+    // Check if we have tombstones remote hasn't recorded yet
+    Object.keys(mergedTombs).forEach(function (tid) {
+      if (!rTombs[tid] || parseTsMs(mergedTombs[tid]) > parseTsMs(rTombs[tid])) {
+        localAhead = true;
       }
     });
-    state.records = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) {
+
+    mergedRecords.sort(function (a, b) {
       return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
     });
-    saveToLocalStorage();
+
+    var prevSig = JSON.stringify(state.records || []) + '|' + JSON.stringify(state.tombstones || {});
+    var nextSig = JSON.stringify(mergedRecords) + '|' + JSON.stringify(mergedTombs);
+    var changed = prevSig !== nextSig;
+
+    state.records = mergedRecords;
+    state.tombstones = mergedTombs;
+
+    if (changed) saveToLocalStorage();
+    return { changed: changed, localAhead: localAhead };
   }
 
-  function syncNow() {
-    if (typeof window.fetch !== 'function') return Promise.resolve({ ok: true, localOnly: true });
-    return window.fetch('/api/sync/leave-letters')
-      .then(function (res) { return res.ok ? res.json() : null; })
-      .then(function (data) {
-        if (data && data.ok && Array.isArray(data.records)) {
-          mergeServerRecords(data.records);
-          renderUI();
+  function mergeServerRecords(serverList, serverTombstones) {
+    return mergeAuthoritativeState(serverList, serverTombstones || {});
+  }
+
+  function stripInternalLettersFileFromWindowFiles() {
+    try {
+      if (Array.isArray(window.FILES)) {
+        var targetLow = CLOUD_FILENAME.toLowerCase();
+        var had = window.FILES.some(function (f) { return f && String(f.name || '').toLowerCase().trim() === targetLow; });
+        if (had) {
+          window.FILES = window.FILES.filter(function (f) {
+            return !f || String(f.name || '').toLowerCase().trim() !== targetLow;
+          });
         }
-        return { ok: true, count: state.records.length };
-      })
-      .catch(function (err) {
+      }
+    } catch (_) {}
+  }
+
+  function buildAuthoritativeCloudPayload() {
+    return {
+      version: 1,
+      letters: state.records || [],
+      tombstones: state.tombstones || {},
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function pushAuthoritativeToCloud() {
+    if (activePushPromise) {
+      pendingPushQueued = true;
+      return activePushPromise;
+    }
+    state.syncStatus = 'syncing';
+    refreshSyncBadgeDom();
+
+    activePushPromise = (async function () {
+      var confirmed = false;
+      try {
+        do {
+          pendingPushQueued = false;
+          // Read-Modify-Write against latest cloud JSON so we never overwrite another browser's newer letter
+          try {
+            var dl = await callGoogleBackend('downloadFile', { fileName: CLOUD_FILENAME });
+            if (dl && dl.ok && dl.fileBase64) {
+              var remoteObj = JSON.parse(b64ToUtf8(dl.fileBase64) || '{}');
+              var remoteLetters = Array.isArray(remoteObj.letters) ? remoteObj.letters : (Array.isArray(remoteObj.records) ? remoteObj.records : []);
+              var remoteTombs = (remoteObj.tombstones && typeof remoteObj.tombstones === 'object') ? remoteObj.tombstones : {};
+              mergeAuthoritativeState(remoteLetters, remoteTombs, { preferLocal: true });
+            }
+          } catch (_) {}
+
+          var payload = buildAuthoritativeCloudPayload();
+          var b64 = utf8ToB64(JSON.stringify(payload));
+          var res = await callGoogleBackend('uploadFile', {
+            fileName: CLOUD_FILENAME,
+            fileBase64: b64,
+            mimeType: 'application/json'
+          });
+
+          if (res && res.ok) {
+            confirmed = true;
+            state.pending = { saves: {}, deletes: {} };
+            state.lastSyncAt = payload.updatedAt;
+            lastSeenDriveFileTs = Date.now();
+            saveToLocalStorage();
+          }
+
+          // Best-effort Express server sync when available
+          if (typeof window.fetch === 'function') {
+            try {
+              var srvRes = await window.fetch('/api/sync/leave-letters/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ records: state.records || [], tombstones: state.tombstones || {} })
+              });
+              if (srvRes && srvRes.ok && !confirmed) {
+                var sj = await srvRes.json().catch(function () { return null; });
+                if (sj && sj.ok) {
+                  confirmed = true;
+                  state.pending = { saves: {}, deletes: {} };
+                  state.lastSyncAt = new Date().toISOString();
+                  saveToLocalStorage();
+                }
+              }
+            } catch (_) {}
+          }
+
+          broadcastLocalEvent('leave_letters_synced', { ts: Date.now(), count: (state.records || []).length });
+        } while (pendingPushQueued);
+
+        state.syncStatus = confirmed ? 'synced' : (hasPending() ? 'pending' : 'offline');
+        refreshHistoryDom();
+        return { ok: confirmed, count: (state.records || []).length };
+      } catch (err) {
+        state.syncStatus = hasPending() ? 'pending' : 'offline';
+        refreshSyncBadgeDom();
+        return { ok: false, error: err && err.message ? err.message : 'push error' };
+      } finally {
+        activePushPromise = null;
+        pendingPushQueued = false;
+      }
+    })();
+
+    return activePushPromise;
+  }
+
+  function syncNow(force) {
+    var now = Date.now();
+    if (!force && !hasPending() && (now - lastCloudSyncAtMs < 6000)) {
+      return Promise.resolve({ ok: true, throttled: true, count: state.records.length });
+    }
+    if (activeSyncPromise) return activeSyncPromise;
+
+    state.syncStatus = 'syncing';
+    refreshSyncBadgeDom();
+
+    activeSyncPromise = (async function () {
+      var cloudReachable = false;
+      var shouldPushBack = hasPending();
+      try {
+        // 1. Pull authoritative JSON from Google Apps Script / Drive
+        try {
+          var dl = await callGoogleBackend('downloadFile', { fileName: CLOUD_FILENAME });
+          if (dl && dl.ok) {
+            cloudReachable = true;
+            if (dl.fileBase64) {
+              var remoteObj = JSON.parse(b64ToUtf8(dl.fileBase64) || '{}');
+              var remoteLetters = Array.isArray(remoteObj.letters) ? remoteObj.letters : (Array.isArray(remoteObj.records) ? remoteObj.records : []);
+              var remoteTombs = (remoteObj.tombstones && typeof remoteObj.tombstones === 'object') ? remoteObj.tombstones : {};
+              var m1 = mergeAuthoritativeState(remoteLetters, remoteTombs);
+              if (m1.localAhead) shouldPushBack = true;
+            } else if ((state.records || []).length > 0 || Object.keys(state.tombstones || {}).length > 0) {
+              shouldPushBack = true;
+            }
+          }
+        } catch (_) {}
+
+        // 2. Also check Express server /api/sync/leave-letters when running on Express/Node
+        if (typeof window.fetch === 'function') {
+          try {
+            var res = await window.fetch('/api/sync/leave-letters', { cache: 'no-store' });
+            if (res && res.ok) {
+              var ct = (res.headers && res.headers.get && res.headers.get('content-type')) || '';
+              if (!ct || ct.indexOf('json') >= 0) {
+                var data = await res.json().catch(function () { return null; });
+                if (data && data.ok && Array.isArray(data.records)) {
+                  cloudReachable = true;
+                  var m2 = mergeAuthoritativeState(data.records, data.tombstones || {});
+                  if (m2.localAhead) shouldPushBack = true;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        stripInternalLettersFileFromWindowFiles();
+
+        if (shouldPushBack && (cloudReachable || hasPending() || (state.records || []).length > 0 || Object.keys(state.tombstones || {}).length > 0)) {
+          var pRes = await pushAuthoritativeToCloud();
+          if (pRes && pRes.ok) cloudReachable = true;
+        }
+
+        if (cloudReachable) {
+          lastCloudSyncAtMs = Date.now();
+          state.lastSyncAt = new Date().toISOString();
+          state.syncStatus = hasPending() ? 'pending' : 'synced';
+        } else {
+          state.syncStatus = hasPending() ? 'pending' : 'idle';
+        }
+
+        refreshHistoryDom();
+        return { ok: true, synced: cloudReachable, count: state.records.length };
+      } catch (err) {
+        state.syncStatus = hasPending() ? 'pending' : 'offline';
+        refreshSyncBadgeDom();
         return { ok: false, error: err && err.message ? err.message : 'sync error' };
-      });
+      } finally {
+        activeSyncPromise = null;
+      }
+    })();
+
+    return activeSyncPromise;
+  }
+
+  function onDriveFilesMeta(driveFiles) {
+    if (!Array.isArray(driveFiles)) return;
+    var targetLow = CLOUD_FILENAME.toLowerCase();
+    var hit = driveFiles.find(function (df) {
+      return df && String(df.name || '').toLowerCase().trim() === targetLow;
+    });
+    if (!hit) return;
+    var remoteTs = parseTsMs(hit.updatedAt);
+    if (remoteTs > lastSeenDriveFileTs) {
+      lastSeenDriveFileTs = remoteTs;
+      syncNow(true);
+    }
   }
 
   function pushRecordToServer(rec) {
@@ -559,8 +1117,13 @@
     var needsFullRender = false;
 
     if (field === 'letterType') {
+      var prevType = f.letterType || 'LEAVE';
       var nextType = (String(value || 'LEAVE').toUpperCase() === 'BANK') ? 'BANK' : 'LEAVE';
       f.letterType = nextType;
+      if (nextType !== prevType) {
+        // Switching format must never overwrite a saved letter of the previous format
+        state.editingId = null;
+      }
       var curMatch = f.empCode ? findEmployeeByCode(f.empCode) : null;
       if (nextType === 'BANK') {
         if (curMatch) applyEmployeeMatchToForm(curMatch);
@@ -572,7 +1135,14 @@
       }
       needsFullRender = true;
     } else if (field === 'empCode') {
-      f.empCode = String(value || '');
+      var nextCode = String(value || '');
+      if (state.editingId) {
+        var loadedRec = state.records.find(function (r) { return r && r.id === state.editingId; });
+        if (loadedRec && loadedRec.empCode && nextCode.trim() && normalizeCode(loadedRec.empCode) !== normalizeCode(nextCode)) {
+          state.editingId = null;
+        }
+      }
+      f.empCode = nextCode;
       var match = findEmployeeByCode(f.empCode);
       if (match) {
         applyEmployeeMatchToForm(match);
@@ -870,32 +1440,59 @@
     );
   }
 
+  function hasAnyBankInput(f) {
+    f = f || state.form;
+    return Boolean(
+      String(f.empCode || '').trim() ||
+      String(f.empName || '').trim() ||
+      String(f.fatherName || '').trim() ||
+      String(f.aadhaarNo || '').trim() ||
+      String(f.panNo || '').trim() ||
+      String(f.permanentAddress || '').trim()
+    );
+  }
+
   function buildRecordPayloadFromForm() {
     var f = state.form;
     var isBank = f.letterType === 'BANK';
+    var curType = isBank ? 'BANK' : 'LEAVE';
     var days = isBank ? 0 : (diffDaysInclusive(f.fromDate, f.toDate) || Number(f.days || 0));
     var now = new Date().toISOString();
+    var codeNorm = normalizeCode(f.empCode);
+    var rawNameNorm = normalizeNameKey(f.empName);
+    var hiNameNorm = isBank ? normalizeNameKey(convertEnglishToHindi(f.empName)) : rawNameNorm;
 
     var existing = null;
     if (state.editingId) {
-      existing = state.records.find(function (r) { return r && r.id === state.editingId; }) || null;
+      var cand = state.records.find(function (r) { return r && r.id === state.editingId; }) || null;
+      if (cand && (cand.letterType || 'LEAVE') === curType) {
+        var candCode = normalizeCode(cand.empCode);
+        if (!candCode || !codeNorm || candCode === codeNorm) {
+          existing = cand;
+        }
+      }
     }
     if (!existing) {
-      var codeNorm = normalizeCode(f.empCode);
       if (isBank) {
         existing = state.records.find(function (r) {
-          return r &&
-            (r.letterType || 'LEAVE') === 'BANK' &&
-            ((codeNorm && normalizeCode(r.empCode) === codeNorm) || (!codeNorm && String(r.empName || '').trim() && String(r.empName || '').trim() === String(f.empName || '').trim())) &&
-            r.letterDate === f.letterDate;
+          if (!r || (r.letterType || 'LEAVE') !== 'BANK' || r.letterDate !== f.letterDate) return false;
+          var rCode = normalizeCode(r.empCode);
+          if (codeNorm && rCode) return rCode === codeNorm;
+          if (!codeNorm && !rCode) {
+            var rName = normalizeNameKey(r.empName);
+            if (rName && (rName === rawNameNorm || rName === hiNameNorm)) return true;
+            if (!rName && !rawNameNorm && String(f.aadhaarNo || '').trim() && String(r.aadhaarNo || '').trim() === String(f.aadhaarNo || '').trim()) return true;
+          }
+          return false;
         }) || null;
       } else {
         existing = state.records.find(function (r) {
-          return r &&
-            normalizeCode(r.empCode) === codeNorm &&
-            r.fromDate === f.fromDate &&
-            r.toDate === f.toDate &&
-            (r.letterType || 'LEAVE') === (f.letterType || 'LEAVE');
+          if (!r || (r.letterType || 'LEAVE') !== curType) return false;
+          if (r.fromDate !== f.fromDate || r.toDate !== f.toDate) return false;
+          var rCode = normalizeCode(r.empCode);
+          if (codeNorm && rCode) return rCode === codeNorm;
+          if (!codeNorm && !rCode && rawNameNorm) return normalizeNameKey(r.empName) === rawNameNorm;
+          return false;
         }) || null;
       }
     }
@@ -910,7 +1507,7 @@
 
     return {
       id: id,
-      letterType: f.letterType || 'LEAVE',
+      letterType: curType,
       letterDate: f.letterDate || todayISO(),
       empCode: String(f.empCode || '').trim(),
       empName: finalEmpName,
@@ -942,17 +1539,15 @@
     opts = opts || {};
     var f = state.form;
     if (f.letterType === 'BANK') {
-      // Allow printing/downloading even blank/partial bank letter if user wants a blank form on letterhead;
-      // require name or code only when explicitly saving to history
-      if (!opts.allowBlank && !String(f.empCode || '').trim() && !String(f.empName || '').trim()) {
-        setStatus('Bank Letter save karne ke liye Employee Name ya Emp Code daaliye.', 'error');
+      if (!opts.allowBlank && !hasAnyBankInput(f)) {
+        setStatus('Bank Letter save karne ke liye kam se kam Employee Name, Emp Code, Father Name ya Aadhaar daaliye.', 'error');
         return false;
       }
       return true;
     }
 
-    if (!String(f.empCode || '').trim()) {
-      setStatus('Employee Code daaliye (ya Employee Master list se select karein).', 'error');
+    if (!String(f.empCode || '').trim() && !String(f.empName || '').trim()) {
+      setStatus('Employee Code ya Employee Name daaliye (ya Employee Master list se select karein).', 'error');
       return false;
     }
     if (!String(f.empName || '').trim()) {
@@ -986,18 +1581,27 @@
     if (idx >= 0) state.records[idx] = payload;
     else state.records.unshift(payload);
 
+    state.records.sort(function (a, b) {
+      return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+    });
+
     state.editingId = payload.id;
+    setPendingSave(payload.id, payload.updatedAt);
+    state.syncStatus = 'pending';
     saveToLocalStorage();
     broadcastLocalEvent('leave_letter_saved', payload);
     pushRecordToServer(payload);
+    pushAuthoritativeToCloud();
 
     if (!opts.quiet) {
       var msg = payload.letterType === 'BANK'
-        ? ('Bank Letter saved (' + (payload.empName || payload.empCode || 'Draft') + ').')
-        : ('Leave record saved (' + payload.empName + ' · ' + payload.days + ' Days).');
+        ? ('Bank Letter saved & syncing (' + (payload.empName || payload.empCode || 'Draft') + ').')
+        : ('Leave record saved & syncing (' + (payload.empName || payload.empCode) + ' · ' + payload.days + ' Days).');
       setStatus(msg, 'success');
       notifyToast(msg);
       renderUI();
+    } else {
+      refreshHistoryDom();
     }
     return payload;
   }
@@ -1008,7 +1612,7 @@
 
   function downloadRecordDoc(rec) {
     if (!rec) {
-      if (state.form.letterType === 'BANK' && !String(state.form.empName || '').trim() && !String(state.form.empCode || '').trim()) {
+      if (state.form.letterType === 'BANK' && !hasAnyBankInput(state.form)) {
         rec = buildRecordPayloadFromForm();
       } else {
         rec = saveCurrentLetter({ quiet: true });
@@ -1051,7 +1655,7 @@
 
   function printRecordLetter(rec) {
     if (!rec) {
-      if (state.form.letterType === 'BANK' && !String(state.form.empName || '').trim() && !String(state.form.empCode || '').trim()) {
+      if (state.form.letterType === 'BANK' && !hasAnyBankInput(state.form)) {
         rec = buildRecordPayloadFromForm();
       } else {
         rec = saveCurrentLetter({ quiet: true });
@@ -1185,31 +1789,58 @@
 
   function deleteRecord(id) {
     if (!id) return false;
-    state.tombstones[id] = new Date().toISOString();
+    var existing = state.records.find(function (r) { return r && r.id === id; });
+    var exTs = existing ? parseTsMs(existing.updatedAt || existing.createdAt) : 0;
+    var deletedAt = new Date(Math.max(Date.now(), exTs + 1000)).toISOString();
+    state.tombstones[id] = deletedAt;
     state.records = state.records.filter(function (r) { return r && r.id !== id; });
     if (state.editingId === id) state.editingId = null;
+    setPendingDelete(id, deletedAt);
+    state.syncStatus = 'pending';
     saveToLocalStorage();
-    broadcastLocalEvent('leave_letter_deleted', { id: id });
+    broadcastLocalEvent('leave_letter_deleted', { id: id, deleted_at: deletedAt });
     deleteRecordOnServer(id);
-    setStatus('Record deleted from history.', 'info');
+    pushAuthoritativeToCloud();
+    setStatus('Record deleted from history & syncing.', 'info');
     renderUI();
     return true;
   }
 
-  function getEmployeeHistory(empCode) {
+  function isRecordActive(r) {
+    if (!r || !r.id) return false;
+    var tVal = state.tombstones[r.id];
+    if (!tVal) return true;
+    var rTs = parseTsMs(r.updatedAt || r.createdAt);
+    var tTs = parseTsMs(tVal);
+    return rTs > tTs;
+  }
+
+  function getEmployeeHistory(empCode, optEmpName) {
     var norm = normalizeCode(empCode);
-    if (!norm) return [];
+    var nameNorm = normalizeNameKey(optEmpName);
+    if (!norm && !nameNorm) return [];
     return state.records.filter(function (r) {
-      return r && !state.tombstones[r.id] && normalizeCode(r.empCode) === norm;
+      if (!isRecordActive(r)) return false;
+      if (norm && normalizeCode(r.empCode) === norm) return true;
+      if (!norm && nameNorm && normalizeNameKey(r.empName) === nameNorm) return true;
+      return false;
     }).sort(function (a, b) {
-      return String(b.fromDate || b.letterDate || b.updatedAt || '').localeCompare(String(a.fromDate || a.letterDate || a.updatedAt || ''));
+      return String(b.updatedAt || b.fromDate || b.letterDate || '').localeCompare(String(a.updatedAt || a.fromDate || a.letterDate || ''));
     });
   }
 
   function getFilteredHistory() {
-    var list = state.historyScope === 'employee' && String(state.form.empCode || '').trim()
-      ? getEmployeeHistory(state.form.empCode)
-      : state.records.filter(function (r) { return r && !state.tombstones[r.id]; });
+    var hasCode = Boolean(String(state.form.empCode || '').trim());
+    var hasName = Boolean(String(state.form.empName || '').trim());
+    var list = (state.historyScope === 'employee' && (hasCode || hasName))
+      ? getEmployeeHistory(state.form.empCode, state.form.empName)
+      : state.records.filter(isRecordActive);
+
+    if (state.historyTypeFilter && state.historyTypeFilter !== 'ALL') {
+      list = list.filter(function (r) {
+        return (r.letterType || 'LEAVE') === state.historyTypeFilter;
+      });
+    }
 
     var q = String(state.historySearch || '').trim().toLowerCase();
     if (!q) return list;
@@ -1221,6 +1852,8 @@
         String(r.designation || '').toLowerCase().indexOf(q) >= 0 ||
         String(r.reason || '').toLowerCase().indexOf(q) >= 0 ||
         String(r.signedBy || '').toLowerCase().indexOf(q) >= 0 ||
+        String(r.aadhaarNo || '').toLowerCase().indexOf(q) >= 0 ||
+        String(r.panNo || '').toLowerCase().indexOf(q) >= 0 ||
         String(r.letterType || '').toLowerCase().indexOf(q) >= 0
       );
     });
@@ -1288,6 +1921,57 @@
     doc.head.appendChild(s);
   }
 
+  function syncBadgeTextAndTone() {
+    var pendCount = getPendingCount();
+    if (state.syncStatus === 'syncing') return { text: '☁ Syncing...', bg: '#eff6ff', fg: '#1d4ed8', bd: '#bfdbfe' };
+    if (pendCount > 0 || state.syncStatus === 'pending') return { text: '☁ Pending (' + pendCount + ')', bg: '#fffbeb', fg: '#b45309', bd: '#fde68a' };
+    if (state.syncStatus === 'synced') return { text: '☁ Synced', bg: '#f0fdf4', fg: '#15803d', bd: '#bbf7d0' };
+    if (state.syncStatus === 'offline') return { text: '☁ Offline Saved', bg: '#fef2f2', fg: '#b91c1c', bd: '#fecaca' };
+    return { text: '☁ Ready', bg: '#f8fafc', fg: '#475569', bd: '#e2e8f0' };
+  }
+
+  function refreshSyncBadgeDom() {
+    var doc = window.document;
+    if (!doc) return;
+    var badge = doc.getElementById('ltrSyncStatusBadge');
+    if (!badge) return;
+    var b = syncBadgeTextAndTone();
+    badge.textContent = b.text;
+    badge.style.background = b.bg;
+    badge.style.color = b.fg;
+    badge.style.borderColor = b.bd;
+  }
+
+  function refreshHistoryDom() {
+    var doc = window.document;
+    if (!doc) return;
+    refreshSyncBadgeDom();
+    var allActiveCount = state.records.filter(isRecordActive).length;
+    var empActiveCount = getEmployeeHistory(state.form.empCode, state.form.empName).length;
+    var allBtn = doc.getElementById('ltrScopeAllBtn');
+    if (allBtn) {
+      allBtn.textContent = 'All Records (' + allActiveCount + ')';
+      allBtn.className = 'ltr-tab-btn' + (state.historyScope === 'all' ? ' active' : '');
+    }
+    var empBtn = doc.getElementById('ltrScopeEmpBtn');
+    if (empBtn) {
+      empBtn.textContent = 'This Emp (' + empActiveCount + ')';
+      empBtn.className = 'ltr-tab-btn' + (state.historyScope === 'employee' ? ' active' : '');
+    }
+    var histBody = doc.getElementById('ltrHistoryBodyWrap');
+    if (!histBody) return;
+    var searchEl = doc.getElementById('ltrHistorySearchInput');
+    if (searchEl && doc.activeElement === searchEl) {
+      var tbody = histBody.querySelector('tbody');
+      if (tbody) {
+        var filtered = getFilteredHistory();
+        tbody.innerHTML = filtered.length ? filtered.map(renderHistoryRowHtml).join('') : '<tr><td colspan="5" style="text-align:center;padding:20px;color:#64748b">No matching records.</td></tr>';
+      }
+      return;
+    }
+    histBody.innerHTML = renderHistoryInnerHtml();
+  }
+
   function refreshPreviewAndCalculatedDom() {
     var doc = window.document;
     if (!doc) return;
@@ -1320,8 +2004,7 @@
     var preview = doc.getElementById('ltrLivePreviewSheet');
     if (preview) preview.innerHTML = buildLetterInnerHtml(f);
 
-    var histBody = doc.getElementById('ltrHistoryBodyWrap');
-    if (histBody) histBody.innerHTML = renderHistoryInnerHtml();
+    refreshHistoryDom();
   }
 
   function renderSuggestionsHtml(query) {
@@ -1365,8 +2048,8 @@
 
   function renderHistoryInnerHtml() {
     var f = state.form;
-    var hasEmp = Boolean(String(f.empCode || '').trim());
-    var empHistory = hasEmp ? getEmployeeHistory(f.empCode) : [];
+    var hasEmp = Boolean(String(f.empCode || '').trim() || String(f.empName || '').trim());
+    var empHistory = hasEmp ? getEmployeeHistory(f.empCode, f.empName) : [];
     var rows = getFilteredHistory();
     var totalDays = empHistory.reduce(function (s, r) { return s + (Number(r.days) || 0); }, 0);
     var lastLeave = empHistory.length ? formatDateDDMMYYYY(empHistory[0].toDate || empHistory[0].fromDate || empHistory[0].letterDate) : '—';
@@ -1375,18 +2058,19 @@
     if (state.historyScope === 'employee' && hasEmp) {
       kpisHtml = (
         '<div class="ltr-kpis">' +
-          '<div class="ltr-kpi"><div class="ltr-kpi-v">' + empHistory.length + '</div><div class="ltr-kpi-l">Letters (' + esc(f.empCode) + ')</div></div>' +
+          '<div class="ltr-kpi"><div class="ltr-kpi-v">' + empHistory.length + '</div><div class="ltr-kpi-l">Letters (' + esc(f.empCode || f.empName) + ')</div></div>' +
           '<div class="ltr-kpi"><div class="ltr-kpi-v">' + totalDays + ' Days</div><div class="ltr-kpi-l">Total Leave Days</div></div>' +
           '<div class="ltr-kpi"><div class="ltr-kpi-v">' + esc(lastLeave) + '</div><div class="ltr-kpi-l">Last Letter Date</div></div>' +
         '</div>'
       );
     } else {
-      var allActive = state.records.filter(function (r) { return r && !state.tombstones[r.id]; });
-      var allDays = allActive.reduce(function (s, r) { return s + (Number(r.days) || 0); }, 0);
+      var allActive = state.records.filter(isRecordActive);
+      var bankCount = allActive.filter(function (r) { return (r.letterType || 'LEAVE') === 'BANK'; }).length;
+      var leaveCount = allActive.length - bankCount;
       kpisHtml = (
         '<div class="ltr-kpis">' +
           '<div class="ltr-kpi"><div class="ltr-kpi-v">' + allActive.length + '</div><div class="ltr-kpi-l">Total Saved Letters</div></div>' +
-          '<div class="ltr-kpi"><div class="ltr-kpi-v">' + allDays + ' Days</div><div class="ltr-kpi-l">Cumulative Leave Days</div></div>' +
+          '<div class="ltr-kpi"><div class="ltr-kpi-v">' + leaveCount + ' / ' + bankCount + '</div><div class="ltr-kpi-l">Leave / Bank Letters</div></div>' +
           '<div class="ltr-kpi"><div class="ltr-kpi-v">' + rows.length + '</div><div class="ltr-kpi-l">Showing Records</div></div>' +
         '</div>'
       );
@@ -1395,15 +2079,20 @@
     var tableRows = rows.length ? rows.map(renderHistoryRowHtml).join('') : (
       '<tr><td colspan="5" style="text-align:center;padding:24px;color:#64748b">' +
         (state.historyScope === 'employee' && hasEmp
-          ? 'Is employee (' + esc(f.empCode) + ') ki abhi koi saved letter history nahi hai. Save ya Download karte hi record yahan aa jayega.'
-          : 'Koi letter record nahi mila.') +
+          ? 'Is employee (' + esc(f.empCode || f.empName) + ') ki abhi koi saved letter history nahi hai. Save ya Download karte hi record yahan aa jayega.'
+          : 'Koi letter record nahi mila. Save History ya Download dabate hi record yahan save & sync ho jayega.') +
       '</td></tr>'
     );
 
     return (
       kpisHtml +
-      '<div style="margin-bottom:10px">' +
-        '<input id="ltrHistorySearchInput" class="ltr-input" type="search" placeholder="History search by Code, Name, Dept, Reason, Signatory..." value="' + esc(state.historySearch) + '">' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">' +
+        '<input id="ltrHistorySearchInput" class="ltr-input" style="flex:1;min-width:180px" type="search" placeholder="History search by Code, Name, Dept, Reason, Signatory..." value="' + esc(state.historySearch) + '">' +
+        '<select id="ltrHistoryTypeSelect" class="ltr-select" style="width:130px">' +
+          '<option value="ALL"' + (state.historyTypeFilter === 'ALL' ? ' selected' : '') + '>All Formats</option>' +
+          '<option value="LEAVE"' + (state.historyTypeFilter === 'LEAVE' ? ' selected' : '') + '>Leave Only</option>' +
+          '<option value="BANK"' + (state.historyTypeFilter === 'BANK' ? ' selected' : '') + '>Bank Only</option>' +
+        '</select>' +
       '</div>' +
       '<div class="ltr-table-wrap">' +
         '<table class="ltr-table">' +
@@ -1424,6 +2113,9 @@
     var f = state.form;
     var isBank = f.letterType === 'BANK';
     var empListCount = getEmployeeMasterList().length;
+    var allActiveCount = state.records.filter(isRecordActive).length;
+    var empActiveCount = getEmployeeHistory(f.empCode, f.empName).length;
+    var badge = syncBadgeTextAndTone();
 
     var dynamicFieldsHtml = isBank
       ? (
@@ -1459,32 +2151,32 @@
         '</div>' +
 
         '<div class="ltr-field-full">' +
-          '<label class="ltr-lbl" for="ltrAuthSignatory">अधिकृत हस्ताक्षरकर्ता (Authorized Signatory)</label>' +
-          '<input id="ltrAuthSignatory" type="text" class="ltr-input" data-hindi-field="authSignatory" placeholder="Blank chhod sakte hain ya naam likhein" value="' + esc(f.authSignatory) + '">' +
+          '<label class="ltr-lbl" for="ltrAuthSignatory">अधिकृत हस्ताक्षरकर्ता (Authorized Signatory - optional)</label>' +
+          '<input id="ltrAuthSignatory" type="text" class="ltr-input" data-hindi-field="authSignatory" placeholder="e.g. Sarthak Arora" value="' + esc(f.authSignatory) + '">' +
         '</div>' +
 
         '<div>' +
-          '<label class="ltr-lbl" for="ltrSignatoryName">नाम (Signatory Name)</label>' +
-          '<input id="ltrSignatoryName" type="text" class="ltr-input" data-hindi-field="signatoryName" placeholder="e.g. Sarthak Arora" value="' + esc(f.signatoryName) + '">' +
+          '<label class="ltr-lbl" for="ltrSignatoryName">हस्ताक्षरकर्ता का नाम</label>' +
+          '<input id="ltrSignatoryName" type="text" class="ltr-input" data-hindi-field="signatoryName" placeholder="e.g. Manish Ji" value="' + esc(f.signatoryName) + '">' +
         '</div>' +
         '<div>' +
           '<label class="ltr-lbl" for="ltrSignatoryDesig">पद (Designation)</label>' +
-          '<input id="ltrSignatoryDesig" type="text" class="ltr-input" data-hindi-field="signatoryDesignation" placeholder="e.g. Director / Manager" value="' + esc(f.signatoryDesignation) + '">' +
+          '<input id="ltrSignatoryDesig" type="text" class="ltr-input" data-hindi-field="signatoryDesignation" placeholder="e.g. Director" value="' + esc(f.signatoryDesignation) + '">' +
         '</div>'
       )
       : (
         '<div class="ltr-field-full">' +
-          '<label class="ltr-lbl" for="ltrEmpName">Employee Name (Auto Signature Niche)</label>' +
+          '<label class="ltr-lbl" for="ltrEmpName">Employee Name</label>' +
           '<input id="ltrEmpName" type="text" class="ltr-input" placeholder="Employee Name" value="' + esc(f.empName) + '">' +
         '</div>' +
 
         '<div>' +
           '<label class="ltr-lbl" for="ltrDesignation">Designation</label>' +
-          '<input id="ltrDesignation" type="text" class="ltr-input" placeholder="Auto / Designation" value="' + esc(f.designation) + '">' +
+          '<input id="ltrDesignation" type="text" class="ltr-input" placeholder="e.g. BLEND MASTER" value="' + esc(f.designation) + '">' +
         '</div>' +
         '<div>' +
           '<label class="ltr-lbl" for="ltrDepartment">Department</label>' +
-          '<input id="ltrDepartment" type="text" class="ltr-input" placeholder="Auto / Department" value="' + esc(f.department) + '">' +
+          '<input id="ltrDepartment" type="text" class="ltr-input" placeholder="e.g. Quality" value="' + esc(f.department) + '">' +
         '</div>' +
 
         '<div>' +
@@ -1499,30 +2191,28 @@
         '<div>' +
           '<label class="ltr-lbl">Total Leave Days (Auto)</label>' +
           '<div class="ltr-days-box">' +
-            '<span><span id="ltrDaysValue" class="ltr-days-num">' + esc(f.days) + '</span> <span id="ltrDaysWord" style="font-size:12px;font-weight:700;color:#334155">' + (Number(f.days) === 1 ? 'Day' : 'Days') + '</span></span>' +
-            '<span style="font-size:11px;color:#64748b">Inclusive</span>' +
+            '<span style="font-size:12px;color:#475569;font-weight:600">Inclusive Count</span>' +
+            '<span><span id="ltrDaysValue" class="ltr-days-num">' + esc(f.days) + '</span> <span id="ltrDaysWord" style="font-size:12px;font-weight:700;color:#4f46e5">' + (Number(f.days) === 1 ? 'Day' : 'Days') + '</span></span>' +
           '</div>' +
         '</div>' +
         '<div>' +
-          '<label class="ltr-lbl" for="ltrReturnDate" style="display:flex;justify-content:space-between;align-items:center">' +
-            '<span>Next Available / Return Date</span>' +
-            '<button type="button" id="ltrBtnResetReturn" style="border:none;background:none;color:#4f46e5;font-size:10px;font-weight:700;cursor:pointer;padding:0">Auto (+1d)</button>' +
-          '</label>' +
+          '<label class="ltr-lbl" for="ltrReturnDate">Next Available Date <button type="button" id="ltrBtnResetReturn" class="ltr-btn ltr-btn-xs" style="margin-left:6px;padding:1px 6px;font-size:10px">Auto</button></label>' +
           '<input id="ltrReturnDate" type="date" class="ltr-input" value="' + esc(f.returnDate) + '">' +
           '<div id="ltrReturnHint" style="font-size:10px;color:#64748b;margin-top:3px">' + (state.returnDateManual ? 'Manual date active' : 'Auto (+1 day after leave)') + '</div>' +
         '</div>' +
 
-        '<div>' +
-          '<label class="ltr-lbl" for="ltrSignedBy">Signed By (Director)</label>' +
+        '<div class="ltr-field-full">' +
+          '<label class="ltr-lbl" for="ltrSignedBy">Signed By (Authorized Signatory)</label>' +
           '<select id="ltrSignedBy" class="ltr-select">' +
-            SIGNED_BY_OPTIONS.map(function (s) {
-              return '<option value="' + esc(s) + '"' + (f.signedBy === s ? ' selected' : '') + '>' + esc(s) + '</option>';
+            SIGNED_BY_OPTIONS.map(function (opt) {
+              return '<option value="' + esc(opt) + '"' + (f.signedBy === opt ? ' selected' : '') + '>' + esc(opt) + '</option>';
             }).join('') +
           '</select>' +
         '</div>' +
-        '<div>' +
-          '<label class="ltr-lbl" for="ltrReason">Leave Reason</label>' +
-          '<input id="ltrReason" type="text" class="ltr-input" placeholder="some personal reason" value="' + esc(f.reason) + '">' +
+
+        '<div class="ltr-field-full">' +
+          '<label class="ltr-lbl" for="ltrReason">Leave Reason (because of ...)</label>' +
+          '<textarea id="ltrReason" class="ltr-textarea" rows="2" placeholder="some personal reason">' + esc(f.reason) + '</textarea>' +
         '</div>'
       );
 
@@ -1531,7 +2221,7 @@
         '<div class="ltr-topbar">' +
           '<div>' +
             '<h1 class="ltr-title">HR Letters &amp; Leave Application</h1>' +
-            '<div class="ltr-sub">Employee Master se auto-fill, Leave Application &amp; SBI Bank Account Letter (Hindi + Letterhead Space), Word (.doc) / PDF Print &amp; History.</div>' +
+            '<div class="ltr-sub">Employee Master se auto-fill, Leave Application &amp; SBI Bank Account Letter (Hindi + Letterhead Space), Word (.doc) / PDF Print &amp; Cloud-Synced History.</div>' +
           '</div>' +
           '<div class="ltr-actions">' +
             '<button type="button" id="ltrBtnNew" class="ltr-btn">+ New Letter</button>' +
@@ -1577,11 +2267,15 @@
             '</div>' +
 
             '<div class="ltr-panel">' +
-              '<div class="ltr-panel-head">' +
-                '<div class="ltr-panel-title">Employee Letter History</div>' +
+              '<div class="ltr-panel-head" style="flex-wrap:wrap">' +
+                '<div style="display:flex;align-items:center;gap:8px">' +
+                  '<div class="ltr-panel-title">Employee Letter History</div>' +
+                  '<span id="ltrSyncStatusBadge" style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;border:1px solid ' + badge.bd + ';background:' + badge.bg + ';color:' + badge.fg + '">' + esc(badge.text) + '</span>' +
+                '</div>' +
                 '<div class="ltr-hist-tabs">' +
-                  '<button type="button" id="ltrScopeEmpBtn" class="ltr-tab-btn' + (state.historyScope === 'employee' ? ' active' : '') + '">This Emp</button>' +
-                  '<button type="button" id="ltrScopeAllBtn" class="ltr-tab-btn' + (state.historyScope === 'all' ? ' active' : '') + '">All Records</button>' +
+                  '<button type="button" id="ltrScopeAllBtn" class="ltr-tab-btn' + (state.historyScope === 'all' ? ' active' : '') + '">All Records (' + allActiveCount + ')</button>' +
+                  '<button type="button" id="ltrScopeEmpBtn" class="ltr-tab-btn' + (state.historyScope === 'employee' ? ' active' : '') + '">This Emp (' + empActiveCount + ')</button>' +
+                  '<button type="button" id="ltrBtnSyncNow" class="ltr-tab-btn" title="Cloud se letters sync karein">Sync</button>' +
                 '</div>' +
               '</div>' +
               '<div class="ltr-panel-body" id="ltrHistoryBodyWrap">' +
@@ -1623,6 +2317,18 @@
     on('ltrBtnDownloadDoc', 'click', function () { downloadRecordDoc(); });
     on('ltrBtnPrint', 'click', function () { printRecordLetter(); });
     on('ltrBtnResetReturn', 'click', resetReturnDateAuto);
+    on('ltrBtnSyncNow', 'click', function () {
+      setStatus('Syncing letter history from cloud...', 'info');
+      refreshSyncBadgeDom();
+      syncNow(true).then(function (r) {
+        if (r && r.synced) {
+          setStatus('Letter history synced (' + state.records.filter(isRecordActive).length + ' records).', 'success');
+        } else {
+          setStatus('Offline / Local letter history active (' + state.records.filter(isRecordActive).length + ' records).', 'info');
+        }
+        renderUI();
+      });
+    });
     on('ltrBtnConvertHindi', 'click', function () {
       convertBankFieldsToHindiNow();
       setStatus('English fields Hindi mein convert ho gaye.', 'success');
@@ -1661,7 +2367,6 @@
     on('ltrLetterheadSpace', 'change', function (e) { setFormField('letterheadSpace', e.target.checked); });
     on('ltrHideBankHeader', 'change', function (e) { setFormField('hideBankHeader', e.target.checked); });
 
-    // Auto-convert English words to Hindi in input box on blur (and on space for smooth typing!)
     if (state.form.letterType === 'BANK') {
       var hindiInputs = container.querySelectorAll('[data-hindi-field]');
       hindiInputs.forEach(function (inp) {
@@ -1736,14 +2441,14 @@
     container.addEventListener('input', function (e) {
       if (e.target && e.target.id === 'ltrHistorySearchInput') {
         state.historySearch = e.target.value || '';
-        var tbodyWrap = doc.getElementById('ltrHistoryBodyWrap');
-        if (tbodyWrap) {
-          var rows = tbodyWrap.querySelector('tbody');
-          if (rows) {
-            var filtered = getFilteredHistory();
-            rows.innerHTML = filtered.length ? filtered.map(renderHistoryRowHtml).join('') : '<tr><td colspan="5" style="text-align:center;padding:20px;color:#64748b">No matching records.</td></tr>';
-          }
-        }
+        refreshHistoryDom();
+      }
+    });
+
+    container.addEventListener('change', function (e) {
+      if (e.target && e.target.id === 'ltrHistoryTypeSelect') {
+        state.historyTypeFilter = e.target.value || 'ALL';
+        refreshHistoryDom();
       }
     });
 
@@ -1769,9 +2474,18 @@
 
     try {
       window.addEventListener('storage', function (ev) {
-        if (ev && (ev.key === STORAGE_KEY || ev.key === TOMBSTONE_KEY)) {
+        if (!ev) return;
+        if (ev.key === STORAGE_KEY || ev.key === TOMBSTONE_KEY) {
           loadFromLocalStorage();
-          renderUI();
+          refreshHistoryDom();
+        } else if (ev.key === 'ATPL_TRIGGER_EVENT' && ev.newValue) {
+          try {
+            var trig = JSON.parse(ev.newValue);
+            var act = trig && (trig.action || trig.type);
+            if (trig && trig.sender !== MY_CLIENT_ID && (act === 'leave_letter_saved' || act === 'leave_letter_deleted' || act === 'leave_letters_synced')) {
+              syncNow(true);
+            }
+          } catch (_) {}
         }
       });
     } catch (_) {}
@@ -1781,38 +2495,55 @@
         var ch = new window.BroadcastChannel(CHANNEL_NAME);
         ch.onmessage = function (ev) {
           var d = ev && ev.data;
-          if (!d) return;
-          if (d.type === 'leave_letter_saved' || d.type === 'leave_letter_deleted') {
+          if (!d || d.sender === MY_CLIENT_ID) return;
+          var t = d.type || d.action;
+          if (t === 'leave_letter_saved' || t === 'leave_letter_deleted' || t === 'leave_letters_synced') {
             loadFromLocalStorage();
-            renderUI();
+            refreshHistoryDom();
+            if (t === 'leave_letters_synced') syncNow(true);
           }
         };
       }
     } catch (_) {}
 
     try {
+      window.addEventListener('focus', function () { syncNow(false); });
+      window.addEventListener('online', function () { syncNow(true); });
+      if (window.document && typeof window.document.addEventListener === 'function') {
+        window.document.addEventListener('visibilitychange', function () {
+          if (!window.document.hidden) syncNow(false);
+        });
+        window.document.addEventListener('atpl-cloud-token-ready', function () { syncNow(true); });
+        window.document.addEventListener('atpl-authenticated', function () { syncNow(true); });
+      }
+    } catch (_) {}
+
+    try {
       if (typeof window.EventSource === 'function' && window.location && /^https?:/.test(window.location.protocol)) {
-        var es = new window.EventSource('/api/sync/events');
-        es.addEventListener('leave_letter_saved', function (ev) {
-          try {
-            var rec = JSON.parse(ev.data || '{}');
-            if (rec && rec.id) {
-              mergeServerRecords([rec]);
-              renderUI();
-            }
-          } catch (_) {}
-        });
-        es.addEventListener('leave_letter_deleted', function (ev) {
-          try {
-            var d = JSON.parse(ev.data || '{}');
-            if (d && d.id) {
-              state.tombstones[d.id] = d.deleted_at || new Date().toISOString();
-              state.records = state.records.filter(function (r) { return r && r.id !== d.id; });
-              saveToLocalStorage();
-              renderUI();
-            }
-          } catch (_) {}
-        });
+        var host = String(window.location.hostname || '');
+        if (host === 'localhost' || host === '127.0.0.1' || /\.run\.app$/i.test(host)) {
+          var es = new window.EventSource('/api/sync/events');
+          es.addEventListener('leave_letter_saved', function (ev) {
+            try {
+              var rec = JSON.parse(ev.data || '{}');
+              if (rec && rec.id) {
+                mergeAuthoritativeState([rec], {});
+                refreshHistoryDom();
+              }
+            } catch (_) {}
+          });
+          es.addEventListener('leave_letter_deleted', function (ev) {
+            try {
+              var d = JSON.parse(ev.data || '{}');
+              if (d && d.id) {
+                var tMap = {};
+                tMap[d.id] = d.deleted_at || new Date().toISOString();
+                mergeAuthoritativeState([], tMap);
+                refreshHistoryDom();
+              }
+            } catch (_) {}
+          });
+        }
       }
     } catch (_) {}
   }
@@ -1821,20 +2552,23 @@
     loadFromLocalStorage();
     recalcFormDates({ forceAutoReturn: true });
     setupListeners();
-    if (window.document && window.document.readyState === 'loading') {
-      window.document.addEventListener('DOMContentLoaded', function () {
-        renderUI();
-        syncNow();
-      }, { once: true });
-    } else {
+    var afterRender = function () {
       renderUI();
-      syncNow();
+      hydrateFromIndexedDb().then(function () {
+        syncNow(true);
+      });
+    };
+    if (window.document && window.document.readyState === 'loading') {
+      window.document.addEventListener('DOMContentLoaded', afterRender, { once: true });
+    } else {
+      afterRender();
     }
   }
 
   window.ATPLLettersManager = {
     SIGNED_BY_OPTIONS: SIGNED_BY_OPTIONS.slice(),
     LETTER_TYPES: LETTER_TYPES.slice(),
+    CLOUD_FILENAME: CLOUD_FILENAME,
     state: state,
     convertEnglishToHindi: convertEnglishToHindi,
     diffDaysInclusive: diffDaysInclusive,
@@ -1855,6 +2589,9 @@
     deleteRecord: deleteRecord,
     getEmployeeHistory: getEmployeeHistory,
     getFilteredHistory: getFilteredHistory,
+    getPendingCount: getPendingCount,
+    mergeAuthoritativeState: mergeAuthoritativeState,
+    onDriveFilesMeta: onDriveFilesMeta,
     renderUI: renderUI,
     syncNow: syncNow
   };

@@ -679,6 +679,11 @@
         try { window.ATPLDriveHrDolSync.onDriveFilesMeta(driveFiles); } catch (_) {}
       }
 
+      // 4. Notify HR Letters (Leave & Bank Letters) Drive watcher
+      if (window.ATPLLettersManager && typeof window.ATPLLettersManager.onDriveFilesMeta === 'function') {
+        try { window.ATPLLettersManager.onDriveFilesMeta(driveFiles); } catch (_) {}
+      }
+
       updateSyncBadge('ok');
       return { ok: true, version: localVersion, files: window.FILES || [] };
     } catch (err) {
