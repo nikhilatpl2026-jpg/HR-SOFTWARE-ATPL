@@ -3875,33 +3875,44 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   </div><!-- /content -->
 
     <!-- ══ PAGE: HR DOCUMENTS & TRAINING ══ -->
-    <div class="page" id="page-hrdocs" style="overflow:hidden">
-      <div class="page-top" style="background:linear-gradient(135deg,#eff6ff,#e0f2fe);border-bottom:2px solid #93c5fd">
-        <div class="page-title" style="color:#075985">📚 HR Documents & Training Records</div>
-        <div class="page-sub" style="color:#0369a1">HR policies, training records, re-training dates aur expiry dates ek jagah manage karo — due/expired records par automatic alert milega.</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
-          <button class="action-btn blue-btn" onclick="hrDocOpenForm()">➕ Add HR Document</button>
-          <button id="btnSyncHrDocs" class="action-btn" style="background:#eff6ff;border:1.5px solid #3b82f6;color:#1d4ed8;font-weight:700" onclick="triggerManualHrSync()">🔄 Sync HR Documents</button>
-          <button class="action-btn" style="background:#fff;border:1px solid #93c5fd;color:#075985" onclick="hrDocRequestNotify()">🔔 Enable Desktop Notifications</button>
-          <button class="action-btn" style="background:#fff;border:1px solid #cbd5e1;color:#334155" onclick="hrDocCheckAlerts(true)">🔍 Check Expiry</button>
-          <button id="hrDocWindowBtn" class="action-btn" style="background:#0f172a;border:1px solid #334155;color:#fff" onclick="hrDocToggleWindow()">↙ Minimize</button>
-          <button class="action-btn" style="background:#fff;border:1px solid #f59e0b;color:#92400e" onclick="hrDocShowAlerts()">🔔 Alerts <span id="hrDocAlertBadge" style="display:none;background:#dc2626;color:#fff;border-radius:999px;padding:1px 5px;margin-left:3px">0</span></button>
-          <div id="hrDocNotifyStatus" style="font-size:10px;color:#64748b;padding:7px 0">Desktop notifications: Not enabled</div>
+    <div class="page" id="page-hrdocs" style="overflow-x:hidden;overflow-y:hidden">
+      <div class="page-top hr-hero-top">
+        <div class="hr-hero-row">
+          <div class="hr-hero-title-wrap">
+            <div class="page-title">📚 HR Documents &amp; Training Records</div>
+            <div class="page-sub">HR policies, compliance certificates, re-training schedules aur expiry dates ek jagah manage karo — due/expired records par automatic alert milega.</div>
+          </div>
+          <div id="hrDocNotifyStatus" class="hr-notify-pill">Desktop notifications: Not enabled</div>
+        </div>
+        <div class="hr-hero-actions">
+          <button type="button" id="btnHrDocAdd" class="action-btn blue-btn hr-btn-primary" onclick="hrDocOpenForm()">➕ Add HR Document</button>
+          <button type="button" id="btnSyncHrDocs" class="action-btn hr-btn-hero" onclick="triggerManualHrSync()">🔄 Sync HR Documents</button>
+          <button type="button" id="btnHrDocNotify" class="action-btn hr-btn-hero" onclick="hrDocRequestNotify()">🔔 Desktop Notifications</button>
+          <button type="button" id="btnHrDocCheckExpiry" class="action-btn hr-btn-hero" onclick="hrDocCheckAlerts(true)">🔍 Check Expiry</button>
+          <button type="button" id="btnHrDocExport" class="action-btn hr-btn-export" onclick="hrDocExportExcel()">📊 Export Excel</button>
+          <button type="button" id="btnHrDocAlerts" class="action-btn hr-btn-alert" onclick="hrDocShowAlerts()">🔔 Alerts <span id="hrDocAlertBadge" style="display:none;background:#dc2626;color:#fff;border-radius:999px;padding:1px 6px;margin-left:3px">0</span></button>
+          <button type="button" id="hrDocWindowBtn" class="action-btn hr-btn-window" onclick="hrDocToggleWindow()">↙ Minimize</button>
         </div>
       </div>
-      <div style="padding:10px 14px;border-bottom:1px solid #e2e8f0;background:#fff;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <input id="hrDocSearch" oninput="hrDocRender()" placeholder="Employee Code / Name / Document / Reference / Company search..." style="flex:1;min-width:260px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;outline:none">
-        <button type="button" class="action-btn" style="background:#eef2ff;border:1px solid #818cf8;color:#3730a3" onclick="hrDocEmployeeHistory()">👤 Employee History</button>
-        <button type="button" class="action-btn" style="background:#f0fdf4;border:1px solid #86efac;color:#166534" onclick="hrDocClearSearch()">↺ Clear</button>
-        <select id="hrDocStatusFilter" onchange="hrDocRender()" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;background:#fff">
+      <div id="hrDocFilterBar" class="hr-filter-bar">
+        <div class="hr-search-wrap">
+          <span class="hr-search-ico" aria-hidden="true">🔍</span>
+          <input id="hrDocSearch" type="search" data-genz="1" oninput="hrDocRender()" placeholder="Search Document / Holder / Reference / Certificate / Company...">
+        </div>
+        <select id="hrDocStatusFilter" class="hr-doc-filter-select" onchange="hrDocRender()">
           <option value="ALL">All Status</option><option value="VALID">Valid</option><option value="DUE">Due Soon</option><option value="EXPIRED">Expired</option><option value="NO_EXPIRY">No Expiry</option>
         </select>
-        <select id="hrDocTypeFilter" onchange="hrDocRender()" style="padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;background:#fff">
+        <select id="hrDocTypeFilter" class="hr-doc-filter-select" onchange="hrDocRender()">
           <option value="ALL">All Types</option><option value="HR Policy">HR Policy</option><option value="Training Record">Training Record</option><option value="Other">Other</option>
         </select>
+        <select id="hrDocAttachmentFilter" class="hr-doc-filter-select" onchange="hrDocRender()">
+          <option value="ALL">All Attachments</option><option value="ATTACHED">Attached</option><option value="MISSING">Missing</option>
+        </select>
+        <button type="button" id="btnHrDocClear" class="action-btn hr-clear-btn" onclick="hrDocClearSearch()">↺ Clear</button>
       </div>
-      <div id="hrDocStats" style="display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;padding:10px 14px;background:#f8fafc"></div>
-      <div class="results-scroll" id="hrDocResults" style="padding:0 14px 14px">
+      <div id="hrDocCategoryBar" class="hr-cat-bar"></div>
+      <div id="hrDocStats"></div>
+      <div class="results-scroll" id="hrDocResults">
         <div class="empty"><div class="empty-ico">📚</div><div class="empty-txt">Abhi koi HR document nahi hai.<br><br><strong>Add HR Document</strong> se policy ya training record save karo.</div></div>
       </div>
     </div>
@@ -14905,42 +14916,95 @@ function hrDocToggleWindow(){
 })();
 </script>
 <style id="hrGenZPatch">
-/* ══ HR DOCS — GEN Z / MODERN UI ══ */
-#page-hrdocs{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important;background:#f5f7fb!important;color:#0f172a!important}
-#page-hrdocs .page-top{background:linear-gradient(135deg,#0f172a 0%,#172554 48%,#312e81 100%)!important;border-bottom:0!important;padding:18px 20px 16px!important;position:relative;overflow:hidden}
-#page-hrdocs .page-top:after{content:"";position:absolute;width:260px;height:260px;right:-90px;top:-150px;border-radius:50%;background:rgba(99,102,241,.25);filter:blur(2px)}
-#page-hrdocs .page-title{color:#fff!important;font-size:20px!important;font-weight:850!important;letter-spacing:-.5px!important;position:relative;z-index:1}
-#page-hrdocs .page-sub{color:#c7d2fe!important;font-size:10px!important;position:relative;z-index:1}
-#page-hrdocs .page-top>div:last-child{position:relative;z-index:2}
-#page-hrdocs .page-top .action-btn{border-radius:10px!important;padding:8px 12px!important;font-size:10px!important;font-weight:800!important;box-shadow:0 5px 14px rgba(0,0,0,.12)!important;transition:.16s!important}
-#page-hrdocs .page-top .action-btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.2)!important}
-#page-hrdocs .page-top .blue-btn{background:#6366f1!important;border-color:#818cf8!important;color:#fff!important}
-#page-hrdocs #hrDocNotifyStatus{color:#a5b4fc!important}
-#page-hrdocs>div:nth-of-type(2){background:#1e293b!important;border-bottom:1px solid #334155!important;padding:10px 16px!important;gap:8px!important}
-#page-hrdocs #hrDocSearch{background:#0f172a!important;border:1.5px solid #334155!important;color:#f8fafc!important;border-radius:9px!important;padding:9px 12px 9px 34px!important;font-size:11px!important;box-shadow:none!important;min-height:36px}
-#page-hrdocs #hrDocSearch::placeholder{color:#64748b}
-#page-hrdocs #hrDocSearch:focus{border-color:#6366f1!important;box-shadow:0 0 0 3px rgba(99,102,241,.16)!important}
-#page-hrdocs #hrDocStatusFilter,#page-hrdocs #hrDocTypeFilter{background:#0f172a!important;border:1.5px solid #334155!important;color:#f1f5f9!important;border-radius:9px!important;padding:9px 11px!important;font-size:11px!important;min-height:36px}
-#page-hrdocs>div:nth-of-type(2) .action-btn{border-radius:9px!important;font-weight:800!important;min-height:36px}
-#page-hrdocs #hrDocStats{background:#f5f7fb!important;padding:12px 14px!important;gap:10px!important}
-#page-hrdocs .hr-doc-stat{border:1px solid #e2e8f0!important;border-radius:13px!important;padding:11px 13px!important;background:rgba(255,255,255,.9)!important;box-shadow:0 4px 14px rgba(15,23,42,.05)!important}
-#page-hrdocs .hr-doc-stat-v{font-size:22px!important;letter-spacing:-.5px}
-#page-hrdocs .hr-doc-stat-l{font-size:8px!important;letter-spacing:.7px}
-#page-hrdocs #hrDocResults{padding:0 14px 18px!important;background:#f5f7fb!important}
-#page-hrdocs .hr-doc-card{border:1px solid #e2e8f0!important;border-radius:14px!important;box-shadow:0 6px 20px rgba(15,23,42,.055)!important;background:#fff!important}
-#page-hrdocs .hr-doc-head{background:#f8fafc!important;color:#64748b!important}
-#page-hrdocs .hr-doc-row{padding:11px 13px!important;font-size:10px!important}
-#page-hrdocs .hr-doc-row:not(.hr-doc-head):hover{background:#fafbff}
-#page-hrdocs .hr-doc-name{font-size:11px!important}
-#page-hrdocs .hr-doc-pill{padding:4px 8px!important;border:1px solid rgba(0,0,0,.03)}
-#page-hrdocs .hr-doc-btn{border-radius:8px!important;font-weight:750!important;background:#fff!important;transition:.14s!important}
+/* ══ HR DOCS — CLEAN ENTERPRISE UI ══ */
+#page-hrdocs{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important;background:#f8fafc!important;color:#0f172a!important;box-sizing:border-box!important}
+#page-hrdocs.active{width:100%!important;max-width:100vw!important;overflow-x:hidden!important}
+#page-hrdocs.active > *{min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+#page-hrdocs .page-top{background:linear-gradient(135deg,#0f172a 0%,#172554 52%,#312e81 100%)!important;border:0!important;border-radius:0!important;margin:0!important;padding:16px 20px 14px!important;position:relative;overflow:hidden;flex-shrink:0;box-shadow:none!important}
+#page-hrdocs.active.hr-windowed .page-top{border-radius:13px 13px 0 0!important}
+#page-hrdocs .page-top:after{content:"";position:absolute;width:240px;height:240px;right:-80px;top:-140px;border-radius:50%;background:rgba(99,102,241,.22);filter:blur(2px);pointer-events:none}
+#page-hrdocs .hr-hero-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;position:relative;z-index:2}
+#page-hrdocs .hr-hero-title-wrap{min-width:0;flex:1}
+#page-hrdocs .page-title{color:#fff!important;font-size:19px!important;font-weight:800!important;letter-spacing:-.4px!important;line-height:1.2}
+#page-hrdocs .page-sub{color:#c7d2fe!important;font-size:11px!important;margin-top:4px!important;line-height:1.4}
+#page-hrdocs #hrDocNotifyStatus{color:#e0e7ff!important;background:rgba(255,255,255,.11)!important;border:1px solid rgba(165,180,252,.3)!important;border-radius:999px!important;padding:5px 12px!important;font-size:10px!important;font-weight:700!important;white-space:nowrap;flex-shrink:0}
+#page-hrdocs .hr-hero-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;position:relative;z-index:2}
+#page-hrdocs .page-top .action-btn{border-radius:9px!important;padding:7px 12px!important;font-size:11px!important;font-weight:700!important;box-shadow:0 3px 10px rgba(0,0,0,.14)!important;transition:all .15s ease!important;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+#page-hrdocs .page-top .action-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.22)!important}
+#page-hrdocs .page-top .hr-btn-primary{background:linear-gradient(135deg,#4f46e5,#6366f1)!important;border:1px solid #818cf8!important;color:#fff!important}
+#page-hrdocs .page-top .hr-btn-hero{background:#ffffff!important;border:1px solid #dbeafe!important;color:#1e293b!important}
+#page-hrdocs .page-top .hr-btn-hero:hover{background:#eff6ff!important;color:#1d4ed8!important}
+#page-hrdocs .page-top .hr-btn-export{background:#ecfdf5!important;border:1px solid #86efac!important;color:#065f46!important}
+#page-hrdocs .page-top .hr-btn-export:hover{background:#d1fae5!important}
+#page-hrdocs .page-top .hr-btn-alert{background:#fffbeb!important;border:1px solid #fcd34d!important;color:#92400e!important}
+#page-hrdocs .page-top .hr-btn-window{background:rgba(15,23,42,.72)!important;border:1px solid rgba(148,163,184,.4)!important;color:#f8fafc!important}
+#page-hrdocs #hrDocFilterBar{background:#ffffff!important;border-bottom:1px solid #e2e8f0!important;padding:10px 20px!important;display:flex!important;gap:8px!important;flex-wrap:wrap!important;align-items:center!important;flex-shrink:0}
+#page-hrdocs .hr-search-wrap{position:relative!important;flex:1 1 260px!important;min-width:190px!important;display:flex;align-items:center}
+#page-hrdocs .hr-search-ico{position:absolute!important;left:11px!important;top:50%!important;transform:translateY(-50%)!important;font-size:13px!important;color:#64748b!important;pointer-events:none!important;z-index:2;line-height:1}
+#page-hrdocs #hrDocSearch{width:100%!important;min-width:0!important;background:#f8fafc!important;border:1.5px solid #cbd5e1!important;color:#0f172a!important;border-radius:9px!important;padding:8px 12px 8px 34px!important;font-size:12px!important;min-height:36px!important;box-sizing:border-box!important;outline:none!important;transition:all .15s ease!important}
+#page-hrdocs #hrDocSearch::placeholder{color:#94a3b8!important}
+#page-hrdocs #hrDocSearch:focus{background:#ffffff!important;border-color:#6366f1!important;box-shadow:0 0 0 3px rgba(99,102,241,.14)!important}
+#page-hrdocs .hr-doc-filter-select{background:#ffffff!important;border:1.5px solid #cbd5e1!important;color:#0f172a!important;border-radius:9px!important;padding:7px 10px!important;font-size:11px!important;font-weight:600!important;min-height:36px!important;min-width:118px!important;max-width:170px;cursor:pointer!important}
+#page-hrdocs .hr-doc-filter-select:focus{border-color:#6366f1!important;box-shadow:0 0 0 3px rgba(99,102,241,.14)!important}
+#page-hrdocs .hr-clear-btn{background:#f0fdf4!important;border:1.5px solid #86efac!important;color:#166534!important;border-radius:9px!important;font-weight:700!important;font-size:11px!important;padding:0 12px!important;min-height:36px!important;cursor:pointer;white-space:nowrap}
+#page-hrdocs .hr-clear-btn:hover{background:#dcfce7!important}
+#page-hrdocs .hr-cat-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 20px;background:#f8fafc;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+#page-hrdocs .hr-cat-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;border:1px solid #cbd5e1;background:#ffffff;color:#475569;font-size:10px;font-weight:700;cursor:pointer;transition:all .14s ease}
+#page-hrdocs .hr-cat-chip:hover{border-color:#818cf8;color:#4338ca;background:#eef2ff}
+#page-hrdocs .hr-cat-chip.is-active{background:#4f46e5;border-color:#4f46e5;color:#ffffff;box-shadow:0 2px 6px rgba(79,70,229,.24)}
+#page-hrdocs .hr-cat-count{font-size:9px;padding:1px 5px;border-radius:999px;background:rgba(15,23,42,.08);color:inherit;font-weight:800}
+#page-hrdocs .hr-cat-chip.is-active .hr-cat-count{background:rgba(255,255,255,.22);color:#fff}
+#page-hrdocs #hrDocStats{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:12px!important;padding:12px 20px!important;background:#f8fafc!important;flex-shrink:0}
+#page-hrdocs .hr-doc-stat{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #e2e8f0!important;border-left:4px solid #6366f1!important;border-radius:12px!important;padding:12px 14px!important;background:#ffffff!important;box-shadow:0 2px 8px rgba(15,23,42,.04)!important;cursor:pointer;transition:all .15s ease;user-select:none}
+#page-hrdocs .hr-doc-stat:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(15,23,42,.08)!important}
+#page-hrdocs .hr-doc-stat.stat-total{border-left-color:#4f46e5!important}
+#page-hrdocs .hr-doc-stat.stat-valid{border-left-color:#059669!important}
+#page-hrdocs .hr-doc-stat.stat-due{border-left-color:#d97706!important}
+#page-hrdocs .hr-doc-stat.stat-expired{border-left-color:#dc2626!important}
+#page-hrdocs .hr-doc-stat.is-active.stat-total{box-shadow:0 0 0 2px #4f46e5,0 6px 16px rgba(79,70,229,.14)!important}
+#page-hrdocs .hr-doc-stat.is-active.stat-valid{box-shadow:0 0 0 2px #059669,0 6px 16px rgba(5,150,105,.14)!important}
+#page-hrdocs .hr-doc-stat.is-active.stat-due{box-shadow:0 0 0 2px #d97706,0 6px 16px rgba(217,119,6,.14)!important}
+#page-hrdocs .hr-doc-stat.is-active.stat-expired{box-shadow:0 0 0 2px #dc2626,0 6px 16px rgba(220,38,38,.14)!important}
+#page-hrdocs .hr-doc-stat-v{font-size:22px!important;font-weight:900!important;letter-spacing:-.5px;color:#0f172a!important;line-height:1.1}
+#page-hrdocs .hr-doc-stat.stat-valid .hr-doc-stat-v{color:#047857!important}
+#page-hrdocs .hr-doc-stat.stat-due .hr-doc-stat-v{color:#b45309!important}
+#page-hrdocs .hr-doc-stat.stat-expired .hr-doc-stat-v{color:#b91c1c!important}
+#page-hrdocs .hr-doc-stat-l{font-size:9px!important;font-weight:800!important;letter-spacing:.6px;color:#64748b!important;text-transform:uppercase;margin-top:3px}
+#page-hrdocs .hr-stat-ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+#page-hrdocs .stat-total .hr-stat-ico{background:#eef2ff;color:#4f46e5}
+#page-hrdocs .stat-valid .hr-stat-ico{background:#ecfdf5;color:#059669}
+#page-hrdocs .stat-due .hr-stat-ico{background:#fffbeb;color:#d97706}
+#page-hrdocs .stat-expired .hr-stat-ico{background:#fef2f2;color:#dc2626}
+#page-hrdocs #hrDocResults{padding:0 20px 20px!important;background:#f8fafc!important;flex:1!important;min-height:0!important;overflow-y:auto!important;overflow-x:auto!important}
+#page-hrdocs .hr-doc-card{width:100%!important;min-width:0!important;border:1px solid #dbe3ef!important;border-radius:14px!important;box-shadow:0 6px 22px rgba(15,23,42,.05)!important;background:#fff!important;overflow:hidden!important}
+#page-hrdocs .hr-doc-row{width:100%!important;min-width:0!important;box-sizing:border-box!important;display:grid!important;grid-template-columns:minmax(165px,1.95fr) minmax(92px,.88fr) minmax(92px,.85fr) minmax(82px,.72fr) minmax(118px,1fr) minmax(150px,1.25fr) minmax(110px,.85fr)!important;gap:10px!important;align-items:center!important;padding:12px 14px!important;font-size:11px!important;border-top:1px solid #f1f5f9!important}
+#page-hrdocs .hr-doc-row > div{min-width:0!important;overflow-wrap:anywhere}
+#page-hrdocs .hr-doc-head{background:#f8fafc!important;color:#64748b!important;font-size:9px!important;font-weight:800!important;letter-spacing:.55px;text-transform:uppercase;border-top:0!important;border-bottom:1px solid #e2e8f0!important;padding:10px 14px!important}
+#page-hrdocs .hr-doc-row:not(.hr-doc-head):hover{background:#f8faff!important}
+#page-hrdocs .hr-doc-name{font-size:12px!important;font-weight:800!important;color:#0f172a!important;line-height:1.35}
+#page-hrdocs .hr-doc-muted{font-size:10px!important;color:#64748b!important;margin-top:2px;line-height:1.35}
+#page-hrdocs .atpl-share{display:inline-flex!important;align-items:center!important;gap:4px!important;padding:2px 8px!important;border-radius:999px!important;background:#eef2ff!important;color:#4338ca!important;font-size:9px!important;font-weight:700!important;margin-top:5px!important;border:1px solid #e0e7ff!important}
+#page-hrdocs .hr-type-pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:7px;background:#f1f5f9;border:1px solid #e2e8f0;color:#334155;font-size:10px;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#page-hrdocs .hr-doc-pill{padding:3px 8px!important;border:1px solid rgba(0,0,0,.04);margin-top:3px}
+#page-hrdocs .hr-doc-actions{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
+#page-hrdocs .hr-doc-btn{border:1px solid #cbd5e1!important;background:#fff!important;color:#334155!important;border-radius:8px!important;padding:5px 9px!important;font-size:10px!important;font-weight:700!important;cursor:pointer;transition:all .14s ease!important;white-space:nowrap}
 #page-hrdocs .hr-doc-btn:hover{background:#eef2ff!important;border-color:#818cf8!important;color:#3730a3!important;transform:translateY(-1px)}
-#page-hrdocs .hr-doc-attachment-missing{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:8px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;font-weight:800;font-size:9px}
-#page-hrdocs .hr-doc-attachment-ok{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border-radius:8px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;font-weight:800;font-size:9px}
-#page-hrdocs .hr-doc-filter-label{font-size:8px;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:.6px;margin:0 2px}
-#page-hrdocs .hr-doc-empty{padding:60px 20px!important;background:#fff;border:1px dashed #cbd5e1;border-radius:14px;margin-top:4px}
+#page-hrdocs .hr-attach-wrap{display:flex;flex-direction:column;gap:5px;align-items:flex-start;min-width:0}
+#page-hrdocs .hr-attach-name{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#0f766e!important;font-size:10px;font-weight:700;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:7px;padding:3px 8px}
+#page-hrdocs .hr-attach-missing{color:#b45309!important;background:#fffbeb;border:1px solid #fde68a;border-radius:7px;padding:3px 8px;font-size:10px;font-weight:700}
+#page-hrdocs .hr-attach-actions{display:flex;gap:5px;flex-wrap:wrap}
+#page-hrdocs .hr-mini-btn{border:1px solid #cbd5e1!important;background:#fff!important;color:#334155!important;border-radius:7px!important;padding:4px 8px!important;font-size:9px!important;font-weight:700!important;cursor:pointer;white-space:nowrap}
+#page-hrdocs .hr-mini-btn:hover{border-color:#818cf8!important;color:#4338ca!important;background:#eef2ff!important}
+#page-hrdocs .hr-doc-empty{padding:52px 20px!important;background:#fff;border:1px dashed #cbd5e1;border-radius:14px;margin-top:4px;text-align:center}
 #page-hrdocs .hr-doc-modal-box{border:1px solid #e2e8f0!important;box-shadow:0 30px 90px rgba(15,23,42,.28)!important}
-@media(max-width:1100px){#page-hrdocs .hr-doc-row{grid-template-columns:1fr 1fr!important}.hr-doc-head{display:none!important}}
+@media(max-width:920px){
+  #page-hrdocs #hrDocStats{grid-template-columns:repeat(2,minmax(0,1fr))!important;padding:10px 14px!important}
+  #page-hrdocs .page-top,#page-hrdocs #hrDocFilterBar,#page-hrdocs .hr-cat-bar,#page-hrdocs #hrDocResults{padding-left:14px!important;padding-right:14px!important}
+  #page-hrdocs .hr-doc-card,#page-hrdocs .hr-doc-row{min-width:860px!important}
+}
+@media(max-width:600px){
+  #page-hrdocs .hr-doc-filter-select{max-width:none!important;flex:1 1 130px!important}
+}
 </style>
 <script>
 (function(){
@@ -15057,7 +15121,7 @@ function hrDocToggleWindow(){
     async function open(id){var d=(typeof DOCS!=='undefined'&&DOCS.find)?DOCS.find(function(x){return x.id===id}):null;if(!d)return;var files=d.file_data_list&&d.file_data_list.length?d.file_data_list:(d.file_data?[{name:d.file_name||'Attachment',data:d.file_data,type:d.file_type||''}]:[]);if(!files.length)return;var box=qs('hrFilePreview'),body=qs('hrPreviewBody'),title=qs('hrPreviewTitle');if(!box||!body)return;title.textContent=files.length>1?'Attachments — '+(d.document_name||'Document'):(files[0].name||d.document_name||'Document Preview');box.style.display='flex';body.innerHTML='';for(var i=0;i<files.length;i++){var f=files[i],ext=(f.name||'').split('.').pop().toLowerCase(),wrap=document.createElement('div');wrap.style.cssText='width:100%;min-height:320px;background:#fff;border-bottom:1px solid #e2e8f0;padding:10px;display:flex;align-items:center;justify-content:center';if(ext==='pdf'){var iframe=document.createElement('iframe');iframe.src=f.data;iframe.style.cssText='width:100%;height:650px;border:0';wrap.appendChild(iframe)}else if(['jpg','jpeg','png','webp','gif','bmp'].includes(ext)){var im=document.createElement('img');im.src=f.data;im.style.cssText='max-width:100%;max-height:700px;object-fit:contain';wrap.appendChild(im)}else{wrap.innerHTML='<div style="padding:30px">'+esc2(f.name)+'<br><br>Preview unavailable.</div>'}body.appendChild(wrap)}}open.__genzMulti=true;window.hrDocOpenFile=open;
   }
   function patchFormText(){var f=qs('hrDocFile'),h=f?.parentElement;if(f){f.multiple=true;f.accept='.pdf,.jpg,.jpeg,.png,.webp,.bmp';f.onchange=function(){if(typeof window.hrDocAutoReadFile==='function')window.hrDocAutoReadFile(this);}}var ex=qs('hrDocExistingFile');if(ex&&(!ex.textContent||/No file selected/i.test(ex.textContent)))ex.textContent='No file selected. PDF/photo upload karte hi AI 100% read karke form fill karega aur verify karne ko bolega.';var b=h?.querySelector('button');if(b){b.innerHTML='🤖 AI 100% Read & Auto-Fill';b.onclick=function(){if(typeof window.hrDocAutoReadFile==='function')window.hrDocAutoReadFile(qs('hrDocFile'));};}var lab=f?.closest('.hr-doc-field')?.querySelector('label');if(lab)lab.textContent='Upload Document / Photo (Legal, Training, Certificate, Policy)';}
-  function init(){patchFormText();setupFilters();overrideSave();overrideOpenFile();addSearchIcon();var old=window.hrDocRender;window.hrDocRender=modernRender;var search=qs('hrDocSearch');if(search)search.oninput=modernRender;var st=qs('hrDocStatusFilter'),ty=qs('hrDocTypeFilter');if(st)st.onchange=modernRender;if(ty)ty.onchange=modernRender;setTimeout(function(){modernRender()},80);}
+  function init(){patchFormText();setupFilters();overrideSave();overrideOpenFile();addSearchIcon();var old=window.hrDocRender;window.hrDocRender=modernRender;var _hrR=function(){if(typeof window.hrDocRender==='function')window.hrDocRender();};var search=qs('hrDocSearch');if(search)search.oninput=_hrR;var st=qs('hrDocStatusFilter'),ty=qs('hrDocTypeFilter');if(st)st.onchange=_hrR;if(ty)ty.onchange=_hrR;setTimeout(function(){modernRender()},80);}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
   window.hrDocRender=modernRender;
 })();
@@ -15068,20 +15132,7 @@ function hrDocToggleWindow(){
 #page-empmaster #emTableBody tr:hover td[style*="background"]{
   background:#1e293b !important;
 }
-#page-empmaster #emTableBody tr:hover td .emp-name,
-#page-empmaster #emTableBody tr:hover td span{ /* keep existing semantic colors */ }
 #page-hrdocs #hrDocResults{overflow:auto!important;}
-#page-hrdocs .hr-doc-card{min-width:1100px!important;overflow:hidden!important;}
-#page-hrdocs .hr-doc-row{min-width:1100px!important;}
-#page-hrdocs .hr-doc-name{font-weight:800!important;color:#0f172a!important;}
-#page-hrdocs .hr-doc-muted{color:#64748b!important;}
-#page-hrdocs .hr-attach-wrap{display:flex;flex-direction:column;gap:4px;min-width:0;}
-#page-hrdocs .hr-attach-name{display:block;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#0f766e;font-weight:750;font-size:9px;}
-#page-hrdocs .hr-attach-missing{color:#b45309;font-weight:800;font-size:9px;}
-#page-hrdocs .hr-attach-actions{display:flex;gap:4px;flex-wrap:wrap;}
-#page-hrdocs .hr-mini-btn{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:4px 7px;font-size:9px;font-weight:800;cursor:pointer;color:#334155;}
-#page-hrdocs .hr-mini-btn:hover{background:#eef2ff;border-color:#818cf8;color:#3730a3;}
-@media(max-width:1100px){#page-hrdocs #hrDocResults{overflow:auto!important;}#page-hrdocs .hr-doc-card,#page-hrdocs .hr-doc-row{min-width:1100px!important;}}
 </style>
 <script>
 (function(){
@@ -15154,9 +15205,10 @@ function patchSave(){
 }
 function init(){
  removeHistoryUI();patchSave();
- var search=Q('hrDocSearch');if(search)search.oninput=renderFinal;
- var st=Q('hrDocStatusFilter'),ty=Q('hrDocTypeFilter');if(st)st.onchange=renderFinal;if(ty)ty.onchange=renderFinal;
- var af=Q('hrDocAttachmentFilter');if(af)af.onchange=renderFinal;
+ var _hrRF=function(){if(typeof window.hrDocRender==='function')window.hrDocRender();};
+ var search=Q('hrDocSearch');if(search)search.oninput=_hrRF;
+ var st=Q('hrDocStatusFilter'),ty=Q('hrDocTypeFilter');if(st)st.onchange=_hrRF;if(ty)ty.onchange=_hrRF;
+ var af=Q('hrDocAttachmentFilter');if(af)af.onchange=_hrRF;
  setTimeout(renderFinal,150);
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
@@ -15222,46 +15274,7 @@ window.hrDocRender=renderFinal;
   background:#172554; color:#c7d2fe; cursor:pointer; font-size:11px; font-weight:800;
 }
 #page-empmaster .arora-import-btn:hover{background:#312e81;transform:translateY(-1px)}
-/* ---------- HR Docs premium Gen-Z ---------- */
-#page-hrdocs{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif!important}
-#page-hrdocs .hr-doc-card{
-  border:1px solid #dbe3ef!important; border-radius:16px!important; overflow:hidden!important;
-  box-shadow:0 12px 35px rgba(15,23,42,.07)!important; background:#fff!important;
-}
-#page-hrdocs .hr-doc-head{background:#f8fafc!important;color:#64748b!important;border-bottom:1px solid #e2e8f0!important}
-#page-hrdocs .hr-doc-row{min-height:66px!important;border-bottom:1px solid #eef2f7!important}
-#page-hrdocs .hr-doc-row:not(.hr-doc-head):hover{background:#f8faff!important}
-#page-hrdocs .hr-doc-name{font-weight:850!important;color:#0f172a!important;letter-spacing:-.15px}
-#page-hrdocs .hr-doc-muted{color:#64748b!important}
-#page-hrdocs .hr-attach-wrap{display:flex;flex-direction:column;gap:5px;align-items:flex-start}
-#page-hrdocs .hr-attach-name{
-  display:block;max-width:215px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  color:#334155!important;font-size:10px;font-weight:750;background:#f1f5f9;
-  border:1px solid #e2e8f0;border-radius:7px;padding:4px 7px;
-}
-#page-hrdocs .hr-attach-missing{
-  color:#b45309!important;background:#fffbeb;border:1px solid #fde68a;
-  border-radius:7px;padding:4px 7px;font-size:10px;font-weight:800;
-}
-#page-hrdocs .hr-attach-actions{display:flex;gap:5px;flex-wrap:wrap}
-#page-hrdocs .hr-mini-btn{
-  border:1px solid #cbd5e1!important;background:#fff!important;color:#334155!important;
-  border-radius:7px!important;padding:4px 7px!important;font-size:9px!important;font-weight:800!important;cursor:pointer
-}
-#page-hrdocs .hr-mini-btn:hover{border-color:#818cf8!important;color:#4338ca!important;background:#eef2ff!important}
-#page-hrdocs .hr-doc-actions .hr-doc-btn{
-  border-radius:8px!important;background:#fff!important;border:1px solid #cbd5e1!important;color:#334155!important;
-}
-#page-hrdocs .hr-doc-actions .hr-doc-btn:hover{background:#eef2ff!important;border-color:#818cf8!important;color:#4338ca!important}
-#page-hrdocs #hrDocSearch:focus{border-color:#6366f1!important;box-shadow:0 0 0 3px rgba(99,102,241,.10)!important}
-#page-hrdocs .hr-doc-stat{
-  background:#fff!important;border:1px solid #e2e8f0!important;border-radius:14px!important;
-  box-shadow:0 8px 24px rgba(15,23,42,.05)!important
-}
-#page-hrdocs .hr-doc-stat-v{font-size:21px!important;font-weight:900!important;color:#0f172a!important}
-@media(max-width:900px){
-  #page-hrdocs .hr-doc-row{min-width:1100px!important}
-}
+/* ---------- HR Docs responsive layout handled by #hrGenZPatch ---------- */
 </style>
 
 <script>
@@ -17077,11 +17090,56 @@ window.hrDocAttachFiles = async function(id,input){
 /* Render every record, including records that have no attachment.
    The default is ALL, so an accidental Attached filter can no longer
    make the whole page look empty after opening it. */
-function ARender(){
-  var wrap=AQS('hrDocResults');
-  if(!wrap)return;
-  var DATA=ADocs();
+function ABuildCategoryChips(DATA, tf){
+  var bar=AQS('hrDocCategoryBar');
+  if(!bar)return;
+  var counts={};
+  DATA.forEach(function(d){
+    var t=(d&&d.doc_type?String(d.doc_type).trim():'Other')||'Other';
+    counts[t]=(counts[t]||0)+1;
+  });
+  var sel=AQS('hrDocTypeFilter'), seen={}, ordered=[];
+  if(sel){
+    Array.from(sel.options).forEach(function(o){
+      var v=o.value;
+      if(v && v!=='ALL' && !seen[v]){ seen[v]=1; ordered.push(v); }
+    });
+  }
+  Object.keys(counts).sort().forEach(function(t){
+    if(!seen[t]){
+      seen[t]=1; ordered.push(t);
+      if(sel){
+        var opt=document.createElement('option');
+        opt.value=t; opt.textContent=t;
+        sel.appendChild(opt);
+      }
+    }
+  });
+  var chips=['<button type="button" class="hr-cat-chip'+(tf==='ALL'?' is-active':'')+'" data-type="ALL" onclick="hrDocSetTypeFilter(this.dataset.type)">All <span class="hr-cat-count">'+DATA.length+'</span></button>'];
+  ordered.forEach(function(t){
+    var n=counts[t]||0;
+    if(n===0 && tf!==t) return;
+    chips.push('<button type="button" class="hr-cat-chip'+(tf===t?' is-active':'')+'" data-type="'+AEsc(t)+'" onclick="hrDocSetTypeFilter(this.dataset.type)">'+AEsc(t)+' <span class="hr-cat-count">'+n+'</span></button>');
+  });
+  bar.innerHTML=chips.join('');
+}
 
+window.hrDocSetStatusFilter=function(val){
+  var el=AQS('hrDocStatusFilter');
+  if(!el)return;
+  var next=(!val||val==='ALL')?'ALL':(el.value===val?'ALL':val);
+  el.value=next;
+  ARender();
+};
+
+window.hrDocSetTypeFilter=function(val){
+  var el=AQS('hrDocTypeFilter');
+  if(!el)return;
+  el.value=val||'ALL';
+  ARender();
+};
+
+function AFilterRows(DATA){
   var q=(AQS('hrDocSearch')?.value||'').toLowerCase().trim();
   var sf=AQS('hrDocStatusFilter')?.value||'ALL';
   var tf=AQS('hrDocTypeFilter')?.value||'ALL';
@@ -17090,12 +17148,10 @@ function ARender(){
   var rows=DATA.filter(function(d){
     var k=window.hrDocStatus?window.hrDocStatus(d).k:'VALID';
     var has=AFiles(d).length>0;
-
     if(sf!=='ALL'&&k!==sf)return false;
-    if(tf!=='ALL'&&d.doc_type!==tf)return false;
+    if(tf!=='ALL'&&(d.doc_type||'Other')!==tf)return false;
     if(af==='ATTACHED'&&!has)return false;
     if(af==='MISSING'&&has)return false;
-
     if(!q)return true;
     return [
       d.employee_code,d.employee_name,d.document_name,d.doc_type,
@@ -17111,6 +17167,71 @@ function ARender(){
     return (rank[sa.k]-rank[sb.k]) ||
       ((sa.n==null?999999:sa.n)-(sb.n==null?999999:sb.n));
   });
+  return {rows:rows, sf:sf, tf:tf};
+}
+
+window.hrDocExportExcel=function(){
+  var DATA=ADocs();
+  var res=AFilterRows(DATA);
+  var rows=res.rows;
+  if(!rows.length){
+    if(typeof window.showToast==='function')window.showToast('ℹ️ Export ke liye koi matching HR document nahi hai.');
+    return;
+  }
+  var out=rows.map(function(d, idx){
+    var s=window.hrDocStatus?window.hrDocStatus(d):{k:'VALID',n:999999,label:'Valid'};
+    var txt=s.k==='NO_EXPIRY'?'No Expiry':s.n<0?'Expired '+Math.abs(s.n)+'d ago':s.n===0?s.label+' today':s.label+' ('+s.n+'d)';
+    var dt=typeof dateText==='function'?dateText:function(v){return v||'—';};
+    return {
+      'S.No': idx+1,
+      'Document Name': d.document_name||'Untitled Document',
+      'Type': d.doc_type||'Other',
+      'Holder / Company': d.holder||'',
+      'Reference No': d.reference_no||'',
+      'Certificate No': d.certificate_no||'',
+      'Issuing Authority': d.issuing_authority||'',
+      'Location / Site': d.location||'',
+      'Issue Date': dt(d.issue_date),
+      'Last Renewal Date': dt(d.last_renewal_date),
+      'Re-Training Due': dt(d.retraining_date),
+      'Expiry Date': dt(d.expiry_date),
+      'Compliance Status': txt,
+      'Attachment': d.file_name||(AFiles(d).length?'Attached':'Not Attached'),
+      'Remarks': d.remarks||''
+    };
+  });
+  var fileName='ATPL_HR_Documents_Register_'+new Date().toISOString().slice(0,10);
+  if(window.XLSX && XLSX.utils && XLSX.writeFile){
+    var ws=XLSX.utils.json_to_sheet(out);
+    ws['!cols']=[{wch:6},{wch:30},{wch:16},{wch:26},{wch:22},{wch:20},{wch:22},{wch:18},{wch:13},{wch:14},{wch:14},{wch:13},{wch:18},{wch:24},{wch:28}];
+    var wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'HR Documents');
+    XLSX.writeFile(wb, fileName+'.xlsx');
+  }else{
+    var headers=Object.keys(out[0]);
+    var csv=[headers.join(',')].concat(out.map(function(r){
+      return headers.map(function(k){return '"'+String(r[k]==null?'':r[k]).replace(/"/g,'""')+'"';}).join(',');
+    })).join('\n');
+    var bl=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(bl),a=document.createElement('a');
+    a.href=url; a.download=fileName+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  }
+  if(typeof window.showToast==='function')window.showToast('📊 '+rows.length+' HR documents export ho gaye.');
+};
+
+/* Render every record, including records that have no attachment.
+   The default is ALL, so an accidental Attached filter can no longer
+   make the whole page look empty after opening it. */
+function ARender(){
+  var wrap=AQS('hrDocResults');
+  if(!wrap)return;
+  var DATA=ADocs();
+  var filtered=AFilterRows(DATA);
+  var rows=filtered.rows, sf=filtered.sf, tf=filtered.tf;
+
+  ABuildCategoryChips(DATA, tf);
 
   var c={t:DATA.length,v:0,d:0,x:0};
   DATA.forEach(function(z){
@@ -17121,10 +17242,18 @@ function ARender(){
   });
   var st=AQS('hrDocStats');
   if(st)st.innerHTML=
-    '<div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.t+'</div><div class="hr-doc-stat-l">TOTAL DOCUMENTS</div></div>'+
-    '<div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.v+'</div><div class="hr-doc-stat-l">VALID / SAFE</div></div>'+
-    '<div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.d+'</div><div class="hr-doc-stat-l">DUE SOON</div></div>'+
-    '<div class="hr-doc-stat"><div class="hr-doc-stat-v">'+c.x+'</div><div class="hr-doc-stat-l">EXPIRED</div></div>';
+    '<div class="hr-doc-stat stat-total'+(sf==='ALL'?' is-active':'')+'" role="button" tabindex="0" data-filter="ALL" onclick="hrDocSetStatusFilter(this.dataset.filter)">'+
+      '<div><div class="hr-doc-stat-v">'+c.t+'</div><div class="hr-doc-stat-l">TOTAL DOCUMENTS</div></div>'+
+      '<div class="hr-stat-ico">📚</div></div>'+
+    '<div class="hr-doc-stat stat-valid'+(sf==='VALID'?' is-active':'')+'" role="button" tabindex="0" data-filter="VALID" onclick="hrDocSetStatusFilter(this.dataset.filter)">'+
+      '<div><div class="hr-doc-stat-v">'+c.v+'</div><div class="hr-doc-stat-l">VALID / SAFE</div></div>'+
+      '<div class="hr-stat-ico">✅</div></div>'+
+    '<div class="hr-doc-stat stat-due'+(sf==='DUE'?' is-active':'')+'" role="button" tabindex="0" data-filter="DUE" onclick="hrDocSetStatusFilter(this.dataset.filter)">'+
+      '<div><div class="hr-doc-stat-v">'+c.d+'</div><div class="hr-doc-stat-l">DUE SOON</div></div>'+
+      '<div class="hr-stat-ico">⏳</div></div>'+
+    '<div class="hr-doc-stat stat-expired'+(sf==='EXPIRED'?' is-active':'')+'" role="button" tabindex="0" data-filter="EXPIRED" onclick="hrDocSetStatusFilter(this.dataset.filter)">'+
+      '<div><div class="hr-doc-stat-v">'+c.x+'</div><div class="hr-doc-stat-l">EXPIRED</div></div>'+
+      '<div class="hr-stat-ico">⚠️</div></div>';
 
   if(!rows.length){
     wrap.innerHTML=
@@ -17132,12 +17261,14 @@ function ARender(){
       '✨<br><br><strong>No matching HR documents</strong>'+
       '<br><span style="font-size:10px;color:#94a3b8">Search/filter clear karke saare documents dekho.</span>'+
       '</div>';
+    if(typeof updateAlertBadge==='function')
+      updateAlertBadge(typeof getAlertItems==='function'?getAlertItems().length:0);
     return;
   }
 
   var h='<div class="hr-doc-card">'+
-    '<div class="hr-doc-row hr-doc-head" style="grid-template-columns:minmax(230px,1.65fr) 125px 110px 125px 155px 230px 190px">'+
-    '<div>DOCUMENT</div><div>TYPE</div><div>ISSUE DATE</div><div>RE-TRAINING</div><div>EXPIRY / STATUS</div><div>ATTACHMENT</div><div>ACTIONS</div></div>';
+    '<div class="hr-doc-row hr-doc-head">'+
+    '<div>DOCUMENT</div><div>TYPE</div><div>ISSUE / RENEWED</div><div>RE-TRAINING</div><div>EXPIRY / STATUS</div><div>ATTACHMENT</div><div style="text-align:right">ACTIONS</div></div>';
 
   rows.forEach(function(d){
     var s=window.hrDocStatus?window.hrDocStatus(d):{k:'VALID',n:999999,label:'Valid'};
@@ -17147,29 +17278,33 @@ function ARender(){
 
     var att=has
       ?'<div class="hr-attach-wrap">'+
-        names.slice(0,3).map(function(n){
+        names.slice(0,2).map(function(n){
           return '<span class="hr-attach-name" title="'+AEsc(n)+'">📎 '+AEsc(n)+'</span>';
         }).join('')+
-        (names.length>3?'<span class="hr-attach-name">+ '+(names.length-3)+' more</span>':'')+
+        (names.length>2?'<span class="hr-attach-name">+ '+(names.length-2)+' more</span>':'')+
         '<div class="hr-attach-actions">'+
-        '<button class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocOpenFile(this.dataset.id)">📂 Open</button>'+
-        '<button class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocPickAttachment(this.dataset.id)">↻ Replace</button>'+
+        '<button type="button" class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocOpenFile(this.dataset.id)">👁 Preview</button>'+
+        '<button type="button" class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocPickAttachment(this.dataset.id)">↻ Replace</button>'+
         '</div></div>'
       :'<div class="hr-attach-wrap">'+
         '<span class="hr-attach-missing">⚠️ File not attached</span>'+
-        '<div class="hr-attach-actions"><button class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocPickAttachment(this.dataset.id)">📎 Attach File</button></div>'+
+        '<div class="hr-attach-actions"><button type="button" class="hr-mini-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocPickAttachment(this.dataset.id)">📎 Attach File</button></div>'+
         '</div>';
 
-    h+='<div class="hr-doc-row" style="grid-template-columns:minmax(230px,1.65fr) 125px 110px 125px 155px 230px 190px">'+
-      '<div><div class="hr-doc-name">'+AEsc(d.document_name||'Untitled Document')+'</div><div class="hr-doc-muted">'+AEsc(d.holder||d.remarks||'')+'</div></div>'+
-      '<div>'+AEsc(d.doc_type||'Other')+'</div>'+
-      '<div>'+(typeof dateText==='function'?dateText(d.issue_date):AEsc(d.issue_date||'—'))+'</div>'+
-      '<div>'+(typeof dateText==='function'?dateText(d.retraining_date):AEsc(d.retraining_date||'—'))+'</div>'+
-      '<div><div>'+(typeof dateText==='function'?dateText(d.expiry_date):AEsc(d.expiry_date||'—'))+'</div><span class="hr-doc-pill '+cl+'">'+AEsc(txt)+'</span></div>'+
+    var dt=typeof dateText==='function'?dateText:function(v){return v?AEsc(v):'—';};
+    var issueCell='<div><div>'+dt(d.issue_date)+'</div>'+(d.last_renewal_date?'<div style="font-size:9px;color:#0369a1;font-weight:700;margin-top:2px">Renewed: '+dt(d.last_renewal_date)+'</div>':'')+'</div>';
+    var meta=d.holder||d.reference_no||d.remarks||'';
+
+    h+='<div class="hr-doc-row">'+
+      '<div><div class="hr-doc-name">'+AEsc(d.document_name||'Untitled Document')+'</div>'+(meta?'<div class="hr-doc-muted">'+AEsc(meta)+'</div>':'')+'</div>'+
+      '<div><span class="hr-type-pill" title="'+AEsc(d.doc_type||'Other')+'">'+AEsc(d.doc_type||'Other')+'</span></div>'+
+      issueCell+
+      '<div>'+dt(d.retraining_date)+'</div>'+
+      '<div><div>'+dt(d.expiry_date)+'</div><span class="hr-doc-pill '+cl+'">'+AEsc(txt)+'</span></div>'+
       '<div>'+att+'</div>'+
       '<div class="hr-doc-actions">'+
-      '<button class="hr-doc-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocEdit(this.dataset.id)">✏️ Edit</button>'+
-      '<button class="hr-doc-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocDelete(this.dataset.id)">🗑</button>'+
+      '<button type="button" class="hr-doc-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocEdit(this.dataset.id)">✏️ Edit</button>'+
+      '<button type="button" class="hr-doc-btn" data-id="'+AEsc(d.id)+'" onclick="hrDocDelete(this.dataset.id)" title="Delete">🗑</button>'+
       '</div></div>';
   });
   h+='</div>';
@@ -17178,8 +17313,17 @@ function ARender(){
     updateAlertBadge(typeof getAlertItems==='function'?getAlertItems().length:0);
 }
 
+function ABindControls(){
+  var qEl=AQS('hrDocSearch'), stEl=AQS('hrDocStatusFilter'), tyEl=AQS('hrDocTypeFilter'), afEl=AQS('hrDocAttachmentFilter');
+  if(qEl)qEl.oninput=ARender;
+  if(stEl)stEl.onchange=ARender;
+  if(tyEl)tyEl.onchange=ARender;
+  if(afEl)afEl.onchange=ARender;
+}
+
 function AInit(){
   AInitFilters();
+  ABindControls();
 
   /* Use our complete renderer for every HR Docs refresh. */
   window.hrDocRender=ARender;
@@ -17207,8 +17351,10 @@ function AInit(){
 
   setTimeout(function(){
     AResetAttachmentFilter();
+    ABindControls();
+    window.hrDocRender=ARender;
     ARender();
-  },200);
+  },220);
 }
 
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',AInit);
