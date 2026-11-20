@@ -189,7 +189,7 @@ function backgroundShared(){
   backgroundRun=Promise.allSettled(jobs.map(function(x){return Promise.resolve(x)})).finally(function(){backgroundRun=null});
   return backgroundRun
 }
-function firstAllowed(u){var x=Array.prototype.find.call(root.document.querySelectorAll('.vitem[id^="vn-"]'),function(el){return has(u,el.id.slice(3))});return x?x.id.slice(3):null}
+function firstAllowed(u){var list=Array.prototype.slice.call(root.document.querySelectorAll('.vitem[id^="vn-"]'));var vis=list.find(function(el){if(el.hidden||(el.style&&String(el.style.display||'').toLowerCase()==='none')||/^vn-(cmd|ai-commander|test|attendanceaudit|challan|empdashboard|dol)$/.test(el.id||''))return false;try{if(root.getComputedStyle&&root.getComputedStyle(el).display==='none')return false}catch(_){}return has(u,el.id.slice(3))});if(vis)return vis.id.slice(3);var x=list.find(function(el){return has(u,el.id.slice(3))});return x?x.id.slice(3):null}
 function unlockApp(user,navigate){
   var login=q("uaLogin");if(login)login.style.display="none";
   var ls=q("loginScreen");if(ls)ls.style.display="none";

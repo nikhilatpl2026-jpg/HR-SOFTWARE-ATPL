@@ -538,7 +538,7 @@ function enterApp() {
   document.body.classList.remove('uaLocked');
   if (window.ATPLPermissionGuard && typeof window.ATPLPermissionGuard.apply === 'function') window.ATPLPermissionGuard.apply();
   if (typeof window.goPage === 'function') {
-    var targetPage = 'cmd';
+    var targetPage = 'files';
     try {
       var g = window.ATPLPermissionGuard;
       if (g && typeof g.currentUser === 'function' && typeof g.hasFeature === 'function') {
@@ -2316,9 +2316,17 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
 </style>
 <script src="attendance-machine-auditor-v1.js?v=20261027-v1"></script>
 
-<!-- ATPL sidebar cleanup: visually remove three unwanted nav entries; keep modules and data intact -->
+<!-- ATPL sidebar cleanup: visually remove unwanted nav entries with specificity higher than #vnav .vitem; keep modules and sync intact -->
 <style id="atpl-sidebar-menu-cleanup-v1">
-#vn-cmd, #vn-attendanceaudit, #vn-empdashboard { display: none !important; }
+#vnav #vn-cmd.vitem,
+#vnav #vn-ai-commander.vitem,
+#vnav #vn-test.vitem,
+#vnav #vn-attendanceaudit.vitem,
+#vnav #vn-challan.vitem,
+#vnav #vn-empdashboard.vitem,
+#vnav #vn-dol.vitem {
+  display: none !important;
+}
 </style>
 </head>
 <body class="nav-collapsed files-collapsed">
@@ -2706,9 +2714,9 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>🏠 Dashboard</span><span class="vnav-arrow" id="arr-dash">▾</span>
     </div>
     <div class="vnav-sub" id="cat-dash">
-      <div class="vitem active" id="vn-cmd" onclick="goPage('cmd')"><span class="vi">⚡</span>Smart Commands</div>
+      <div class="vitem" id="vn-cmd" onclick="goPage('cmd')" hidden aria-hidden="true" style="display:none!important"><span class="vi">⚡</span>Smart Commands</div>
       <div class="vitem" id="vn-ai-commander" onclick="window.AroraAICommander.open()" hidden aria-hidden="true" style="display:none!important;color:#a5b4fc;font-weight:700"><span class="vi">🤖</span>AI Commander (v10)</div>
-      <div class="vitem" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
+      <div class="vitem active" id="vn-files" onclick="goPage('files')"><span class="vi">📂</span>All Files</div>
       <div class="vitem" id="vn-test" onclick="goPage('test')"><span class="vi">🧪</span>Test Feature</div>
     </div>
   </div>
@@ -2722,7 +2730,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-mamsalary" onclick="goPage('mamsalary')"><span class="vi">🧾</span>Mam → Compliance <span class="vbadge vbadge-green">EXCEL</span></div>
       <div class="vitem" id="vn-audit" onclick="goPage('audit')"><span class="vi">🔍</span>Salary Audit <span class="vbadge" id="auditBadge">0</span></div>
       <div class="vitem" id="vn-machineaudit" onclick="goPage('machineaudit')"><span class="vi">⚙️</span>Machine Rate Audit</div>
-      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge vbadge-indigo">NEW</span></div>
+      <div class="vitem" id="vn-attendanceaudit" onclick="goPage('attendanceaudit')" hidden aria-hidden="true" style="display:none!important"><span class="vi">📊</span>Attendance &amp; Multi-Machine Auditor <span class="vbadge vbadge-indigo">NEW</span></div>
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-advance" onclick="goPage('advance')"><span class="vi">💳</span>Advance Management <span class="vbadge vbadge-count" id="advBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
@@ -2737,7 +2745,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <span>👥 Employee</span><span class="vnav-arrow" id="arr-emp">▾</span>
     </div>
     <div class="vnav-sub" id="cat-emp">
-      <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge vbadge-green">LIVE</span></div>
+      <div class="vitem" id="vn-empdashboard" onclick="goPage('empdashboard')" hidden aria-hidden="true" style="display:none!important"><span class="vi">📊</span>Workforce Dashboard <span class="vbadge vbadge-green">LIVE</span></div>
       <div class="vitem" id="vn-dol" onclick="goPage('dol')" hidden aria-hidden="true" style="display:none!important"><span class="vi">📅</span>Date of Leaving</div>
       <div class="vitem" id="vn-dolverify" onclick="goPage('dolverify')" hidden aria-hidden="true" style="display:none!important"><span class="vi">✅</span>DOL Verifier</div>
       <div class="vitem" id="vn-ff" onclick="goPage('ff')"><span class="vi">📄</span>F&amp;F Settlement</div>
@@ -3302,7 +3310,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <div id="psgPrintArea" aria-hidden="true"></div>
 
     <!-- ══ PAGE: SMART COMMANDS ══ -->
-    <div class="page active" id="page-cmd">
+    <div class="page" id="page-cmd">
       <!-- File Filter Bar -->
 
       <div class="cmd-file-filter" id="cmdFileFilter">
@@ -3712,7 +3720,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     </div>
 
     <!-- ══ PAGE: ALL FILES ══ -->
-    <div class="page" id="page-files">
+    <div class="page active" id="page-files">
       <div class="page-top" style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
         <div>
           <div class="page-title">💾 All Saved Files</div>
@@ -22092,6 +22100,7 @@ document.addEventListener('click', function(e) {
       var anyMatch = false;
       Array.prototype.slice.call(box.children).forEach(function(el) {
         if (!el.classList || !el.classList.contains('vitem')) return;
+        if (/^vn-(cmd|ai-commander|test|attendanceaudit|challan|empdashboard|dol)$/.test(el.id || '')) return;
         if (!q) {
           el.classList.remove('vnav-search-hide');
           anyMatch = true;
