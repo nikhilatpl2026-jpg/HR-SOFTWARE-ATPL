@@ -2898,7 +2898,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <input type="file" id="msrFileInput" accept=".csv,.xlsx,.xls" data-ua-action="upload" style="display:none" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.handleFileInput(this)" />
             <button type="button" id="msrUploadBtn" data-ua-action="upload" class="msr-btn msr-btn-primary" onclick="document.getElementById('msrFileInput').click()">📂 Upload Salary Sheet (.csv / .xlsx)</button>
             <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.16)">
-              <select id="msrErpFileSelect" class="msr-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px"></select>
+              <select id="msrErpFileSelect" class="msr-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px" onchange="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.onErpSelectChange()"></select>
               <button type="button" id="msrLoadErpBtn" data-ua-action="view" class="msr-btn msr-btn-dark msr-btn-sm" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.loadFromErpSelect()">📥 Load ERP Sheet</button>
             </div>
             <button type="button" id="msrGenerateBtn" data-ua-action="view" class="msr-btn msr-btn-success" onclick="window.ATPLMonthlyStatusReport && window.ATPLMonthlyStatusReport.generateAndOpenValidation()">⚡ Generate &amp; Validate</button>
@@ -3145,7 +3145,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
             <input type="file" id="psgFileInput" accept=".csv,.xlsx,.xls" data-ua-action="upload" style="display:none" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.handleFileInput(this)" />
             <button type="button" id="psgUploadBtn" data-ua-action="upload" class="psg-btn psg-btn-primary" onclick="document.getElementById('psgFileInput').click()">📂 Upload Salary Sheet (.csv / .xlsx)</button>
             <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.08);padding:4px 8px;border-radius:7px;border:1px solid rgba(255,255,255,0.16)">
-              <select id="psgErpFileSelect" class="psg-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px"></select>
+              <select id="psgErpFileSelect" class="psg-select" style="width:auto;min-width:190px;max-width:260px;padding:5px 8px;font-size:11px" onchange="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.onErpSelectChange()"></select>
               <button type="button" id="psgLoadErpBtn" data-ua-action="view" class="psg-btn psg-btn-dark psg-btn-sm" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.loadFromErpSelect()">📥 Load ERP Sheet</button>
             </div>
             <button type="button" id="psgPreviewTabGoBtn" data-ua-action="view" class="psg-btn psg-btn-success" onclick="window.ATPLPaySlipGenerator && window.ATPLPaySlipGenerator.openSlipPreview()">👁 View Pay Slips</button>
@@ -3260,7 +3260,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
                   <th>Emp Code</th>
                   <th>Name</th>
                   <th>Desig. &amp; Dept</th>
-                  <th>Days (M / Paid)</th>
+                  <th>Days (M / WD / Paid)</th>
                   <th>Rate Gross</th>
                   <th>Earn Basic / HRA</th>
                   <th>Bonus / OT</th>
@@ -18439,8 +18439,10 @@ document.addEventListener('click', function(e) {
       }
       if (!validDays.length) validDays = WEEKDAYS_FULL.slice();
 
-      var woRng = createRng('WO|' + String(r.id) + '|' + MONTH_NAMES[month] + '|' + year);
-      r.weeklyOff = validDays[Math.floor(woRng() * validDays.length)];
+      if (!r.hasExplicitWeeklyOff) {
+        var woRng = createRng('WO|' + String(r.id) + '|' + MONTH_NAMES[month] + '|' + year);
+        r.weeklyOff = validDays[Math.floor(woRng() * validDays.length)];
+      }
       r.shift = 'Day';
     }
 
@@ -18542,24 +18544,278 @@ document.addEventListener('click', function(e) {
   function normHeader(h) {
     return String(h == null ? '' : h)
       .toLowerCase()
+      .replace(/\bp\s*\.\s*f\b\.?/g, 'pf')
+      .replace(/\be\s*\.\s*p\s*\.\s*f\b\.?/g, 'epf')
+      .replace(/\be\s*\.\s*s\s*\.\s*i\s*\.\s*c\b\.?/g, 'esic')
+      .replace(/\be\s*\.\s*s\s*\.\s*i\b\.?/g, 'esi')
+      .replace(/\bh\s*\.\s*r\s*\.\s*a\b\.?/g, 'hra')
+      .replace(/\bo\s*\.\s*t\b\.?/g, 'ot')
+      .replace(/\bw\s*\.\s*d\b\.?/g, 'wd')
+      .replace(/\bw\s*[\.\/]\s*o\b\.?/g, 'wo')
+      .replace(/\bh\s*\.\s*d\b\.?/g, 'hd')
+      .replace(/\bs\s*\.\s*no\b\.?/g, 'sno')
+      .replace(/\bsr\s*\.\s*no\b\.?/g, 'sr no')
+      .replace(/\ba\s*\/\s*c\b/g, 'ac')
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
 
-  // Build composite header text combining row r and row r+1 when Excel has 2-row/merged headers
+  function expandTwoDigitYear(yy) {
+    var n = parseInt(yy, 10);
+    if (!isFinite(n)) return null;
+    if (n >= 100) return n;
+    return n >= 50 ? (1900 + n) : (2000 + n);
+  }
+
+  function lookupMonthToken(tok) {
+    var m = {
+      jan:0, january:0,
+      feb:1, febr:1, february:1,
+      mar:2, march:2,
+      apr:3, aprl:3, april:3,
+      may:4,
+      jun:5, june:5,
+      jul:6, july:6,
+      aug:7, august:7,
+      sep:8, sept:8, september:8,
+      oct:9, octo:9, october:9,
+      nov:10, novm:10, november:10,
+      dec:11, decm:11, december:11
+    };
+    var k = String(tok || '').toLowerCase().replace(/[^a-z]/g, '');
+    return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null;
+  }
+
+  function looksLikeDataRowForPeriod(row) {
+    if (!Array.isArray(row)) return false;
+    var nonEmpty = 0, numCount = 0, alphaCount = 0;
+    for (var i = 0; i < row.length; i++) {
+      var s = cleanStr(row[i]);
+      if (!s) continue;
+      nonEmpty++;
+      if (/^-?\d+(?:[.,]\d+)?$/.test(s.replace(/,/g, ''))) numCount++;
+      else if (/[a-z]{3,}/i.test(s)) alphaCount++;
+    }
+    return nonEmpty >= 4 && numCount >= 3 && alphaCount >= 1;
+  }
+
+  function extractMonthYearFromText(rawText) {
+    var cleaned = String(rawText == null ? '' : rawText)
+      .replace(/\(\s*\d+\s*\)(?=\.[a-z0-9]+$|\s*$)/gi, ' ')
+      .replace(/\.(xlsx?|csv)$/i, ' ')
+      .replace(/[’`]/g, "'");
+    var lower = cleaned.toLowerCase();
+
+    var rxM4 = /(?:^|[^a-z])(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_.,'\/]*(20[1-4]\d)(?=$|[^0-9])/i;
+    var m1 = lower.match(rxM4);
+    if (m1) {
+      var mo1 = lookupMonthToken(m1[1]);
+      var yr1 = parseInt(m1[2], 10);
+      if (mo1 != null && yr1 >= 2010 && yr1 <= 2049) return { month: mo1, year: yr1 };
+    }
+
+    var rxM2 = /(?:^|[^a-z])(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_.,'\/]*(1[5-9]|[2-4]\d)(?=$|[^0-9])/i;
+    var m2 = lower.match(rxM2);
+    if (m2) {
+      var mo2 = lookupMonthToken(m2[1]);
+      var yr2 = expandTwoDigitYear(m2[2]);
+      if (mo2 != null && yr2 >= 2015 && yr2 <= 2049) return { month: mo2, year: yr2 };
+    }
+
+    var rx4M = /(?:^|[^0-9])(20[1-4]\d)[\s\-_.,'\/]*(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=$|[^a-z])/i;
+    var m3 = lower.match(rx4M);
+    if (m3) {
+      var mo3 = lookupMonthToken(m3[2]);
+      var yr3 = parseInt(m3[1], 10);
+      if (mo3 != null && yr3 >= 2010 && yr3 <= 2049) return { month: mo3, year: yr3 };
+    }
+
+    var rx2M = /(?:^|[^0-9])(1[5-9]|[2-4]\d)[\-_.,'\/]+(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=$|[^a-z])/i;
+    var m4 = lower.match(rx2M);
+    if (m4) {
+      var mo4 = lookupMonthToken(m4[2]);
+      var yr4 = expandTwoDigitYear(m4[1]);
+      if (mo4 != null && yr4 >= 2015 && yr4 <= 2049) return { month: mo4, year: yr4 };
+    }
+
+    var mIso = lower.match(/(?:^|[^0-9])(20[1-4]\d)[\-\/](0?[1-9]|1[0-2])(?=$|[^0-9])/);
+    if (mIso) {
+      return { month: parseInt(mIso[2], 10) - 1, year: parseInt(mIso[1], 10) };
+    }
+    var mInd = lower.match(/(?:^|[^0-9])(?:(?:0?[1-9]|[12]\d|3[01])[\-\/])?(0?[1-9]|1[0-2])[\-\/](20[1-4]\d)(?=$|[^0-9])/);
+    if (mInd) {
+      return { month: parseInt(mInd[1], 10) - 1, year: parseInt(mInd[2], 10) };
+    }
+
+    var foundY = null, foundM = null;
+    var ym = lower.match(/\b(20[1-4]\d)\b/);
+    if (ym) foundY = parseInt(ym[1], 10);
+    var toks = lower.replace(/[^a-z]+/g, ' ').trim().split(/\s+/);
+    for (var t = 0; t < toks.length; t++) {
+      var lm = lookupMonthToken(toks[t]);
+      if (lm != null) { foundM = lm; break; }
+    }
+    return { month: foundM, year: foundY };
+  }
+
+  function detectMonthYear(fileName, sheetName, aoa, hdrIdx) {
+    var sources = [];
+    if (Array.isArray(aoa) && aoa.length) {
+      var maxTitleRows = (hdrIdx != null && hdrIdx > 0) ? Math.min(hdrIdx, 12) : Math.min(8, aoa.length);
+      for (var r = 0; r < maxTitleRows; r++) {
+        var row = aoa[r];
+        if (!Array.isArray(row) || !row.length) continue;
+        if (hdrIdx == null && looksLikeDataRowForPeriod(row)) break;
+        var rowTxt = row.map(function(c){ return cleanStr(c); }).filter(Boolean).join(' ');
+        if (rowTxt) sources.push(rowTxt);
+      }
+    }
+    if (sheetName && !/^sheet\d*$/i.test(String(sheetName).trim())) sources.push(sheetName);
+    if (fileName) sources.push(fileName);
+
+    var bestMonth = null;
+    var bestYear = null;
+    for (var i = 0; i < sources.length; i++) {
+      var res = extractMonthYearFromText(sources[i]);
+      if (res.month != null && res.year != null) {
+        return { month: res.month, year: res.year };
+      }
+      if (bestMonth == null && res.month != null) bestMonth = res.month;
+      if (bestYear == null && res.year != null) bestYear = res.year;
+      if (bestMonth != null && bestYear != null) break;
+    }
+    return { month: bestMonth, year: bestYear };
+  }
+
+  function parseDailyCellStatus(rawVal) {
+    var s = cleanStr(rawVal).toUpperCase();
+    if (!s || s === '-' || s === '--') return '';
+    if (/^(P|PR|PRESENT|W|WK|OD)$/.test(s) || /^P\s*[\(\[]/.test(s) || /^\d{1,2}:\d{2}/.test(s)) return 'P';
+    if (/^(WO|W\/O|W\.O\.?|OFF|SUN|SUNDAY|WEEK\s*OFF|WEEKLY\s*OFF)$/.test(s)) return 'WO';
+    if (/^(HD|H\.D\.?|HALF|HALF\s*DAY|1\/2P?|0\.5)$/.test(s)) return 'HD';
+    if (/^(H|NH|PH|HOLIDAY|PAID\s*HOLIDAY|FEST)$/.test(s)) return 'HD';
+    if (/^(A|AB|ABS|ABSENT|LWP|LOP)$/.test(s)) return 'A';
+    return '';
+  }
+
+  function extractDayNumberFromHeader(rawHdr) {
+    var s = cleanStr(rawHdr);
+    if (!s) return null;
+    if (/^0?([1-9]|[12]\d|3[01])$/.test(s)) return parseInt(s, 10);
+    var m = s.match(/^(?:day|d)[\s\-_.]*0?([1-9]|[12]\d|3[01])$/i);
+    if (m) return parseInt(m[1], 10);
+    var mDt = s.match(/^0?([1-9]|[12]\d|3[01])[\-\/](?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|0?[1-9]|1[0-2])(?:[\-\/]\d{2,4})?$/i);
+    if (mDt) return parseInt(mDt[1], 10);
+    var mWk = s.match(/^0?([1-9]|[12]\d|3[01])\s+(?:sun|mon|tue|wed|thu|fri|sat)/i);
+    if (mWk) return parseInt(mWk[1], 10);
+    return null;
+  }
+
+  function detectDailyMusterColumns(headerRow, sampleDataRows) {
+    if (!Array.isArray(headerRow) || headerRow.length < 15) return null;
+    var dayCols = [];
+    var seenDay = {};
+    for (var c = 0; c < headerRow.length; c++) {
+      var d = extractDayNumberFromHeader(headerRow[c]);
+      if (d != null && d >= 1 && d <= 31 && !seenDay[d]) {
+        seenDay[d] = true;
+        dayCols.push({ col: c, day: d });
+      }
+    }
+    if (dayCols.length < 20) return null;
+    var checked = 0, statusHits = 0;
+    var rowsToCheck = Array.isArray(sampleDataRows) ? sampleDataRows.slice(0, 8) : [];
+    for (var r = 0; r < rowsToCheck.length; r++) {
+      var row = rowsToCheck[r];
+      if (!Array.isArray(row)) continue;
+      for (var i = 0; i < dayCols.length; i++) {
+        var val = cleanStr(row[dayCols[i].col]);
+        if (!val) continue;
+        checked++;
+        if (parseDailyCellStatus(val)) statusHits++;
+      }
+    }
+    if (checked < 10 || (statusHits / checked) < 0.55) return null;
+    return dayCols;
+  }
+
+  function countMusterRowDays(row, dayCols) {
+    var wd = 0, sa = 0, hd = 0, ab = 0;
+    var statusMap = {};
+    for (var i = 0; i < dayCols.length; i++) {
+      var dc = dayCols[i];
+      var st = parseDailyCellStatus(row[dc.col]);
+      if (st) statusMap[dc.day] = st;
+      if (st === 'P') wd += 1;
+      else if (st === 'WO') sa += 1;
+      else if (st === 'HD') hd += 1;
+      else if (st === 'A') ab += 1;
+    }
+    return { wd: wd, sa: sa, hd: hd, ab: ab, statusMap: statusMap, totalDaysCount: dayCols.length };
+  }
+
+  function isSummaryOrBankSheetName(name) {
+    var s = cleanStr(name).toLowerCase();
+    return /^(total|summary|abstract|bank|hdfc|non\s*hdfc|icici|sbi|axis|neft|rtgs|challan|ecr|pf\s*ecr|esic\s*challan)$/.test(s) ||
+      /\b(hdfc\s*bank|non\s*hdfc|bank\s*sheet|bank\s*statement|neft|rtgs)\b/.test(s);
+  }
+
+  function normEmpLookupKey(id, name) {
+    var sid = cleanStr(id).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var stripped = sid.replace(/^0+/, '') || sid;
+    var sname = cleanStr(name).toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { exactId: sid, strippedId: stripped, nameKey: sname };
+  }
+
+  function detectErpFilePeriodQuick(fileObj) {
+    if (!fileObj) return { month: null, year: null };
+    var fname = fileObj.name || '';
+    if (fileObj.sheets && typeof fileObj.sheets === 'object') {
+      var sNames = Object.keys(fileObj.sheets);
+      for (var i = 0; i < sNames.length; i++) {
+        var sn = sNames[i];
+        var rows = fileObj.sheets[sn];
+        var topAoa = [];
+        if (Array.isArray(rows) && rows.length) {
+          var first = rows[0];
+          if (Array.isArray(first)) {
+            topAoa = rows.slice(0, 8);
+          } else if (first && typeof first === 'object') {
+            topAoa = [Object.keys(first)];
+          }
+        }
+        var d = detectMonthYear(fname, sn, topAoa);
+        if (d.month != null && d.year != null) return d;
+      }
+    }
+    return detectMonthYear(fname, '', []);
+  }
+
+  // Build composite header text combining row r and row r+1 when Excel has 2-row/merged headers (with merged-group carryTop)
   function buildHeaderCandidates(aoa, r, useTwoRows) {
     var row1 = aoa[r] || [];
     var row2 = (useTwoRows && aoa[r + 1]) ? aoa[r + 1] : [];
     var maxCols = Math.max(row1.length, row2.length);
     var out = [];
+    var carryTop = '';
+    var topNonEmpty = 0;
+    for (var k = 0; k < row1.length; k++) {
+      if (cleanStr(row1[k])) topNonEmpty++;
+    }
+    var allowCarry = useTwoRows && topNonEmpty > 0 && topNonEmpty <= Math.max(4, Math.floor(maxCols * 0.45));
+    var carrySpan = 0;
     for (var c = 0; c < maxCols; c++) {
       var a = cleanStr(row1[c] == null ? '' : row1[c]);
       var b = cleanStr(row2[c] == null ? '' : row2[c]);
-      if (useTwoRows && b && a !== b) {
-        out.push((a ? a + ' ' + b : b).trim());
+      if (allowCarry) {
+        if (a) { carryTop = a; carrySpan = 0; }
+        else if (b && carryTop && carrySpan < 6) { a = carryTop; carrySpan++; }
+      }
+      if (useTwoRows && a && b && normHeader(a) !== normHeader(b)) {
+        out.push((a + ' ' + b).trim());
       } else {
-        out.push(a);
+        out.push(b || a || '');
       }
     }
     return out;
@@ -18623,6 +18879,12 @@ document.addEventListener('click', function(e) {
     if (field === 'category') {
       if (/^(category|catgrory|cat|skill category|worker category|grade|emp type|worker type)$/.test(h)) return 100;
       if (/cat(egory|grory)?/.test(h) && tokens.length <= 3) return 85;
+      return -1;
+    }
+
+    if (field === 'weeklyOffDay') {
+      if (/^(weekly off day|week off day|wo day|off day|rest day)$/.test(h)) return 105;
+      if (/^(weekly off|week off|weekoff)$/.test(h) && sampleValues && sampleValues.some(function(sv){ return /^(sun|mon|tue|wed|thu|fri|sat)/i.test(cleanStr(sv)); })) return 102;
       return -1;
     }
 
@@ -18696,7 +18958,7 @@ document.addEventListener('click', function(e) {
   }
 
   function mapColumns(headerRow, sampleDataRows) {
-    var fields = ['empId','name','workingDays','absent','sunAllow','hd','paidDays','otHours','monthDays','gender','department','designation','category'];
+    var fields = ['empId','name','workingDays','absent','sunAllow','hd','paidDays','otHours','monthDays','gender','department','designation','category','weeklyOffDay'];
     var colSamples = {};
     var numCols = (headerRow || []).length;
     for (var c = 0; c < numCols; c++) {
@@ -18761,20 +19023,23 @@ document.addEventListener('click', function(e) {
         var vr = variants[v];
         var samples = aoa.slice(vr.dataStart, vr.dataStart + 8);
         var cols = mapColumns(vr.hdrRow, samples);
+        var musterDayCols = detectDailyMusterColumns(vr.hdrRow, samples);
         var score = 0;
         if (cols.empId >= 0) score += 10;
         if (cols.name >= 0) score += 9;
         if (cols.workingDays >= 0) score += 10;
         else if (cols.paidDays >= 0) score += 7;
+        else if (musterDayCols) score += 9;
         if (cols.absent >= 0) score += 5;
         if (cols.sunAllow >= 0) score += 5;
         if (cols.monthDays >= 0) score += 4;
         if (cols.otHours >= 0) score += 4;
         if (cols.hd >= 0) score += 2;
         if (cols.designation >= 0 || cols.category >= 0) score += 2;
+        if (musterDayCols) score += 4;
         if (vr.twoRow) score += 0.5;
         if (!best || score > best.score) {
-          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, score: score, twoRowHeader: vr.twoRow };
+          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, musterDayCols: musterDayCols, score: score, twoRowHeader: vr.twoRow };
         }
       }
     }
@@ -18788,21 +19053,23 @@ document.addEventListener('click', function(e) {
     var analysis = analyzeAoa(aoa, forcedHdrIdx);
     var cols = forcedMap ? Object.assign({}, analysis.cols, forcedMap) : analysis.cols;
 
-    // Smart derivation if Working Days column isn't explicitly named, OR Absent isn't named
+    var musterDayCols = analysis && analysis.musterDayCols ? analysis.musterDayCols : null;
     var canDeriveWdFromPaid = (cols.workingDays < 0 && cols.paidDays >= 0);
     var canDeriveWdFromAbsent = (cols.workingDays < 0 && cols.paidDays < 0 && cols.absent >= 0);
+    var canDeriveFromMuster = (cols.workingDays < 0 && !canDeriveWdFromPaid && !canDeriveWdFromAbsent && !!musterDayCols);
     var missing = [];
     if (cols.empId < 0 && cols.name < 0) missing.push('Employee ID / Name');
-    if (cols.workingDays < 0 && !canDeriveWdFromPaid && !canDeriveWdFromAbsent) missing.push('Working Days (or Paid Days / Absent)');
+    if (cols.workingDays < 0 && !canDeriveWdFromPaid && !canDeriveWdFromAbsent && !canDeriveFromMuster) missing.push('Working Days (or Paid Days / Absent / Daily Muster)');
 
     if (missing.length) {
       return { rows: [], missingCols: missing, analysis: analysis, derivedNotes: [] };
     }
 
     var derivedNotes = [];
-    if (canDeriveWdFromPaid) derivedNotes.push('Working Days auto-derived from Paid Days - Sun Allow - HD');
+    if (canDeriveFromMuster) derivedNotes.push('Exact P / WO / HD / Absent counted from Daily Muster (' + musterDayCols.length + ' day columns)');
+    else if (canDeriveWdFromPaid) derivedNotes.push('Working Days auto-derived from Paid Days - Sun Allow - HD');
     else if (canDeriveWdFromAbsent) derivedNotes.push('Working Days auto-derived from Month Days - Absent - Sun Allow - HD');
-    if (cols.absent < 0) derivedNotes.push('Absent auto-derived from Month Days - Working Days - Sun Allow - HD');
+    if (cols.absent < 0 && !canDeriveFromMuster) derivedNotes.push('Absent auto-derived from Month Days - Working Days - Sun Allow - HD');
     if (cols.empId < 0) derivedNotes.push('Employee ID auto-generated sequentially (EMP001...)');
 
     var out = [];
@@ -18829,26 +19096,54 @@ document.addEventListener('click', function(e) {
       var cat = cleanStr(cols.category >= 0 ? row[cols.category] : '');
       if (!cat) cat = desig || dept || 'GENERAL';
 
-      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : defaultDays;
-      if (!md) md = defaultDays;
+      var musterInfo = musterDayCols ? countMusterRowDays(row, musterDayCols) : null;
+      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : (defaultDays || (musterInfo ? musterInfo.totalDaysCount : 30));
+      if (!md) md = defaultDays || (musterInfo ? musterInfo.totalDaysCount : 30);
 
-      var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : 0;
-      var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : 0;
+      var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : (musterInfo ? musterInfo.sa : 0);
+      var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : (musterInfo ? musterInfo.hd : 0);
       var pd = cols.paidDays >= 0 ? parseNum(row[cols.paidDays]) : null;
-      var ab = cols.absent >= 0 ? parseNum(row[cols.absent]) : null;
+      var ab = cols.absent >= 0 ? parseNum(row[cols.absent]) : (musterInfo && musterInfo.ab > 0 ? musterInfo.ab : null);
       var wd;
 
       if (cols.workingDays >= 0) {
         wd = parseNum(row[cols.workingDays]);
+      } else if (musterInfo && !canDeriveWdFromPaid && !canDeriveWdFromAbsent) {
+        wd = musterInfo.wd;
       } else if (canDeriveWdFromPaid) {
         wd = Math.max(0, pd - sa - hd);
       } else {
         wd = Math.max(0, md - (ab || 0) - sa - hd);
       }
 
-      if (ab == null) ab = Math.max(0, md - wd - sa - hd);
+      // Smart Sun Allow / Weekly Off derivation ONLY when Sun Allow column is absent in sheet
+      if (cols.sunAllow < 0 && !musterInfo) {
+        if (pd != null && pd > wd + hd) {
+          sa = Math.max(0, pd - wd - hd);
+        } else if (cols.absent >= 0 && ab != null) {
+          var remOff = md - wd - hd - ab;
+          if (remOff >= 1 && remOff <= 6) sa = remOff;
+        }
+      }
+
+      if (ab == null) {
+        ab = (pd != null && cols.sunAllow < 0)
+          ? Math.max(0, md - pd)
+          : Math.max(0, md - wd - sa - hd);
+      }
       if (pd == null) pd = wd + sa + hd;
       var ot = cols.otHours >= 0 ? parseNum(row[cols.otHours]) : 0;
+
+      var sheetWoDay = '';
+      if (cols.weeklyOffDay >= 0) {
+        var rawWo = cleanStr(row[cols.weeklyOffDay]).toUpperCase();
+        for (var wi = 0; wi < WEEKDAYS_FULL.length; wi++) {
+          if (rawWo.indexOf(WEEKDAYS_SHORT[wi]) === 0 || rawWo === WEEKDAYS_FULL[wi]) {
+            sheetWoDay = WEEKDAYS_FULL[wi];
+            break;
+          }
+        }
+      }
 
       var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
       var empObj = {
@@ -18866,7 +19161,12 @@ document.addEventListener('click', function(e) {
         absent: ab,
         paidDays: pd,
         otHours: ot,
-        weeklyOff: 'SUNDAY',
+        weeklyOff: sheetWoDay || 'SUNDAY',
+        hasExplicitWeeklyOff: !!sheetWoDay,
+        dailyStatusMap: musterInfo ? musterInfo.statusMap : null,
+        hasExplicitWorkingDays: cols.workingDays >= 0 || !!musterInfo,
+        hasExplicitSunAllow: cols.sunAllow >= 0 || !!musterInfo,
+        hasExplicitAbsent: cols.absent >= 0 || !!musterInfo,
         shift: 'Day'
       };
       var elig = classifyEligibility(empObj);
@@ -18930,33 +19230,53 @@ document.addEventListener('click', function(e) {
     }
 
     var statusByDay = {};
-    var assignedWo = [];
-    var unassignedPool = [];
-
-    if (targetWO <= woCandidates.length) {
-      var shuffledWo = shuffleWithRng(woCandidates, rng);
-      for (var i = 0; i < shuffledWo.length; i++) {
-        if (i < targetWO) assignedWo.push(shuffledWo[i]);
-        else unassignedPool.push(shuffledWo[i]);
+    var usedMusterExact = false;
+    if (emp.dailyStatusMap && Object.keys(emp.dailyStatusMap).length >= 15) {
+      var mP = 0, mWO = 0, mHD = 0, mA = 0;
+      for (var mdIdx = 1; mdIdx <= daysInMonth; mdIdx++) {
+        var mst = emp.dailyStatusMap[mdIdx] || '-';
+        statusByDay[mdIdx] = mst;
+        if (mst === 'P') mP++;
+        else if (mst === 'WO') mWO++;
+        else if (mst === 'HD') mHD++;
+        else if (mst === 'A') mA++;
       }
-      unassignedPool = unassignedPool.concat(regularDates);
-    } else {
-      assignedWo = woCandidates.slice();
-      var shuffledReg = shuffleWithRng(regularDates, rng);
-      var extraWoNeeded = Math.min(targetWO - woCandidates.length, shuffledReg.length);
-      for (var j = 0; j < extraWoNeeded; j++) assignedWo.push(shuffledReg[j]);
-      for (var k = extraWoNeeded; k < shuffledReg.length; k++) unassignedPool.push(shuffledReg[k]);
-      warnings.push('Sun Allow (' + targetWO + ') > ' + woName + ' count (' + woCandidates.length + ')');
+      if (mP === targetP && mWO === targetWO && mHD === targetHD && mA === targetA) {
+        usedMusterExact = true;
+      } else {
+        statusByDay = {};
+      }
     }
 
-    for (var w = 0; w < assignedWo.length; w++) statusByDay[assignedWo[w]] = 'WO';
+    if (!usedMusterExact) {
+      var assignedWo = [];
+      var unassignedPool = [];
 
-    var shuffledPool = shuffleWithRng(unassignedPool, rng);
-    var cursor = 0;
-    for (var a = 0; a < targetA && cursor < shuffledPool.length; a++, cursor++) statusByDay[shuffledPool[cursor]] = 'A';
-    for (var h = 0; h < targetHD && cursor < shuffledPool.length; h++, cursor++) statusByDay[shuffledPool[cursor]] = 'HD';
-    for (var p = 0; p < targetP && cursor < shuffledPool.length; p++, cursor++) statusByDay[shuffledPool[cursor]] = 'P';
-    while (cursor < shuffledPool.length) statusByDay[shuffledPool[cursor++]] = '-';
+      if (targetWO <= woCandidates.length) {
+        var shuffledWo = shuffleWithRng(woCandidates, rng);
+        for (var i = 0; i < shuffledWo.length; i++) {
+          if (i < targetWO) assignedWo.push(shuffledWo[i]);
+          else unassignedPool.push(shuffledWo[i]);
+        }
+        unassignedPool = unassignedPool.concat(regularDates);
+      } else {
+        assignedWo = woCandidates.slice();
+        var shuffledReg = shuffleWithRng(regularDates, rng);
+        var extraWoNeeded = Math.min(targetWO - woCandidates.length, shuffledReg.length);
+        for (var j = 0; j < extraWoNeeded; j++) assignedWo.push(shuffledReg[j]);
+        for (var k = extraWoNeeded; k < shuffledReg.length; k++) unassignedPool.push(shuffledReg[k]);
+        warnings.push('Sun Allow (' + targetWO + ') > ' + woName + ' count (' + woCandidates.length + ')');
+      }
+
+      for (var w = 0; w < assignedWo.length; w++) statusByDay[assignedWo[w]] = 'WO';
+
+      var shuffledPool = shuffleWithRng(unassignedPool, rng);
+      var cursor = 0;
+      for (var a = 0; a < targetA && cursor < shuffledPool.length; a++, cursor++) statusByDay[shuffledPool[cursor]] = 'A';
+      for (var h = 0; h < targetHD && cursor < shuffledPool.length; h++, cursor++) statusByDay[shuffledPool[cursor]] = 'HD';
+      for (var p = 0; p < targetP && cursor < shuffledPool.length; p++, cursor++) statusByDay[shuffledPool[cursor]] = 'P';
+      while (cursor < shuffledPool.length) statusByDay[shuffledPool[cursor++]] = '-';
+    }
 
     var pDates = [];
     for (var day = 1; day <= daysInMonth; day++) {
@@ -19364,9 +19684,19 @@ document.addEventListener('click', function(e) {
 
     if (sheetSel) {
       var sNames = state.workbookSheets ? Object.keys(state.workbookSheets) : [state.sheetName || 'Sheet1'];
-      sheetSel.innerHTML = sNames.map(function(sn) {
+      var empSheetCount = 0;
+      if (state.workbookSheets) {
+        sNames.forEach(function(sn){
+          if (!isSummaryOrBankSheetName(sn) && Array.isArray(state.workbookSheets[sn]) && state.workbookSheets[sn].length > 2) empSheetCount++;
+        });
+      }
+      var optList = sNames.map(function(sn) {
         return '<option value="' + esc(sn) + '"' + (sn === state.sheetName ? ' selected' : '') + '>' + esc(sn) + '</option>';
-      }).join('');
+      });
+      if (empSheetCount >= 2) {
+        optList.unshift('<option value="__COMBINED__"' + (state.sheetName === '__COMBINED__' ? ' selected' : '') + '>All Employee Sheets Combined</option>');
+      }
+      sheetSel.innerHTML = optList.join('');
     }
     if (hdrIn && analysis) hdrIn.value = String((analysis.hdrIdx || 0) + 1);
 
@@ -19405,14 +19735,122 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  function loadAoaIntoState(aoa, fileName, sheetName, forcedMap, forcedHdrIdx) {
+  function enrichRowsFromSiblingSheets(rows, workbookSheets, activeSheetName, defaultDays) {
+    if (!Array.isArray(rows) || !rows.length || !workbookSheets) return [];
+    var sNames = Object.keys(workbookSheets);
+    if (sNames.length < 2) return [];
+    var byExactId = {}, byStrippedId = {}, byName = {};
+    for (var si = 0; si < sNames.length; si++) {
+      var sn = sNames[si];
+      if (sn === activeSheetName || isSummaryOrBankSheetName(sn)) continue;
+      var sAoa = workbookSheets[sn];
+      if (!Array.isArray(sAoa) || sAoa.length < 2) continue;
+      var sRes = extractRowsFromAoa(sAoa, {}, defaultDays);
+      if (!sRes || !sRes.rows || !sRes.rows.length) continue;
+      for (var r = 0; r < sRes.rows.length; r++) {
+        var sr = sRes.rows[r];
+        var lk = normEmpLookupKey(sr.id, sr.name);
+        if (lk.exactId && !byExactId[lk.exactId]) byExactId[lk.exactId] = sr;
+        if (lk.strippedId && !byStrippedId[lk.strippedId]) byStrippedId[lk.strippedId] = sr;
+        if (lk.nameKey && !byName[lk.nameKey]) byName[lk.nameKey] = sr;
+      }
+    }
+    var enrichedCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var lk2 = normEmpLookupKey(row.id, row.name);
+      var match = (lk2.exactId && byExactId[lk2.exactId]) || (lk2.strippedId && byStrippedId[lk2.strippedId]) || (lk2.nameKey && byName[lk2.nameKey]);
+      if (!match) continue;
+      var changed = false;
+      if (!row.hasExplicitWorkingDays && match.workingDays > 0 && row.workingDays === 0) { row.workingDays = match.workingDays; changed = true; }
+      if (!row.hasExplicitSunAllow && match.sunAllow > 0 && row.sunAllow === 0) { row.sunAllow = match.sunAllow; changed = true; }
+      if (!row.hd && match.hd > 0) { row.hd = match.hd; changed = true; }
+      if (!row.hasExplicitAbsent && match.absent > 0 && row.absent === 0) { row.absent = match.absent; changed = true; }
+      if (!row.otHours && match.otHours > 0) { row.otHours = match.otHours; changed = true; }
+      if (!row.gender && match.gender) { row.gender = match.gender; changed = true; }
+      if (!row.department && match.department) { row.department = match.department; changed = true; }
+      if ((!row.designation || row.designation === 'GENERAL') && match.designation) { row.designation = match.designation; changed = true; }
+      if (!row.dailyStatusMap && match.dailyStatusMap) { row.dailyStatusMap = match.dailyStatusMap; changed = true; }
+      if (match.hasExplicitWeeklyOff && !row.hasExplicitWeeklyOff) { row.weeklyOff = match.weeklyOff; row.hasExplicitWeeklyOff = true; changed = true; }
+      if (changed) {
+        row.paidDays = row.workingDays + row.sunAllow + row.hd;
+        if (!row.hasExplicitAbsent) row.absent = Math.max(0, row.monthOfDays - row.workingDays - row.sunAllow - row.hd);
+        enrichedCount++;
+      }
+    }
+    return enrichedCount > 0 ? ['Cross-enriched ' + enrichedCount + ' employee(s) from sibling sheets'] : [];
+  }
+
+  function loadCombinedSheets(fileName) {
+    if (!state.workbookSheets) return false;
+    syncSettingsInputsToState();
+    var sNames = Object.keys(state.workbookSheets);
+    var combined = [];
+    var seen = {};
+    var usedSheets = [];
+    var detected = detectMonthYear(fileName, '', []);
+    if (detected.month != null) state.settings.month = detected.month;
+    if (detected.year != null) state.settings.year = detected.year;
+    syncStateToSettingsInputs();
+    var defaultDays = getDaysInMonth(state.settings.year, state.settings.month);
+    for (var i = 0; i < sNames.length; i++) {
+      var sn = sNames[i];
+      if (isSummaryOrBankSheetName(sn)) continue;
+      var sAoa = state.workbookSheets[sn];
+      if (!Array.isArray(sAoa) || sAoa.length < 2) continue;
+      var sDet = detectMonthYear(fileName, sn, sAoa);
+      var sDays = (sDet.year != null && sDet.month != null) ? getDaysInMonth(sDet.year, sDet.month) : defaultDays;
+      var res = extractRowsFromAoa(sAoa, {}, sDays);
+      if (!res || !res.rows || !res.rows.length) continue;
+      usedSheets.push(sn);
+      for (var r = 0; r < res.rows.length; r++) {
+        var emp = res.rows[r];
+        var lk = normEmpLookupKey(emp.id, emp.name);
+        var dedupKey = (lk.strippedId || lk.nameKey) + '|' + lk.nameKey;
+        if (seen[dedupKey]) continue;
+        seen[dedupKey] = true;
+        emp.key = emp.id + '::' + (combined.length + 1);
+        combined.push(emp);
+      }
+    }
+    if (!combined.length) {
+      showBanner('warn', 'No employee rows could be combined from "' + fileName + '".');
+      return false;
+    }
+    state.fileName = fileName;
+    state.sheetName = '__COMBINED__';
+    state.rawAoa = state.workbookSheets[usedSheets[0]] || [];
+    enrichRowsFromSiblingSheets(combined, state.workbookSheets, '__COMBINED__', defaultDays);
+    var assignStats = autoAssignRandomRules(combined, state.settings, state.settings.nightScope);
+    state.rows = combined;
+    state.rulesVersion = RULES_VER;
+    state.cfgPage = 1; state.valPage = 1; state.previewPage = 1;
+    renderMapperBar(null, null, ['Combined ' + usedSheets.length + ' sheets: ' + usedSheets.join(', ')]);
+    rebuildScheduleAndRender();
+    saveStateToDb();
+    showBanner('success', 'Combined ' + combined.length + ' employees across ' + usedSheets.length + ' sheet(s) from "' + fileName + '" for ' + MONTH_NAMES[state.settings.month] + ' ' + state.settings.year + ' (Night: ' + assignStats.nightCount + ').');
+    return true;
+  }
+
+  function loadAoaIntoState(aoa, fileName, sheetName, forcedMap, forcedHdrIdx, isNewFile) {
+    var preAn = Array.isArray(aoa) && aoa.length >= 2 ? analyzeAoa(aoa, forcedHdrIdx) : null;
+    if (isNewFile || !forcedMap) {
+      var detected = isNewFile
+        ? detectMonthYear(fileName, sheetName, aoa, preAn ? preAn.hdrIdx : null)
+        : detectMonthYear('', sheetName, aoa, preAn ? preAn.hdrIdx : null);
+      if (detected.month != null) state.settings.month = detected.month;
+      if (detected.year != null) state.settings.year = detected.year;
+      syncStateToSettingsInputs();
+    }
     syncSettingsInputsToState();
     state.rawAoa = aoa;
     state.fileName = fileName;
     state.sheetName = sheetName || '';
     var defaultDays = getDaysInMonth(state.settings.year, state.settings.month);
     var res = extractRowsFromAoa(aoa, {}, defaultDays, forcedMap, forcedHdrIdx);
-    renderMapperBar(res.analysis, res.resolvedCols || (res.analysis && res.analysis.cols), res.derivedNotes);
+    var enrichNotes = res.rows.length ? enrichRowsFromSiblingSheets(res.rows, state.workbookSheets, sheetName, defaultDays) : [];
+    var allNotes = (res.derivedNotes || []).concat(enrichNotes);
+    renderMapperBar(res.analysis, res.resolvedCols || (res.analysis && res.analysis.cols), allNotes);
 
     if (res.missingCols.length) {
       var grid = document.getElementById('msrMapperGrid');
@@ -19432,14 +19870,18 @@ document.addEventListener('click', function(e) {
     state.previewPage = 1;
     rebuildScheduleAndRender();
     saveStateToDb();
-    var noteMsg = res.derivedNotes && res.derivedNotes.length ? ' [' + res.derivedNotes.join('; ') + ']' : '';
-    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + ']. Auto-assigned Random WO + Night (' + assignStats.nightCount + ' eligible males).' + noteMsg);
+    var noteMsg = allNotes.length ? ' [' + allNotes.join('; ') + ']' : '';
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + '] for ' + MONTH_NAMES[state.settings.month] + ' ' + state.settings.year + '. Auto-assigned Random WO + Night (' + assignStats.nightCount + ' eligible males).' + noteMsg);
     return true;
   }
 
   function switchWorkbookSheet(sn) {
+    if (sn === '__COMBINED__') {
+      loadCombinedSheets(state.fileName);
+      return;
+    }
     if (!state.workbookSheets || !state.workbookSheets[sn]) return;
-    loadAoaIntoState(state.workbookSheets[sn], state.fileName, sn);
+    loadAoaIntoState(state.workbookSheets[sn], state.fileName, sn, null, null, false);
   }
 
   function applyManualColumnMap() {
@@ -19452,7 +19894,7 @@ document.addEventListener('click', function(e) {
       var el = document.getElementById('msrMap_' + f);
       if (el) forcedMap[f] = parseInt(el.value, 10);
     });
-    loadAoaIntoState(state.rawAoa, state.fileName, state.sheetName, forcedMap, hdrIdx);
+    loadAoaIntoState(state.rawAoa, state.fileName, state.sheetName, forcedMap, hdrIdx, false);
   }
 
   function extractAllSheetsFromWorkbook(wb) {
@@ -19470,13 +19912,15 @@ document.addEventListener('click', function(e) {
   function pickBestSheet(wb, sheetsAoaMap) {
     if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
     var bestName = wb.SheetNames[0];
-    var bestRank = -1;
+    var bestRank = -999999;
     for (var i = 0; i < wb.SheetNames.length; i++) {
       var sn = wb.SheetNames[i];
       var aoa = sheetsAoaMap ? sheetsAoaMap[sn] : root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
       var an = analyzeAoa(aoa);
       var rank = (an ? an.score : -1) * 10 + Math.min(50, (aoa && aoa.length) || 0);
-      if (/main\s*sheet|salary|wages|attendance|payroll/i.test(sn)) rank += 15;
+      if (/main\s*sheet|salary|wages|attendance|muster|payroll/i.test(sn)) rank += 25;
+      if (isSummaryOrBankSheetName(sn)) rank -= 180;
+      if (/left\s*emp/i.test(sn)) rank -= 40;
       if (rank > bestRank) {
         bestRank = rank;
         bestName = sn;
@@ -19498,7 +19942,7 @@ document.addEventListener('click', function(e) {
         try {
           var aoa = parseCsvText(ev.target.result);
           state.workbookSheets = { CSV: aoa };
-          loadAoaIntoState(aoa, name, 'CSV');
+          loadAoaIntoState(aoa, name, 'CSV', null, null, true);
         } catch (err) {
           showBanner('error', 'CSV parse error: ' + err.message);
         }
@@ -19514,13 +19958,33 @@ document.addEventListener('click', function(e) {
           var allSheets = extractAllSheetsFromWorkbook(wb);
           state.workbookSheets = allSheets;
           var picked = pickBestSheet(wb, allSheets);
-          loadAoaIntoState(allSheets[picked] || [], name, picked);
+          loadAoaIntoState(allSheets[picked] || [], name, picked, null, null, true);
         } catch (err) {
           showBanner('error', 'Excel parse error: ' + err.message);
         }
         inputEl.value = '';
       };
       readerBuf.readAsArrayBuffer(file);
+    }
+  }
+
+  function onErpSelectChange() {
+    var sel = document.getElementById('msrErpFileSelect');
+    if (!sel || sel.value === '') return;
+    var idx = parseInt(sel.value, 10);
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    var f = files[idx];
+    if (!f) return;
+    var det = detectErpFilePeriodQuick(f);
+    if (det.month != null) {
+      state.settings.month = det.month;
+      var mEl = document.getElementById('msrMonthSel');
+      if (mEl) mEl.value = String(det.month);
+    }
+    if (det.year != null) {
+      state.settings.year = det.year;
+      var yEl = document.getElementById('msrYearInput');
+      if (yEl) yEl.value = String(det.year);
     }
   }
 
@@ -19544,27 +20008,33 @@ document.addEventListener('click', function(e) {
         var allSheets = extractAllSheetsFromWorkbook(wb);
         state.workbookSheets = allSheets;
         var sn = pickBestSheet(wb, allSheets);
-        if (loadAoaIntoState(allSheets[sn] || [], f.name, sn)) return;
+        if (loadAoaIntoState(allSheets[sn] || [], f.name, sn, null, null, true)) return;
       }
       if (f.sheets && typeof f.sheets === 'object') {
         var sNames = Object.keys(f.sheets);
         var aoaMap = {};
         var bestSn = sNames[0];
-        var bestScore = -1;
+        var bestScore = -999999;
         sNames.forEach(function(n) {
           var sheetRows = f.sheets[n] || [];
           if (!Array.isArray(sheetRows) || !sheetRows.length) return;
-          var cols = Object.keys(sheetRows[0] || {});
-          var aoa2 = [cols].concat(sheetRows.map(function(obj){
-            return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
-          }));
+          var first = sheetRows[0];
+          var aoa2;
+          if (Array.isArray(first)) {
+            aoa2 = sheetRows;
+          } else {
+            var cols = Object.keys(first || {});
+            aoa2 = [cols].concat(sheetRows.map(function(obj){
+              return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
+            }));
+          }
           aoaMap[n] = aoa2;
-          var sc = analyzeAoa(aoa2).score + (/main\s*sheet|salary|wages/i.test(n) ? 10 : 0);
+          var sc = analyzeAoa(aoa2).score * 10 + Math.min(50, aoa2.length) + (/main\s*sheet|salary|wages|attendance|muster/i.test(n) ? 25 : 0) - (isSummaryOrBankSheetName(n) ? 180 : 0) - (/left\s*emp/i.test(n) ? 40 : 0);
           if (sc > bestScore) { bestScore = sc; bestSn = n; }
         });
         state.workbookSheets = aoaMap;
         if (bestSn && aoaMap[bestSn]) {
-          loadAoaIntoState(aoaMap[bestSn], f.name, bestSn);
+          loadAoaIntoState(aoaMap[bestSn], f.name, bestSn, null, null, true);
           return;
         }
       }
@@ -20284,6 +20754,7 @@ document.addEventListener('click', function(e) {
   root.ATPLMonthlyStatusReport = {
     init: init,
     handleFileInput: handleFileInput,
+    onErpSelectChange: onErpSelectChange,
     loadFromErpSelect: loadFromErpSelect,
     switchWorkbookSheet: switchWorkbookSheet,
     applyManualColumnMap: applyManualColumnMap,
@@ -20310,6 +20781,9 @@ document.addEventListener('click', function(e) {
     confirmReset: confirmReset,
     _engine: {
       parseCsvText: parseCsvText,
+      detectMonthYear: detectMonthYear,
+      detectDailyMusterColumns: detectDailyMusterColumns,
+      enrichRowsFromSiblingSheets: enrichRowsFromSiblingSheets,
       mapColumns: mapColumns,
       analyzeAoa: analyzeAoa,
       classifyEligibility: classifyEligibility,
@@ -20347,9 +20821,10 @@ document.addEventListener('click', function(e) {
     ['category', 'Category'],
     ['monthDays', 'Month Days'],
     ['paidDays', 'Total / Paid Days *'],
-    ['workingDays', 'Working Days (Fallback)'],
-    ['sunAllow', 'Sun Allow (Fallback)'],
-    ['hd', 'HD / Holidays (Fallback)'],
+    ['workingDays', 'Working Days'],
+    ['sunAllow', 'Sun Allow / WO'],
+    ['hd', 'HD / Holidays'],
+    ['absent', 'Absent / LWP'],
     ['uan', 'UAN NO.'],
     ['esic', 'ESI NO.'],
     ['rateBasic', 'Rate Basic'],
@@ -20506,45 +20981,254 @@ document.addEventListener('click', function(e) {
   function normHeader(h) {
     return String(h == null ? '' : h)
       .toLowerCase()
+      .replace(/\bp\s*\.\s*f\b\.?/g, 'pf')
+      .replace(/\be\s*\.\s*p\s*\.\s*f\b\.?/g, 'epf')
+      .replace(/\be\s*\.\s*s\s*\.\s*i\s*\.\s*c\b\.?/g, 'esic')
+      .replace(/\be\s*\.\s*s\s*\.\s*i\b\.?/g, 'esi')
+      .replace(/\bh\s*\.\s*r\s*\.\s*a\b\.?/g, 'hra')
+      .replace(/\bo\s*\.\s*t\b\.?/g, 'ot')
+      .replace(/\bw\s*\.\s*d\b\.?/g, 'wd')
+      .replace(/\bw\s*[\.\/]\s*o\b\.?/g, 'wo')
+      .replace(/\bh\s*\.\s*d\b\.?/g, 'hd')
+      .replace(/\bs\s*\.\s*no\b\.?/g, 'sno')
+      .replace(/\bsr\s*\.\s*no\b\.?/g, 'sr no')
+      .replace(/\ba\s*\/\s*c\b/g, 'ac')
       .replace(/[^a-z0-9%]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
 
-  function detectMonthYear(fileName, sheetName, aoa) {
-    var monthMap = {
-      jan:0, january:0, feb:1, february:1, mar:2, march:2, apr:3, april:3,
-      may:4, jun:5, june:5, jul:6, july:6, aug:7, august:7,
-      sep:8, sept:8, september:8, oct:9, october:9, nov:10, november:10, dec:11, december:11
+  function expandTwoDigitYear(yy) {
+    var n = parseInt(yy, 10);
+    if (!isFinite(n)) return null;
+    if (n >= 100) return n;
+    return n >= 50 ? (1900 + n) : (2000 + n);
+  }
+
+  function lookupMonthToken(tok) {
+    var m = {
+      jan:0, january:0,
+      feb:1, febr:1, february:1,
+      mar:2, march:2,
+      apr:3, aprl:3, april:3,
+      may:4,
+      jun:5, june:5,
+      jul:6, july:6,
+      aug:7, august:7,
+      sep:8, sept:8, september:8,
+      oct:9, octo:9, october:9,
+      nov:10, novm:10, november:10,
+      dec:11, decm:11, december:11
     };
+    var k = String(tok || '').toLowerCase().replace(/[^a-z]/g, '');
+    return Object.prototype.hasOwnProperty.call(m, k) ? m[k] : null;
+  }
+
+  function looksLikeDataRowForPeriod(row) {
+    if (!Array.isArray(row)) return false;
+    var nonEmpty = 0, numCount = 0, alphaCount = 0;
+    for (var i = 0; i < row.length; i++) {
+      var s = cleanStr(row[i]);
+      if (!s) continue;
+      nonEmpty++;
+      if (/^-?\d+(?:[.,]\d+)?$/.test(s.replace(/,/g, ''))) numCount++;
+      else if (/[a-z]{3,}/i.test(s)) alphaCount++;
+    }
+    return nonEmpty >= 4 && numCount >= 3 && alphaCount >= 1;
+  }
+
+  function extractMonthYearFromText(rawText) {
+    var cleaned = String(rawText == null ? '' : rawText)
+      .replace(/\(\s*\d+\s*\)(?=\.[a-z0-9]+$|\s*$)/gi, ' ')
+      .replace(/\.(xlsx?|csv)$/i, ' ')
+      .replace(/[’`]/g, "'");
+    var lower = cleaned.toLowerCase();
+
+    var rxM4 = /(?:^|[^a-z])(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_.,'\/]*(20[1-4]\d)(?=$|[^0-9])/i;
+    var m1 = lower.match(rxM4);
+    if (m1) {
+      var mo1 = lookupMonthToken(m1[1]);
+      var yr1 = parseInt(m1[2], 10);
+      if (mo1 != null && yr1 >= 2010 && yr1 <= 2049) return { month: mo1, year: yr1 };
+    }
+
+    var rxM2 = /(?:^|[^a-z])(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s\-_.,'\/]*(1[5-9]|[2-4]\d)(?=$|[^0-9])/i;
+    var m2 = lower.match(rxM2);
+    if (m2) {
+      var mo2 = lookupMonthToken(m2[1]);
+      var yr2 = expandTwoDigitYear(m2[2]);
+      if (mo2 != null && yr2 >= 2015 && yr2 <= 2049) return { month: mo2, year: yr2 };
+    }
+
+    var rx4M = /(?:^|[^0-9])(20[1-4]\d)[\s\-_.,'\/]*(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=$|[^a-z])/i;
+    var m3 = lower.match(rx4M);
+    if (m3) {
+      var mo3 = lookupMonthToken(m3[2]);
+      var yr3 = parseInt(m3[1], 10);
+      if (mo3 != null && yr3 >= 2010 && yr3 <= 2049) return { month: mo3, year: yr3 };
+    }
+
+    var rx2M = /(?:^|[^0-9])(1[5-9]|[2-4]\d)[\-_.,'\/]+(jan(?:uary)?|feb(?:r|ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=$|[^a-z])/i;
+    var m4 = lower.match(rx2M);
+    if (m4) {
+      var mo4 = lookupMonthToken(m4[2]);
+      var yr4 = expandTwoDigitYear(m4[1]);
+      if (mo4 != null && yr4 >= 2015 && yr4 <= 2049) return { month: mo4, year: yr4 };
+    }
+
+    var mIso = lower.match(/(?:^|[^0-9])(20[1-4]\d)[\-\/](0?[1-9]|1[0-2])(?=$|[^0-9])/);
+    if (mIso) {
+      return { month: parseInt(mIso[2], 10) - 1, year: parseInt(mIso[1], 10) };
+    }
+    var mInd = lower.match(/(?:^|[^0-9])(?:(?:0?[1-9]|[12]\d|3[01])[\-\/])?(0?[1-9]|1[0-2])[\-\/](20[1-4]\d)(?=$|[^0-9])/);
+    if (mInd) {
+      return { month: parseInt(mInd[1], 10) - 1, year: parseInt(mInd[2], 10) };
+    }
+
+    var foundY = null, foundM = null;
+    var ym = lower.match(/\b(20[1-4]\d)\b/);
+    if (ym) foundY = parseInt(ym[1], 10);
+    var toks = lower.replace(/[^a-z]+/g, ' ').trim().split(/\s+/);
+    for (var t = 0; t < toks.length; t++) {
+      var lm = lookupMonthToken(toks[t]);
+      if (lm != null) { foundM = lm; break; }
+    }
+    return { month: foundM, year: foundY };
+  }
+
+  function detectMonthYear(fileName, sheetName, aoa, hdrIdx) {
     var sources = [];
-    if (Array.isArray(aoa)) {
-      for (var r = 0; r < Math.min(6, aoa.length); r++) {
-        sources.push((aoa[r] || []).join(' '));
+    if (Array.isArray(aoa) && aoa.length) {
+      var maxTitleRows = (hdrIdx != null && hdrIdx > 0) ? Math.min(hdrIdx, 12) : Math.min(8, aoa.length);
+      for (var r = 0; r < maxTitleRows; r++) {
+        var row = aoa[r];
+        if (!Array.isArray(row) || !row.length) continue;
+        if (hdrIdx == null && looksLikeDataRowForPeriod(row)) break;
+        var rowTxt = row.map(function(c){ return cleanStr(c); }).filter(Boolean).join(' ');
+        if (rowTxt) sources.push(rowTxt);
       }
     }
-    if (sheetName) sources.push(sheetName);
+    if (sheetName && !/^sheet\d*$/i.test(String(sheetName).trim())) sources.push(sheetName);
     if (fileName) sources.push(fileName);
-    var foundMonth = null;
-    var foundYear = null;
+
+    var bestMonth = null;
+    var bestYear = null;
     for (var i = 0; i < sources.length; i++) {
-      var txt = String(sources[i] || '').toLowerCase();
-      if (foundYear == null) {
-        var ym = txt.match(/\b(20[1-4]\d)\b/);
-        if (ym) foundYear = parseInt(ym[1], 10);
+      var res = extractMonthYearFromText(sources[i]);
+      if (res.month != null && res.year != null) {
+        return { month: res.month, year: res.year };
       }
-      if (foundMonth == null) {
-        var tokens = txt.replace(/[^a-z]+/g, ' ').split(/\s+/);
-        for (var t = 0; t < tokens.length; t++) {
-          if (Object.prototype.hasOwnProperty.call(monthMap, tokens[t])) {
-            foundMonth = monthMap[tokens[t]];
-            break;
+      if (bestMonth == null && res.month != null) bestMonth = res.month;
+      if (bestYear == null && res.year != null) bestYear = res.year;
+      if (bestMonth != null && bestYear != null) break;
+    }
+    return { month: bestMonth, year: bestYear };
+  }
+
+  function parseDailyCellStatus(rawVal) {
+    var s = cleanStr(rawVal).toUpperCase();
+    if (!s || s === '-' || s === '--') return '';
+    if (/^(P|PR|PRESENT|W|WK|OD)$/.test(s) || /^P\s*[\(\[]/.test(s) || /^\d{1,2}:\d{2}/.test(s)) return 'P';
+    if (/^(WO|W\/O|W\.O\.?|OFF|SUN|SUNDAY|WEEK\s*OFF|WEEKLY\s*OFF)$/.test(s)) return 'WO';
+    if (/^(HD|H\.D\.?|HALF|HALF\s*DAY|1\/2P?|0\.5)$/.test(s)) return 'HD';
+    if (/^(H|NH|PH|HOLIDAY|PAID\s*HOLIDAY|FEST)$/.test(s)) return 'HD';
+    if (/^(A|AB|ABS|ABSENT|LWP|LOP)$/.test(s)) return 'A';
+    return '';
+  }
+
+  function extractDayNumberFromHeader(rawHdr) {
+    var s = cleanStr(rawHdr);
+    if (!s) return null;
+    if (/^0?([1-9]|[12]\d|3[01])$/.test(s)) return parseInt(s, 10);
+    var m = s.match(/^(?:day|d)[\s\-_.]*0?([1-9]|[12]\d|3[01])$/i);
+    if (m) return parseInt(m[1], 10);
+    var mDt = s.match(/^0?([1-9]|[12]\d|3[01])[\-\/](?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|0?[1-9]|1[0-2])(?:[\-\/]\d{2,4})?$/i);
+    if (mDt) return parseInt(mDt[1], 10);
+    var mWk = s.match(/^0?([1-9]|[12]\d|3[01])\s+(?:sun|mon|tue|wed|thu|fri|sat)/i);
+    if (mWk) return parseInt(mWk[1], 10);
+    return null;
+  }
+
+  function detectDailyMusterColumns(headerRow, sampleDataRows) {
+    if (!Array.isArray(headerRow) || headerRow.length < 15) return null;
+    var dayCols = [];
+    var seenDay = {};
+    for (var c = 0; c < headerRow.length; c++) {
+      var d = extractDayNumberFromHeader(headerRow[c]);
+      if (d != null && d >= 1 && d <= 31 && !seenDay[d]) {
+        seenDay[d] = true;
+        dayCols.push({ col: c, day: d });
+      }
+    }
+    if (dayCols.length < 20) return null;
+    var checked = 0, statusHits = 0;
+    var rowsToCheck = Array.isArray(sampleDataRows) ? sampleDataRows.slice(0, 8) : [];
+    for (var r = 0; r < rowsToCheck.length; r++) {
+      var row = rowsToCheck[r];
+      if (!Array.isArray(row)) continue;
+      for (var i = 0; i < dayCols.length; i++) {
+        var val = cleanStr(row[dayCols[i].col]);
+        if (!val) continue;
+        checked++;
+        if (parseDailyCellStatus(val)) statusHits++;
+      }
+    }
+    if (checked < 10 || (statusHits / checked) < 0.55) return null;
+    return dayCols;
+  }
+
+  function countMusterRowDays(row, dayCols) {
+    var wd = 0, sa = 0, hd = 0, ab = 0;
+    var statusMap = {};
+    for (var i = 0; i < dayCols.length; i++) {
+      var dc = dayCols[i];
+      var st = parseDailyCellStatus(row[dc.col]);
+      if (st) statusMap[dc.day] = st;
+      if (st === 'P') wd += 1;
+      else if (st === 'WO') sa += 1;
+      else if (st === 'HD') hd += 1;
+      else if (st === 'A') ab += 1;
+    }
+    return { wd: wd, sa: sa, hd: hd, ab: ab, statusMap: statusMap, totalDaysCount: dayCols.length };
+  }
+
+  function isSummaryOrBankSheetName(name) {
+    var s = cleanStr(name).toLowerCase();
+    return /^(total|summary|abstract|bank|hdfc|non\s*hdfc|icici|sbi|axis|neft|rtgs|challan|ecr|pf\s*ecr|esic\s*challan)$/.test(s) ||
+      /\b(hdfc\s*bank|non\s*hdfc|bank\s*sheet|bank\s*statement|neft|rtgs)\b/.test(s);
+  }
+
+  function normEmpLookupKey(id, name) {
+    var sid = cleanStr(id).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var stripped = sid.replace(/^0+/, '') || sid;
+    var sname = cleanStr(name).toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { exactId: sid, strippedId: stripped, nameKey: sname };
+  }
+
+  function detectErpFilePeriodQuick(fileObj) {
+    if (!fileObj) return { month: null, year: null };
+    var fname = fileObj.name || '';
+    if (fileObj.sheets && typeof fileObj.sheets === 'object') {
+      var sNames = Object.keys(fileObj.sheets);
+      for (var i = 0; i < sNames.length; i++) {
+        var sn = sNames[i];
+        var rows = fileObj.sheets[sn];
+        var topAoa = [];
+        if (Array.isArray(rows) && rows.length) {
+          var first = rows[0];
+          if (Array.isArray(first)) {
+            topAoa = rows.slice(0, 8);
+          } else if (first && typeof first === 'object') {
+            topAoa = [Object.keys(first)];
           }
         }
+        var d = detectMonthYear(fname, sn, topAoa);
+        if (d.month != null && d.year != null) return d;
       }
     }
-    return { month: foundMonth, year: foundYear };
+    return detectMonthYear(fname, '', []);
   }
+
 
   function looksLikeDataRow(row) {
     if (!Array.isArray(row)) return false;
@@ -20576,7 +21260,7 @@ document.addEventListener('click', function(e) {
       var b = cleanStr(row2[c] == null ? '' : row2[c]);
       if (allowCarry) {
         if (a) { carryTop = a; carrySpan = 0; }
-        else if (b && carryTop && carrySpan < 5) { a = carryTop; carrySpan++; }
+        else if (b && carryTop && carrySpan < 8) { a = carryTop; carrySpan++; }
       }
       if (a && b && normHeader(a) !== normHeader(b)) out.push(a + ' ' + b);
       else out.push(b || a || '');
@@ -20619,30 +21303,55 @@ document.addEventListener('click', function(e) {
       if (/^(category|cat|grade|cadre|emp type|worker type)$/.test(h)) return 100;
       return -1;
     }
+    var sNonEmpty = 0, sNum = 0, sLargeId = 0;
+    if (samples && samples.length) {
+      for (var si = 0; si < samples.length; si++) {
+        var sv = cleanStr(samples[si]);
+        if (!sv || sv === '-' || sv === '--' || /^(na|n\/a|nil|none)$/i.test(sv)) continue;
+        sNonEmpty++;
+        var svNumStr = sv.replace(/[,₹\s]/g, '').replace(/^Rs\.?/i, '');
+        if (/^-?\d+(?:\.\d+)?$/.test(svNumStr)) {
+          sNum++;
+          if (svNumStr.replace(/\D/g, '').length >= 8) sLargeId++;
+        }
+      }
+      if (sNonEmpty >= 2 && (sNum / sNonEmpty) < 0.4) return -1;
+    }
+
     if (field === 'monthDays') {
-      if (/^(month of days|month days|days in month|total month days|month day|md)$/.test(h)) return 105;
-      if (hasTok(/^month/) && hasTok(/^(day|days)$/)) return 88;
+      if (/\b(paid|payable|working|work|present|absent|leave|ot|over|earned|basic|hra|gross|net|pf|esi|amount|amt|salary|wages)\b/.test(h)) return -1;
+      if (/^(month of days|month days|days in month|total month days|monthofdays|calendar days|cal days|m days|mdays|month day|md|divisor)$/.test(h)) return 105;
+      if (hasTok(/^(month|cal|calendar|divisor)$/) && hasTok(/^(day|days)$/)) return 90;
       return -1;
     }
     if (field === 'paidDays') {
-      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
-      if (/^(paid days|payable days|pay days|total days|total paid days|salary days|sal days|net days|pd)$/.test(h)) return 108;
-      if (hasTok(/^(paid|payable|pay|payble|sal)$/) && hasTok(/^(day|days|d)$/)) return 88;
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h) && !/^(salary days|sal days)$/.test(h)) return -1;
+      if (/^(paid days|payable days|pay days|total days|total paid days|total paid|salary days|sal days|net days|net payable days|payble days|pd|p d)$/.test(h)) return 108;
+      if (hasTok(/^(paid|payable|pay|payble|sal)$/) && hasTok(/^(day|days|d)$/)) return 90;
       return -1;
     }
     if (field === 'workingDays') {
-      if (/\b(amount|amt|wages|salary|rate|paid|payable)\b/.test(h)) return -1;
-      if (/^(working days|work days|present days|present|worked days|wd)$/.test(h)) return 100;
+      if (/\b(amount|amt|wages|salary|rate|paid|payable|basic|hra|gross|net|pf|esi|uan|bonus|advance|loan|sr no|sno)\b/.test(h)) return -1;
+      if (/^(working days|work days|actual working days|present days|duty days|days worked|worked days|p days|pdays|w days|wdays|wd|w d|att days|attendance days|total present|total working days|net working days|working day|work day|days present|no of working days|no of days present)$/.test(h)) return 106;
+      if (/^(present|attendance|total attendance|worked|att|p|pres|prs|duty|wrkg days|wkg days|workign days|workng days|wrk days|wrkdays)$/.test(h)) return 94;
+      if (hasTok(/^(work|working|workign|workng|wrk|wrkg|wkg|worked|present|pres|presnt|duty|att|attendance)$/) && hasTok(/^(day|days|d|p|total|count)$/)) return 88;
       return -1;
     }
     if (field === 'sunAllow') {
       if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
-      if (/^(sun allow|sunday allow|weekly off|week off|wo|sun|sunday)$/.test(h)) return 100;
+      if (/^(sun allow|sunday allow|weekly off|week off|weekoff|w off|wo|sunday|sun|sun days|sundays|off days|paid off|rest days)$/.test(h)) return 102;
+      if (hasTok(/^(sun|sunday|wo|weekoff|weekly|off)$/) && !/month|paid|absent/.test(h)) return 84;
       return -1;
     }
     if (field === 'hd') {
       if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
-      if (/^(hd|holi days|holidays|holiday|half day|half days)$/.test(h)) return 95;
+      if (/^(hd|holi days|holidays|holiday|half day|half days|h day|ph|nh|paid holiday|national holiday|fest|festival)$/.test(h)) return 98;
+      return -1;
+    }
+    if (field === 'absent') {
+      if (/\b(amount|amt|wages|salary|rate)\b/.test(h)) return -1;
+      if (/^(absent|absent days|absents|abs|ab|a|lwp|lop|unpaid days|absant|absenteeism)$/.test(h)) return 100;
+      if (hasTok(/^(absent|absant|abs|ab|lwp|lop)$/)) return 86;
       return -1;
     }
     if (field === 'uan') {
@@ -20730,20 +21439,22 @@ document.addEventListener('click', function(e) {
       return -1;
     }
     if (field === 'pf') {
-      if (/\b(uan|no|num|number|employer)\b/.test(h)) return -1;
-      if (/^(pf 12%|pf @12%|pf deduction|pf amount|epf|pf|provident fund)$/.test(h) || /^pf\s*@/.test(h)) return 110;
-      if (hasTok(/^(pf|epf)$/)) return 95;
+      if (/\b(uan|no|num|number|ac|account|member|id|employer|er|eps|admin|edli)\b/.test(h)) return -1;
+      if (sNonEmpty >= 2 && sLargeId >= Math.ceil(sNonEmpty * 0.5)) return -1;
+      if (/^(pf 12%|pf 12|pf @12%|pf deduction|pf ded|pf amt|pf amount|pf cut|pf recovery|pf contribution|pf employee|emp pf|employee pf|pf ee|epf|epf deduction|epf 12%|epf 12|pf|provident fund|deduction pf|deductions pf)$/.test(h) || /^pf\s*[@(]?\s*12/.test(h)) return 112;
+      if (hasTok(/^(pf|epf|epfo)$/)) return 98;
       return -1;
     }
     if (field === 'esiAmt') {
-      if (/\b(no|num|number|ip|employer)\b/.test(h)) return -1;
-      if (/^(esic 0 75%|esic @0 75%|esi deduction|esic deduction|esi amount|esic amount|esic|esi)$/.test(h) || /^esic?\s*@/.test(h)) return 110;
-      if (hasTok(/^(esic|esi)$/) && /%|@|ded|amt|amount/.test(h)) return 96;
+      if (/\b(no|num|number|ip|id|ac|account|employer|er)\b/.test(h)) return -1;
+      if (sNonEmpty >= 2 && sLargeId >= Math.ceil(sNonEmpty * 0.5)) return -1;
+      if (/^(esic 0 75%|esic 0 75|esi 0 75%|esi 0 75|esic @0 75%|esi deduction|esic deduction|esi ded|esic ded|esi amt|esic amt|esi amount|esic amount|emp esi|employee esi|employee esic|esic|esi|deduction esi|deduction esic)$/.test(h) || /^esic?\s*[@(]?\s*0\s*75/.test(h)) return 112;
+      if (hasTok(/^(esic|esi)$/)) return 96;
       return -1;
     }
     if (field === 'advance') {
-      if (/^(advance deduction|advance|adv deduction|adv|loan deduction|loan)$/.test(h)) return 108;
-      if (hasTok(/^(advance|adv|loan)$/)) return 90;
+      if (/^(advance deduction|advance ded|advance|adv deduction|adv ded|adv|salary advance|staff advance|advance pay|adv recovery|loan deduction|loan|deduction advance)$/.test(h)) return 108;
+      if (hasTok(/^(advance|adv|loan)$/)) return 92;
       return -1;
     }
     if (field === 'otherDed') {
@@ -20825,12 +21536,13 @@ document.addEventListener('click', function(e) {
         var vr = variants[v];
         var samples = aoa.slice(vr.dataStart, vr.dataStart + 8);
         var cols = mapColumns(vr.hdrRow, samples);
+        var musterDayCols = detectDailyMusterColumns(vr.hdrRow, samples);
         var score = 0;
         if (cols.empId >= 0) score += 10;
         if (cols.name >= 0) score += 10;
         if (cols.earnBasic >= 0 || cols.rateBasic >= 0) score += 10;
         if (cols.earnGross >= 0 || cols.netPayable >= 0) score += 10;
-        if (cols.paidDays >= 0 || cols.workingDays >= 0) score += 6;
+        if (cols.paidDays >= 0 || cols.workingDays >= 0 || cols.absent >= 0 || musterDayCols) score += 6;
         if (cols.pf >= 0) score += 4;
         if (cols.esiAmt >= 0) score += 3;
         if (cols.uan >= 0 || cols.esic >= 0) score += 3;
@@ -20838,31 +21550,39 @@ document.addEventListener('click', function(e) {
         if (cols.designation >= 0) score += 2;
         if (vr.twoRow) score += 0.5;
         if (!best || score > best.score) {
-          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, score: score, twoRowHeader: vr.twoRow };
+          best = { hdrIdx: rIdx, dataStartIdx: vr.dataStart, headers: vr.hdrRow, cols: cols, musterDayCols: musterDayCols, score: score, twoRowHeader: vr.twoRow };
         }
       }
     }
     return best;
   }
 
-  function extractRowsFromAoa(aoa, defaultMonthDays, forcedMap, forcedHdrIdx) {
+  function extractRowsFromAoa(aoa, defaultMonthDays, forcedMap, forcedHdrIdx, opts) {
     if (!Array.isArray(aoa) || aoa.length < 2) {
       return { rows: [], missingCols: ['Sheet has no data rows'], analysis: null, resolvedCols: null, notes: [] };
     }
     var analysis = analyzeAoa(aoa, forcedHdrIdx);
     var cols = forcedMap ? Object.assign({}, analysis.cols, forcedMap) : analysis.cols;
+    var allowAttOnly = !!(opts && opts.allowAttendanceOnly);
 
     var missing = [];
     if (cols.empId < 0 && cols.name < 0) missing.push('Emp Code / Employee Name');
-    if (cols.rateBasic < 0 && cols.earnBasic < 0 && cols.earnGross < 0 && cols.netPayable < 0) {
+    if (!allowAttOnly && cols.rateBasic < 0 && cols.earnBasic < 0 && cols.earnGross < 0 && cols.netPayable < 0) {
       missing.push('Salary Columns (Basic / Gross / Net Payable)');
+    } else if (allowAttOnly && cols.rateBasic < 0 && cols.earnBasic < 0 && cols.earnGross < 0 && cols.netPayable < 0 && cols.workingDays < 0 && cols.paidDays < 0 && cols.absent < 0 && !(analysis && analysis.musterDayCols) && cols.pf < 0 && cols.uan < 0) {
+      missing.push('Attendance or Salary Columns');
     }
     if (missing.length) {
       return { rows: [], missingCols: missing, analysis: analysis, resolvedCols: cols, notes: [] };
     }
 
+    var musterDayCols = analysis && analysis.musterDayCols ? analysis.musterDayCols : null;
     var notes = [];
     if (cols.paidDays < 0 && cols.workingDays >= 0) notes.push('Total Days derived from Working + Sun Allow + HD');
+    else if (cols.paidDays < 0 && cols.absent >= 0) notes.push('Total Days derived from Month Days - Absent');
+    else if (cols.paidDays < 0 && musterDayCols) notes.push('Days counted from Daily Muster columns');
+    else if (cols.paidDays < 0 && cols.workingDays < 0 && cols.absent < 0) notes.push('Paid Days estimated from Earned/Rate ratio where available');
+    if (cols.earnBasic < 0 && cols.rateBasic >= 0) notes.push('Single Basic column shared with Earned Basic');
     if (cols.rateGross < 0) notes.push('Rate Total auto-summed');
     if (cols.earnGross < 0) notes.push('Earned Total auto-summed');
     if (cols.totalDed < 0) notes.push('Total Deduction auto-summed');
@@ -20877,7 +21597,6 @@ document.addEventListener('click', function(e) {
       var rawId = cols.empId >= 0 ? cleanStr(row[cols.empId]) : '';
       var name = cols.name >= 0 ? cleanStr(row[cols.name]) : '';
 
-      // Skip blank / Total / Grand Total / Summary footer rows
       if (!rawId && !name) continue;
       if (/^(total|grand total|sub total|page total|summary|net total)$/i.test(rawId)) continue;
       if (/^(total|grand total|sub total|page total|summary|net total)$/i.test(name)) continue;
@@ -20888,18 +21607,9 @@ document.addEventListener('click', function(e) {
       var dept = cols.department >= 0 ? cleanStr(row[cols.department]) : '';
       var desig = cols.designation >= 0 ? cleanStr(row[cols.designation]) : '';
       var cat = cols.category >= 0 ? cleanStr(row[cols.category]) : '';
-      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : (defaultMonthDays || 30);
-      if (!md) md = defaultMonthDays || 30;
-
-      var pd;
-      if (cols.paidDays >= 0) {
-        pd = parseNum(row[cols.paidDays]);
-      } else {
-        var wd = cols.workingDays >= 0 ? parseNum(row[cols.workingDays]) : 0;
-        var sa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : 0;
-        var hd = cols.hd >= 0 ? parseNum(row[cols.hd]) : 0;
-        pd = wd + sa + hd;
-      }
+      var musterInfo = musterDayCols ? countMusterRowDays(row, musterDayCols) : null;
+      var md = cols.monthDays >= 0 ? parseNum(row[cols.monthDays]) : (defaultMonthDays || (musterInfo ? musterInfo.totalDaysCount : 30));
+      if (!md) md = defaultMonthDays || (musterInfo ? musterInfo.totalDaysCount : 30);
 
       var uan = cols.uan >= 0 ? formatStatutoryId(row[cols.uan]) : 'Not Applicable';
       var esic = cols.esic >= 0 ? formatStatutoryId(row[cols.esic]) : 'Not Applicable';
@@ -20911,27 +21621,85 @@ document.addEventListener('click', function(e) {
       var rateSum = rateBasic + rateHra + rateBonus + rateOt;
       var rateGross = cols.rateGross >= 0 ? roundMoney(parseNum(row[cols.rateGross])) : rateSum;
 
+      var pf = roundMoney(cols.pf >= 0 ? parseNum(row[cols.pf]) : 0);
+      var esiAmt = roundMoney(cols.esiAmt >= 0 ? parseNum(row[cols.esiAmt]) : 0);
+      var advance = roundMoney(cols.advance >= 0 ? parseNum(row[cols.advance]) : 0);
+      var otherDed = roundMoney(cols.otherDed >= 0 ? parseNum(row[cols.otherDed]) : 0);
+
       var earnBasic = roundMoney(cols.earnBasic >= 0 ? parseNum(row[cols.earnBasic]) : 0);
       var earnHra = roundMoney(cols.earnHra >= 0 ? parseNum(row[cols.earnHra]) : 0);
       var earnBonus = roundMoney(cols.earnBonus >= 0 ? parseNum(row[cols.earnBonus]) : 0);
       var earnOt = roundMoney(cols.earnOt >= 0 ? parseNum(row[cols.earnOt]) : 0);
       var otherAllow = roundMoney(cols.otherAllow >= 0 ? parseNum(row[cols.otherAllow]) : 0);
       var incentive = roundMoney(cols.incentive >= 0 ? parseNum(row[cols.incentive]) : 0);
+
+      var rawSa = cols.sunAllow >= 0 ? parseNum(row[cols.sunAllow]) : (musterInfo ? musterInfo.sa : 0);
+      var rawHd = cols.hd >= 0 ? parseNum(row[cols.hd]) : (musterInfo ? musterInfo.hd : 0);
+      var rawWd = cols.workingDays >= 0 ? parseNum(row[cols.workingDays]) : (musterInfo ? musterInfo.wd : null);
+      var rawAb = cols.absent >= 0 ? parseNum(row[cols.absent]) : (musterInfo && musterInfo.ab > 0 ? musterInfo.ab : null);
+      var rawPd = cols.paidDays >= 0 ? parseNum(row[cols.paidDays]) : null;
+      var pdCellText = cols.paidDays >= 0 ? cleanStr(row[cols.paidDays]) : '';
+
+      var pd;
+      var pdEstimated = false;
+      if (cols.paidDays >= 0 && pdCellText !== '') {
+        pd = rawPd;
+      } else if (rawWd != null) {
+        pd = rawWd + rawSa + rawHd;
+      } else if (rawAb != null) {
+        pd = Math.max(0, md - rawAb);
+      } else {
+        var rawSheetEarnGross = cols.earnGross >= 0 ? parseNum(row[cols.earnGross]) : 0;
+        if (rateBasic > 0 && earnBasic > 0) {
+          pd = Math.min(md, Math.max(0, Math.round(((earnBasic / rateBasic) * md) * 2) / 2));
+          pdEstimated = true;
+        } else if (rateGross > 0 && rawSheetEarnGross > 0) {
+          pd = Math.min(md, Math.max(0, Math.round(((rawSheetEarnGross / rateGross) * md) * 2) / 2));
+          pdEstimated = true;
+        } else if (pf > 0 && rateBasic > 0) {
+          var impliedEarnBasic = pf / 0.12;
+          pd = Math.min(md, Math.max(0, Math.round(((impliedEarnBasic / rateBasic) * md) * 2) / 2));
+          pdEstimated = true;
+        } else {
+          pd = 0;
+        }
+      }
+
+      var wd = rawWd != null ? rawWd : (rawAb != null ? Math.max(0, md - rawAb - rawSa - rawHd) : Math.max(0, pd - rawSa - rawHd));
+      var sa = rawSa;
+      var hd = rawHd;
+      if (cols.sunAllow < 0 && !musterInfo && rawWd != null && rawPd != null && rawPd > rawWd + hd) {
+        sa = Math.max(0, rawPd - rawWd - hd);
+      }
+      var ab = rawAb != null ? rawAb : Math.max(0, md - Math.max(pd, wd + sa + hd));
+
+      var rawEarnGrossIfMapped = cols.earnGross >= 0 ? roundMoney(parseNum(row[cols.earnGross])) : null;
+      if (cols.earnBasic < 0 && cols.rateBasic >= 0) {
+        if (rawEarnGrossIfMapped != null && Math.abs(rateSum - rawEarnGrossIfMapped) <= 5) {
+          earnBasic = rateBasic;
+          earnHra = cols.earnHra >= 0 ? earnHra : rateHra;
+          earnBonus = cols.earnBonus >= 0 ? earnBonus : rateBonus;
+          earnOt = cols.earnOt >= 0 ? earnOt : rateOt;
+        } else if (rawEarnGrossIfMapped != null && pd > 0 && md > 0 && pd < md && rateBasic > 0) {
+          earnBasic = roundMoney(rateBasic * pd / md);
+          earnHra = cols.earnHra >= 0 ? earnHra : roundMoney(rateHra * pd / md);
+        } else if (cols.earnGross < 0) {
+          earnBasic = rateBasic;
+          earnHra = cols.earnHra >= 0 ? earnHra : rateHra;
+          earnBonus = cols.earnBonus >= 0 ? earnBonus : rateBonus;
+          earnOt = cols.earnOt >= 0 ? earnOt : rateOt;
+        }
+      }
+
       var extraEarn = otherAllow + incentive;
       var earnFourSum = earnBasic + earnHra + earnBonus + earnOt;
       var earnAllSum = earnFourSum + extraEarn;
-      var earnGross = cols.earnGross >= 0 ? roundMoney(parseNum(row[cols.earnGross])) : earnAllSum;
+      var earnGross = cols.earnGross >= 0 ? rawEarnGrossIfMapped : earnAllSum;
 
-      var pf = roundMoney(cols.pf >= 0 ? parseNum(row[cols.pf]) : 0);
-      var esiAmt = roundMoney(cols.esiAmt >= 0 ? parseNum(row[cols.esiAmt]) : 0);
-      var advance = roundMoney(cols.advance >= 0 ? parseNum(row[cols.advance]) : 0);
-      var otherDed = roundMoney(cols.otherDed >= 0 ? parseNum(row[cols.otherDed]) : 0);
       var dedSum = pf + esiAmt + advance + otherDed;
       var totalDed = cols.totalDed >= 0 ? roundMoney(parseNum(row[cols.totalDed])) : dedSum;
-
       var netPayable = cols.netPayable >= 0 ? roundMoney(parseNum(row[cols.netPayable])) : (earnGross - totalDed);
 
-      // Reconcile math discrepancies (> Rs 2 tolerance beyond rounding)
       var warnings = [];
       if (cols.rateGross >= 0 && Math.abs(rateSum - rateGross) > 2) {
         warnings.push('Rate sum (' + rateSum + ') != Gross (' + rateGross + ')');
@@ -20951,6 +21719,9 @@ document.addEventListener('click', function(e) {
       if (otherDed > 0) {
         warnings.push('Includes Other Ded: +' + otherDed);
       }
+      if (pdEstimated && pd > 0) {
+        warnings.push('Paid Days estimated from Pay/PF ratio (' + pd + 'd)');
+      }
 
       var uniqueKey = rawId + '::' + (seenIds[rawId] ? (++seenIds[rawId]) : (seenIds[rawId] = 1));
       out.push({
@@ -20961,6 +21732,10 @@ document.addEventListener('click', function(e) {
         designation: desig,
         category: cat,
         monthDays: md,
+        workingDays: wd,
+        sunAllow: sa,
+        hd: hd,
+        absent: ab,
         paidDays: pd,
         uan: uan,
         esic: esic,
@@ -20982,6 +21757,13 @@ document.addEventListener('click', function(e) {
         otherDed: otherDed,
         totalDed: totalDed,
         netPayable: netPayable,
+        hasExplicitWd: cols.workingDays >= 0 || !!musterInfo,
+        hasExplicitPd: cols.paidDays >= 0 && pdCellText !== '',
+        isEstimatedDays: pdEstimated,
+        hasExplicitPf: cols.pf >= 0,
+        hasExplicitEsi: cols.esiAmt >= 0,
+        hasExplicitTotalDed: cols.totalDed >= 0,
+        hasExplicitNet: cols.netPayable >= 0,
         warnings: warnings
       });
     }
@@ -21166,20 +21948,32 @@ document.addEventListener('click', function(e) {
     bar.style.display = 'block';
     if (sheetSel) {
       var sNames = state.workbookSheets ? Object.keys(state.workbookSheets) : [state.sheetName || 'Sheet1'];
-      sheetSel.innerHTML = sNames.map(function(sn) {
+      var empSheetCount = 0;
+      if (state.workbookSheets) {
+        sNames.forEach(function(sn){
+          if (!isSummaryOrBankSheetName(sn) && Array.isArray(state.workbookSheets[sn]) && state.workbookSheets[sn].length > 2) empSheetCount++;
+        });
+      }
+      var optList = sNames.map(function(sn) {
         return '<option value="' + esc(sn) + '"' + (sn === state.sheetName ? ' selected' : '') + '>' + esc(sn) + '</option>';
-      }).join('');
+      });
+      if (empSheetCount >= 2) {
+        optList.unshift('<option value="__COMBINED__"' + (state.sheetName === '__COMBINED__' ? ' selected' : '') + '>All Salary Sheets Combined</option>');
+      }
+      sheetSel.innerHTML = optList.join('');
     }
     if (hdrIn && analysis) hdrIn.value = String((analysis.hdrIdx || 0) + 1);
-    if (badge && resolvedCols) {
-      var pts = [
-        'ID: ' + colLetter(resolvedCols.empId),
-        'Name: ' + colLetter(resolvedCols.name),
-        'Days: ' + colLetter(resolvedCols.paidDays),
-        'RateGross: ' + colLetter(resolvedCols.rateGross),
-        'EarnGross: ' + colLetter(resolvedCols.earnGross),
-        'Net: ' + colLetter(resolvedCols.netPayable)
-      ];
+    if (badge) {
+      var pts = [];
+      if (resolvedCols) {
+        pts.push('ID: ' + colLetter(resolvedCols.empId));
+        pts.push('Name: ' + colLetter(resolvedCols.name));
+        pts.push('WD: ' + colLetter(resolvedCols.workingDays));
+        pts.push('Paid: ' + colLetter(resolvedCols.paidDays));
+        pts.push('PF: ' + colLetter(resolvedCols.pf));
+        pts.push('EarnGross: ' + colLetter(resolvedCols.earnGross));
+        pts.push('Net: ' + colLetter(resolvedCols.netPayable));
+      }
       if (notes && notes.length) pts.push('(' + notes.join('; ') + ')');
       badge.textContent = pts.join(' | ');
     }
@@ -21234,9 +22028,139 @@ document.addEventListener('click', function(e) {
     }
   }
 
+  function enrichRowsFromSiblingSheets(rows, workbookSheets, activeSheetName, defaultDays) {
+    if (!Array.isArray(rows) || !rows.length || !workbookSheets) return [];
+    var sNames = Object.keys(workbookSheets);
+    if (sNames.length < 2) return [];
+    var byExactId = {}, byStrippedId = {}, byName = {};
+    for (var si = 0; si < sNames.length; si++) {
+      var sn = sNames[si];
+      if (sn === activeSheetName || isSummaryOrBankSheetName(sn)) continue;
+      var sAoa = workbookSheets[sn];
+      if (!Array.isArray(sAoa) || sAoa.length < 2) continue;
+      var sRes = extractRowsFromAoa(sAoa, defaultDays, null, null, { allowAttendanceOnly: true });
+      if (!sRes || !sRes.rows || !sRes.rows.length) continue;
+      for (var r = 0; r < sRes.rows.length; r++) {
+        var sr = sRes.rows[r];
+        var lk = normEmpLookupKey(sr.id, sr.name);
+        if (lk.exactId && !byExactId[lk.exactId]) byExactId[lk.exactId] = sr;
+        if (lk.strippedId && !byStrippedId[lk.strippedId]) byStrippedId[lk.strippedId] = sr;
+        if (lk.nameKey && !byName[lk.nameKey]) byName[lk.nameKey] = sr;
+      }
+    }
+    var enrichedCount = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var lk2 = normEmpLookupKey(row.id, row.name);
+      var match = (lk2.exactId && byExactId[lk2.exactId]) || (lk2.strippedId && byStrippedId[lk2.strippedId]) || (lk2.nameKey && byName[lk2.nameKey]);
+      if (!match) continue;
+      var changed = false;
+      if (!row.hasExplicitWd && match.hasExplicitWd && (row.workingDays === 0 || row.isEstimatedDays)) {
+        row.workingDays = match.workingDays;
+        row.hasExplicitWd = true;
+        row.isEstimatedDays = false;
+        changed = true;
+      }
+      if (!row.sunAllow && match.sunAllow > 0) { row.sunAllow = match.sunAllow; changed = true; }
+      if (!row.hd && match.hd > 0) { row.hd = match.hd; changed = true; }
+      if (!row.absent && match.absent > 0) { row.absent = match.absent; changed = true; }
+      if (!row.hasExplicitPd && match.paidDays > 0 && (row.paidDays === 0 || !row.hasExplicitWd || row.workingDays > 0)) {
+        row.paidDays = match.paidDays;
+        changed = true;
+      }
+      if (!row.hasExplicitPf && match.pf > 0 && row.pf === 0) { row.pf = match.pf; changed = true; }
+      if (!row.hasExplicitEsi && match.esiAmt > 0 && row.esiAmt === 0) { row.esiAmt = match.esiAmt; changed = true; }
+      if (!row.advance && match.advance > 0) { row.advance = match.advance; changed = true; }
+      if ((!row.uan || row.uan === 'Not Applicable') && match.uan && match.uan !== 'Not Applicable') { row.uan = match.uan; changed = true; }
+      if ((!row.esic || row.esic === 'Not Applicable') && match.esic && match.esic !== 'Not Applicable') { row.esic = match.esic; changed = true; }
+      if (!row.designation && match.designation) { row.designation = match.designation; changed = true; }
+      if (!row.department && match.department) { row.department = match.department; changed = true; }
+      if (changed) {
+        if (!row.hasExplicitPd && (row.workingDays > 0 || row.sunAllow > 0 || row.hd > 0)) {
+          row.paidDays = row.workingDays + row.sunAllow + row.hd;
+          row.absent = Math.max(0, row.monthDays - row.paidDays);
+        }
+        if (!row.isEstimatedDays && Array.isArray(row.warnings)) {
+          row.warnings = row.warnings.filter(function(w){ return String(w).indexOf('Paid Days estimated') !== 0; });
+        }
+        if (!row.hasExplicitTotalDed) {
+          row.totalDed = roundMoney(row.pf + row.esiAmt + row.advance + row.otherDed);
+        }
+        if (!row.hasExplicitNet) {
+          row.netPayable = roundMoney(row.earnGross - row.totalDed);
+        }
+        enrichedCount++;
+      }
+    }
+    return enrichedCount > 0 ? ['Cross-enriched ' + enrichedCount + ' employee(s) from sibling sheets'] : [];
+  }
+
+  function loadCombinedSheets(fileName) {
+    if (!state.workbookSheets) return false;
+    syncSettingsInputsToState();
+    var detected = detectMonthYear(fileName, '', []);
+    if (detected.month != null) {
+      state.settings.month = detected.month;
+      var mEl = document.getElementById('psgMonthSel');
+      if (mEl) mEl.value = String(detected.month);
+    }
+    if (detected.year != null) {
+      state.settings.year = detected.year;
+      var yEl = document.getElementById('psgYearInput');
+      if (yEl) yEl.value = String(detected.year);
+    }
+    var defaultDays = new Date(state.settings.year, state.settings.month + 1, 0).getDate();
+    var sNames = Object.keys(state.workbookSheets);
+    var combined = [];
+    var seen = {};
+    var usedSheets = [];
+    for (var i = 0; i < sNames.length; i++) {
+      var sn = sNames[i];
+      if (isSummaryOrBankSheetName(sn)) continue;
+      var sAoa = state.workbookSheets[sn];
+      if (!Array.isArray(sAoa) || sAoa.length < 2) continue;
+      var sDet = detectMonthYear(fileName, sn, sAoa);
+      var sDays = (sDet.year != null && sDet.month != null) ? new Date(sDet.year, sDet.month + 1, 0).getDate() : defaultDays;
+      var res = extractRowsFromAoa(sAoa, sDays);
+      if (!res || !res.rows || !res.rows.length) continue;
+      usedSheets.push(sn);
+      for (var r = 0; r < res.rows.length; r++) {
+        var emp = res.rows[r];
+        var lk = normEmpLookupKey(emp.id, emp.name);
+        var dedupKey = (lk.strippedId || lk.nameKey) + '|' + lk.nameKey;
+        if (seen[dedupKey]) continue;
+        seen[dedupKey] = true;
+        emp.key = emp.id + '::' + (combined.length + 1);
+        combined.push(emp);
+      }
+    }
+    if (!combined.length) {
+      showBanner('warn', 'No salary rows could be combined from "' + fileName + '".');
+      return false;
+    }
+    state.fileName = fileName;
+    state.sheetName = '__COMBINED__';
+    state.rawAoa = state.workbookSheets[usedSheets[0]] || [];
+    enrichRowsFromSiblingSheets(combined, state.workbookSheets, '__COMBINED__', defaultDays);
+    state.rows = combined;
+    state.selectedKeys = {};
+    state.listPage = 1;
+    state.previewIdx = 0;
+    renderMapperBar(null, null, ['Combined ' + usedSheets.length + ' sheets: ' + usedSheets.join(', ')]);
+    updateFileMetaAndKpis();
+    renderListTable(1);
+    renderPreview();
+    saveStateToDb();
+    showBanner('success', 'Combined ' + combined.length + ' employees from ' + usedSheets.length + ' sheet(s) in "' + fileName + '" for ' + MONTH_FULL[state.settings.month] + ' ' + state.settings.year + '.');
+    return true;
+  }
+
   function loadAoaIntoState(aoa, fileName, sheetName, forcedMap, forcedHdrIdx, isNewFile) {
-    if (isNewFile) {
-      var detected = detectMonthYear(fileName, sheetName, aoa);
+    var preAn = Array.isArray(aoa) && aoa.length >= 2 ? analyzeAoa(aoa, forcedHdrIdx) : null;
+    if (isNewFile || !forcedMap) {
+      var detected = isNewFile
+        ? detectMonthYear(fileName, sheetName, aoa, preAn ? preAn.hdrIdx : null)
+        : detectMonthYear('', sheetName, aoa, preAn ? preAn.hdrIdx : null);
       if (detected.month != null) {
         state.settings.month = detected.month;
         var mEl = document.getElementById('psgMonthSel');
@@ -21254,9 +22178,11 @@ document.addEventListener('click', function(e) {
     state.sheetName = sheetName || '';
     var defaultDays = new Date(state.settings.year, state.settings.month + 1, 0).getDate();
     var res = extractRowsFromAoa(aoa, defaultDays, forcedMap, forcedHdrIdx);
+    var enrichNotes = res.rows.length ? enrichRowsFromSiblingSheets(res.rows, state.workbookSheets, sheetName, defaultDays) : [];
+    var allNotes = (res.notes || []).concat(enrichNotes);
     state.lastAnalysis = res.analysis;
     state.resolvedCols = res.resolvedCols;
-    renderMapperBar(res.analysis, res.resolvedCols, res.notes);
+    renderMapperBar(res.analysis, res.resolvedCols, allNotes);
 
     if (res.missingCols.length) {
       var grid = document.getElementById('psgMapperGrid');
@@ -21277,7 +22203,8 @@ document.addEventListener('click', function(e) {
     renderListTable(1);
     renderPreview();
     saveStateToDb();
-    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + '] for ' + MONTH_FULL[state.settings.month] + ' ' + state.settings.year + '.');
+    var noteMsg = enrichNotes.length ? ' [' + enrichNotes.join('; ') + ']' : '';
+    showBanner('success', 'Loaded ' + res.rows.length + ' employees from "' + fileName + '" [' + (sheetName || 'Sheet1') + '] for ' + MONTH_FULL[state.settings.month] + ' ' + state.settings.year + '.' + noteMsg);
     return true;
   }
 
@@ -21296,13 +22223,15 @@ document.addEventListener('click', function(e) {
   function pickBestSheet(wb, sheetsAoaMap) {
     if (!wb || !Array.isArray(wb.SheetNames) || !wb.SheetNames.length) return '';
     var bestName = wb.SheetNames[0];
-    var bestRank = -1;
+    var bestRank = -999999;
     for (var i = 0; i < wb.SheetNames.length; i++) {
       var sn = wb.SheetNames[i];
       var aoa = sheetsAoaMap ? sheetsAoaMap[sn] : root.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
       var an = analyzeAoa(aoa);
       var rank = (an ? an.score : -1) * 10 + Math.min(50, (aoa && aoa.length) || 0);
-      if (/main\s*sheet|salary|wages|payroll|pay\s*slip/i.test(sn)) rank += 15;
+      if (/main\s*sheet|salary|wages|payroll|pay\s*slip/i.test(sn)) rank += 25;
+      if (isSummaryOrBankSheetName(sn)) rank -= 180;
+      if (/left\s*emp/i.test(sn)) rank -= 40;
       if (rank > bestRank) { bestRank = rank; bestName = sn; }
     }
     return bestName;
@@ -21346,6 +22275,26 @@ document.addEventListener('click', function(e) {
     }
   }
 
+  function onErpSelectChange() {
+    var sel = document.getElementById('psgErpFileSelect');
+    if (!sel || sel.value === '') return;
+    var idx = parseInt(sel.value, 10);
+    var files = Array.isArray(root.FILES) ? root.FILES : [];
+    var f = files[idx];
+    if (!f) return;
+    var det = detectErpFilePeriodQuick(f);
+    if (det.month != null) {
+      state.settings.month = det.month;
+      var mEl = document.getElementById('psgMonthSel');
+      if (mEl) mEl.value = String(det.month);
+    }
+    if (det.year != null) {
+      state.settings.year = det.year;
+      var yEl = document.getElementById('psgYearInput');
+      if (yEl) yEl.value = String(det.year);
+    }
+  }
+
   function loadFromErpSelect() {
     var sel = document.getElementById('psgErpFileSelect');
     if (!sel || sel.value === '') {
@@ -21372,16 +22321,22 @@ document.addEventListener('click', function(e) {
         var sNames = Object.keys(f.sheets);
         var aoaMap = {};
         var bestSn = sNames[0];
-        var bestScore = -1;
+        var bestScore = -999999;
         sNames.forEach(function(n) {
           var sheetRows = f.sheets[n] || [];
           if (!Array.isArray(sheetRows) || !sheetRows.length) return;
-          var cols = Object.keys(sheetRows[0] || {});
-          var aoa2 = [cols].concat(sheetRows.map(function(obj){
-            return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
-          }));
+          var first = sheetRows[0];
+          var aoa2;
+          if (Array.isArray(first)) {
+            aoa2 = sheetRows;
+          } else {
+            var cols = Object.keys(first || {});
+            aoa2 = [cols].concat(sheetRows.map(function(obj){
+              return cols.map(function(c){ return obj[c] == null ? '' : String(obj[c]); });
+            }));
+          }
           aoaMap[n] = aoa2;
-          var sc = analyzeAoa(aoa2).score + (/main\s*sheet|salary|wages|payroll/i.test(n) ? 10 : 0);
+          var sc = analyzeAoa(aoa2).score * 10 + Math.min(50, aoa2.length) + (/main\s*sheet|salary|wages|payroll|pay\s*slip/i.test(n) ? 25 : 0) - (isSummaryOrBankSheetName(n) ? 180 : 0) - (/left\s*emp/i.test(n) ? 40 : 0);
           if (sc > bestScore) { bestScore = sc; bestSn = n; }
         });
         state.workbookSheets = aoaMap;
@@ -21397,6 +22352,10 @@ document.addEventListener('click', function(e) {
   }
 
   function switchWorkbookSheet(sn) {
+    if (sn === '__COMBINED__') {
+      loadCombinedSheets(state.fileName);
+      return;
+    }
     if (!state.workbookSheets || !state.workbookSheets[sn]) return;
     loadAoaIntoState(state.workbookSheets[sn], state.fileName, sn, null, null, false);
   }
@@ -21466,7 +22425,7 @@ document.addEventListener('click', function(e) {
         '<td><strong>' + esc(dispCode) + '</strong></td>' +
         '<td><strong>' + esc(r.name) + '</strong></td>' +
         '<td>' + esc(desigDep) + '</td>' +
-        '<td>' + esc(formatDaysVal(r.monthDays)) + ' / <strong>' + esc(formatDaysVal(r.paidDays)) + '</strong></td>' +
+        '<td>' + esc(formatDaysVal(r.monthDays)) + ' / ' + esc(formatDaysVal(r.workingDays || 0)) + ' / <strong>' + esc(formatDaysVal(r.paidDays)) + '</strong>' + ((r.sunAllow || r.absent) ? '<div style="font-size:10px;color:#64748b">' + (r.sunAllow ? 'WO ' + formatDaysVal(r.sunAllow) : '') + (r.sunAllow && r.absent ? ' · ' : '') + (r.absent ? 'Abs ' + formatDaysVal(r.absent) : '') + '</div>' : '') + '</td>' +
         '<td>' + r.rateGross + '</td>' +
         '<td>' + r.earnBasic + ' / ' + r.earnHra + '</td>' +
         '<td>' + r.earnBonus + ' / ' + r.earnOt + '</td>' +
@@ -22221,6 +23180,7 @@ document.addEventListener('click', function(e) {
   root.ATPLPaySlipGenerator = {
     init: init,
     handleFileInput: handleFileInput,
+    onErpSelectChange: onErpSelectChange,
     loadFromErpSelect: loadFromErpSelect,
     switchWorkbookSheet: switchWorkbookSheet,
     applyManualColumnMap: applyManualColumnMap,
@@ -22245,6 +23205,8 @@ document.addEventListener('click', function(e) {
     _engine: {
       parseCsvText: parseCsvText,
       detectMonthYear: detectMonthYear,
+      detectDailyMusterColumns: detectDailyMusterColumns,
+      enrichRowsFromSiblingSheets: enrichRowsFromSiblingSheets,
       formatStatutoryId: formatStatutoryId,
       formatDisplayEmpCode: formatDisplayEmpCode,
       mapColumns: mapColumns,
