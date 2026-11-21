@@ -546,24 +546,28 @@ test('Working-Days OT cap (1-7 wd never 32h OT), Manisha Juneja ₹4,200 PF lock
   const master = [
     { emp_id: '00538', name: 'MANISHA JUNEJA', pf_no: '101018418699', esi_no: 'NA', dept: 'OFFICE STAFF', desig: 'MANAGER', cat1: 'OFF STAFF', cat2: 'STAFF NAME', basic: 35000, hra: 28000, gross: 63000 },
     { emp_id: '00387', name: 'SURENDRA KUMAR', pf_no: '100387', esi_no: 'NA', dept: 'OFFICE STAFF', desig: 'STAFF', cat1: 'OFF STAFF', cat2: 'STAFF NAME', basic: 25000, hra: 9000, gross: 34000 },
+    { emp_id: '00419', name: 'BULLURAM', pf_no: '100419', esi_no: 'NA', dept: 'OFFICE STAFF', desig: 'STAFF', cat1: 'OFF STAFF', cat2: 'STAFF NAME', basic: 22500, hra: 7900, gross: 30400 },
     { emp_id: '25100', name: 'RAMESH WORKER', pf_no: '100999', esi_no: '270999', dept: 'PRODUCTION', desig: 'OP', cat1: 'CARD 1', cat2: 'CARD NO. 1', basic: 20000, hra: 5000, gross: 25000 }
   ];
   const prevProfiles = {
     byCode: {
       '538': { empId: '00538', name: 'MANISHA JUNEJA', prevPf: 4200, pfMode: 'FULL_12' },
-      '387': { empId: '00387', name: 'SURENDRA KUMAR', prevPf: 2000, pfMode: 'FULL_12' },
+      // Even if previous month had CAP_15000 (₹1,800) for Office Staff, never lock Office Staff at ₹1,800!
+      '387': { empId: '00387', name: 'SURENDRA KUMAR', prevPf: 1800, pfMode: 'CAP_15000' },
+      '419': { empId: '00419', name: 'BULLURAM', prevPf: 2250, pfMode: 'FULL_12' },
       '25100': { empId: '25100', name: 'RAMESH WORKER', prevPf: 2000, pfMode: 'FULL_12' }
     },
     byName: {},
-    count: 3
+    count: 4
   };
   const mamRows = [
     { code: '00538', name: 'MANISHA JUNEJA', manualAmount: 50000, category: 'STAFF NAME' },
     { code: '00387', name: 'SURENDRA KUMAR', manualAmount: 18000, category: 'STAFF NAME' },
+    { code: '00419', name: 'BULLURAM', manualAmount: 30000, category: 'STAFF NAME' },
     { code: '25100', name: 'RAMESH WORKER', manualAmount: 13000, category: 'CARD NO. 1' }
   ];
   const rows = studio.generateComplianceRows(mamRows, master, {
-    settings: { month: '2026-10', monthDays: 30, officeStaffPfBandPct: 12 },
+    settings: { month: '2026-10', monthDays: 30, officeStaffPfMin: 2100, officeStaffPfMax: 2500, officeStaffPfBandPct: 12 },
     profiles: prevProfiles
   });
 
@@ -580,29 +584,32 @@ test('Working-Days OT cap (1-7 wd never 32h OT), Manisha Juneja ₹4,200 PF lock
   studio.recalculateRow(manisha, { month: '2026-10', monthDays: 30 });
   assert.equal(manisha.pfEmployee, 4200, 'Manisha Juneja PF must never go above ₹4,200 either');
 
-  // 3. Office Staff PF guard keeps PF near last month (₹2,000 ±12% => ₹1,760..₹2,240), while card worker is unguarded
+  // 3. Office Staff PF never locks at ₹1,800 — always stays strictly inside ₹2,100–₹2,500
   const surendra = rows.find(r => r.empId === '00387');
-  assert.equal(surendra.pfBandLower, 1760);
-  assert.equal(surendra.pfBandUpper, 2240);
-  assert.ok(surendra.pfEmployee >= 1760 && surendra.pfEmployee <= 2240, 'Office staff PF must stay near prev ₹2,000, got ' + surendra.pfEmployee);
-  assert.equal(surendra.pfBandApplied, true);
+  assert.notEqual(surendra.pfMode, 'CAP_15000', 'Office Staff must not inherit CAP_15000 (₹1,800 lock)');
+  assert.equal(surendra.pfBandLower, 2100);
+  assert.equal(surendra.pfBandUpper, 2500);
+  assert.ok(surendra.pfEmployee >= 2100 && surendra.pfEmployee <= 2500, 'Office staff PF must stay in 2100-2500, got ' + surendra.pfEmployee);
 
-  // Raise Surendra days to max so raw PF (3000) would spike way above prev ₹2,000 -> capped at ₹2,240
+  // Raise Surendra days to max so raw PF (3000) would spike way above 2500 -> capped at ₹2,500
   surendra.paidDays = 30;
   surendra.workingDays = 26;
   surendra.sunAllow = 4;
   surendra._attendanceEdited = true;
   surendra._attendancePartsLocked = true;
-  studio.recalculateRow(surendra, { month: '2026-10', monthDays: 30, officeStaffPfBandPct: 12 });
-  assert.equal(surendra.pfEmployee, 2240, 'Office staff PF upper spike clamped to +12% of last month PF');
+  studio.recalculateRow(surendra, { month: '2026-10', monthDays: 30, officeStaffPfMin: 2100, officeStaffPfMax: 2500, officeStaffPfBandPct: 12 });
+  assert.equal(surendra.pfEmployee, 2500, 'Office staff PF upper spike clamped cleanly to ₹2,500 max');
+
+  const bulluram = rows.find(r => r.empId === '00419');
+  assert.ok(bulluram.pfEmployee >= 2100 && bulluram.pfEmployee <= 2500, 'Bulluram PF must stay inside 2100-2500, got ' + bulluram.pfEmployee);
 
   const worker = rows.find(r => r.empId === '25100');
   assert.equal(worker.pfBandApplied, false, 'Factory CARD worker must NOT be clamped by Office Staff band');
 
-  // Excel formulas carry LOCK_4200 & MIN/MAX band cleanly
+  // Excel formulas carry LOCK_4200 & MIN(2500,MAX(2100,...)) band cleanly
   const wb = studio.buildComplianceWorkbook(XLSX, rows, { month: '2026-10', monthDays: 30 });
   const ws = wb.Sheets['Main Sheet'];
   assert.ok(ws['AF2'].f && ws['AF2'].f.includes('4200'), 'Manisha Juneja Excel PF formula must lock at 4200');
-  assert.ok(ws['AF3'].f && ws['AF3'].f.includes('MIN(2240,MAX(1760'), 'Office Staff Excel PF formula must enforce MIN/MAX band');
+  assert.ok(ws['AF3'].f && ws['AF3'].f.includes('MIN(2500,MAX(2100'), 'Office Staff Excel PF formula must enforce 2100-2500 band');
 });
 
