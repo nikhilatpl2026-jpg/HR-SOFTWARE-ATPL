@@ -703,7 +703,7 @@
       }
     }
 
-    if (row._attendanceEdited) {
+    if (row._attendanceEdited && row._attendancePartsLocked) {
       row.workingDays = Math.max(0, num(row.workingDays) || 0);
       row.sunAllow = Math.max(0, num(row.sunAllow) || 0);
       row.hd = Math.max(0, num(row.hd) || 0);
@@ -2898,13 +2898,19 @@
         row._attendanceEdited = true;
         row._attendancePartsLocked = false;
         row.paidDays = Math.max(0, Math.min(monthDays, Number(row.paidDays) || 0));
+        const sp = splitPaidDays(row.paidDays, row.hd || 0);
+        row.sunAllow = sp.sunAllow;
+        row.workingDays = sp.workingDays;
       } else if (field === 'overtimeHours') {
         row._attendanceEdited = true;
         row.overtimeHours = Math.max(0, Number(row.overtimeHours) || 0);
-      } else if (field === 'manualAmount' || field === 'basic' || field === 'hra' || field === 'gross' || field === 'monthDays') {
+      } else if (field === 'manualAmount' || (!row._attendanceEdited && (field === 'basic' || field === 'hra' || field === 'gross' || field === 'monthDays'))) {
         const rowSettings = Object.assign({}, s, { monthDays });
         const d = deriveDaysAndOt(row.manualAmount, row.basic, row.gross, rowSettings);
         row.paidDays = d.paidDays;
+        row.workingDays = d.workingDays;
+        row.sunAllow = d.sunAllow;
+        row.hd = d.hd || 0;
         row.overtimeHours = d.overtimeHours;
         row._attendanceEdited = false;
         row._attendancePartsLocked = false;
