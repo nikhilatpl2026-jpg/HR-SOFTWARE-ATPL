@@ -40,7 +40,7 @@
   };
 
   function text(v) {
-    return v === null || v === undefined ? '' : String(v).replace(/^\uFEFF/, '').trim();
+    return v === null || v === undefined ? '' : String(v).replace(/^\uFEFF/, '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '').trim();
   }
   function norm(v) {
     return text(v).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -890,10 +890,22 @@
     };
   }
 
+  function colIdxToLetters(idx) {
+    let n = Math.max(0, Number(idx) || 0) + 1;
+    let out = '';
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      out = String.fromCharCode(65 + rem) + out;
+      n = Math.floor((n - 1) / 26);
+    }
+    return out || 'A';
+  }
+
   function safeSheetName(value, used) {
-    const base = text(value).replace(/[\\/?*\[\]:]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31) || 'OTHER';
+    let base = text(value).replace(/[\\/?*\[\]:]/g, ' ').replace(/^'+|'+$/g, '').replace(/'/g, '').replace(/\s+/g, ' ').trim().slice(0, 31) || 'OTHER';
+    if (base.toLowerCase() === 'history') base = 'History Log';
     let name = base, n = 2;
-    while (used.has(name.toLowerCase())) {
+    while (used.has(name.toLowerCase()) || name.toLowerCase() === 'history') {
       const suf = ' ' + n++;
       name = base.slice(0, 31 - suf.length) + suf;
     }
@@ -1140,7 +1152,7 @@
       masterAoa.push([
         i + 1, text(r.empId), text(r.name), text(r.father), text(r.dob), text(r.doj),
         text(r.pfNo), text(r.esiNo), text(r.gender), text(r.department), text(r.designation),
-        text(r.category), text(r.bankName), text(r.ifsc), text(r.accountNo), r.netPayable, text(r.remarks)
+        text(r.category), text(r.bankName), text(r.ifsc), text(r.accountNo), Number(r.netPayable) || 0, text(r.remarks)
       ]);
     });
     masterAoa.push(['', 'TOTAL', '', '', '', '', '', '', '', '', '', '', '', '', '', totals.netPayable, '']);
@@ -1330,8 +1342,9 @@
     return wb;
   }
 
-  // Post-processes SheetJS CE workbook XML using XLSX.CFB to inject rich MS Excel styling:
-  // Navy headers, borders on all cells, zebra rows, #,##0 currency alignment, highlighted Net Payable & Deductions, Total row fills, frozen panes & landscape print setup.
+  // Post-processes SheetJS CE workbook XML using XLSX.CFB to inject valid MS Excel OOXML styling:
+  // Complete crisp grid borders on every cell (including blanks), navy headers, zebra rows, #,##0 alignment,
+  // semantic Net Payable & Deduction fills, Total double-bottom borders, frozen panes & schema-valid landscape pageSetup.
   function styleComplianceWorkbookBytes(XLSX, wb) {
     const rawArr = XLSX.write(wb, { type: 'array', bookType: 'xlsx', compression: false });
     if (!XLSX.CFB || typeof XLSX.CFB.read !== 'function') {
@@ -1344,13 +1357,13 @@
     const customStylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="7">
-    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Calibri"/></font>
-    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF065F46"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF9A3412"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF1E3A8A"/><name val="Calibri"/></font>
-    <font><b/><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
-    <font><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/></font>
+    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF065F46"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF9A3412"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF1E3A8A"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/><family val="2"/></font>
+    <font><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/><family val="2"/></font>
   </fonts>
   <fills count="9">
     <fill><patternFill patternType="none"/></fill>
@@ -1365,27 +1378,30 @@
   </fills>
   <borders count="6">
     <border><left/><right/><top/><bottom/><diagonal/></border>
-    <border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border>
-    <border><left style="thin"><color rgb="FF1E40AF"/></left><right style="thin"><color rgb="FF1E40AF"/></right><top style="thin"><color rgb="FF0F172A"/></top><bottom style="medium"><color rgb="FF0F172A"/></bottom><diagonal/></border>
-    <border><left style="thin"><color rgb="FFA7F3D0"/></left><right style="thin"><color rgb="FFA7F3D0"/></right><top style="thin"><color rgb="FFA7F3D0"/></top><bottom style="thin"><color rgb="FFA7F3D0"/></bottom><diagonal/></border>
-    <border><left style="thin"><color rgb="FFFED7AA"/></left><right style="thin"><color rgb="FFFED7AA"/></right><top style="thin"><color rgb="FFFED7AA"/></top><bottom style="thin"><color rgb="FFFED7AA"/></bottom><diagonal/></border>
-    <border><left style="thin"><color rgb="FF93C5FD"/></left><right style="thin"><color rgb="FF93C5FD"/></right><top style="thin"><color rgb="FF1E3A8A"/></top><bottom style="double"><color rgb="FF1E3A8A"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF64748B"/></left><right style="thin"><color rgb="FF64748B"/></right><top style="thin"><color rgb="FF64748B"/></top><bottom style="thin"><color rgb="FF64748B"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF1E40AF"/></left><right style="thin"><color rgb="FF1E40AF"/></right><top style="medium"><color rgb="FF0F172A"/></top><bottom style="medium"><color rgb="FF0F172A"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF059669"/></left><right style="thin"><color rgb="FF059669"/></right><top style="thin"><color rgb="FF64748B"/></top><bottom style="thin"><color rgb="FF64748B"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FFD97706"/></left><right style="thin"><color rgb="FFD97706"/></right><top style="thin"><color rgb="FF64748B"/></top><bottom style="thin"><color rgb="FF64748B"/></bottom><diagonal/></border>
+    <border><left style="thin"><color rgb="FF1E3A8A"/></left><right style="thin"><color rgb="FF1E3A8A"/></right><top style="medium"><color rgb="FF1E3A8A"/></top><bottom style="double"><color rgb="FF0F172A"/></bottom><diagonal/></border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
   <cellXfs count="12">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="0" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="0" fillId="8" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="0" fillId="3" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="2" fillId="4" borderId="3" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="3" fillId="5" borderId="4" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="4" fillId="6" borderId="5" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="4" fillId="6" borderId="5" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
-    <xf numFmtId="0" fontId="6" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
-    <xf numFmtId="3" fontId="5" fillId="7" borderId="1" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="0" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="2" fillId="4" borderId="3" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="3" fillId="5" borderId="4" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="6" borderId="5" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="4" fillId="6" borderId="5" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="6" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="3" fontId="5" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>
   </cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+  <dxfs count="0"/>
+  <tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>
 </styleSheet>`;
 
     const findZipEntry = target => {
@@ -1396,12 +1412,16 @@
       const base = target.split('/').pop();
       return zip.FileIndex.find(f => f && (f.name === target || f.name === '/' + target || f.name === base));
     };
+    const updateEntryBytes = (entry, str) => {
+      const bytes = encoder.encode(str);
+      entry.content = bytes;
+      entry.size = bytes.length;
+      if ('csize' in entry) delete entry.csize;
+      if ('crc' in entry) delete entry.crc;
+    };
+
     const stylesEntry = findZipEntry('xl/styles.xml');
-    if (stylesEntry) {
-      const styleBytes = encoder.encode(customStylesXml);
-      stylesEntry.content = styleBytes;
-      stylesEntry.size = styleBytes.length;
-    }
+    if (stylesEntry) updateEntryBytes(stylesEntry, customStylesXml);
 
     const colLettersToIdx = ref => {
       const m = /^([A-Z]+)(\d+)$/.exec(ref || '');
@@ -1422,59 +1442,89 @@
       const dedSet = new Set(mInfo.dedCols || []);
       const netSet = new Set(mInfo.netCols || []);
       const alertSet = new Set(mInfo.alertRows || []);
-      const refRange = ws && ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { e: { r: 0 } };
+      const refRange = ws && ws['!ref'] ? XLSX.utils.decode_range(ws['!ref']) : { e: { r: 0, c: 0 } };
       const lastRow1 = refRange.e.r + 1;
+      const lastCol0 = Math.max(0, refRange.e.c || 0);
+
+      const pickStyle = (col0, row1) => {
+        const isHdr = mInfo.hasHeader && row1 === 1;
+        const isTot = mInfo.hasTotalRow && row1 === lastRow1 && lastRow1 > 1;
+        const isAlert = alertSet.has(row1);
+        const isZebra = row1 % 2 === 1;
+        const isNum = numSet.has(col0);
+        const isDed = dedSet.has(col0);
+        const isNet = netSet.has(col0);
+        if (isHdr) return 1;
+        if (isTot) return isNum ? 9 : 8;
+        if (isAlert) return isNum ? 11 : 10;
+        if (isNet) return 6;
+        if (isDed) return 7;
+        if (isNum) return isZebra ? 5 : 4;
+        return isZebra ? 3 : 2;
+      };
 
       let xml = decoder.decode(new Uint8Array(entry.content));
 
-      // Inject frozen pane view (Row 1 + freezeCols frozen)
+      // 1. Add sheetPr (fitToPage="1") as first child inside <worksheet> (strict CT_Worksheet schema order)
+      if (!/<sheetPr\b/.test(xml)) {
+        xml = xml.replace(/<dimension\b/, '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension');
+      }
+
+      // 2. Inject frozen pane view + active gridlines
       if (mInfo.hasHeader) {
         const xSplit = Math.max(0, Number(mInfo.freezeCols) || 0);
-        const topLeftCol = String.fromCharCode(65 + xSplit);
+        const topLeftCol = colIdxToLetters(xSplit);
         const freezeTag = xSplit > 0
-          ? `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" workbookViewId="0"><pane xSplit="${xSplit}" ySplit="1" topLeftCell="${topLeftCol}2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`
-          : `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
+          ? `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" showGridLines="1" workbookViewId="0"><pane xSplit="${xSplit}" ySplit="1" topLeftCell="${topLeftCol}2" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>`
+          : `<sheetViews><sheetView tabSelected="${sIdx === 0 ? 1 : 0}" showGridLines="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>`;
         if (/<sheetViews>[\s\S]*?<\/sheetViews>/.test(xml)) {
           xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, freezeTag);
+        } else if (/<sheetFormatPr\b/.test(xml)) {
+          xml = xml.replace(/<sheetFormatPr\b/, freezeTag + '<sheetFormatPr');
         } else {
-          xml = xml.replace(/<sheetFormatPr/, freezeTag + '<sheetFormatPr');
+          xml = xml.replace(/<cols\b|<sheetData\b/, m => freezeTag + m);
         }
       }
 
-      // Style every cell cleanly based on row & column role
-      xml = xml.replace(/<c\s+([^>]*)>/g, (full, attrs) => {
-        const rm = /r="([A-Z]+\d+)"/.exec(attrs);
-        if (!rm) return full;
-        const pos = colLettersToIdx(rm[1]);
-        const isHdr = mInfo.hasHeader && pos.row === 1;
-        const isTot = mInfo.hasTotalRow && pos.row === lastRow1 && lastRow1 > 1;
-        const isAlert = alertSet.has(pos.row);
-        const isZebra = pos.row % 2 === 1;
-        const isNum = numSet.has(pos.col);
-        const isDed = dedSet.has(pos.col);
-        const isNet = netSet.has(pos.col);
-
-        let styleId = 2;
-        if (isHdr) styleId = 1;
-        else if (isTot) styleId = isNum ? 9 : 8;
-        else if (isAlert) styleId = isNum ? 11 : 10;
-        else if (isNet) styleId = 6;
-        else if (isDed) styleId = 7;
-        else if (isNum) styleId = isZebra ? 5 : 4;
-        else styleId = isZebra ? 3 : 2;
-
-        const cleanAttrs = attrs.replace(/\s*s="\d+"/g, '').trim();
-        return `<c ${cleanAttrs} s="${styleId}">`;
+      // 3. Populate every missing cell & style every existing cell (handles both <c .../> and <c ...>...</c>)
+      xml = xml.replace(/<row\b([^>]*)>([\s\S]*?)<\/row>/g, (rowFull, rowAttrs, rowInner) => {
+        const rowMatch = /r="(\d+)"/.exec(rowAttrs);
+        const row1 = rowMatch ? Number(rowMatch[1]) : 1;
+        const cellsByCol = new Map();
+        rowInner.replace(/<c\s+([^>]*?)(\/)?>(?:([\s\S]*?)<\/c>)?/g, (cFull, attrs, selfClose, bodyXml) => {
+          const rm = /r="([A-Z]+\d+)"/.exec(attrs);
+          if (!rm) return '';
+          const pos = colLettersToIdx(rm[1]);
+          const styleId = pickStyle(pos.col, pos.row);
+          const cleanAttrs = attrs.replace(/\s*s="\d+"/g, '').trim();
+          const rebuilt = selfClose
+            ? `<c ${cleanAttrs} s="${styleId}"/>`
+            : `<c ${cleanAttrs} s="${styleId}">${bodyXml || ''}</c>`;
+          cellsByCol.set(pos.col, rebuilt);
+          return '';
+        });
+        const fullCells = [];
+        for (let c = 0; c <= lastCol0; c++) {
+          if (cellsByCol.has(c)) {
+            fullCells.push(cellsByCol.get(c));
+          } else {
+            const addr = colIdxToLetters(c) + row1;
+            fullCells.push(`<c r="${addr}" s="${pickStyle(c, row1)}"/>`);
+          }
+        }
+        return `<row ${rowAttrs.trim()}>${fullCells.join('')}</row>`;
       });
 
-      // Add landscape fit-to-1-page-wide print setup
-      if (!/<pageSetup\b/.test(xml) && /<\/worksheet>/.test(xml)) {
-        xml = xml.replace(/<\/worksheet>/, '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>');
+      // 4. Remove any pre-existing pageMargins/pageSetup and insert in strict ECMA-376 CT_Worksheet order (BEFORE ignoredErrors/worksheet end)
+      xml = xml.replace(/<pageMargins\b[^>]*\/>/g, '').replace(/<pageSetup\b[^>]*\/>/g, '');
+      const printXml = '<pageMargins left="0.35" right="0.35" top="0.5" bottom="0.5" header="0.25" footer="0.25"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>';
+      if (/<ignoredErrors\b/.test(xml)) {
+        xml = xml.replace(/<ignoredErrors\b/, printXml + '<ignoredErrors');
+      } else if (/<\/worksheet>/.test(xml)) {
+        xml = xml.replace(/<\/worksheet>/, printXml + '</worksheet>');
       }
 
-      const outBytes = encoder.encode(xml);
-      entry.content = outBytes;
-      entry.size = outBytes.length;
+      updateEntryBytes(entry, xml);
     });
 
     const outZip = XLSX.CFB.write(zip, { fileType: 'zip', type: 'array', compression: true });
@@ -2835,10 +2885,16 @@
       return `<td style="text-align:center"><button type="button" class="mcs-row-del" data-del="${esc(row.uid)}" title="Remove row">✕</button></td>`;
     }
 
+    const roleCls = col.key === 'netPayable'
+      ? 'mcs-cell-net'
+      : (['pfEmployee', 'esiEmployee', 'advance', 'totalDeduction'].includes(col.key)
+        ? 'mcs-cell-ded'
+        : (col.key === 'diffAmount' ? 'mcs-cell-diff' : ''));
     const cls = [
       typeof col.sticky === 'number' ? 'mcs-sticky' : '',
       col.align === 'right' ? 'num mcs-num' : '',
-      col.edit ? 'mcs-editable' : 'mcs-formula-cell'
+      col.edit ? 'mcs-editable' : 'mcs-formula-cell',
+      roleCls
     ].filter(Boolean).join(' ');
 
     if (col.edit === 'checkbox') {
@@ -3262,18 +3318,36 @@
         gap: 12px;
         padding: 10px 20px;
         background: #ffffff;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid #cbd5e1;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
       }
       .mcs-brand-zone {
         display: flex;
         flex-direction: column;
         min-width: 0;
       }
+      .mcs-title-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
       .mcs-title {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 16.5px;
+        font-weight: 800;
         color: #0f172a;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      .mcs-badge-excel {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 4px;
+        background: #ecfdf5;
+        color: #047857;
+        border: 1px solid #a7f3d0;
         white-space: nowrap;
       }
       .mcs-meta {
@@ -3282,33 +3356,35 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin-top: 1px;
+        margin-top: 2px;
       }
       .mcs-actions-zone {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 7px;
         flex-wrap: wrap;
         justify-content: flex-end;
       }
-      .mcs-select, .mcs-input {
-        height: 34px;
-        padding: 0 10px;
-        border: 1px solid #cbd5e1;
-        border-radius: 7px;
-        background: #ffffff;
-        color: #0f172a;
-        font-size: 12.5px;
-        font-family: inherit;
-        outline: none;
+      #page-mamsalary .mcs-select, #page-mamsalary .mcs-input {
+        height: 33px !important;
+        padding: 0 10px !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 7px !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
+        font-size: 12px !important;
+        font-family: inherit !important;
+        line-height: 31px !important;
+        outline: none !important;
+        box-shadow: none !important;
       }
-      .mcs-select:focus, .mcs-input:focus {
-        border-color: #1d4ed8;
-        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
+      #page-mamsalary .mcs-select:focus, #page-mamsalary .mcs-input:focus {
+        border-color: #1d4ed8 !important;
+        box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.14) !important;
       }
-      .mcs-btn {
-        height: 34px;
-        padding: 0 12px;
+      #page-mamsalary .mcs-btn {
+        height: 33px;
+        padding: 0 11px;
         border-radius: 7px;
         border: 1px solid #cbd5e1;
         background: #ffffff;
@@ -3320,40 +3396,41 @@
         align-items: center;
         gap: 5px;
         white-space: nowrap;
-        transition: background-color 140ms ease, border-color 140ms ease;
+        transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
       }
-      .mcs-btn:hover:not(:disabled) {
+      #page-mamsalary .mcs-btn:hover:not(:disabled) {
         background: #f1f5f9;
         border-color: #94a3b8;
       }
-      .mcs-btn:disabled {
+      #page-mamsalary .mcs-btn:disabled {
         opacity: 0.45;
         cursor: not-allowed;
       }
-      .mcs-btn-active {
+      #page-mamsalary .mcs-btn-active {
         background: #eff6ff !important;
         border-color: #2563eb !important;
         color: #1d4ed8 !important;
       }
-      .mcs-btn-primary {
+      #page-mamsalary .mcs-btn-primary {
         background: #0f172a;
         color: #ffffff;
         border-color: #0f172a;
       }
-      .mcs-btn-primary:hover:not(:disabled) {
+      #page-mamsalary .mcs-btn-primary:hover:not(:disabled) {
         background: #1e293b;
         border-color: #1e293b;
       }
-      .mcs-btn-accent {
+      #page-mamsalary .mcs-btn-accent {
         background: #15803d;
         color: #ffffff;
         border-color: #15803d;
+        box-shadow: 0 1px 2px rgba(21, 128, 61, 0.25);
       }
-      .mcs-btn-accent:hover:not(:disabled) {
+      #page-mamsalary .mcs-btn-accent:hover:not(:disabled) {
         background: #166534;
         border-color: #166534;
       }
-      .mcs-mini-btn {
+      #page-mamsalary .mcs-mini-btn {
         height: 26px;
         padding: 0 9px;
         border-radius: 5px;
@@ -3364,7 +3441,7 @@
         font-weight: 600;
         cursor: pointer;
       }
-      .mcs-mini-btn:hover { background: #f1f5f9; }
+      #page-mamsalary .mcs-mini-btn:hover { background: #f1f5f9; }
       .mcs-file-label {
         position: relative;
         overflow: hidden;
@@ -3379,27 +3456,37 @@
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         background: #ffffff;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid #cbd5e1;
       }
       .mcs-kpi {
-        padding: 8px 14px;
+        padding: 9px 14px;
         border-right: 1px solid #e2e8f0;
+        border-top: 3px solid #cbd5e1;
       }
-      .mcs-kpi:last-child { border-right: none; }
+      .mcs-kpi:nth-child(1) { border-top-color: #334155; }
+      .mcs-kpi:nth-child(2) { border-top-color: #2563eb; }
+      .mcs-kpi:nth-child(3) { border-top-color: #0284c7; }
+      .mcs-kpi:nth-child(4) { border-top-color: #d97706; }
+      .mcs-kpi:nth-child(5) { border-top-color: #ea580c; }
+      .mcs-kpi:nth-child(6) { border-top-color: #059669; background: #f0fdf4; border-right: none; }
+      .mcs-kpi:nth-child(6) .mcs-kpi-val { color: #065f46; }
       .mcs-kpi-label {
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
         color: #64748b;
       }
       .mcs-kpi-val {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 17px;
+        font-weight: 800;
         color: #0f172a;
-        margin-top: 1px;
+        margin-top: 2px;
       }
       .mcs-kpi-sub {
         font-size: 11px;
         color: #64748b;
+        margin-top: 1px;
       }
       .mcs-toolbar {
         display: flex;
@@ -3407,9 +3494,9 @@
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 8px;
-        padding: 8px 20px;
+        padding: 7px 20px;
         background: #f8fafc;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid #cbd5e1;
       }
       .mcs-toolbar-left, .mcs-toolbar-right {
         display: flex;
@@ -3524,7 +3611,7 @@
         color: #15803d;
         padding: 2px 7px;
         background: #f1f5f9;
-        border: 1px solid #e2e8f0;
+        border: 1px solid #cbd5e1;
         border-radius: 4px;
       }
       .mcs-fcoord {
@@ -3535,35 +3622,36 @@
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .mcs-fexpr, .mcs-finput {
+      .mcs-fexpr, #page-mamsalary .mcs-finput {
         flex: 1;
-        font-family: 'JetBrains Mono', monospace;
-        color: #0f172a;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 4px;
-        padding: 3px 8px;
-        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace !important;
+        color: #0f172a !important;
+        background: #f8fafc !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 4px !important;
+        padding: 3px 8px !important;
+        font-size: 12px !important;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        box-shadow: none !important;
       }
-      .mcs-finput {
-        background: #ffffff;
-        border-color: #3b82f6;
-        outline: none;
+      #page-mamsalary .mcs-finput {
+        background: #ffffff !important;
+        border-color: #2563eb !important;
+        outline: none !important;
       }
       .mcs-notice {
         padding: 6px 20px;
         font-size: 12px;
-        font-weight: 500;
+        font-weight: 600;
         background: #f1f5f9;
         color: #1e293b;
-        border-bottom: 1px solid #e2e8f0;
+        border-bottom: 1px solid #cbd5e1;
       }
-      .mcs-notice[data-type="ok"] { background: #ecfdf5; color: #14532d; }
-      .mcs-notice[data-type="warn"] { background: #fffbeb; color: #78350f; }
-      .mcs-notice[data-type="err"] { background: #fef2f2; color: #7f1d1d; }
+      .mcs-notice[data-type="ok"] { background: #ecfdf5; color: #14532d; border-bottom-color: #a7f3d0; }
+      .mcs-notice[data-type="warn"] { background: #fffbeb; color: #78350f; border-bottom-color: #fde68a; }
+      .mcs-notice[data-type="err"] { background: #fef2f2; color: #7f1d1d; border-bottom-color: #fecaca; }
       .mcs-drawer {
         display: none;
         padding: 12px 20px;
@@ -3584,15 +3672,15 @@
         color: #475569;
         margin-bottom: 4px;
       }
-      .mcs-field input, .mcs-field select {
+      #page-mamsalary .mcs-field input, #page-mamsalary .mcs-field select {
         width: 100%;
-        height: 34px;
-        padding: 0 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        font-size: 12px;
-        background: #ffffff;
-        color: #0f172a;
+        height: 34px !important;
+        padding: 0 8px !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 6px !important;
+        font-size: 12px !important;
+        background: #ffffff !important;
+        color: #0f172a !important;
       }
       .mcs-grid-container {
         flex: 1;
@@ -3605,6 +3693,7 @@
         flex: 1;
         overflow: auto;
         position: relative;
+        background: #ffffff;
       }
       .mcs-table {
         border-collapse: separate;
@@ -3614,106 +3703,128 @@
         table-layout: fixed;
         font-size: 12.5px;
       }
-      .mcs-table thead tr.mcs-xl-letters th {
+      #page-mamsalary .mcs-table thead tr.mcs-xl-letters th {
         position: sticky;
         top: 0;
         z-index: 14;
         height: 22px;
-        padding: 2px 6px;
-        background: #e2e8f0;
-        color: #475569;
-        font-size: 10.5px;
-        font-weight: 700;
+        padding: 2px 6px !important;
+        background: #e2e8f0 !important;
+        color: #475569 !important;
+        font-size: 10.5px !important;
+        font-weight: 700 !important;
         text-align: center;
-        border-bottom: 1px solid #cbd5e1;
+        border-bottom: 1px solid #cbd5e1 !important;
+        border-right: 1px solid #cbd5e1 !important;
       }
-      .mcs-table thead tr.mcs-xl-letters th.mcs-sticky {
+      #page-mamsalary .mcs-table thead tr.mcs-xl-letters th.mcs-sticky {
         z-index: 22;
-        background: #cbd5e1;
+        background: #cbd5e1 !important;
       }
-      .mcs-table thead tr:not(.mcs-xl-letters) th {
+      #page-mamsalary .mcs-table thead tr:not(.mcs-xl-letters) th {
         position: sticky;
         top: 22px;
         z-index: 12;
-        background: #f1f5f9;
-        color: #0f172a;
-        font-weight: 700;
-        font-size: 11.5px;
-        padding: 7px 8px;
+        background: #1e3a8a !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 11.5px !important;
+        padding: 7px 8px !important;
         text-align: left;
-        border-bottom: 2px solid #cbd5e1;
-        border-right: 1px solid #e2e8f0;
+        border-bottom: 2px solid #0f172a !important;
+        border-right: 1px solid #1e40af !important;
         white-space: nowrap;
         user-select: none;
       }
-      .mcs-table thead tr:only-child th {
+      #page-mamsalary .mcs-table thead tr:only-child th {
         top: 0;
       }
-      .mcs-table thead tr:not(.mcs-xl-letters) th.mcs-sticky {
+      #page-mamsalary .mcs-table thead tr:not(.mcs-xl-letters) th.mcs-sticky {
         z-index: 20;
-        background: #e2e8f0;
+        background: #172554 !important;
       }
-      .mcs-th-sort:hover { background: #e2e8f0 !important; }
-      .mcs-sort-ind { color: #1d4ed8; font-size: 10px; }
-      .mcs-table td {
+      #page-mamsalary .mcs-th-sort:hover { background: #1d4ed8 !important; }
+      .mcs-sort-ind { color: #93c5fd; font-size: 10px; }
+      #page-mamsalary .mcs-table tbody td {
         height: 34px;
-        padding: 0;
-        border-bottom: 1px solid #e2e8f0;
-        border-right: 1px solid #e2e8f0;
+        padding: 0 !important;
+        border-bottom: 1px solid #cbd5e1 !important;
+        border-right: 1px solid #cbd5e1 !important;
         background: #ffffff;
         vertical-align: middle;
         white-space: nowrap;
         overflow: hidden;
+        font-size: 12.5px !important;
       }
-      .mcs-table tbody tr:hover td { background: #f8fafc; }
-      .mcs-table tbody tr.mcs-row-off td { background: #fffbeb; }
-      .mcs-table tbody tr.mcs-row-warn td { background: #fef2f2; }
-      .mcs-table tbody tr.mcs-row-hold td { background: #fefce8; opacity: 0.9; }
-      .mcs-table tbody tr.mcs-row-sel td { background: #dbeafe !important; }
-      .mcs-table td.mcs-sticky {
+      #page-mamsalary .mcs-table tbody tr:nth-child(even) td { background: #f8fafc; }
+      #page-mamsalary .mcs-table tbody td.mcs-cell-net { background: #ecfdf5 !important; color: #065f46; font-weight: 700; }
+      #page-mamsalary .mcs-table tbody td.mcs-cell-ded { background: #fff7ed !important; color: #9a3412; }
+      #page-mamsalary .mcs-table tbody td.mcs-cell-diff { background: #eff6ff; color: #1e40af; }
+      #page-mamsalary .mcs-table tbody tr:hover td { background: #eff6ff !important; }
+      #page-mamsalary .mcs-table tbody tr.mcs-row-off td { background: #fffbeb !important; }
+      #page-mamsalary .mcs-table tbody tr.mcs-row-warn td { background: #fef2f2 !important; }
+      #page-mamsalary .mcs-table tbody tr.mcs-row-hold td { background: #fefce8 !important; opacity: 0.92; }
+      #page-mamsalary .mcs-table tbody tr.mcs-row-sel td { background: #dbeafe !important; }
+      #page-mamsalary .mcs-table td.mcs-sticky {
         position: sticky;
         z-index: 8;
         background: #ffffff;
-        box-shadow: inset -1px 0 0 #cbd5e1;
+        box-shadow: inset -1px 0 0 #94a3b8;
       }
-      .mcs-table tbody tr:hover td.mcs-sticky { background: #f1f5f9; }
-      .mcs-table tbody tr.mcs-row-sel td.mcs-sticky { background: #bfdbfe !important; }
-      .mcs-table td.mcs-formula-cell {
-        padding: 0 8px;
+      #page-mamsalary .mcs-table tbody tr:nth-child(even) td.mcs-sticky { background: #f8fafc; }
+      #page-mamsalary .mcs-table tbody tr:hover td.mcs-sticky { background: #e0e7ff !important; }
+      #page-mamsalary .mcs-table tbody tr.mcs-row-sel td.mcs-sticky { background: #bfdbfe !important; }
+      #page-mamsalary .mcs-table td.mcs-formula-cell {
+        padding: 0 8px !important;
         text-align: right;
         color: #0f172a;
         font-weight: 500;
       }
-      .mcs-table td.mcs-formula-cell:focus {
-        outline: 2px solid #1d4ed8;
-        outline-offset: -2px;
-        background: #eff6ff;
+      #page-mamsalary .mcs-table td.mcs-formula-cell.mcs-cell-net {
+        color: #065f46;
+        font-weight: 800;
       }
-      .mcs-row-check {
-        width: 15px;
-        height: 15px;
+      #page-mamsalary .mcs-table td.mcs-formula-cell:focus {
+        outline: 2px solid #1d4ed8 !important;
+        outline-offset: -2px;
+        background: #eff6ff !important;
+      }
+      #page-mamsalary .mcs-row-check {
+        width: 15px !important;
+        height: 15px !important;
+        padding: 0 !important;
+        margin: 0 !important;
         cursor: pointer;
         accent-color: #1d4ed8;
       }
-      .mcs-cell-input, .mcs-cell-select {
-        width: 100%;
-        height: 33px;
-        border: none;
-        background: transparent;
-        padding: 0 8px;
-        font-size: 12.5px;
+      /* Neutralize external erp-enterprise-ui-v1.js global input/select box styles inside grid cells */
+      #page-mamsalary .mcs-table td input.mcs-cell-input,
+      #page-mamsalary .mcs-table td select.mcs-cell-select {
+        width: 100% !important;
+        height: 33px !important;
+        border: none !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        padding: 0 8px !important;
+        margin: 0 !important;
+        font-size: 12.5px !important;
         font-family: inherit;
-        color: #0f172a;
-        outline: none;
+        color: #0f172a !important;
+        outline: none !important;
+        box-shadow: none !important;
+        line-height: 33px !important;
       }
-      .mcs-cell-input.num {
-        text-align: right;
-        font-family: 'JetBrains Mono', monospace;
-        font-weight: 500;
+      #page-mamsalary .mcs-table td input.mcs-cell-input.num {
+        text-align: right !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-weight: 500 !important;
       }
-      .mcs-cell-input:focus, .mcs-cell-select:focus {
-        background: #eff6ff;
-        box-shadow: inset 0 0 0 2px #1d4ed8;
+      #page-mamsalary .mcs-table td input.mcs-cell-input:focus,
+      #page-mamsalary .mcs-table td select.mcs-cell-select:focus {
+        background: #eff6ff !important;
+        border: none !important;
+        box-shadow: inset 0 0 0 2px #1d4ed8 !important;
+        outline: none !important;
       }
       .mcs-row-del {
         border: none;
@@ -3724,27 +3835,30 @@
         padding: 4px 8px;
       }
       .mcs-row-del:hover { color: #dc2626; }
-      .mcs-table tfoot td {
+      #page-mamsalary .mcs-table tfoot td {
         position: sticky;
         bottom: 0;
         z-index: 15;
-        background: #0f172a;
-        color: #ffffff;
-        font-weight: 700;
-        padding: 8px 8px;
-        border-right: 1px solid #334155;
+        background: #0f172a !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 12px !important;
+        padding: 8px 8px !important;
+        border-top: 2px solid #1e40af !important;
+        border-right: 1px solid #334155 !important;
+        border-bottom: 1px solid #0f172a !important;
         text-align: right;
       }
-      .mcs-table tfoot td.mcs-sticky {
+      #page-mamsalary .mcs-table tfoot td.mcs-sticky {
         z-index: 22;
-        background: #0f172a;
+        background: #0f172a !important;
         text-align: left;
       }
       .mcs-sheet-tabs {
         display: flex;
         align-items: center;
-        gap: 2px;
-        padding: 4px 16px 0;
+        gap: 3px;
+        padding: 5px 16px 0;
         background: #e2e8f0;
         border-top: 1px solid #cbd5e1;
       }
@@ -3755,15 +3869,16 @@
         color: #475569;
         font-size: 11.5px;
         font-weight: 600;
-        padding: 5px 14px;
+        padding: 6px 14px;
         border-radius: 6px 6px 0 0;
         cursor: pointer;
       }
       .mcs-sheet-tab:hover { background: #f1f5f9; color: #0f172a; }
       .mcs-sheet-tab.active {
         background: #ffffff;
-        color: #15803d;
+        color: #047857;
         border-color: #cbd5e1;
+        box-shadow: inset 0 2px 0 #15803d;
         font-weight: 700;
       }
       .mcs-empty {
@@ -3771,20 +3886,40 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 40px 20px;
+        padding: 36px 20px;
+        background: radial-gradient(circle at top center, #eff6ff 0%, #f8fafc 60%);
       }
       .mcs-empty-card {
-        max-width: 680px;
+        max-width: 720px;
         width: 100%;
         background: #ffffff;
-        border: 1px dashed #94a3b8;
-        border-radius: 12px;
-        padding: 36px;
+        border: 2px dashed #94a3b8;
+        border-radius: 14px;
+        padding: 34px 36px;
         text-align: center;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        transition: border-color 150ms ease, background-color 150ms ease;
+      }
+      .mcs-empty-card.mcs-dragover {
+        border-color: #2563eb;
+        background: #eff6ff;
+      }
+      .mcs-empty-icon {
+        width: 52px;
+        height: 52px;
+        margin: 0 auto 14px;
+        border-radius: 12px;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #047857;
+        font-size: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
       .mcs-empty-card h3 {
         font-size: 20px;
-        font-weight: 700;
+        font-weight: 800;
         color: #0f172a;
         margin: 0 0 8px;
       }
@@ -3792,7 +3927,28 @@
         font-size: 13.5px;
         color: #475569;
         line-height: 1.6;
-        margin: 0 0 20px;
+        margin: 0 0 18px;
+      }
+      .mcs-empty-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 22px;
+        text-align: left;
+      }
+      .mcs-empty-step {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        padding: 10px 12px;
+        font-size: 11.5px;
+        color: #334155;
+      }
+      .mcs-empty-step strong {
+        display: block;
+        color: #0f172a;
+        margin-bottom: 2px;
+        font-size: 12px;
       }
       .mcs-footer {
         display: flex;
@@ -3802,9 +3958,16 @@
         gap: 8px;
         padding: 6px 20px;
         background: #ffffff;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid #cbd5e1;
         font-size: 11.5px;
         color: #475569;
+      }
+      #page-mamsalary #mcsPageSize {
+        height: 26px !important;
+        line-height: 24px !important;
+        padding: 0 8px !important;
+        font-size: 11.5px !important;
+        min-width: 64px !important;
       }
     `;
     document.head.appendChild(style);
@@ -3821,7 +3984,10 @@
       <div id="mcsShell" class="mcs-shell">
         <header class="mcs-topbar">
           <div class="mcs-brand-zone">
-            <div class="mcs-title">Mam → ESI &amp; PF Compliance Sheet</div>
+            <div class="mcs-title-row">
+              <div class="mcs-title">Mam → ESI &amp; PF Compliance Sheet</div>
+              <span class="mcs-badge-excel">Bordered Excel Studio</span>
+            </div>
             <div id="mcsSheetMeta" class="mcs-meta">Verified Lokesh Formulas · Auto-Enriched from Employee Master</div>
           </div>
           <div class="mcs-actions-zone">
@@ -3992,15 +4158,20 @@
         <div id="mcsNotice" class="mcs-notice" data-type="info">Upload only Mam Salary Sheet (.csv / .xlsx). Software Employee Master se PF, ESIC, Category, Designation, Basic aur Gross automatic utha lega.</div>
 
         <div id="mcsEmptyState" class="mcs-empty">
-          <div class="mcs-empty-card">
+          <div id="mcsEmptyCard" class="mcs-empty-card">
+            <div class="mcs-empty-icon">📊</div>
             <h3>Upload Mam Salary Sheet to Generate ESI &amp; PF Compliance Excel</h3>
             <p>
-              Sirf Mam ki sheet (<strong>.csv, .xlsx, .xls</strong>) upload karein. Software ko Lokesh sheet ke poore formulas
-              (<strong>Earn Basic</strong>, <strong>Gross Earned</strong>, <strong>8.33% Bonus</strong>, <strong>OT (Gross/104)</strong>,
-              <strong>PF@12%</strong>, <strong>ESIC@0.75%</strong>) pehle se pata hain aur <strong>Employee Master</strong> se PF No, ESI No, Category, Designation automatic fetch honge.
+              Mam ki salary sheet (<strong>.csv, .xlsx, .xls</strong>) yahan select ya drag-drop karein.
+              Employee Master se <strong>PF No, ESI No, Category, Designation, Bank</strong> aur Lokesh formulas automatic apply honge.
             </p>
+            <div class="mcs-empty-steps">
+              <div class="mcs-empty-step"><strong>1. Auto Enrichment</strong>PF, ESIC, Basic, Gross &amp; Card shifts automatically synced.</div>
+              <div class="mcs-empty-step"><strong>2. Live Formula Grid</strong>Edit Days, OT or PF rules directly &amp; review instant totals.</div>
+              <div class="mcs-empty-step"><strong>3. MS Excel Ready</strong>Opens cleanly in Excel with full borders, totals &amp; Category tabs.</div>
+            </div>
             <label class="mcs-btn mcs-btn-primary mcs-file-label" style="height:42px;padding:0 22px;font-size:13.5px">
-              <span>Select Mam Sheet (.csv / .xlsx / .xls)</span>
+              <span>Select or Drop Mam Sheet (.csv / .xlsx / .xls)</span>
               <input id="mcsEmptyUpload" type="file" accept=".csv,.xlsx,.xls">
             </label>
           </div>
@@ -4058,6 +4229,17 @@
   function bindDomEvents() {
     if ($('mcsMamInput')) $('mcsMamInput').onchange = e => handleMamUpload(e.target.files[0]);
     if ($('mcsEmptyUpload')) $('mcsEmptyUpload').onchange = e => handleMamUpload(e.target.files[0]);
+    const emptyCard = $('mcsEmptyCard');
+    if (emptyCard) {
+      emptyCard.addEventListener('dragover', e => { e.preventDefault(); emptyCard.classList.add('mcs-dragover'); });
+      emptyCard.addEventListener('dragleave', () => { emptyCard.classList.remove('mcs-dragover'); });
+      emptyCard.addEventListener('drop', e => {
+        e.preventDefault();
+        emptyCard.classList.remove('mcs-dragover');
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) handleMamUpload(f);
+      });
+    }
     if ($('mcsRefInput')) $('mcsRefInput').onchange = e => handleReferenceUpload(e.target.files[0]);
     if ($('mcsDownloadBtn')) $('mcsDownloadBtn').onclick = downloadExcel;
     if ($('mcsDownloadCsvBtn')) $('mcsDownloadCsvBtn').onclick = exportCsv;
