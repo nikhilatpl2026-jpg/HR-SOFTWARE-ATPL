@@ -46,7 +46,10 @@
     esiEmployerRate: 0.0325,
     esiBase: 'EARN_BASIC',    // EARN_BASIC (Lokesh verified) | TOTAL_GROSS
     autoPullAdvance: true,
-    clampNegativeDiff: true
+    clampNegativeDiff: true,
+    otCapByWorkingDays: true,
+    officeStaffPfGuard: true,
+    officeStaffPfBandPct: 12
   };
 
   function text(v) {
@@ -116,13 +119,16 @@
     s.month = text(s.month) || todayMonth();
     const dm = daysInMonth(s.month);
     s.monthDays = (num(s.monthDays) && num(s.monthDays) > 0) ? Math.min(31, Math.max(1, round0(s.monthDays))) : dm;
-    ['maxOtHours', 'bonusRate', 'otDivisor', 'pfRate', 'pfEmployerRate', 'pfCap', 'esiRate', 'esiEmployerRate'].forEach(k => {
+    ['maxOtHours', 'bonusRate', 'otDivisor', 'pfRate', 'pfEmployerRate', 'pfCap', 'esiRate', 'esiEmployerRate', 'officeStaffPfBandPct'].forEach(k => {
       const n = num(s[k]);
       s[k] = n === null ? DEFAULT_SETTINGS[k] : n;
     });
     if (!['BASIC_833', 'GROSS_10', 'NONE'].includes(s.bonusMode)) s.bonusMode = 'BASIC_833';
     if (!['FULL_12', 'CAP_15000', 'NONE'].includes(s.pfDefaultMode)) s.pfDefaultMode = 'FULL_12';
     if (!['EARN_BASIC', 'TOTAL_GROSS'].includes(s.esiBase)) s.esiBase = 'EARN_BASIC';
+    s.otCapByWorkingDays = s.otCapByWorkingDays !== false;
+    s.officeStaffPfGuard = s.officeStaffPfGuard !== false;
+    s.officeStaffPfBandPct = Math.min(50, Math.max(0, Number(s.officeStaffPfBandPct) || 0));
     s.autoPullAdvance = s.autoPullAdvance !== false;
     s.clampNegativeDiff = s.clampNegativeDiff !== false;
     return s;
@@ -626,6 +632,31 @@
     return { byCode, byName, count: Object.keys(byCode).length };
   }
 
+  function maxRealisticOtForWorkingDays(workingDays, paidDays, globalMaxOt) {
+    const wd = Math.max(0, Number(workingDays) || 0);
+    const pd = Math.max(0, Number(paidDays) || 0);
+    const ceil = Math.max(0, Number(globalMaxOt) || 32);
+    if (pd <= 0 || wd <= 0) return 0;
+    // Employees working 1-7 days cannot realistically accumulate 32 OT hours (~1.25h/day max for <=7 wd, ~1.35h/day above)
+    const cap = wd <= 7 ? Math.max(0, Math.floor(wd * 1.25)) : Math.round(wd * 1.35);
+    return Math.min(ceil, cap);
+  }
+
+  function isManishaJuneja(row) {
+    if (!row) return false;
+    const nk = nameKey(row.name || row.empName);
+    const ck = codeKey(row.empId || row.code);
+    if (nk === 'manisha juneja' || /\bmanisha\s+juneja\b/i.test(text(row.name))) return true;
+    if (ck === '538' && (!nk || /\bmanisha\b/i.test(nk))) return true;
+    return false;
+  }
+
+  function isOfficeStaffRow(row) {
+    if (!row) return false;
+    const blob = [row.department, row.designation, row.cat1, row.category, row.source].map(text).join(' ');
+    return /\b(office\s*staff|off\s*staff|staff\s*name|office|staff)\b/i.test(blob);
+  }
+
   function splitPaidDays(paidDays, hd) {
     const d = Math.max(0, Number(paidDays) || 0);
     const halfHoliday = Math.max(0, Number(hd) || 0);
@@ -668,15 +699,18 @@
         break;
       }
     }
+    const split = splitPaidDays(bestDays, 0);
+    const realisticMaxOt = s.otCapByWorkingDays === false
+      ? Math.max(0, Number(s.maxOtHours) || 32)
+      : maxRealisticOtForWorkingDays(split.workingDays, bestDays, s.maxOtHours);
     let bestOt = 0;
-    for (let o = 0; o <= s.maxOtHours; o++) {
+    for (let o = 0; o <= realisticMaxOt; o++) {
       if (calculateTotalGross(basic, gross, bestDays, o, s) <= wanted) {
         bestOt = o;
       } else {
         break;
       }
     }
-    const split = splitPaidDays(bestDays, 0);
     return {
       paidDays: bestDays,
       workingDays: split.workingDays,
@@ -754,11 +788,24 @@
 
     // PF@12% (Strictly ₹0 if paidDays <= 0, earnBasic <= 0, gross <= 0, or NONE)
     const hasPf = validId(row.pfNo);
+    if (isManishaJuneja(row) && row.pfMode !== 'NONE') {
+      row.pfMode = 'LOCK_4200';
+    }
     const effectivePfMode = row.pfMode && row.pfMode !== 'AUTO' ? row.pfMode : (hasPf ? s.pfDefaultMode : 'NONE');
+    row.pfLocked4200 = false;
+    row.pfBandApplied = false;
+    row.pfBandLower = 0;
+    row.pfBandUpper = 0;
     if (effectivePfMode === 'NONE' || !hasPf || row.paidDays <= 0 || row.earnBasic <= 0 || row.gross <= 0) {
       row.pfWage = 0;
       row.pfEmployee = 0;
       row.pfEmployer = 0;
+    } else if (effectivePfMode === 'LOCK_4200') {
+      // Manisha Juneja permanent ₹4,200 lock (never higher, never lower when active)
+      row.pfLocked4200 = true;
+      row.pfWage = 35000;
+      row.pfEmployee = 4200;
+      row.pfEmployer = round0(35000 * s.pfEmployerRate);
     } else if (effectivePfMode === 'CAP_15000') {
       row.pfWage = Math.min(s.pfCap || 15000, row.earnBasic);
       row.pfEmployee = round0(row.pfWage * s.pfRate);
@@ -771,6 +818,35 @@
       row.pfWage = row.earnBasic;
       row.pfEmployee = round0(row.pfWage * s.pfRate);
       row.pfEmployer = round0(row.pfWage * s.pfEmployerRate);
+    }
+
+    // Office Staff Last-Month PF Band Guardrail: keeps Office Staff PF near Last Month's PF (±12% default)
+    const prevPfRef = round0(row.prevPfEmployee || 0);
+    if (s.officeStaffPfGuard !== false &&
+        s.officeStaffPfBandPct > 0 &&
+        hasPf &&
+        row.paidDays > 0 &&
+        row.earnBasic > 0 &&
+        row.gross > 0 &&
+        effectivePfMode !== 'NONE' &&
+        effectivePfMode !== 'LOCK_4200' &&
+        prevPfRef > 0 &&
+        isOfficeStaffRow(row)) {
+      const bandPct = s.officeStaffPfBandPct;
+      const pfLower = round0(prevPfRef * (1 - bandPct / 100));
+      const pfUpper = round0(prevPfRef * (1 + bandPct / 100));
+      row.pfBandLower = pfLower;
+      row.pfBandUpper = pfUpper;
+      const rawPf = row.pfEmployee;
+      const clampedPf = Math.min(pfUpper, Math.max(pfLower, rawPf));
+      if (clampedPf !== rawPf) {
+        row.pfBandApplied = true;
+        row.pfEmployee = clampedPf;
+        row.pfWage = s.pfRate > 0 ? round0(clampedPf / s.pfRate) : row.pfWage;
+        const empLower = s.pfRate > 0 ? round0((pfLower / s.pfRate) * s.pfEmployerRate) : row.pfEmployer;
+        const empUpper = s.pfRate > 0 ? round0((pfUpper / s.pfRate) * s.pfEmployerRate) : row.pfEmployer;
+        row.pfEmployer = Math.min(empUpper, Math.max(empLower, row.pfEmployer));
+      }
     }
 
     // ESIC@0.75% (Strictly ₹0 if paidDays <= 0, earnBasic <= 0, gross <= 0, or NONE)
@@ -799,6 +875,10 @@
     if (!row.gross || !row.basic || row.paidDays <= 0) flags.push('Basic/Gross/Days 0 (Off Roll)');
     if (hasPf && row.pfEmployee === 0 && row.earnBasic > 0) flags.push('PF Exempt');
     if (row.manualAmount !== null && row.totalGross > row.manualAmount) flags.push('Total Gross > Manual');
+    const otCap = maxRealisticOtForWorkingDays(row.workingDays, row.paidDays, s.maxOtHours);
+    if (s.otCapByWorkingDays !== false && row.paidDays > 0 && row.overtimeHours > otCap) {
+      flags.push(`OT High for Working Days (${row.workingDays}d / ${row.overtimeHours}h)`);
+    }
     if (row.isDuplicate) flags.push('Duplicate Code in Mam');
     if (row.cardShiftedFrom) flags.push('Card Shifted: ' + row.cardShiftedFrom + ' → ' + row.category);
     row.flags = flags;
@@ -1119,12 +1199,18 @@
       const effPfMode = r.pfMode && r.pfMode !== 'AUTO' ? r.pfMode : (hasPf ? s.pfDefaultMode : 'NONE');
       if (effPfMode === 'NONE' || !hasPf || r.paidDays <= 0 || r.earnBasic <= 0 || r.gross <= 0) {
         setFormula('T', '0', 0);
-      } else if (effPfMode === 'CAP_15000') {
-        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(MIN(${s.pfCap || 15000},O${xlRow})*${s.pfRate},0))`, r.pfEmployee);
-      } else if (effPfMode === 'GROSS_12') {
-        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(Q${xlRow}*${s.pfRate},0))`, r.pfEmployee);
+      } else if (effPfMode === 'LOCK_4200') {
+        setFormula('T', `IF(M${xlRow}<=0,0,4200)`, 4200);
       } else {
-        setFormula('T', `IF(M${xlRow}<=0,0,ROUND(O${xlRow}*${s.pfRate},0))`, r.pfEmployee);
+        const cBaseExpr = effPfMode === 'CAP_15000'
+          ? `MIN(${s.pfCap || 15000},O${xlRow})`
+          : (effPfMode === 'GROSS_12' ? `Q${xlRow}` : `O${xlRow}`);
+        const cRaw = `ROUND(${cBaseExpr}*${s.pfRate},0)`;
+        if (r.pfBandLower > 0 && r.pfBandUpper >= r.pfBandLower && s.officeStaffPfGuard !== false && isOfficeStaffRow(r)) {
+          setFormula('T', `IF(M${xlRow}<=0,0,MIN(${r.pfBandUpper},MAX(${r.pfBandLower},${cRaw})))`, r.pfEmployee);
+        } else {
+          setFormula('T', `IF(M${xlRow}<=0,0,${cRaw})`, r.pfEmployee);
+        }
       }
 
       const hasEsi = validId(r.esiNo);
@@ -1225,15 +1311,24 @@
       if (effPfMode === 'NONE' || !hasPf || r.paidDays <= 0 || r.earnBasic <= 0 || r.gross <= 0) {
         setFormula('AF', '0', 0);
         setFormula('AK', '0', 0);
-      } else if (effPfMode === 'CAP_15000') {
-        setFormula('AF', `IF(V${xlRow}<=0,0,ROUND(MIN(${s.pfCap || 15000},X${xlRow})*${s.pfRate},0))`, r.pfEmployee);
-        setFormula('AK', `IF(V${xlRow}<=0,0,ROUND(MIN(${s.pfCap || 15000},X${xlRow})*${s.pfEmployerRate},0))`, r.pfEmployer);
-      } else if (effPfMode === 'GROSS_12') {
-        setFormula('AF', `IF(V${xlRow}<=0,0,ROUND(AC${xlRow}*${s.pfRate},0))`, r.pfEmployee);
-        setFormula('AK', `IF(V${xlRow}<=0,0,ROUND(AC${xlRow}*${s.pfEmployerRate},0))`, r.pfEmployer);
+      } else if (effPfMode === 'LOCK_4200') {
+        setFormula('AF', `IF(V${xlRow}<=0,0,4200)`, 4200);
+        setFormula('AK', `IF(V${xlRow}<=0,0,${round0(35000 * s.pfEmployerRate)})`, r.pfEmployer);
       } else {
-        setFormula('AF', `IF(V${xlRow}<=0,0,ROUND(X${xlRow}*${s.pfRate},0))`, r.pfEmployee);
-        setFormula('AK', `IF(V${xlRow}<=0,0,ROUND(X${xlRow}*${s.pfEmployerRate},0))`, r.pfEmployer);
+        const wageExpr = effPfMode === 'CAP_15000'
+          ? `MIN(${s.pfCap || 15000},X${xlRow})`
+          : (effPfMode === 'GROSS_12' ? `AC${xlRow}` : `X${xlRow}`);
+        const rawEmpF = `ROUND(${wageExpr}*${s.pfRate},0)`;
+        const rawErF = `ROUND(${wageExpr}*${s.pfEmployerRate},0)`;
+        if (r.pfBandLower > 0 && r.pfBandUpper >= r.pfBandLower && s.officeStaffPfGuard !== false && isOfficeStaffRow(r)) {
+          const erLow = s.pfRate > 0 ? round0((r.pfBandLower / s.pfRate) * s.pfEmployerRate) : 0;
+          const erHigh = s.pfRate > 0 ? round0((r.pfBandUpper / s.pfRate) * s.pfEmployerRate) : 0;
+          setFormula('AF', `IF(V${xlRow}<=0,0,MIN(${r.pfBandUpper},MAX(${r.pfBandLower},${rawEmpF})))`, r.pfEmployee);
+          setFormula('AK', `IF(V${xlRow}<=0,0,MIN(${erHigh},MAX(${erLow},${rawErF})))`, r.pfEmployer);
+        } else {
+          setFormula('AF', `IF(V${xlRow}<=0,0,${rawEmpF})`, r.pfEmployee);
+          setFormula('AK', `IF(V${xlRow}<=0,0,${rawErF})`, r.pfEmployer);
+        }
       }
 
       // AG: ESIC @0.75% & AL: ESI @3.25% (Employer)
@@ -2016,6 +2111,9 @@
     buildProfilesFromComplianceSheet,
     computeLastMonthAudit,
     indexEmployeeMaster,
+    maxRealisticOtForWorkingDays,
+    isManishaJuneja,
+    isOfficeStaffRow,
     splitPaidDays,
     calculateTotalGross,
     deriveDaysAndOt,
@@ -2098,7 +2196,7 @@
     { key: 'totalGross', label: 'Total Gross salary', col: 'AC', width: 116, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'totalGross', formula: r => `=ROUND(${r.grossEarned || 0} + ${r.earnedBonus || 0} + ${r.otAmount || 0}, 0)` },
     { key: 'manualAmount', label: 'Manual Amount', col: 'AD', width: 110, edit: 'number', align: 'right', money: true, numeric: true, sortable: true, totalKey: 'manualAmount' },
     { key: 'diffAmount', label: 'Diff. Amount', col: 'AE', width: 94, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'diffAmount', formula: r => `=MAX(0, ${r.manualAmount || 0} - ${r.totalGross})` },
-    { key: 'pfMode', label: 'PF Rule', col: 'PF Rule', width: 98, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'NONE'], optional: true, sortable: true },
+    { key: 'pfMode', label: 'PF Rule', col: 'PF Rule', width: 102, edit: 'select', options: ['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'LOCK_4200', 'NONE'], optional: true, sortable: true },
     { key: 'pfEmployee', label: 'PF@12%', col: 'AF', width: 86, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'pfEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.pfRate * 100).toFixed(2)}%, 0)` },
     { key: 'esiMode', label: 'ESIC Rule', col: 'ESI Rule', width: 100, edit: 'select', options: ['AUTO', 'EARN_BASIC', 'TOTAL_GROSS', 'NONE'], optional: true, sortable: true },
     { key: 'esiEmployee', label: 'ESIC @0.75%', col: 'AG', width: 90, align: 'right', money: true, numeric: true, sortable: true, totalKey: 'esiEmployee', formula: (r, s) => `=ROUND(EarnBasic * ${(s.esiRate * 100).toFixed(2)}%, 0)` },
@@ -3273,7 +3371,9 @@
       bonusRate: $('mcsSetBonusRate') ? $('mcsSetBonusRate').value : sh.settings.bonusRate,
       otDivisor: $('mcsSetOtDivisor') ? $('mcsSetOtDivisor').value : sh.settings.otDivisor,
       pfDefaultMode: $('mcsSetPfMode') ? $('mcsSetPfMode').value : sh.settings.pfDefaultMode,
-      esiBase: $('mcsSetEsiBase') ? $('mcsSetEsiBase').value : sh.settings.esiBase
+      esiBase: $('mcsSetEsiBase') ? $('mcsSetEsiBase').value : sh.settings.esiBase,
+      otCapByWorkingDays: $('mcsSetOtCapByWd') ? !!$('mcsSetOtCapByWd').checked : sh.settings.otCapByWorkingDays,
+      officeStaffPfBandPct: $('mcsSetStaffPfBand') ? $('mcsSetStaffPfBand').value : sh.settings.officeStaffPfBandPct
     });
     sh.settings = s;
     (sh.rows || []).forEach(r => {
@@ -3281,6 +3381,9 @@
       if (!r._attendanceEdited) {
         const d = deriveDaysAndOt(r.manualAmount, r.basic, r.gross, s);
         r.paidDays = d.paidDays;
+        r.workingDays = d.workingDays;
+        r.sunAllow = d.sunAllow;
+        r.hd = d.hd || 0;
         r.overtimeHours = d.overtimeHours;
         r._attendancePartsLocked = false;
       }
@@ -3986,7 +4089,7 @@
           <label class="mcs-ins-field"><span>HD</span><input type="number" step="0.5" data-ins-field="hd" value="${esc(row.hd ?? 0)}"></label>
           <label class="mcs-ins-field"><span>OT Hours</span><input type="number" step="0.5" data-ins-field="overtimeHours" value="${esc(row.overtimeHours ?? 0)}"></label>
         </div>
-        <div class="mcs-ins-formula num">Paid Days: ${row.paidDays || 0} / ${row.monthDays || s.monthDays} · Absent: ${row.absent || 0}</div>
+        <div class="mcs-ins-formula num">Paid Days: ${row.paidDays || 0} / ${row.monthDays || s.monthDays} · Absent: ${row.absent || 0} · Realistic OT Cap (${row.workingDays || 0} wd): ${maxRealisticOtForWorkingDays(row.workingDays, row.paidDays, s.maxOtHours)} hrs</div>
       </div>
 
       <div class="mcs-ins-section">
@@ -4006,7 +4109,7 @@
         <div class="mcs-ins-grid">
           <label class="mcs-ins-field"><span>PF Rule</span>
             <select data-ins-field="pfMode">
-              ${['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'NONE'].map(m => `<option value="${m}"${(row.pfMode || 'AUTO') === m ? ' selected' : ''}>${m}</option>`).join('')}
+              ${['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'LOCK_4200', 'NONE'].map(m => `<option value="${m}"${(row.pfMode || 'AUTO') === m ? ' selected' : ''}>${m}</option>`).join('')}
             </select>
           </label>
           <label class="mcs-ins-field"><span>ESIC Rule</span>
@@ -4022,6 +4125,8 @@
             </select>
           </label>
         </div>
+        ${row.pfLocked4200 ? `<div class="mcs-ins-formula num">PF Permanent Lock: ₹4,200 fixed (Manisha Juneja rule)</div>` : ''}
+        ${row.pfBandLower > 0 ? `<div class="mcs-ins-formula num">Office Staff Last-Month PF Band (±${s.officeStaffPfBandPct}%): Prev ₹${inr(row.prevPfEmployee || 0)} → Allowed ₹${inr(row.pfBandLower)} – ₹${inr(row.pfBandUpper)}${row.pfBandApplied ? ' (Guard Active)' : ''}</div>` : ''}
         <div class="mcs-ins-kv"><span>PF NO / ESI NO</span><strong class="num">${esc(row.pfNo || 'NA')} / ${esc(row.esiNo || 'NA')}</strong></div>
         <div class="mcs-ins-kv"><span>Employee PF@12% / Employer PF@13%</span><strong class="num">₹${inr(row.pfEmployee)} / ₹${inr(row.pfEmployer)}</strong></div>
         <div class="mcs-ins-kv"><span>Employee ESIC@0.75% / Employer@3.25%</span><strong class="num">₹${inr(row.esiEmployee)} / ₹${inr(row.esiEmployer)}</strong></div>
@@ -4071,6 +4176,8 @@
     if ($('mcsSetOtDivisor')) $('mcsSetOtDivisor').value = s.otDivisor;
     if ($('mcsSetPfMode')) $('mcsSetPfMode').value = s.pfDefaultMode;
     if ($('mcsSetEsiBase')) $('mcsSetEsiBase').value = s.esiBase;
+    if ($('mcsSetOtCapByWd')) $('mcsSetOtCapByWd').checked = s.otCapByWorkingDays !== false;
+    if ($('mcsSetStaffPfBand')) $('mcsSetStaffPfBand').value = s.officeStaffPfBandPct;
     if ($('mcsPageSize')) $('mcsPageSize').value = String(state.pageSize);
     if ($('mcsViewPreset')) $('mcsViewPreset').value = state.viewPreset || 'FULL';
     if ($('mcsFreezeBtn')) $('mcsFreezeBtn').classList.toggle('mcs-btn-active', !!state.freezePanes);
@@ -5141,6 +5248,7 @@
               <option value="FULL_12">FULL_12</option>
               <option value="CAP_15000">CAP_15000</option>
               <option value="GROSS_12">GROSS_12</option>
+              <option value="LOCK_4200">LOCK_4200</option>
               <option value="NONE">NONE</option>
             </select>
             <select id="mcsBulkEsi" class="mcs-select" style="height:28px">
@@ -5208,6 +5316,14 @@
                 <option value="EARN_BASIC">0.75% of Earn Basic (Lokesh Default)</option>
                 <option value="TOTAL_GROSS">0.75% of Total Gross</option>
               </select>
+            </div>
+            <div class="mcs-field">
+              <label>Office Staff PF Guard (±% vs Prev)</label>
+              <input id="mcsSetStaffPfBand" type="number" min="0" max="50" step="1" title="0 = off, default 12%">
+            </div>
+            <div class="mcs-field" style="display:flex;align-items:center;gap:6px;padding-top:18px">
+              <input id="mcsSetOtCapByWd" type="checkbox" checked style="width:16px;height:16px">
+              <label for="mcsSetOtCapByWd" style="margin:0;cursor:pointer">Cap OT by Working Days</label>
             </div>
             <div class="mcs-field" style="display:flex;gap:8px">
               <button type="button" id="mcsApplyFormulaBtn" class="mcs-btn mcs-btn-primary">Apply &amp; Recalculate</button>

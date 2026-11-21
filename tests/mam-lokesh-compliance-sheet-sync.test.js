@@ -528,3 +528,81 @@ test('browser Excel features: Full Screen, Expand Grid, Sort, Undo/Redo, Bulk Ac
   assert.ok(elements.get('mcsTableHead').innerHTML.includes('PF@12%'), 'Full preset restores statutory columns');
   assert.ok(elements.get('mcsDownloadFormBtn') && elements.get('mcsExportModal'), 'Download Form button and modal present');
 });
+
+test('Working-Days OT cap (1-7 wd never 32h OT), Manisha Juneja ₹4,200 PF lock & Office Staff last-month PF guard', () => {
+  // 1. Working Days OT cap: 1-7 working days can never get 32 OT hours
+  assert.equal(studio.maxRealisticOtForWorkingDays(0, 0, 32), 0);
+  assert.equal(studio.maxRealisticOtForWorkingDays(1, 1, 32), 1);
+  assert.equal(studio.maxRealisticOtForWorkingDays(5, 5, 32), 6);
+  assert.equal(studio.maxRealisticOtForWorkingDays(7, 8, 32), 8);
+  assert.ok(studio.maxRealisticOtForWorkingDays(7, 8, 32) < 10, '1-7 working days must never allow 32 OT hrs');
+
+  // Even if Manual Amount leaves a gap while Paid Days = 7 (6 working days), OT stays <= 7
+  const derivedLowDays = studio.deriveDaysAndOt(5200, 13043, 15000, { monthDays: 30, maxOtHours: 32 });
+  assert.ok(derivedLowDays.workingDays <= 8);
+  assert.ok(derivedLowDays.overtimeHours <= 11, 'Derived OT must stay proportional to workingDays, got ' + derivedLowDays.overtimeHours);
+
+  // 2. Manisha Juneja PF permanently locked at ₹4,200 regardless of working days / slight basic shifts
+  const master = [
+    { emp_id: '00538', name: 'MANISHA JUNEJA', pf_no: '101018418699', esi_no: 'NA', dept: 'OFFICE STAFF', desig: 'MANAGER', cat1: 'OFF STAFF', cat2: 'STAFF NAME', basic: 35000, hra: 28000, gross: 63000 },
+    { emp_id: '00387', name: 'SURENDRA KUMAR', pf_no: '100387', esi_no: 'NA', dept: 'OFFICE STAFF', desig: 'STAFF', cat1: 'OFF STAFF', cat2: 'STAFF NAME', basic: 25000, hra: 9000, gross: 34000 },
+    { emp_id: '25100', name: 'RAMESH WORKER', pf_no: '100999', esi_no: '270999', dept: 'PRODUCTION', desig: 'OP', cat1: 'CARD 1', cat2: 'CARD NO. 1', basic: 20000, hra: 5000, gross: 25000 }
+  ];
+  const prevProfiles = {
+    byCode: {
+      '538': { empId: '00538', name: 'MANISHA JUNEJA', prevPf: 4200, pfMode: 'FULL_12' },
+      '387': { empId: '00387', name: 'SURENDRA KUMAR', prevPf: 2000, pfMode: 'FULL_12' },
+      '25100': { empId: '25100', name: 'RAMESH WORKER', prevPf: 2000, pfMode: 'FULL_12' }
+    },
+    byName: {},
+    count: 3
+  };
+  const mamRows = [
+    { code: '00538', name: 'MANISHA JUNEJA', manualAmount: 50000, category: 'STAFF NAME' },
+    { code: '00387', name: 'SURENDRA KUMAR', manualAmount: 18000, category: 'STAFF NAME' },
+    { code: '25100', name: 'RAMESH WORKER', manualAmount: 13000, category: 'CARD NO. 1' }
+  ];
+  const rows = studio.generateComplianceRows(mamRows, master, {
+    settings: { month: '2026-10', monthDays: 30, officeStaffPfBandPct: 12 },
+    profiles: prevProfiles
+  });
+
+  const manisha = rows.find(r => r.empId === '00538');
+  assert.equal(manisha.pfMode, 'LOCK_4200');
+  assert.equal(manisha.pfEmployee, 4200, 'Manisha Juneja PF must stay locked at ₹4,200 even on lower paid days');
+  assert.equal(manisha.pfLocked4200, true);
+
+  // Even if Manisha basic or paidDays increases in live edit, PF remains strictly ₹4,200
+  manisha.paidDays = 30;
+  manisha.basic = 42000;
+  manisha._salaryPartsEdited = true;
+  manisha._attendanceEdited = true;
+  studio.recalculateRow(manisha, { month: '2026-10', monthDays: 30 });
+  assert.equal(manisha.pfEmployee, 4200, 'Manisha Juneja PF must never go above ₹4,200 either');
+
+  // 3. Office Staff PF guard keeps PF near last month (₹2,000 ±12% => ₹1,760..₹2,240), while card worker is unguarded
+  const surendra = rows.find(r => r.empId === '00387');
+  assert.equal(surendra.pfBandLower, 1760);
+  assert.equal(surendra.pfBandUpper, 2240);
+  assert.ok(surendra.pfEmployee >= 1760 && surendra.pfEmployee <= 2240, 'Office staff PF must stay near prev ₹2,000, got ' + surendra.pfEmployee);
+  assert.equal(surendra.pfBandApplied, true);
+
+  // Raise Surendra days to max so raw PF (3000) would spike way above prev ₹2,000 -> capped at ₹2,240
+  surendra.paidDays = 30;
+  surendra.workingDays = 26;
+  surendra.sunAllow = 4;
+  surendra._attendanceEdited = true;
+  surendra._attendancePartsLocked = true;
+  studio.recalculateRow(surendra, { month: '2026-10', monthDays: 30, officeStaffPfBandPct: 12 });
+  assert.equal(surendra.pfEmployee, 2240, 'Office staff PF upper spike clamped to +12% of last month PF');
+
+  const worker = rows.find(r => r.empId === '25100');
+  assert.equal(worker.pfBandApplied, false, 'Factory CARD worker must NOT be clamped by Office Staff band');
+
+  // Excel formulas carry LOCK_4200 & MIN/MAX band cleanly
+  const wb = studio.buildComplianceWorkbook(XLSX, rows, { month: '2026-10', monthDays: 30 });
+  const ws = wb.Sheets['Main Sheet'];
+  assert.ok(ws['AF2'].f && ws['AF2'].f.includes('4200'), 'Manisha Juneja Excel PF formula must lock at 4200');
+  assert.ok(ws['AF3'].f && ws['AF3'].f.includes('MIN(2240,MAX(1760'), 'Office Staff Excel PF formula must enforce MIN/MAX band');
+});
+
