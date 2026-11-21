@@ -1178,8 +1178,8 @@ td.blank-val { color: var(--muted); font-style: italic; }
 }
 .vnav-cat:hover { color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.03); }
 .vnav-arrow { font-size: 10px; transition: transform .25s; }
-.vnav-sub { overflow: hidden; transition: max-height .3s ease; max-height: 500px; }
-.vnav-sub.collapsed { max-height: 0; }
+.vnav-sub { overflow: hidden; transition: max-height .28s ease; max-height: none; }
+.vnav-sub.collapsed { max-height: 0 !important; }
 .vi { font-size: 13px; width: 20px; flex-shrink: 0; }
 .vitem {
   display: flex; align-items: center; gap: 8px;
@@ -1254,7 +1254,7 @@ td.blank-val { color: var(--muted); font-style: italic; }
 #vnav.collapsed .vitem { padding:10px 0; justify-content:center; }
 #vnav.collapsed .vitem span:not(.vi) { display:none; }
 #vnav.collapsed .vbadge { position:absolute; top:4px; right:4px; }
-#vnav.collapsed .vnav-sub { max-height:500px!important; }
+#vnav.collapsed .vnav-sub { max-height:none!important; }
 
 /* Sidebar toggle button */
 #sidebarToggle {
@@ -2286,10 +2286,37 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
   #vnav.collapsed #vnavSearchWrap { display: none !important; }
   #vnav .vitem.vnav-search-hide { display: none !important; }
 
-  /* ══ SIDEBAR MENU UP/DOWN REORDER ══ */
+  /* ══ SIDEBAR MENU UP/DOWN & CROSS-SECTION REORDER ══ */
   #vnav.vnav-arrange-on .vitem { cursor: grab; position: relative; padding-right: 54px !important; }
+  #vnav .vitem { cursor: grab; }
   #vnav .vitem.vnav-dragging { opacity: 0.45; transform: scale(0.98); }
   #vnav .vitem.vnav-drag-over { outline: 2px dashed #4f46e5; outline-offset: -2px; background: rgba(79,70,229,0.12) !important; }
+  #vnav .vitem.vnav-drop-before { box-shadow: inset 0 2px 0 0 #4f46e5 !important; background: rgba(79,70,229,0.09) !important; }
+  #vnav .vitem.vnav-drop-after { box-shadow: inset 0 -2px 0 0 #4f46e5 !important; background: rgba(79,70,229,0.09) !important; }
+  #vnav .vnav-group.vnav-section-drop { background: rgba(79,70,229,0.06) !important; border-radius: 8px; }
+  #vnav .vnav-group.vnav-section-drop > .vnav-cat { color: #4338ca !important; background: #eef2ff !important; border-radius: 6px; }
+  #vnav.vnav-dragging-active .vnav-sub.vnav-empty-sub:not(.collapsed),
+  #vnav.vnav-arrange-on .vnav-sub.vnav-empty-sub:not(.collapsed) {
+    min-height: 36px !important;
+    max-height: 44px !important;
+    border: 1.5px dashed #cbd5e1;
+    border-radius: 8px;
+    margin: 4px 10px 6px;
+    position: relative;
+  }
+  #vnav.vnav-dragging-active .vnav-sub.vnav-empty-sub:not(.collapsed)::after,
+  #vnav.vnav-arrange-on .vnav-sub.vnav-empty-sub:not(.collapsed)::after {
+    content: "Drop feature here";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #94a3b8;
+    pointer-events: none;
+  }
   #vnavArrangeBtn {
     display: inline-flex; align-items: center; gap: 3px;
     padding: 3px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;
@@ -8244,24 +8271,35 @@ function goPage(name) {
     pg.classList.add('active');
   }
   // Update vertical nav active state
+  var activeVitem = null;
   document.querySelectorAll('.vitem').forEach(function(t){
     var fn=t.getAttribute('onclick');
-    if(fn){var m=fn.match(/goPage\('(\w+)'/);if(m)t.classList.toggle('active',m[1]===name);}
+    if(fn){
+      var m=fn.match(/goPage\('(\w+)'/);
+      var isMatch = Boolean(m && m[1]===name);
+      t.classList.toggle('active', isMatch);
+      if (isMatch) activeVitem = t;
+    }
   });
-  // Auto-expand the parent category of active item
+  // Auto-expand the current parent category of active item (works across moved sections)
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
     'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
-  if(catMap[name]){
-    var sub = document.getElementById(catMap[name]);
-    if(sub && sub.classList.contains('collapsed')){
-      sub.classList.remove('collapsed');
-      var catId = catMap[name].replace('cat-','arr-');
-      var arr = document.getElementById(catId);
-      if(arr) arr.style.transform='rotate(0deg)';
+  var sub = (activeVitem && activeVitem.closest) ? activeVitem.closest('.vnav-sub') : null;
+  if (!sub && catMap[name]) sub = document.getElementById(catMap[name]);
+  if(sub && sub.classList.contains('collapsed')){
+    sub.classList.remove('collapsed');
+    var catId = (sub.id || '').replace('cat-','arr-');
+    var arr = catId ? document.getElementById(catId) : null;
+    if(arr) {
+      arr.textContent = '▾';
+      arr.style.transform='rotate(0deg)';
+    }
+    if (window.ATPLSidebarReorder && typeof window.ATPLSidebarReorder.syncSectionHeights === 'function') {
+      window.ATPLSidebarReorder.syncSectionHeights();
     }
   }
   if(name==='advance') { if(window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.renderUI==='function') window.ATPLAdvanceManager.renderUI(); }
@@ -8296,7 +8334,13 @@ function toggleVcat(catId) {
   var collapsed = sub.classList.toggle('collapsed');
   var arrId = catId.replace('cat-','arr-');
   var arr = document.getElementById(arrId);
-  if(arr) arr.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+  if(arr) {
+    arr.textContent = collapsed ? '▸' : '▾';
+    arr.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+  }
+  if (window.ATPLSidebarReorder && typeof window.ATPLSidebarReorder.syncSectionHeights === 'function') {
+    window.ATPLSidebarReorder.syncSectionHeights();
+  }
 }
 
 function updStats() {
@@ -10255,17 +10299,20 @@ function toggleAllVcats() {
     var el = document.getElementById(id);
     var arr = document.getElementById(arrIds[i]);
     if (el) {
+      el.classList.toggle('collapsed', ALL_VCATS_COLLAPSED);
       if (ALL_VCATS_COLLAPSED) {
-        el.style.maxHeight = '0';
+        el.style.maxHeight = '0px';
         el.style.overflow = 'hidden';
         if(arr) arr.textContent = '▸';
       } else {
-        el.style.maxHeight = '500px';
-        el.style.overflow = 'visible';
+        el.style.overflow = 'hidden';
         if(arr) arr.textContent = '▾';
       }
     }
   });
+  if (window.ATPLSidebarReorder && typeof window.ATPLSidebarReorder.syncSectionHeights === 'function') {
+    window.ATPLSidebarReorder.syncSectionHeights();
+  }
   
   var btn = document.getElementById('collapseAllBtn');
   var icon = document.getElementById('collapseAllIcon');
@@ -23583,8 +23630,9 @@ document.addEventListener('click', function(e) {
 
   function isVisibleItem(el) {
     if (!el || el.hidden) return false;
-    if (el.classList && el.classList.contains('uaNoAccess')) return false;
+    if (el.classList && (el.classList.contains('uaNoAccess') || el.classList.contains('vnav-search-hide'))) return false;
     if (el.getAttribute && el.getAttribute('aria-hidden') === 'true') return false;
+    if (/^vn-(cmd|ai-commander|test|attendanceaudit|challan|empdashboard|dol|dolverify)$/.test(el.id || '')) return false;
     if (el.style && String(el.style.display || '').toLowerCase() === 'none') return false;
     try {
       if (typeof root.getComputedStyle === 'function') {
@@ -23595,12 +23643,69 @@ document.addEventListener('click', function(e) {
     return true;
   }
 
+  function clearDropIndicators() {
+    var doc = root.document;
+    if (!doc) return;
+    Array.prototype.forEach.call(
+      doc.querySelectorAll('#vnav .vnav-drag-over, #vnav .vnav-drop-before, #vnav .vnav-drop-after, #vnav .vnav-section-drop'),
+      function(n) {
+        n.classList.remove('vnav-drag-over', 'vnav-drop-before', 'vnav-drop-after', 'vnav-section-drop');
+      }
+    );
+  }
+
+  function syncSectionHeights() {
+    var doc = root.document;
+    var vnav = doc && doc.getElementById('vnav');
+    var showEmptyDrop = Boolean(dragSrcEl || arrangeMode);
+    getContainers().forEach(function(box) {
+      var visibleItems = Array.prototype.slice.call(box.children).filter(function(el) {
+        return el.classList && el.classList.contains('vitem') && isVisibleItem(el);
+      });
+      var hasVisible = visibleItems.length > 0;
+      box.classList.toggle('vnav-empty-sub', !hasVisible);
+
+      if (box.classList.contains('collapsed')) {
+        box.style.maxHeight = '0px';
+        box.style.overflow = 'hidden';
+        return;
+      }
+
+      if (!hasVisible) {
+        box.style.maxHeight = showEmptyDrop ? '44px' : '0px';
+        box.style.overflow = 'hidden';
+        return;
+      }
+
+      // Dynamically resize section height to match exact items inside (never clamped at 500px)
+      var prevMax = box.style.maxHeight;
+      box.style.maxHeight = 'none';
+      var contentH = box.scrollHeight || (visibleItems.length * 36);
+      box.style.maxHeight = prevMax || '0px';
+      if (box.offsetHeight >= 0) { /* force style recalc for smooth CSS transition */ }
+      box.style.maxHeight = Math.max(contentH + 6, visibleItems.length * 32) + 'px';
+      box.style.overflow = 'hidden';
+    });
+
+    var rst = doc && doc.getElementById('vnavResetOrderBtn');
+    if (rst) {
+      rst.style.display = (arrangeMode || Boolean(readOrder())) ? 'inline-flex' : 'none';
+    }
+    if (vnav) {
+      vnav.classList.toggle('vnav-dragging-active', Boolean(dragSrcEl));
+    }
+  }
+
   function captureDefaults() {
     getContainers().forEach(function(box) {
-      if (!box.id || defaultSnapshot[box.id]) return;
-      defaultSnapshot[box.id] = Array.prototype.slice.call(box.children)
+      if (!box.id) return;
+      var ids = Array.prototype.slice.call(box.children)
         .filter(function(el){ return el.classList && el.classList.contains('vitem') && el.id; })
-        .map(function(el){ return el.id; });
+        .map(function(el){
+          if (!el.getAttribute('data-orig-cat')) el.setAttribute('data-orig-cat', box.id);
+          return el.id;
+        });
+      if (!defaultSnapshot[box.id]) defaultSnapshot[box.id] = ids;
     });
   }
 
@@ -23656,6 +23761,93 @@ document.addEventListener('click', function(e) {
     return map;
   }
 
+  function expandBoxIfCollapsed(box) {
+    if (!box || !box.classList || !box.classList.contains('collapsed')) return;
+    box.classList.remove('collapsed');
+    if (box.id) {
+      var arr = root.document && root.document.getElementById(box.id.replace('cat-', 'arr-'));
+      if (arr) {
+        arr.textContent = '▾';
+        arr.style.transform = 'rotate(0deg)';
+      }
+    }
+  }
+
+  function commitDropIntoBox(targetBox, insertBeforeNode) {
+    if (!dragSrcEl || !targetBox) return;
+    if (insertBeforeNode === dragSrcEl) return;
+    expandBoxIfCollapsed(targetBox);
+    applying = true;
+    try {
+      if (insertBeforeNode && insertBeforeNode.parentNode === targetBox) {
+        targetBox.insertBefore(dragSrcEl, insertBeforeNode);
+      } else {
+        targetBox.appendChild(dragSrcEl);
+      }
+    } finally {
+      applying = false;
+    }
+    persistOrder(collectCurrentOrder());
+    syncSectionHeights();
+  }
+
+  function ensureSectionDropBindings() {
+    var doc = root.document;
+    if (!doc) return;
+    var groups = Array.prototype.slice.call(doc.querySelectorAll('#vnav .vnav-group'));
+    groups.forEach(function(group) {
+      if (group.__vnavGroupBound) return;
+      group.__vnavGroupBound = true;
+      var catHeader = group.querySelector('.vnav-cat');
+      var subBox = group.querySelector('.vnav-sub');
+      if (!subBox) return;
+
+      if (catHeader) {
+        catHeader.addEventListener('dragover', function(e) {
+          if (!dragSrcEl) return;
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          clearDropIndicators();
+          group.classList.add('vnav-section-drop');
+          if (subBox.classList.contains('collapsed')) {
+            expandBoxIfCollapsed(subBox);
+            syncSectionHeights();
+          }
+        });
+        catHeader.addEventListener('dragleave', function(e) {
+          if (!group.contains(e.relatedTarget)) group.classList.remove('vnav-section-drop');
+        });
+        catHeader.addEventListener('drop', function(e) {
+          if (!dragSrcEl) return;
+          e.preventDefault();
+          e.stopPropagation();
+          clearDropIndicators();
+          // Dropping onto section header places feature cleanly at the top of that section
+          commitDropIntoBox(subBox, subBox.firstElementChild);
+        });
+      }
+
+      subBox.addEventListener('dragover', function(e) {
+        if (!dragSrcEl) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        clearDropIndicators();
+        group.classList.add('vnav-section-drop');
+      });
+      subBox.addEventListener('dragleave', function(e) {
+        if (!group.contains(e.relatedTarget)) group.classList.remove('vnav-section-drop');
+      });
+      subBox.addEventListener('drop', function(e) {
+        if (!dragSrcEl) return;
+        e.preventDefault();
+        e.stopPropagation();
+        clearDropIndicators();
+        // Dropped inside empty section or below last item -> append at end of section
+        commitDropIntoBox(subBox, null);
+      });
+    });
+  }
+
   function ensureControlsOnItem(item) {
     if (!item || !item.classList || !item.classList.contains('vitem')) return;
     if (!item.getAttribute('draggable')) item.setAttribute('draggable', 'true');
@@ -23669,45 +23861,39 @@ document.addEventListener('click', function(e) {
           e.dataTransfer.effectAllowed = 'move';
           try { e.dataTransfer.setData('text/plain', item.id || ''); } catch(_){}
         }
+        setTimeout(syncSectionHeights, 0);
       });
       item.addEventListener('dragend', function() {
         item.classList.remove('vnav-dragging');
-        var doc = root.document;
-        if (doc) {
-          Array.prototype.forEach.call(doc.querySelectorAll('#vnav .vitem.vnav-drag-over'), function(n){
-            n.classList.remove('vnav-drag-over');
-          });
-        }
+        clearDropIndicators();
         dragSrcEl = null;
+        syncSectionHeights();
       });
       item.addEventListener('dragover', function(e) {
         if (!dragSrcEl || dragSrcEl === item) return;
-        if (dragSrcEl.parentNode !== item.parentNode) return;
         e.preventDefault();
+        e.stopPropagation();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        item.classList.add('vnav-drag-over');
+        clearDropIndicators();
+        var rect = item.getBoundingClientRect ? item.getBoundingClientRect() : null;
+        var dropBefore = rect ? (e.clientY < (rect.top + rect.height / 2)) : true;
+        item.classList.add(dropBefore ? 'vnav-drop-before' : 'vnav-drop-after');
+        var grp = item.closest ? item.closest('.vnav-group') : null;
+        if (grp) grp.classList.add('vnav-section-drop');
       });
       item.addEventListener('dragleave', function() {
-        item.classList.remove('vnav-drag-over');
+        item.classList.remove('vnav-drag-over', 'vnav-drop-before', 'vnav-drop-after');
       });
       item.addEventListener('drop', function(e) {
         if (!dragSrcEl || dragSrcEl === item) return;
-        if (dragSrcEl.parentNode !== item.parentNode) return;
         e.preventDefault();
         e.stopPropagation();
-        item.classList.remove('vnav-drag-over');
-        var parent = item.parentNode;
-        var children = Array.prototype.slice.call(parent.children);
-        var srcIdx = children.indexOf(dragSrcEl);
-        var tgtIdx = children.indexOf(item);
-        applying = true;
-        try {
-          if (srcIdx < tgtIdx) parent.insertBefore(dragSrcEl, item.nextSibling);
-          else parent.insertBefore(dragSrcEl, item);
-        } finally {
-          applying = false;
-        }
-        persistOrder(collectCurrentOrder());
+        var rect = item.getBoundingClientRect ? item.getBoundingClientRect() : null;
+        var dropBefore = item.classList.contains('vnav-drop-before') ||
+          (!item.classList.contains('vnav-drop-after') && (!rect || e.clientY < (rect.top + rect.height / 2)));
+        clearDropIndicators();
+        var parentBox = item.parentNode;
+        commitDropIntoBox(parentBox, dropBefore ? item : item.nextElementSibling);
       });
     }
 
@@ -23720,7 +23906,7 @@ document.addEventListener('click', function(e) {
       var btnUp = doc.createElement('button');
       btnUp.type = 'button';
       btnUp.className = 'vnav-move-btn';
-      btnUp.title = 'Move Up';
+      btnUp.title = 'Move Up (or Previous Section)';
       btnUp.textContent = '▲';
       btnUp.onclick = function(ev) {
         ev.preventDefault();
@@ -23731,7 +23917,7 @@ document.addEventListener('click', function(e) {
       var btnDown = doc.createElement('button');
       btnDown.type = 'button';
       btnDown.className = 'vnav-move-btn';
-      btnDown.title = 'Move Down';
+      btnDown.title = 'Move Down (or Next Section)';
       btnDown.textContent = '▼';
       btnDown.onclick = function(ev) {
         ev.preventDefault();
@@ -23748,6 +23934,7 @@ document.addEventListener('click', function(e) {
   function moveItem(item, delta) {
     if (!item || !item.parentNode) return;
     var parent = item.parentNode;
+    var boxes = getContainers();
     var items = Array.prototype.slice.call(parent.children).filter(function(el){
       return el.classList && el.classList.contains('vitem');
     });
@@ -23755,59 +23942,82 @@ document.addEventListener('click', function(e) {
     var vIdx = visibleItems.indexOf(item);
     if (vIdx < 0) return;
     var targetVIdx = vIdx + delta;
-    if (targetVIdx < 0 || targetVIdx >= visibleItems.length) return;
-    var targetEl = visibleItems[targetVIdx];
 
     applying = true;
     try {
-      if (delta < 0) parent.insertBefore(item, targetEl);
-      else parent.insertBefore(item, targetEl.nextSibling);
+      if (targetVIdx >= 0 && targetVIdx < visibleItems.length) {
+        var targetEl = visibleItems[targetVIdx];
+        if (delta < 0) parent.insertBefore(item, targetEl);
+        else parent.insertBefore(item, targetEl.nextSibling);
+      } else {
+        // Cross section boundary when moving past top/bottom of current section
+        var boxIdx = boxes.indexOf(parent);
+        var nextBoxIdx = boxIdx + (delta < 0 ? -1 : 1);
+        if (nextBoxIdx < 0 || nextBoxIdx >= boxes.length) return;
+        var nextBox = boxes[nextBoxIdx];
+        expandBoxIfCollapsed(nextBox);
+        if (delta < 0) nextBox.appendChild(item);
+        else nextBox.insertBefore(item, nextBox.firstElementChild);
+      }
     } finally {
       applying = false;
     }
     persistOrder(collectCurrentOrder());
+    syncSectionHeights();
   }
 
   function applyOrderMap(orderMap) {
     if (!orderMap || typeof orderMap !== 'object') return;
+    var boxes = getContainers();
+    var globalById = {};
+    boxes.forEach(function(box) {
+      Array.prototype.slice.call(box.children).forEach(function(el) {
+        if (el && el.classList && el.classList.contains('vitem') && el.id) {
+          globalById[el.id] = el;
+        }
+      });
+    });
+
     applying = true;
     try {
-      getContainers().forEach(function(box) {
+      // Place all saved IDs across ANY target section container
+      boxes.forEach(function(box) {
         if (!box.id) return;
         var savedIds = orderMap[box.id];
-        if (!Array.isArray(savedIds) || !savedIds.length) return;
-        var byId = {};
-        Array.prototype.slice.call(box.children).forEach(function(el) {
-          if (el.id) byId[el.id] = el;
-        });
+        if (!Array.isArray(savedIds)) return;
         savedIds.forEach(function(id) {
-          if (byId[id]) {
-            box.appendChild(byId[id]);
-            delete byId[id];
+          if (globalById[id]) {
+            box.appendChild(globalById[id]);
+            delete globalById[id];
           }
         });
-        // Keep any newly added items appended in place
-        Object.keys(byId).forEach(function(remId) {
-          box.appendChild(byId[remId]);
-        });
+      });
+      // Keep any newly added/unsaved items in their original container
+      Object.keys(globalById).forEach(function(remId) {
+        var remEl = globalById[remId];
+        var origCat = remEl.getAttribute('data-orig-cat');
+        var target = (origCat && boxes.find(function(b){ return b.id === origCat; })) || remEl.parentNode;
+        if (target && remEl.parentNode !== target) target.appendChild(remEl);
       });
     } finally {
       applying = false;
     }
+    syncSectionHeights();
   }
 
   function refreshBindings() {
     captureDefaults();
+    ensureSectionDropBindings();
     getContainers().forEach(function(box) {
       Array.prototype.slice.call(box.children).forEach(ensureControlsOnItem);
     });
+    syncSectionHeights();
   }
 
   function toggle() {
     var doc = root.document;
     var vnav = doc && doc.getElementById('vnav');
     var btn = doc && doc.getElementById('vnavArrangeBtn');
-    var rst = doc && doc.getElementById('vnavResetOrderBtn');
     if (!vnav) return;
     arrangeMode = !arrangeMode;
     vnav.classList.toggle('vnav-arrange-on', arrangeMode);
@@ -23815,8 +24025,7 @@ document.addEventListener('click', function(e) {
       btn.classList.toggle('active', arrangeMode);
       btn.textContent = arrangeMode ? '✓ Done' : '↕ Shift';
     }
-    if (rst) rst.style.display = arrangeMode ? 'inline-flex' : 'none';
-    if (arrangeMode) refreshBindings();
+    refreshBindings();
   }
 
   function resetOrder() {
@@ -23857,7 +24066,7 @@ document.addEventListener('click', function(e) {
       } catch(_) {}
     });
 
-    // Observe dynamic feature additions (e.g., User Access, Service History) to apply saved order
+    // Observe dynamic feature additions or visibility changes inside #vnav
     var doc = root.document;
     var vnavEl = doc && doc.getElementById('vnav');
     if (vnavEl && root.MutationObserver && !root.__ATPL_VNAV_ORDER_OBS__) {
@@ -23866,6 +24075,7 @@ document.addEventListener('click', function(e) {
       new root.MutationObserver(function(muts) {
         if (applying) return;
         var hasStructural = muts.some(function(m) {
+          if (m.type === 'attributes') return true;
           if (!m.addedNodes || !m.addedNodes.length) return false;
           for (var i = 0; i < m.addedNodes.length; i++) {
             var n = m.addedNodes[i];
@@ -23880,7 +24090,7 @@ document.addEventListener('click', function(e) {
           if (s) applyOrderMap(s);
           refreshBindings();
         }, 60);
-      }).observe(vnavEl, { childList: true, subtree: true });
+      }).observe(vnavEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'hidden', 'class'] });
     }
   }
 
@@ -23892,7 +24102,7 @@ document.addEventListener('click', function(e) {
       var anyMatch = false;
       Array.prototype.slice.call(box.children).forEach(function(el) {
         if (!el.classList || !el.classList.contains('vitem')) return;
-        if (/^vn-(cmd|ai-commander|test|attendanceaudit|challan|empdashboard|dol)$/.test(el.id || '')) return;
+        if (/^vn-(cmd|ai-commander|test|attendanceaudit|challan|empdashboard|dol|dolverify)$/.test(el.id || '')) return;
         if (!q) {
           el.classList.remove('vnav-search-hide');
           anyMatch = true;
@@ -23904,9 +24114,10 @@ document.addEventListener('click', function(e) {
         }
       });
       if (q && anyMatch && box.classList && box.classList.contains('collapsed')) {
-        box.classList.remove('collapsed');
+        expandBoxIfCollapsed(box);
       }
     });
+    syncSectionHeights();
   }
 
   root.ATPLSidebarReorder = {
@@ -23915,6 +24126,7 @@ document.addEventListener('click', function(e) {
     moveItem: moveItem,
     applyOrderMap: applyOrderMap,
     collectCurrentOrder: collectCurrentOrder,
+    syncSectionHeights: syncSectionHeights,
     bootstrap: bootstrap,
     filterNav: filterNav
   };
