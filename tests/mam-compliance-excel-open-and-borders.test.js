@@ -85,12 +85,32 @@ test('Mam -> Compliance XLSX opens cleanly in Excel with strict OOXML order and 
   const tmpFile = path.join('/tmp', 'atpl_excel_regression_check.xlsx');
   fs.writeFileSync(tmpFile, bytes);
 
-  // Verify XLSX parses back cleanly with styles & formulas
+  // Verify XLSX parses back cleanly with styles & formulas across 39-col FULL compliance sheet
   const reparsed = XLSX.read(bytes, { type: 'array', cellStyles: true });
   assert.ok(reparsed.SheetNames.includes('Main Sheet'));
   assert.ok(reparsed.SheetNames.includes('Master & Designation'));
+  assert.ok(reparsed.SheetNames.includes('Bank NEFT Transfer'));
+  assert.ok(reparsed.SheetNames.includes('Diff & Variance'));
   assert.equal(reparsed.Sheets['Main Sheet']['A1'].s.fgColor.rgb, '1E3A8A');
-  assert.equal(reparsed.Sheets['Main Sheet']['X4'].f, 'SUM(X2:X3)');
+  assert.equal(reparsed.Sheets['Main Sheet']['AJ4'].f, 'SUM(AJ2:AJ3)');
+  assert.ok(reparsed.Sheets['Main Sheet']['P2'].f.includes('N2+O2'), 'Gross = Basic + HRA formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['V2'].f.includes('R2+S2+T2'), 'Paid Days = Working + Sun Allow + HD formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['X2'].f.includes('ROUND(N2*V2/Q2,0)'), 'Earn Basic formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['Y2'].f.includes('ROUND(O2*V2/Q2,0)'), 'Earn HRA formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['Z2'].f === 'X2+Y2', 'Gross Earned formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['AA2'].f.includes('0.0833'), 'Earned Bonus 8.33% formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['AB2'].f.includes('P2/104'), 'OT Amount formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['AK2'].f.includes('0.13'), 'Employer PF 13% formula');
+  assert.ok(reparsed.Sheets['Main Sheet']['AL2'].f.includes('0.0325'), 'Employer ESIC 3.25% formula');
+
+  // Verify COMPACT_25 legacy template option and Banner option both pass strict OOXML checks
+  const wbBanner = studio.buildComplianceWorkbook(XLSX, sampleRows, { month: '2026-10' }, {
+    mamFile: 'OCT_MAM.xlsx',
+    exportOptions: { includeBanner: true, includeFormulas: true, template: 'FULL' }
+  });
+  const bannerReparsed = XLSX.read(studio.styleComplianceWorkbookBytes(XLSX, wbBanner), { type: 'array', cellStyles: true });
+  assert.equal(bannerReparsed.Sheets['Main Sheet']['A3'].v, 'S.No.');
+  assert.equal(bannerReparsed.Sheets['Main Sheet']['AJ6'].f, 'SUM(AJ4:AJ5)');
 
   // Verify ZIP integrity, valid XML, strict ECMA-376 worksheet element order, complete bordered cells, and valid styles.xml
   const pyCheck = `

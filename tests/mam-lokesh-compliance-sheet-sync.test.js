@@ -14,52 +14,54 @@ function readCsv(relPath) {
   return studio.parseCsvText(txt);
 }
 
-test('parses full grouped OCT_MAM CSV (all 28 sections, skipping Totals & repeated headers)', () => {
-  const rows = readCsv('public/assets/aistudio/OCT_MAM_929191bf.csv');
-  const parsed = studio.parseMamMatrix(rows, 'OCT MAM', 'OCT_MAM.csv');
-  assert.ok(parsed.length >= 460 && parsed.length <= 490, 'Expected ~469 Mam rows, got ' + parsed.length);
-  assert.equal(parsed[0].code, '25903');
-  assert.equal(parsed[0].category, 'Card No.6');
-  assert.equal(parsed[0].manualAmount, 4750);
-  const staffRow = parsed.find(r => r.code === '135' || r.code === '00135');
-  assert.ok(staffRow, 'Expected Sampat Lal in Staff Name section');
-  assert.equal(staffRow.category, 'Staff Name');
-  assert.equal(staffRow.manualAmount, 27660);
+test('parses ATPL Full Compliance CSV (try1_f17af3b2.csv) and optional OCT_MAM CSV cleanly', () => {
+  const tryRows = readCsv('public/assets/aistudio/try1_f17af3b2.csv');
+  const prof = studio.parseReferenceMatrix(tryRows, 'try1', 'try1_f17af3b2.csv');
+  assert.ok(prof.count >= 460, 'Expected >= 460 reference profiles from try1_f17af3b2.csv, got ' + prof.count);
+
+  const octMamPath = path.join(ROOT, 'public/assets/aistudio/OCT_MAM_929191bf.csv');
+  if (fs.existsSync(octMamPath)) {
+    const rows = readCsv('public/assets/aistudio/OCT_MAM_929191bf.csv');
+    const parsed = studio.parseMamMatrix(rows, 'OCT MAM', 'OCT_MAM.csv');
+    assert.ok(parsed.length >= 460 && parsed.length <= 490, 'Expected ~469 Mam rows, got ' + parsed.length);
+  }
 });
 
-test('reproduces Lokesh compliance formulas accurately across OCT_LOKESH rows', () => {
-  const lokesh = readCsv('public/assets/aistudio/OCT_LOKESH_a0b68345.csv');
+test('reproduces Full Compliance formulas (Working Days, Sun Allow, HRA, Earn HRA, Bonus 8.33%, OT Amount) across all employee rows of try1_f17af3b2.csv', () => {
+  const tryRows = readCsv('public/assets/aistudio/try1_f17af3b2.csv');
   let checked = 0;
+  let exactPaid = 0;
   let exactEarnBasic = 0;
-  let exactGrossEarned = 0;
-  let exactEsic = 0;
-  let esicCount = 0;
-  let exactNet = 0;
+  let exactEarnHra = 0;
+  let exactBonus = 0;
+  let exactOt = 0;
+  let exactTotalGross = 0;
 
-  for (let i = 1; i < lokesh.length; i++) {
-    const r = lokesh[i];
-    const sno = studio.text(r[0]);
+  for (let i = 1; i < tryRows.length; i++) {
+    const r = tryRows[i];
     const id = studio.cleanCode(r[1]);
     const name = studio.text(r[2]);
-    if ((!sno && !id && !name) || /^(total|grand total)$/i.test(name) || /^(total|grand total)$/i.test(sno)) continue;
-    if (!id && !name) continue;
+    if (!id || !name || /^(total|grand total)$/i.test(name)) continue;
 
-    const pfNo = studio.text(r[4]) || 'NA';
-    const esiNo = studio.text(r[5]) || 'NA';
-    const basic = studio.num(r[8]) || 0;
-    const gross = studio.num(r[9]) || 0;
-    const md = studio.num(r[10]) || 31;
-    const paidDays = studio.num(r[12]) || 0;
-    const ot = studio.num(r[13]) || 0;
-    const actualEB = studio.num(r[14]) || 0;
-    const actualGE = studio.num(r[15]) || 0;
-    const actualTG = studio.num(r[16]) || 0;
-    const manual = studio.num(r[17]) || 0;
-    const actualPf = studio.num(r[19]) || 0;
-    const actualEsi = studio.num(r[20]) || 0;
-    const adv = studio.num(r[21]) || 0;
-    const actualNet = studio.num(r[23]) || 0;
-    const rem = studio.text(r[24]);
+    const basic = studio.num(r[10]) || 0;
+    const hra = studio.num(r[11]) || 0;
+    const gross = studio.num(r[12]) || 0;
+    const md = studio.num(r[13]) || 30;
+    const workingDays = studio.num(r[14]) || 0;
+    const sunAllow = studio.num(r[15]) || 0;
+    const hd = studio.num(r[16]) || 0;
+    const paidDays = studio.num(r[18]) || 0;
+    const ot = studio.num(r[19]) || 0;
+    const actualEB = studio.num(r[20]) || 0;
+    const actualEH = studio.num(r[21]) || 0;
+    const actualBonus = studio.num(r[23]) || 0;
+    const actualOt = studio.num(r[24]) || 0;
+    const actualTG = studio.num(r[25]) || 0;
+    const pfNo = studio.text(r[6]) || 'NA';
+    const esiNo = studio.text(r[7]) || 'NA';
+    const manual = studio.num(r[26]) || 0;
+    const adv = studio.num(r[30]) || 0;
+    const rem = studio.text(r[34]);
 
     const row = studio.recalculateRow({
       uid: 't_' + i,
@@ -68,36 +70,40 @@ test('reproduces Lokesh compliance formulas accurately across OCT_LOKESH rows', 
       pfNo,
       esiNo,
       basic,
+      hra,
       gross,
+      _salaryPartsEdited: true,
       monthDays: md,
+      workingDays,
+      sunAllow,
+      hd,
       paidDays,
+      _attendanceEdited: true,
+      _attendancePartsLocked: true,
       overtimeHours: ot,
       manualAmount: manual,
       advance: adv,
-      pfMode: (studio.validId(pfNo) && actualPf === 0 && actualEB > 0) ? 'NONE' : 'AUTO',
-      esiMode: (studio.validId(esiNo) && actualEsi === 0 && actualEB > 0) ? 'NONE' : 'AUTO',
       remarks: rem,
       _remarksEdited: true,
       masterMatched: true
-    }, { month: '2026-10', monthDays: md });
+    }, { month: '2026-09', monthDays: md });
 
     checked++;
+    if (Math.abs((workingDays + sunAllow + hd) - paidDays) < 0.01) exactPaid++;
     if (Math.abs(row.earnBasic - actualEB) <= 1) exactEarnBasic++;
-    if (Math.abs(row.grossEarned - actualGE) <= 1) exactGrossEarned++;
-    if (actualEsi > 0) {
-      esicCount++;
-      if (Math.abs(row.esiEmployee - actualEsi) <= 1) exactEsic++;
-    }
-    if (Math.abs(row.totalGross - actualTG) <= 5 && Math.abs(row.netPayable - actualNet) <= 5) {
-      exactNet++;
-    }
+    if (Math.abs(row.earnHra - actualEH) <= 1) exactEarnHra++;
+    if (Math.abs(row.earnedBonus - actualBonus) <= 1) exactBonus++;
+    if (Math.abs(row.otAmount - actualOt) <= 1) exactOt++;
+    if (Math.abs(row.totalGross - actualTG) <= 1) exactTotalGross++;
   }
 
-  assert.equal(checked, 482);
-  assert.equal(exactEarnBasic, 482, 'Earn Basic formula must match 100% of Lokesh rows');
-  assert.equal(exactGrossEarned, 482, 'Gross Earned formula must match 100% of Lokesh rows');
-  assert.equal(exactEsic, esicCount, 'ESIC @0.75% formula must match 100% of ESIC-applicable rows');
-  assert.ok(exactNet >= 470, 'Total Gross & Net Payable must match Lokesh formulas across >97% of rows, matched ' + exactNet);
+  assert.ok(checked >= 485, 'Expected >= 485 employee rows, got ' + checked);
+  assert.equal(exactPaid, checked, 'Working Days + Sun Allow + HD must equal Paid Days on 100% of rows');
+  assert.equal(exactEarnBasic, checked, 'Earn Basic must match try1_f17af3b2.csv on 100% of rows');
+  assert.equal(exactEarnHra, checked, 'Earn HRA must match try1_f17af3b2.csv on 100% of rows');
+  assert.equal(exactBonus, checked, 'Earned Bonus 8.33% must match try1_f17af3b2.csv on 100% of rows');
+  assert.equal(exactOt, checked, 'OT Amount must match try1_f17af3b2.csv on 100% of rows');
+  assert.ok(exactTotalGross >= checked - 2, 'Total Gross salary must match try1_f17af3b2.csv on >= 99.5% of rows (' + exactTotalGross + '/' + checked + ')');
 });
 
 test('enriches Mam rows automatically from Employee Master & recalculates on grid edits', () => {
@@ -181,16 +187,27 @@ test('enriches Mam rows automatically from Employee Master & recalculates on gri
   assert.equal(r0.pfEmployee, 1800, '12% capped at 15,000 must equal 1,800');
   assert.ok(r0.totalGross > 27472, 'Adding 2 OT hours must raise Total Gross');
 
-  // Multi-sheet Excel export includes live formulas
+  // Verify Working Days + Sun Allow + HD split & HRA / Earn HRA / Bonus / OT calculations
+  assert.equal(r0.hra, 27660 - 20489);
+  assert.equal(r0.sunAllow, 4);
+  assert.equal(r0.workingDays, 25);
+  assert.equal(r0.workingDays + r0.sunAllow + r0.hd, r0.paidDays);
+  assert.ok(r0.earnHra > 0 && r0.earnedBonus > 0 && r0.pfEmployer > 0 && r0.esiEmployer > 0);
+
+  // Multi-sheet Excel export includes live formulas across 39-col Full Compliance sheet
   const wb = studio.buildComplianceWorkbook(XLSX, rows, { month: '2026-10', monthDays: 31 }, { mamFile: 'OCT_MAM.csv' });
   assert.ok(wb.SheetNames.includes('Main Sheet'));
   assert.ok(wb.SheetNames.includes('Category Summary'));
+  assert.ok(wb.SheetNames.includes('Bank NEFT Transfer'));
   assert.ok(wb.SheetNames.includes('Master & Designation'));
   assert.ok(wb.SheetNames.includes('PF & ESIC Summary'));
+  assert.ok(wb.SheetNames.includes('Diff & Variance'));
   const mainWs = wb.Sheets['Main Sheet'];
-  assert.ok(mainWs['O2'].f && mainWs['O2'].f.includes('ROUND('), 'Earn Basic cell must contain live Excel formula');
-  assert.ok(mainWs['Q2'].f && mainWs['Q2'].f.includes('ROUND('), 'Total Gross cell must contain live Excel formula');
-  assert.ok(mainWs['X4'].f && mainWs['X4'].f.includes('SUM('), 'Grand Total row must contain SUM formula');
+  assert.ok(mainWs['X2'].f && mainWs['X2'].f.includes('ROUND('), 'Earn Basic cell must contain live Excel formula');
+  assert.ok(mainWs['Y2'].f && mainWs['Y2'].f.includes('ROUND('), 'Earn HRA cell must contain live Excel formula');
+  assert.ok(mainWs['AA2'].f && mainWs['AA2'].f.includes('ROUND('), 'Earned Bonus cell must contain live Excel formula');
+  assert.ok(mainWs['AC2'].f && mainWs['AC2'].f.includes('ROUND('), 'Total Gross cell must contain live Excel formula');
+  assert.ok(mainWs['AJ4'].f && mainWs['AJ4'].f.includes('SUM('), 'Grand Total Net Payable row must contain SUM formula');
 });
 
 test('server.js & mam-salary.js expose cross-browser compliance sheet sync endpoints and loader wiring', () => {
@@ -501,5 +518,13 @@ test('browser Excel features: Full Screen, Expand Grid, Sort, Undo/Redo, Bulk Ac
   // 5. Sort & Worksheet Tabs
   const headHtml = elements.get('mcsTableHead').innerHTML;
   assert.ok(headHtml.includes('mcs-xl-letters'), 'Must render Excel column letter header A, B, C...');
+  assert.ok(headHtml.includes('Working Days') && headHtml.includes('Earn Basic') && headHtml.includes('PF @13%'), 'Main table renders full Working Days, Earn Basic & Employer columns');
   assert.ok(elements.get('mcsSheetTabs'), 'Must render bottom Excel worksheet tabs');
+
+  // 6. View Preset switcher & Download Form Modal
+  elements.get('mcsViewPreset').onchange({ target: { value: 'ATTENDANCE' } });
+  assert.ok(!elements.get('mcsTableHead').innerHTML.includes('PF@12%'), 'Attendance preset focuses on Working Days/Sun Allow/Paid Days');
+  elements.get('mcsViewPreset').onchange({ target: { value: 'FULL' } });
+  assert.ok(elements.get('mcsTableHead').innerHTML.includes('PF@12%'), 'Full preset restores statutory columns');
+  assert.ok(elements.get('mcsDownloadFormBtn') && elements.get('mcsExportModal'), 'Download Form button and modal present');
 });

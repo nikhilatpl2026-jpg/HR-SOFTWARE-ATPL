@@ -310,14 +310,24 @@ test('Formatted Excel export & end-to-end browser workflow: Auto last-month PF/E
   const wsMain = parsedWb.Sheets['Main Sheet'];
   assert.equal(wsMain['A1'].s.fgColor.rgb, '1E3A8A', 'Header row must have Navy #1E3A8A fill');
   assert.equal(wsMain['C4'].s.fgColor.rgb, 'DBEAFE', 'Grand Total row must have Ice Blue #DBEAFE fill');
-  assert.equal(wsMain['X2'].s.fgColor.rgb, 'ECFDF5', 'Net Payable cell must have Mint Green #ECFDF5 highlight');
-  assert.equal(wsMain['T2'].s.fgColor.rgb, 'FFF7ED', 'PF deduction cell must have Soft Amber #FFF7ED highlight');
+  assert.equal(wsMain['AJ2'].s.fgColor.rgb, 'ECFDF5', 'Net Payable cell must have Mint Green #ECFDF5 highlight');
+  assert.equal(wsMain['AF2'].s.fgColor.rgb, 'FFF7ED', 'PF deduction cell must have Soft Amber #FFF7ED highlight');
+
+  // Verify Download Form modal opens and downloads customized Excel with banner enabled
+  elements.get('mcsDownloadFormBtn').onclick();
+  assert.ok(elements.get('mcsExportModal'));
+  elements.get('mcsExpBanner').checked = true;
+  elements.get('mcsExpRunXlsx').onclick();
+  const customXlsx = blobPayloads[blobPayloads.length - 1];
+  const customParsed = XLSX.read(customXlsx, { type: 'array' });
+  assert.equal(customParsed.Sheets['Main Sheet']['A3'].v, 'S.No.');
 
   // Also verify Last Month PF/ESIC button executes cleanly without carrying over absent employees
   elements.get('mcsLastMonthBtn').onclick();
   const afterLastMonthBtn = JSON.parse(storageMap.get('ATPL_ComplianceSheets_V1'))['2026-10'];
   assert.equal(afterLastMonthBtn.rows.length, 2);
   assert.equal(afterLastMonthBtn.rows[0].pfEmployee, 1800);
-  assert.ok(wsMain['O2'].f && wsMain['O2'].f.includes('ROUND('), 'Live formulas preserved after styling');
-  assert.ok(wsMain['X4'].f && wsMain['X4'].f.includes('SUM('), 'Grand Total SUM formula preserved after styling');
+  assert.ok(wsMain['X2'].f && wsMain['X2'].f.includes('ROUND('), 'Live Earn Basic formula preserved after styling');
+  assert.ok(wsMain['Y2'].f && wsMain['Y2'].f.includes('ROUND('), 'Live Earn HRA formula preserved after styling');
+  assert.ok(wsMain['AJ4'].f && wsMain['AJ4'].f.includes('SUM('), 'Grand Total Net Payable SUM formula preserved after styling');
 });
