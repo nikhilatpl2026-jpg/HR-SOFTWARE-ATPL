@@ -170,7 +170,7 @@
   const GENERIC_NAME_HEADERS = ['name', 'emp name', 'employee name', 'name of employee', 'employee', 'worker name'];
   const NAME_HEADERS = GENERIC_NAME_HEADERS.concat(['staff name']);
   const CATEGORY_HEADERS = ['category', 'category 02', 'catgrory 02', 'category 01', 'catgrory 01', 'card', 'card no', 'card number', 'dept', 'department', 'group'];
-  const AMOUNT_HEADERS = ['manual amount', 'manual amt', 'mam amount', 'amount', 'total', 'total amount', 'salary', 'salary amount', 'net payable', 'payment', 'net amount'];
+  const AMOUNT_HEADERS = ['manual amount', 'manual amt', 'mam amount', 'mam amt', 'total manual amount', 'mam total', 'amount', 'total', 'total amount', 'salary', 'salary amount', 'net payable', 'payment', 'net amount'];
 
   function parseCardNumber(val) {
     const raw = text(val);
@@ -219,6 +219,85 @@
     return 'CARD NO.' + cn;
   }
 
+  function findPriorityHeaderIndex(normHeaders, priorityList, excludeIdx) {
+    for (let p = 0; p < priorityList.length; p++) {
+      const alias = priorityList[p];
+      const idx = normHeaders.findIndex((x, colIdx) => colIdx !== excludeIdx && x === alias);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
+  function sheetToVisibleMatrix(XLSX, ws) {
+    if (!ws || !XLSX || !XLSX.utils) return [];
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: true });
+    const rowsMeta = Array.isArray(ws['!rows']) ? ws['!rows'] : [];
+    let startR = 0;
+    try {
+      if (ws['!ref'] && typeof XLSX.utils.decode_range === 'function') {
+        startR = XLSX.utils.decode_range(ws['!ref']).s.r || 0;
+      }
+    } catch (_) {
+      startR = 0;
+    }
+    const nonEmptyIndices = [];
+    let hiddenNonEmptyCount = 0;
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      if (!Array.isArray(row) || !row.some(c => text(c) !== '')) continue;
+      nonEmptyIndices.push(i);
+      const meta = rowsMeta[startR + i];
+      if (meta && meta.hidden) hiddenNonEmptyCount++;
+    }
+    // Exclude hidden/filtered rows only when a proper subset of rows are hidden
+    // (avoids legacy BIFF8 .xls files where outline grouping flags nearly every row as hidden)
+    const filterHidden = hiddenNonEmptyCount > 0 && hiddenNonEmptyCount < nonEmptyIndices.length * 0.5;
+    const out = [];
+    for (let k = 0; k < nonEmptyIndices.length; k++) {
+      const i = nonEmptyIndices[k];
+      if (filterHidden) {
+        const meta = rowsMeta[startR + i];
+        if (meta && meta.hidden) continue;
+      }
+      out.push(rawRows[i]);
+    }
+    return out;
+  }
+
+  function isSecondaryMamSheetName(name) {
+    return /\b(diff|differen|variance|bank|neft|challan|summary|dept\s*wise|category\s*wise|backup|rough|old|copy|pending|hold|audit|sheet\s*[2-9]|sheet\d{2,})\b/i.test(text(name));
+  }
+
+  function selectBestMamSheet(sheets, fileName) {
+    const list = Array.isArray(sheets) ? sheets : [];
+    const visible = list.filter(sh => sh && !sh.hidden);
+    const candidates = visible.length ? visible : list;
+    const parsedCandidates = [];
+    for (const sh of candidates) {
+      if (!sh) continue;
+      try {
+        const r = parseMamMatrix(sh.rows, sh.name, fileName);
+        if (r && r.length) {
+          parsedCandidates.push({
+            name: sh.name,
+            rows: r,
+            secondary: isSecondaryMamSheetName(sh.name)
+          });
+        }
+      } catch (_) {}
+    }
+    if (!parsedCandidates.length) return null;
+    const primaryLarge = parsedCandidates.filter(c => !c.secondary && c.rows.length >= 10);
+    const pool = primaryLarge.length
+      ? primaryLarge
+      : (parsedCandidates.some(c => !c.secondary) ? parsedCandidates.filter(c => !c.secondary) : parsedCandidates);
+    let best = pool[0];
+    for (let i = 1; i < pool.length; i++) {
+      if (pool[i].rows.length > best.rows.length) best = pool[i];
+    }
+    return best;
+  }
+
   function parseMamMatrix(rows, sheetName, fileName) {
     rows = Array.isArray(rows) ? rows : [];
     const sheet = text(sheetName) || 'Sheet1';
@@ -232,7 +311,7 @@
       const r = rows[i] || [];
       const h = r.map(norm);
       const foundC = h.findIndex(x => CODE_HEADERS.includes(x));
-      const foundA = h.findIndex(x => AMOUNT_HEADERS.includes(x));
+      const foundA = findPriorityHeaderIndex(h, AMOUNT_HEADERS, foundC);
       if (foundC >= 0 && foundA >= 0) {
         ci = foundC;
         ai = foundA;
@@ -274,7 +353,15 @@
       throw new Error('Mam sheet ke columns pehchane nahi gaye. Format rakhein: Code | Name/Category | Total (ya Employee ID | Name | Manual Amount).');
     }
 
+    const TOTAL_LABEL_RE = /^(?:g\.?\s*total|grand\s*total|sub\s*[-]?\s*total|net\s*total|all\s*total|total\s*(?:amount|salary|payable|manual|diff|deduction|net)?|amount|manual\s*amount|mam\s*amount|prepared\s*by|authorized\s*by|authorised\s*by|checked\s*by|approved\s*by|auth\s*sign)[:.\s-]*$/i;
+    const GRAND_TOTAL_RE = /\b(?:grand\s*total|g\.?\s*total)\b/i;
+    const ANY_TOTAL_SUFFIX_RE = /(?:^|\s)(?:grand\s*total|sub\s*total|subtotal|g\.?\s*total|total)\s*[:.-]*$/i;
+    const NON_EMP_ACCOUNTING_RE = /^(?:advance|adv|less\s*advance|less|add|deduction|total\s*deduction|balance|bal|pending|difference|diff|diff\s*amount|cash|expense|expenses|kharcha|adjustment|adj|round\s*off|rounding|loan|tea|chai|bonus|overtime|ot|summary|note|notes|remark|remarks|extra|other|others|hold|refund|return|tds|pf|esic|esi|salary\s*payable|net\s*payable)$/i;
+    const NON_EMP_PHRASE_RE = /\b(?:advance|less\s+advance|deduction|cash\s+pending|pending\s+cash|chai\s+kharcha|kharcha|expense|expenses|adjustment|round\s*off|rounding|loan\s+recovery|salary\s+payable|net\s+payable|prepared\s+by|checked\s+by|approved\s+by|authorised\s+by|authorized\s+by|auth\s+sign|opening\s+balance|closing\s+balance|advance\s+cash|cash\s+note|diff\s+amount|difference\s+amount)\b/i;
+    const SNO_HEADERS = ['s no', 'sr no', 'sl no', 'sno', 'srno'];
+
     const out = [];
+    let runningSum = 0;
     for (let r = firstHeaderIdx + 1; r < rows.length; r++) {
       const a = rows[r] || [];
       const rawCode = text(a[ci]);
@@ -282,31 +369,74 @@
       const rawAmt = a[ai];
       const nCode = norm(rawCode);
       const nName = norm(rawName);
+      const colCat = catIdx >= 0 ? text(a[catIdx]) : '';
 
       // Grouped section header row e.g. ['Code', 'Card-9', 'Total'] or ['Code', 'C7', 'Total'] or ['Code', 'Staff Name', '']
       if (CODE_HEADERS.includes(nCode)) {
         sectionHeaderCount++;
+        const secH = a.map(norm);
+        const secAmtIdx = findPriorityHeaderIndex(secH, AMOUNT_HEADERS, ci);
+        if (secAmtIdx >= 0) ai = secAmtIdx;
         if (rawName && !GENERIC_NAME_HEADERS.includes(nName)) currentCategory = rawName;
         continue;
       }
 
-      if (!rawCode && !rawName) continue;
-      if (/^(total|grand total|sub total|subtotal|amount)$/i.test(rawName)) continue;
-      if (!rawCode && /^(total|grand total|sub total|subtotal)$/i.test(rawCode)) continue;
-      if (/^(total|grand total|sub total|subtotal)$/i.test(rawCode)) continue;
+      // Skip repeated sub-header rows (e.g. S.No/Name/Manual Amount)
+      if ((SNO_HEADERS.includes(nCode) && (NAME_HEADERS.includes(nName) || AMOUNT_HEADERS.includes(norm(rawAmt)))) ||
+          (!rawCode && (NAME_HEADERS.includes(nName) || AMOUNT_HEADERS.includes(norm(rawAmt))))) {
+        continue;
+      }
+
+      // Stop at explicit sheet Grand Total row (post-Grand Total rows are footer/reconciliation notes)
+      const rowPrefixText = a.slice(0, Math.max(6, ai + 1)).map(text).filter(Boolean).join(' ');
+      if ((!rawCode && GRAND_TOTAL_RE.test(rowPrefixText)) || GRAND_TOTAL_RE.test(rawName) || GRAND_TOTAL_RE.test(rawCode) || GRAND_TOTAL_RE.test(colCat)) {
+        if (out.length >= 1) break;
+        continue;
+      }
 
       const amt = num(rawAmt);
+
+      // Detect unlabeled footer Grand Total row (e.g. ['', '', '8216842']) when no coded rows follow
+      if (!rawCode && !rawName) {
+        if (amt !== null && out.length >= 5 && runningSum > 0 && Math.abs(amt - runningSum) <= Math.max(100, runningSum * 0.01)) {
+          let hasMoreCodedRows = false;
+          for (let look = r + 1; look < rows.length; look++) {
+            const la = rows[look] || [];
+            const lCode = text(la[ci]);
+            const lnCode = norm(lCode);
+            if (lCode && !CODE_HEADERS.includes(lnCode) && !SNO_HEADERS.includes(lnCode) && !TOTAL_LABEL_RE.test(lCode) && num(la[ai]) !== null) {
+              hasMoreCodedRows = true;
+              break;
+            }
+          }
+          if (!hasMoreCodedRows) break;
+        }
+        continue;
+      }
+
+      if (TOTAL_LABEL_RE.test(rawName) || ANY_TOTAL_SUFFIX_RE.test(rawName) ||
+          TOTAL_LABEL_RE.test(rawCode) || ANY_TOTAL_SUFFIX_RE.test(rawCode) ||
+          (colCat && (TOTAL_LABEL_RE.test(colCat) || ANY_TOTAL_SUFFIX_RE.test(colCat)))) {
+        continue;
+      }
+
+      // Skip uncoded non-employee financial/note/numeric rows (preserves genuine uncoded worker names)
+      if (!rawCode && (NON_EMP_ACCOUNTING_RE.test(nName) || NON_EMP_PHRASE_RE.test(nName) || /^\d+(?:\.\d+)?$/.test(rawName))) {
+        continue;
+      }
+
       if (amt === null && !rawCode) continue;
 
-      const colCat = catIdx >= 0 ? text(a[catIdx]) : '';
       const resolvedCat = colCat || currentCategory || sheet;
       const isCardSection = !!parseCardNumber(resolvedCat);
       const explicitFromSheet = !!(colCat || isCardSection || (sectionHeaderCount > 1 && !NAME_HEADERS.includes(norm(resolvedCat))));
+      const manualAmt = amt === null ? 0 : round2(amt);
+      runningSum += manualAmt;
 
       out.push({
         code: cleanCode(rawCode),
         name: rawName,
-        manualAmount: amt === null ? 0 : round2(amt),
+        manualAmount: manualAmt,
         category: resolvedCat,
         hasExplicitCategory: explicitFromSheet,
         source: file + ' · ' + sheet + ' · Row ' + (r + 1),
@@ -2129,6 +2259,8 @@
     parseCardNumber,
     buildMasterCardMap,
     canonicalizeCardCategory,
+    sheetToVisibleMatrix,
+    selectBestMamSheet,
     parseMamMatrix,
     parseReferenceMatrix,
     buildProfilesFromComplianceSheet,
@@ -2613,10 +2745,12 @@
     if (!root.XLSX) throw new Error('Excel parser (XLSX) load nahi hua. Please page refresh karein.');
     const buf = await file.arrayBuffer();
     const wb = root.XLSX.read(buf, { type: 'array', cellDates: false, cellText: true });
-    return (wb.SheetNames || []).map(sn => {
+    const wbMeta = (wb.Workbook && Array.isArray(wb.Workbook.Sheets)) ? wb.Workbook.Sheets : [];
+    return (wb.SheetNames || []).map((sn, idx) => {
       const ws = wb.Sheets[sn];
-      const rows = root.XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
-      return { name: sn, rows };
+      const rows = sheetToVisibleMatrix(root.XLSX, ws);
+      const meta = wbMeta[idx];
+      return { name: sn, rows, hidden: !!(meta && meta.Hidden) };
     });
   }
 
@@ -2644,9 +2778,12 @@
         } catch (_) {}
       });
     } else if (f.wb && Array.isArray(f.wb.SheetNames) && root.XLSX && root.XLSX.utils) {
-      f.wb.SheetNames.forEach(sn => {
+      const wbMeta = (f.wb.Workbook && Array.isArray(f.wb.Workbook.Sheets)) ? f.wb.Workbook.Sheets : [];
+      f.wb.SheetNames.forEach((sn, idx) => {
         try {
-          const rows = root.XLSX.utils.sheet_to_json(f.wb.Sheets[sn], { header: 1, defval: '', raw: true });
+          const meta = wbMeta[idx];
+          if (meta && meta.Hidden) return;
+          const rows = sheetToVisibleMatrix(root.XLSX, f.wb.Sheets[sn]);
           if (Array.isArray(rows) && rows.length) out.push({ name: sn, rows });
         } catch (_) {}
       });
@@ -2746,17 +2883,9 @@
     setNotice('Mam sheet parse ho rahi hai & Employee Master + Last Month PF/ESIC rules match ho rahe hain…', 'info');
     try {
       const sheets = await readUploadedWorkbook(file);
-      let parsedRows = [];
-      let usedSheet = '';
-      for (const sh of sheets) {
-        try {
-          const r = parseMamMatrix(sh.rows, sh.name, file.name);
-          if (r.length > parsedRows.length) {
-            parsedRows = r;
-            usedSheet = sh.name;
-          }
-        } catch (_) {}
-      }
+      const picked = selectBestMamSheet(sheets, file.name);
+      const parsedRows = picked ? picked.rows : [];
+      const usedSheet = picked ? picked.name : '';
       if (!parsedRows.length) {
         throw new Error('Mam sheet ke columns pehchane nahi gaye. Columns rakhein: Code | Name/Category | Total.');
       }
