@@ -2869,6 +2869,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-empmaster" onclick="goPage('empmaster')"><span class="vi">🗂️</span>Employee Master <span class="vbadge vbadge-count" id="empMasterBadge">496</span></div>
       <div class="vitem" id="vn-hrdocs" onclick="goPage('hrdocs')"><span class="vi">📚</span>HR Documents <span class="vbadge vbadge-count" id="hrDocsBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-letter" onclick="goPage('letter')"><span class="vi">📝</span>Letter</div>
+      <div class="vitem" id="vn-partyaudit" onclick="goPage('partyaudit')"><span class="vi">🛡️</span>Audit <span class="vbadge vbadge-count" id="partyAuditBadge" style="display:none">0</span></div>
     </div>
   </div>
 
@@ -2993,6 +2994,11 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <!-- ══ PAGE: HR LETTERS & LEAVE APPLICATION ══ -->
     <div class="page" id="page-letter" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
       <div id="letterModuleContainer"></div>
+    </div>
+
+    <!-- ══ PAGE: PARTY AUDIT VAULT (RWS, MWS, INDITEX & CUSTOM) ══ -->
+    <div class="page" id="page-partyaudit" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
+      <div id="partyAuditContainer"></div>
     </div>
 
     <!-- ══ PAGE: MONTHLY STATUS REPORT (BASIC WORK DURATION) ══ -->
@@ -8280,7 +8286,7 @@ function goPage(name) {
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
     'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal',
-    'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp',
+    'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp','partyaudit':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
   var sub = (activeVitem && activeVitem.closest) ? activeVitem.closest('.vnav-sub') : null;
@@ -8300,6 +8306,7 @@ function goPage(name) {
   if(name==='advance') { if(window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.renderUI==='function') window.ATPLAdvanceManager.renderUI(); }
   if(name==='salarypayout') { if(window.ATPLSalaryPayout && typeof window.ATPLSalaryPayout.renderUI==='function') window.ATPLSalaryPayout.renderUI(); }
   if(name==='letter') { if(window.ATPLLettersManager) { if(typeof window.ATPLLettersManager.renderUI==='function') window.ATPLLettersManager.renderUI(); if(typeof window.ATPLLettersManager.syncNow==='function') window.ATPLLettersManager.syncNow(false); } }
+  if(name==='partyaudit') { if(window.ATPLPartyAudit) { if(typeof window.ATPLPartyAudit.renderUI==='function') window.ATPLPartyAudit.renderUI(); if(typeof window.ATPLPartyAudit.syncNow==='function') window.ATPLPartyAudit.syncNow(false); } }
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='monthlystatus'){ if(window.ATPLMonthlyStatusReport && typeof window.ATPLMonthlyStatusReport.init==='function') window.ATPLMonthlyStatusReport.init(); }
@@ -18126,6 +18133,7 @@ else AInit();
 <script src="atpl-advance-management.js?v=20261123-manual-only"></script>
 <script src="atpl-letters-v1.js?v=20261120-cloud-sync"></script>
 <script src="atpl-salary-payout.js?v=20261118-diff-reconcile-v2"></script>
+<script src="atpl-party-audit-v1.js?v=20261123-v1"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl=document.getElementById("crossSyncBtnLbl");
@@ -18139,6 +18147,9 @@ window.atplTriggerCrossSync = async function(manual) {
   }
   if(window.ATPLLettersManager&&typeof window.ATPLLettersManager.syncNow==="function"){
     addJob("HR Letters",function(){return window.ATPLLettersManager.syncNow()});
+  }
+  if(window.ATPLPartyAudit&&typeof window.ATPLPartyAudit.syncNow==="function"){
+    addJob("Party Audit Documents",function(){return window.ATPLPartyAudit.syncNow(false)});
   }
   if(typeof atplDirectServerSync==="function")addJob("Direct file sync",function(){return atplDirectServerSync(true)});
   if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles==="function"){

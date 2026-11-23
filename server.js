@@ -181,6 +181,13 @@ let syncPendingDiffs = readJsonFile('pending_diff_vouchers.json', {}); // id -> 
 let syncPendingDiffTombstones = readJsonFile('pending_diff_tombstones.json', {}); // id -> deleted_at ISO
 let syncLeaveLetters = readJsonFile('leave_letters.json', {}); // id -> HR leave letter record
 let syncLeaveLetterTombstones = readJsonFile('leave_letter_tombstones.json', {}); // id -> deleted_at ISO
+let syncPartyAudits = readJsonFile('party_audits.json', { parties: [], docs: [] }); // { parties: [...], docs: [...] }
+if (!syncPartyAudits || typeof syncPartyAudits !== 'object') syncPartyAudits = { parties: [], docs: [] };
+if (!Array.isArray(syncPartyAudits.parties)) syncPartyAudits.parties = [];
+if (!Array.isArray(syncPartyAudits.docs)) syncPartyAudits.docs = [];
+let syncPartyAuditTombstones = readJsonFile('party_audit_tombstones.json', {}); // docIdLower -> deleted_at ISO
+let syncPartyAuditPartyTombstones = readJsonFile('party_audit_party_tombstones.json', {}); // partyIdLower -> deleted_at ISO
+const PARTY_AUDIT_ATTS_DIR = path.join(DATA_DIR, 'party_audit_atts');
 if (syncLeaveLetters && typeof syncLeaveLetters === 'object' && syncLeaveLetterTombstones && typeof syncLeaveLetterTombstones === 'object') {
   Object.keys(syncLeaveLetterTombstones).forEach(tid => {
     if (syncLeaveLetterTombstones[tid] && syncLeaveLetters[tid]) {
@@ -2303,6 +2310,156 @@ app.delete('/api/sync/leave-letter/:id', (req, res) => {
     writeJsonFile('leave_letter_tombstones.json', syncLeaveLetterTombstones);
     broadcastEvent('leave_letter_deleted', { id: id, deleted_at: deletedAt });
     forwardLeaveLettersToCloud();
+    return res.json({ ok: true, deleted: true, id, deleted_at: deletedAt });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Party Audit Vault (RWS, MWS, Inditex & Custom) Endpoints ──
+function forwardPartyAuditToCloud() {
+  try {
+    const payload = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      parties: Array.isArray(syncPartyAudits.parties) ? syncPartyAudits.parties : [],
+      partyTombstones: syncPartyAuditPartyTombstones || {},
+      docs: Array.isArray(syncPartyAudits.docs) ? syncPartyAudits.docs : [],
+      tombstones: syncPartyAuditTombstones || {}
+    };
+    const b64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    syncToGoogleAppsScript('uploadFile', {
+      fileName: 'ATPL_PARTY_AUDIT_VAULT_V1.json',
+      module: 'vault',
+      fileBase64: b64,
+      mimeType: 'application/json'
+    });
+  } catch (_) {}
+}
+
+function mergePartyAuditTombstones(a, b) {
+  const out = {};
+  [a || {}, b || {}].forEach(src => {
+    Object.keys(src).forEach(k => {
+      const kl = String(k).toLowerCase();
+      const ts = Date.parse(src[k]) || 0;
+      if (!ts) return;
+      if (ts > (Date.parse(out[kl]) || 0)) out[kl] = new Date(ts).toISOString();
+    });
+  });
+  return out;
+}
+
+function mergePartyAuditParties(baseList, overlayList, tombs) {
+  const map = {};
+  const ingest = (p) => {
+    if (!p || !p.id) return;
+    const kl = String(p.id).toLowerCase();
+    const pTs = Date.parse(p.updated_at || 0) || 0;
+    const tTs = Date.parse((tombs && tombs[kl]) || 0) || 0;
+    if (tTs && tTs >= pTs) return;
+    if (!map[kl] || pTs >= (Date.parse(map[kl].updated_at || 0) || 0)) map[kl] = p;
+  };
+  (baseList || []).forEach(ingest);
+  (overlayList || []).forEach(ingest);
+  return Object.values(map);
+}
+
+function mergePartyAuditDocs(baseList, overlayList, tombs) {
+  const map = {};
+  const ingest = (d) => {
+    if (!d || !d.id) return;
+    const kl = String(d.id).toLowerCase();
+    const dTs = Date.parse(d.updated_at || d.created_at || 0) || 0;
+    const tTs = Date.parse((tombs && tombs[kl]) || 0) || 0;
+    if (tTs && tTs >= dTs) return;
+    const copy = Object.assign({}, d);
+    delete copy.file_data;
+    if (!map[kl] || dTs >= (Date.parse(map[kl].updated_at || map[kl].created_at || 0) || 0)) map[kl] = copy;
+  };
+  (baseList || []).forEach(ingest);
+  (overlayList || []).forEach(ingest);
+  return Object.values(map);
+}
+
+app.get('/api/sync/party-audits', (req, res) => {
+  try {
+    return res.json({
+      ok: true,
+      parties: syncPartyAudits.parties || [],
+      partyTombstones: syncPartyAuditPartyTombstones || {},
+      docs: syncPartyAudits.docs || [],
+      tombstones: syncPartyAuditTombstones || {},
+      version: filesDb.version
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/sync/party-audits/bulk', (req, res) => {
+  try {
+    const body = req.body || {};
+    syncPartyAuditTombstones = mergePartyAuditTombstones(syncPartyAuditTombstones, body.tombstones);
+    syncPartyAuditPartyTombstones = mergePartyAuditTombstones(syncPartyAuditPartyTombstones, body.partyTombstones);
+    syncPartyAudits.parties = mergePartyAuditParties(syncPartyAudits.parties, body.parties, syncPartyAuditPartyTombstones);
+    syncPartyAudits.docs = mergePartyAuditDocs(syncPartyAudits.docs, body.docs, syncPartyAuditTombstones);
+
+    if (body.attDoc && body.attDoc.id) {
+      fs.mkdirSync(PARTY_AUDIT_ATTS_DIR, { recursive: true });
+      const safeId = String(body.attDoc.id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
+      fs.writeFileSync(path.join(PARTY_AUDIT_ATTS_DIR, safeId + '.json'), JSON.stringify(body.attDoc), 'utf8');
+    }
+
+    incrementVersion();
+    writeJsonFile('party_audits.json', syncPartyAudits);
+    writeJsonFile('party_audit_tombstones.json', syncPartyAuditTombstones);
+    writeJsonFile('party_audit_party_tombstones.json', syncPartyAuditPartyTombstones);
+    broadcastEvent('party_audits_updated', { count: syncPartyAudits.docs.length });
+    forwardPartyAuditToCloud();
+
+    return res.json({
+      ok: true,
+      parties: syncPartyAudits.parties,
+      partyTombstones: syncPartyAuditPartyTombstones,
+      docs: syncPartyAudits.docs,
+      tombstones: syncPartyAuditTombstones
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/sync/party-audit-att/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
+    const fpath = path.join(PARTY_AUDIT_ATTS_DIR, safeId + '.json');
+    if (!fs.existsSync(fpath)) return res.status(404).json({ ok: false, error: 'Attachment not found' });
+    const att = JSON.parse(fs.readFileSync(fpath, 'utf8'));
+    return res.json({ ok: true, att });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.delete('/api/sync/party-audit/:id', (req, res) => {
+  try {
+    const id = decodeURIComponent(req.params.id || '');
+    if (!id) return res.status(400).json({ ok: false, error: 'ID required' });
+    const kl = id.toLowerCase();
+    const deletedAt = new Date().toISOString();
+    syncPartyAuditTombstones[kl] = deletedAt;
+    syncPartyAudits.docs = (syncPartyAudits.docs || []).filter(d => d && String(d.id || '').toLowerCase() !== kl);
+    const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96);
+    const fpath = path.join(PARTY_AUDIT_ATTS_DIR, safeId + '.json');
+    try { if (fs.existsSync(fpath)) fs.unlinkSync(fpath); } catch (_) {}
+
+    incrementVersion();
+    writeJsonFile('party_audits.json', syncPartyAudits);
+    writeJsonFile('party_audit_tombstones.json', syncPartyAuditTombstones);
+    broadcastEvent('party_audit_deleted', { id, deleted_at: deletedAt });
+    forwardPartyAuditToCloud();
     return res.json({ ok: true, deleted: true, id, deleted_at: deletedAt });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
