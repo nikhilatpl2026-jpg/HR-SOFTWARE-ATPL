@@ -5527,11 +5527,6 @@ async function handleFiles(list) {
   }
 
   renderFiles(); renderSheets(); updStats(); renderAllFilesPage(); populateNJSelects();
-  try {
-    if (window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.processAllSalaryFiles === 'function') {
-      window.ATPLAdvanceManager.processAllSalaryFiles();
-    }
-  } catch (_) {}
   if (lbl) lbl.textContent = (window.FILES || FILES).length + ' files saved';
   if (window.showToast) window.showToast('✅ All ' + total + ' files uploaded and synced to all browsers!');
   window.__ATPL_IS_UPLOADING = false;
@@ -18128,7 +18123,7 @@ else AInit();
 <script src="machine-rate-auditor-v1.js?v=20260918-card5&cb=20261019v12"></script>
 <script src="bank-account-verifier-loader-v1.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
 <script src="bank-account-verifier-v4-persistence.js?v=20260919-lazy-fast10&cb=20261019v12"></script>
-<script src="atpl-advance-management.js?v=20261118-multislip"></script>
+<script src="atpl-advance-management.js?v=20261123-manual-only"></script>
 <script src="atpl-letters-v1.js?v=20261120-cloud-sync"></script>
 <script src="atpl-salary-payout.js?v=20261118-diff-reconcile-v2"></script>
 <script>

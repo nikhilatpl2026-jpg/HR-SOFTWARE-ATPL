@@ -214,13 +214,13 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     assert.equal(tabletAdvances[0].balanceAmount, 18000);
   });
 
-  await t.test('Test 5: Upload monthly salary sheet and verify correct advance deductions without duplication', async () => {
+  await t.test('Test 5: Salary sheet does NOT auto-deduct; manual deduction syncs cleanly across devices', async () => {
     const desktop = createMockBrowser('Desktop_Salary_Manager', cloudStorage);
     const ctxDesktop = vm.createContext(desktop.mockWindow);
     vm.runInContext(advanceJsCode, ctxDesktop);
     await desktop.mockWindow.ATPLAdvanceManager.syncNow(false);
 
-    // Monthly Salary Sheet for November 2026
+    // Monthly Salary Sheet for November 2026 must NOT trigger any automatic deduction
     const novSalarySheet = {
       name: 'Salary_Sheet_Nov_2026.xlsx',
       sheets: {
@@ -231,24 +231,30 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
       }
     };
 
-    // First process: should deduct installment of ₹6,000
-    const res1 = desktop.mockWindow.ATPLAdvanceManager.processSalaryFile(novSalarySheet);
-    assert.equal(res1.processed, 1, 'Must deduct advance');
-    assert.equal(res1.deductions[0].deductedAmount, 6000);
-    assert.equal(res1.deductions[0].remainingBalance, 12000);
+    const resAuto = desktop.mockWindow.ATPLAdvanceManager.processSalaryFile(novSalarySheet);
+    assert.equal(resAuto.processed, 0, 'Salary sheet must NOT auto-deduct advance');
+    assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 18000);
+
+    // User manually deducts ₹6,000
+    const resManual = desktop.mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '25924',
+      amount: 6000,
+      deductionDate: '2026-11-10',
+      mode: 'Manual Salary Adjustment',
+      deductedFromSalary: 'Nov 2026 Salary',
+      remarks: 'Manually cut ₹6,000'
+    });
+    assert.equal(resManual.ok, true, 'Manual deduction must succeed');
+    assert.equal(resManual.deductions[0].deductedAmount, 6000);
+    assert.equal(resManual.deductions[0].remainingBalance, 12000);
 
     const ramAfter1 = desktop.mockWindow.ATPLAdvanceManager.getAllAdvances().find(a => a.id === 'adv_ram_1');
     assert.equal(ramAfter1.balanceAmount, 12000);
     assert.equal(ramAfter1.status, 'PARTIAL');
 
-    // IDEMPOTENCY CHECK: Process the exact same November salary sheet again
-    const resDuplicate = desktop.mockWindow.ATPLAdvanceManager.processSalaryFile(novSalarySheet);
-    assert.equal(resDuplicate.processed, 0, 'Re-processing the same sheet must deduct ZERO (idempotent)');
-    assert.equal(ramAfter1.balanceAmount, 12000, 'Balance must remain ₹12,000 without duplication');
-
     await new Promise(r => setTimeout(r, 50));
 
-    // Verify Mobile reflects the deduction from the cloud
+    // Verify Mobile reflects the manual deduction from the cloud
     const mobile = createMockBrowser('Mobile_Observer', cloudStorage);
     const ctxMobile = vm.createContext(mobile.mockWindow);
     vm.runInContext(advanceJsCode, ctxMobile);
@@ -291,15 +297,15 @@ test('Advance Management Cross-Device Cloud Sync Acceptance Suite', async (t) =>
     assert.equal(desktop.mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8500);
     await new Promise(r => setTimeout(r, 60));
 
-    // Mobile syncs and sees both Salary Sheet (6000) + Manual Cut (3500)
+    // Mobile syncs and sees both Manual Cuts (6000 + 3500 = 9500)
     const mobile = createMockBrowser('Mobile_Manual_Check', cloudStorage);
     const ctxMobile = vm.createContext(mobile.mockWindow);
     vm.runInContext(advanceJsCode, ctxMobile);
     await mobile.mockWindow.ATPLAdvanceManager.syncNow(false);
 
     const histMobile = mobile.mockWindow.ATPLAdvanceManager.getEmployeeHistoryData('25924');
-    assert.equal(histMobile.totalSalaryCut, 6000);
-    assert.equal(histMobile.totalManualCut, 3500);
+    assert.equal(histMobile.totalSalaryCut, 0);
+    assert.equal(histMobile.totalManualCut, 9500);
     assert.equal(histMobile.totalRemaining, 8500);
 
     // Reverse/Delete manual deduction on Mobile -> must also stay deleted on Desktop after sync

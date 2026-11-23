@@ -4,23 +4,30 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & Employee History)', async (t) => {
-  const rootDir = path.resolve(__dirname, '..');
+test('Advance Management Module - Enterprise Tests (Manual-Only Deduction & Employee History)', async (t) => {
+  const rootDir = path.join(__dirname, '..');
   const htmlContent = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
   const advanceJsContent = fs.readFileSync(path.join(rootDir, 'atpl-advance-management.js'), 'utf8');
 
   function makeMockWindow(emData) {
-    const mockStorage = {};
-    const appendedElements = [];
+    const store = new Map();
     const container = { innerHTML: '' };
-    const modal = { id: 'advModal', innerHTML: '' };
+    const modal = { innerHTML: '' };
+    const appendedElements = [];
+
     const mockWindow = {
+      console,
+      Math, Date, JSON, Number, String, Array, Object, Boolean, RegExp, parseInt, parseFloat, isNaN, Promise, setTimeout,
+      alert: () => {},
+      confirm: () => true,
+      fetch: async () => ({ ok: false, json: async () => ({}) }),
       localStorage: {
-        getItem: (k) => (Object.prototype.hasOwnProperty.call(mockStorage, k) ? mockStorage[k] : null),
-        setItem: (k, v) => { mockStorage[k] = String(v); },
-        removeItem: (k) => { delete mockStorage[k]; }
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k)
       },
       document: {
+        createElement: () => ({ style: {}, href: '', download: '', click: () => {}, appendChild: () => {} }),
         addEventListener: () => {},
         getElementById: (id) => {
           if (id === 'advanceModuleContainer') return container;
@@ -46,16 +53,16 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     }, 'atpl-advance-management.js must parse with zero syntax errors');
   });
 
-  await t.test('2. HTML wiring: index.html includes advance module, nav item, page container, and protects Advance History button', () => {
+  await t.test('2. HTML wiring: index.html includes advance module, nav item, page container, protects Advance History, and disables auto salary-sheet scan', () => {
     assert(htmlContent.includes('id="vn-advance"'), 'Sidebar must have Advance Management link');
     assert(htmlContent.includes('id="page-advance"'), 'Page container must have page-advance');
     assert(htmlContent.includes('id="advanceModuleContainer"'), 'Module mount div advanceModuleContainer must exist');
     assert(/src="atpl-advance-management\.js(\?[^"]*)?"/.test(htmlContent), 'index.html must load atpl-advance-management.js');
-    assert(htmlContent.includes('ATPLAdvanceManager.processAllSalaryFiles'), 'handleFiles must trigger processAllSalaryFiles');
+    assert(!htmlContent.includes('ATPLAdvanceManager.processAllSalaryFiles'), 'handleFiles must NOT auto-trigger processAllSalaryFiles');
     assert(htmlContent.includes("b.closest('#advanceModuleContainer')"), 'HR doc history cleanup must protect Advance Employee History buttons');
   });
 
-  await t.test('3. Exact Salary Sheet & Advance Column Detection + Multi-sheet safety + Idempotency', () => {
+  await t.test('3. Salary Sheet Auto-Deduction is Disabled (Even with Explicit Advance Column)', () => {
     const { mockWindow } = makeMockWindow([
       { emp_id: '25924', name: 'Ram Kumar Sharma', dept: 'Spinning', gross: 24000 },
       { emp_id: '26002', name: 'Lokesh Verma', dept: 'Dyeing', gross: 18000 }
@@ -80,78 +87,28 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
       remarks: 'Personal advance'
     });
 
-    // Wrong file: Bank/Attendance/No Advance column -> MUST NOT DEDUCT ANYTHING
-    const wrongBankSheet = {
-      name: 'Bank_Transfer_March_2026.xlsx',
-      sheets: {
-        'Bank': [
-          ['Emp Code', 'Employee Name', 'Net Payment'],
-          ['25924', 'Ram Kumar Sharma', '22500'],
-          ['26002', 'Lokesh Verma', '18000']
-        ]
-      }
-    };
-    const resWrong = mockWindow.ATPLAdvanceManager.processSalaryFile(wrongBankSheet);
-    assert.equal(resWrong.processed, 0, 'Must NOT deduct from Bank/non-advance sheet');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 12000);
-
-    // Sheet with "Advance Balance" instead of Advance Deduction column -> MUST NOT DEDUCT
-    const ledgerExport = {
-      name: 'Advance_Summary_Check.xlsx',
-      sheets: {
-        'Sheet1': [
-          ['Emp Code', 'Employee Name', 'Advance Balance', 'Recovered', 'Status'],
-          ['25924', 'Ram Kumar Sharma', '12000', '0', 'ACTIVE']
-        ]
-      }
-    };
-    assert.equal(mockWindow.ATPLAdvanceManager.processSalaryFile(ledgerExport).processed, 0, 'Must reject Advance Balance / Ledger export');
-
-    // Real Arora Textiles Multi-sheet Salary Workbook:
-    // Sheet1 has attendance/bank info (no advance col)
-    // "Advance" sheet is an advance-balance list (no payroll cols)
-    // "Fourmala Sheet" has Basic, Gross, Advance Deduction, Net Payable -> Ram cut 3500 (not monthlyCap 4000!), Lokesh cut 0!
-    // "Category" summary repeats the same data -> MUST NOT double-deduct Ram!
     const marchWorkbook = {
       name: 'Salary_March_2026.xlsx',
       sheets: {
-        'Attendance': [
-          ['Emp Code', 'Employee Name', 'Paid Days'],
-          ['25924', 'Ram Kumar Sharma', '26'],
-          ['26002', 'Lokesh Verma', '24']
-        ],
-        'Advance': [
-          ['Emp Code', 'Employee Name', 'Advance'],
-          ['25924', 'Ram Kumar Sharma', '9999']
-        ],
         'Fourmala Sheet': [
           ['Emp Code', 'Employee Name', 'Basic', 'Gross', 'Advance Deduction', 'Net Payable'],
           ['25924', 'Ram Kumar Sharma', '15000', '24000', '3500', '20500'],
-          ['26002', 'Lokesh Verma', '12000', '18000', '0', '18000']
-        ],
-        'Category': [
-          ['Emp Code', 'Employee Name', 'Basic', 'Gross', 'Advance Deduction', 'Net Payable'],
-          ['25924', 'Ram Kumar Sharma', '15000', '24000', '3500', '20500']
+          ['26002', 'Lokesh Verma', '12000', '18000', '1500', '16500']
         ]
       }
     };
+    mockWindow.FILES = [marchWorkbook];
+    mockWindow.getAllLoadedSalaryFiles = () => [marchWorkbook];
 
     const resMarch = mockWindow.ATPLAdvanceManager.processSalaryFile(marchWorkbook);
-    assert.equal(resMarch.processed, 1, 'Only Ram (Adv=3500) should be deducted; Lokesh (Adv=0) must be skipped');
-    assert.equal(resMarch.deductions[0].deductedAmount, 3500, 'Must deduct exact Advance Deduction column value (3500), NOT monthlyCap (4000)');
-    assert.equal(resMarch.deductions[0].sheetName, 'Fourmala Sheet', 'Must attribute deduction to exact matched salary sheet');
-    assert.equal(resMarch.deductions[0].columnName, 'Advance Deduction', 'Must record exact column name matched');
-    assert.equal(resMarch.deductions[0].remainingBalance, 8500);
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8500);
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 5000, 'Lokesh advance must remain untouched because Advance=0 in sheet');
-
-    // Re-scan idempotency
-    const resDup = mockWindow.ATPLAdvanceManager.processSalaryFile(marchWorkbook);
-    assert.equal(resDup.processed, 0, 'Re-scanning the same workbook must deduct 0');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8500);
+    assert.equal(resMarch.processed, 0, 'processSalaryFile must NOT deduct any advance from salary sheet');
+    assert.equal(mockWindow.ATPLAdvanceManager.processAllSalaryFiles(), 0, 'processAllSalaryFiles must NOT deduct any advance');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 12000, 'Ram advance balance must stay untouched');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 5000, 'Lokesh advance balance must stay untouched');
+    assert.equal(mockWindow.ATPLAdvanceManager.getAllDeductions().length, 0, 'No automatic salary-sheet deduction may be recorded');
   });
 
-  await t.test('4. Multi-advance FIFO allocation & capping at outstanding balance from Salary Sheet', () => {
+  await t.test('4. Multi-advance FIFO allocation & capping at outstanding balance via Manual Deduction', () => {
     const { mockWindow } = makeMockWindow([{ emp_id: '999', name: 'Test Worker' }]);
     const ctx = vm.createContext(mockWindow);
     vm.runInContext(advanceJsContent, ctx);
@@ -171,19 +128,22 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
       remarks: 'Second advance'
     });
 
-    // Sheet deducts ₹8,000, but total outstanding is ₹7,000 -> must cap at ₹3,000 + ₹4,000 = ₹7,000
-    const aprilSheet = {
-      name: 'Salary_April_2026.xlsx',
-      sheets: {
-        'Salary Sheet': [
-          ['Emp Code', 'Name', 'Gross', 'Advance', 'Net Pay'],
-          ['999', 'Test Worker', '25000', '8000', '17000']
-        ]
-      }
-    };
+    const overRes = mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '999',
+      amount: 8000,
+      deductionDate: '2026-04-01',
+      mode: 'Manual Cash Recovery'
+    });
+    assert.equal(overRes.ok, false, 'Manual cut above outstanding balance must be rejected');
 
-    const res = mockWindow.ATPLAdvanceManager.processSalaryFile(aprilSheet);
-    assert.equal(res.processed, 2, 'Should split deduction FIFO across both active advances');
+    const res = mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '999',
+      amount: 7000,
+      deductionDate: '2026-04-01',
+      mode: 'Manual Cash Recovery'
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.deductions.length, 2, 'Should split manual deduction FIFO across both active advances');
     assert.equal(res.deductions[0].advanceId, 'adv_1');
     assert.equal(res.deductions[0].deductedAmount, 3000);
     assert.equal(res.deductions[1].advanceId, 'adv_2');
@@ -206,18 +166,16 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
       remarks: 'Urgent advance'
     });
 
-    // 1. Salary sheet cuts ₹3,000
-    const marchSheet = {
-      name: 'Salary_March_2026.xlsx',
-      sheets: {
-        'Manisha Mam': [
-          ['Emp Code', 'Employee Name', 'Gross', 'Adv Ded', 'Net Payable'],
-          ['25924', 'Ram Kumar Sharma', '22000', '3000', '19000']
-        ]
-      }
-    };
-    const salRes = mockWindow.ATPLAdvanceManager.processSalaryFile(marchSheet);
-    assert.equal(salRes.processed, 1);
+    // 1. First manual cut of ₹3,000
+    const firstMan = mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: '25924',
+      amount: 3000,
+      deductionDate: '2026-03-31',
+      mode: 'Manual Salary Adjustment',
+      deductedFromSalary: 'March 2026 Staff Salary',
+      remarks: 'Manually cut for March'
+    });
+    assert.equal(firstMan.ok, true);
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 7000);
 
     // 2. Manual deduction over-balance must be blocked
@@ -248,17 +206,15 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     // 4. Employee History data + rendered modal HTML verification
     const hist = mockWindow.ATPLAdvanceManager.getEmployeeHistoryData('25924');
     assert.equal(hist.totalGiven, 10000);
-    assert.equal(hist.totalSalaryCut, 3000);
-    assert.equal(hist.totalManualCut, 2500);
+    assert.equal(hist.totalSalaryCut, 0);
+    assert.equal(hist.totalManualCut, 5500);
     assert.equal(hist.totalRemaining, 4500);
     assert.equal(hist.deductions.length, 2);
 
     mockWindow.ATPLAdvanceManager.viewEmployeeHistory('25924');
     assert(modal.innerHTML.includes('Ram Kumar Sharma'), 'History modal must show employee name');
-    assert(modal.innerHTML.includes('Salary_March_2026.xlsx'), 'History modal must show salary file name');
-    assert(modal.innerHTML.includes('Manisha Mam'), 'History modal must show salary sheet name');
-    assert(modal.innerHTML.includes('Adv Ded'), 'History modal must show matched advance column');
-    assert(modal.innerHTML.includes('Manual Cash Recovery'), 'History modal must show manual deduction mode');
+    assert(modal.innerHTML.includes('Manual Salary Adjustment'), 'History modal must show manual adjustment mode');
+    assert(modal.innerHTML.includes('Manual Cash Recovery'), 'History modal must show manual cash deduction mode');
     assert(modal.innerHTML.includes('Cash received by accounts'), 'History modal must show manual remarks');
 
     // Ledger renders Employee History button & Manual Cut button
@@ -288,8 +244,8 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 4000, 'Other employee advance must stay intact');
   });
 
-  await t.test('6. Top All-Files Dropdown Selection & Single-File Advance Deduction + Deductions Table Filtering', () => {
-    const { mockWindow, container } = makeMockWindow([
+  await t.test('6. Salary-Sheet File/Scan Controls Removed from Top Header & Only Manual Deduction Allowed', () => {
+    const { mockWindow, container, modal } = makeMockWindow([
       { emp_id: '25924', name: 'Ram Kumar Sharma', dept: 'Spinning', gross: 24000 },
       { emp_id: '26002', name: 'Lokesh Verma', dept: 'Dyeing', gross: 18000 }
     ]);
@@ -302,17 +258,8 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
         ]
       }
     };
-    const fileMay = {
-      name: 'May_Custom_Upload.xlsx',
-      sheets: {
-        'Sheet1': [
-          ['Emp Code', 'Employee Name', 'Adv Cut'],
-          ['26002', 'Lokesh Verma', '1500']
-        ]
-      }
-    };
     mockWindow.FILES = [fileApril];
-    mockWindow.getAllLoadedSalaryFiles = () => [fileApril, fileMay];
+    mockWindow.getAllLoadedSalaryFiles = () => [fileApril];
 
     const ctx = vm.createContext(mockWindow);
     vm.runInContext(advanceJsContent, ctx);
@@ -323,96 +270,19 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
       amount: 10000,
       advanceDate: '2026-04-01'
     });
-    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
-      id: 'adv_lokesh_drop',
-      empCode: '26002',
-      amount: 5000,
-      advanceDate: '2026-05-01'
-    });
 
-    // Default selection must be NONE (Manual Cut)
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE', 'Default selected file must be NONE');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE', 'Default selected sheet must be NONE');
-    assert(container.innerHTML.includes('None (Manual Cut)'), 'Dropdown must include None (Manual Cut) option');
-    assert(container.innerHTML.includes('Manual Cut'), 'Button must show Manual Cut in None mode');
-    assert.equal(mockWindow.ATPLAdvanceManager.triggerDeductionScan(), 0, 'Scanning while NONE must not auto-deduct any salary file');
+    // Top bar must NOT contain salary-sheet file picker or Re-Scan Sheets controls
+    assert(!container.innerHTML.includes('id="advFileSelect"'), 'Salary file selector bar must be removed');
+    assert(!container.innerHTML.includes('id="advSalarySheetSelect"'), 'Deducted From sheet selector must be removed');
+    assert(!container.innerHTML.includes('Re-Scan Sheets'), 'Re-Scan Sheets button must be removed');
+    assert(container.innerHTML.includes('Manual Deduction'), 'Manual Deduction button must remain visible');
+
+    // triggerDeductionScan opens manual modal and does NOT cut from any salary sheet
+    assert.equal(mockWindow.ATPLAdvanceManager.triggerDeductionScan(), 0);
+    assert(modal.innerHTML.includes('Manual Advance Deduction'), 'triggerDeductionScan must open Manual Deduction modal');
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 10000);
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 5000);
 
-    // Top dropdown must list both files from All Files
-    assert(container.innerHTML.includes('id="advFileSelect"'), 'Top file selector dropdown must render');
-    assert(container.innerHTML.includes('April_Salary_2026.xlsx'), 'Dropdown must list April_Salary_2026.xlsx');
-    assert(container.innerHTML.includes('May_Custom_Upload.xlsx'), 'Dropdown must list May_Custom_Upload.xlsx');
-    assert.equal(mockWindow.ATPLAdvanceManager.getUploadedSalaryFiles().length, 2);
-
-    // Select ONLY May_Custom_Upload.xlsx and deduct
-    mockWindow.ATPLAdvanceManager.setSelectedFile('May_Custom_Upload.xlsx');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'May_Custom_Upload.xlsx');
-    const mayCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
-    assert.equal(mayCount, 1, 'Must deduct only from selected May_Custom_Upload.xlsx');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 3500);
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 10000, 'Unselected April file must not be deducted yet');
-
-    // Deductions tab filters table rows to selected file, and ALL shows everything
-    mockWindow.ATPLAdvanceManager.setTab('deductions');
-    let tbody = container.innerHTML.split('<tbody>')[1] || '';
-    assert(tbody.includes('May_Custom_Upload.xlsx'));
-    assert(!tbody.includes('April_Salary_2026.xlsx'));
-
-    // Now select April_Salary_2026.xlsx and deduct
-    mockWindow.ATPLAdvanceManager.setSelectedFile('April_Salary_2026.xlsx');
-    const aprCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
-    assert.equal(aprCount, 1, 'Must deduct from selected April_Salary_2026.xlsx');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8000);
-    tbody = container.innerHTML.split('<tbody>')[1] || '';
-    assert(tbody.includes('April_Salary_2026.xlsx'));
-    assert(!tbody.includes('May_Custom_Upload.xlsx'));
-
-    // Reset to NONE (must show all deductions without filtering by "none")
-    mockWindow.ATPLAdvanceManager.setSelectedFile('NONE');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE');
-    tbody = container.innerHTML.split('<tbody>')[1] || '';
-    assert(tbody.includes('April_Salary_2026.xlsx'));
-    assert(tbody.includes('May_Custom_Upload.xlsx'));
-
-    // Reset to ALL
-    mockWindow.ATPLAdvanceManager.setSelectedFile('ALL');
-    tbody = container.innerHTML.split('<tbody>')[1] || '';
-    assert(tbody.includes('April_Salary_2026.xlsx'));
-    assert(tbody.includes('May_Custom_Upload.xlsx'));
-
-    // Verify search input & Deducted From controls exist in dropdown UI
-    assert(container.innerHTML.includes('id="advFileSearchInput"'), 'Dropdown must have search input');
-    assert(container.innerHTML.includes('id="advSalarySheetSelect"'), 'Must have Deducted From sheet selector');
-    assert(container.innerHTML.includes('id="advDeductedFromInput"'), 'Must have Deducted From salary label input');
-
-    // Test multi-sheet workbook with explicit sheet selection + Deducted From label
-    const multiSheetFile = {
-      name: 'June_Payroll_2026.xlsx',
-      sheets: {
-        'Staff Salary': [
-          ['Emp Code', 'Employee Name', 'Gross', 'Advance Deduction', 'Net Pay'],
-          ['25924', 'Ram Kumar Sharma', '24000', '1000', '23000']
-        ],
-        'Manisha Mam': [
-          ['Emp Code', 'Employee Name', 'Gross', 'Advance Deduction', 'Net Pay'],
-          ['26002', 'Lokesh Verma', '18000', '500', '17500']
-        ]
-      }
-    };
-    mockWindow.getAllLoadedSalaryFiles = () => [fileApril, fileMay, multiSheetFile];
-    mockWindow.ATPLAdvanceManager.setSelectedFile('June_Payroll_2026.xlsx');
-    mockWindow.ATPLAdvanceManager.setSelectedSheet('Manisha Mam');
-    mockWindow.ATPLAdvanceManager.setDeductedFromLabel('June 2026 (Manisha Mam Salary)');
-    const juneCount = mockWindow.ATPLAdvanceManager.triggerDeductionScan();
-    assert.equal(juneCount, 1, 'Must deduct ONLY from selected sheet Manisha Mam');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('26002'), 3000);
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 8000, 'Staff Salary sheet must remain untouched when Manisha Mam sheet selected');
-    const juneDed = mockWindow.ATPLAdvanceManager.getAllDeductions().find(d => d.fileName === 'June_Payroll_2026.xlsx');
-    assert.equal(juneDed.deductedFrom, 'June 2026 (Manisha Mam Salary)');
-
-    // Test Manual Deduction with Deducted From Salary/File
+    // Manual Deduction works cleanly
     const manSalRes = mockWindow.ATPLAdvanceManager.deductAdvanceManually({
       empCode: '25924',
       amount: 1000,
@@ -425,11 +295,6 @@ test('Advance Management Module - Enterprise Tests (Exact Column, Manual Cut & E
     assert.equal(manSalRes.ok, true);
     assert.equal(manSalRes.deductions[0].deductedFrom, 'June 2026 Staff Salary');
     assert.equal(manSalRes.deductions[0].deductedFromFile, 'June_Payroll_2026.xlsx');
-    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 7000);
-
-    // Switching Deducted From sheet selector to NONE resets both file & sheet to NONE
-    mockWindow.ATPLAdvanceManager.setSelectedSheet('NONE');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedFile(), 'NONE');
-    assert.equal(mockWindow.ATPLAdvanceManager.getSelectedSheet(), 'NONE');
+    assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 9000);
   });
 });

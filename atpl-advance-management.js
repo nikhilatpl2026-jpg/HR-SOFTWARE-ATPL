@@ -2497,175 +2497,22 @@
    * and deducts the exact advance cut specified in that column for each employee.
    */
   function processSalaryFile(fileObj, options) {
-    if (!fileObj || !fileObj.name) return { processed: 0, deductions: [], validSheetsCount: 0, skippedAlreadyDeducted: 0, skippedNoActiveAdvance: 0 };
-    var fileName = String(fileObj.name);
-    var cleanFileName = fileName.trim().toLowerCase();
-    var opts = options || {};
-
-    var candidateSheets = extractWorkbookSheets(fileObj);
-    if (!candidateSheets.length) {
-      return { processed: 0, deductions: [], validSheetsCount: 0, skippedAlreadyDeducted: 0, skippedNoActiveAdvance: 0, fileName: fileName };
-    }
-
-    var deductionsMade = [];
-    var processedEmpInFile = {};
-    var validSheetsCount = 0;
-    var skippedAlreadyDeducted = 0;
-    var skippedNoActiveAdvance = 0;
-    var nowIso = new Date().toISOString();
-    var dedDate = nowIso.slice(0, 10);
-
-    var targetSheetFilter = (opts.targetSheetName && opts.targetSheetName !== 'ALL' && opts.targetSheetName !== 'NONE')
-      ? String(opts.targetSheetName).trim().toLowerCase()
-      : '';
-    var customDeductedFrom = String(opts.deductedFromLabel || '').trim();
-
-    for (var sIdx = 0; sIdx < candidateSheets.length; sIdx++) {
-      var sEntry = candidateSheets[sIdx];
-      if (targetSheetFilter && String(sEntry.sheetName || '').trim().toLowerCase() !== targetSheetFilter) {
-        continue;
-      }
-      var sheetInfo = detectAdvanceSheetInfo(sEntry.sheetName, sEntry.rows, fileName, opts);
-      if (!sheetInfo.valid) continue;
-      validSheetsCount++;
-
-      var sheetData = sEntry.rows;
-      var salaryMonth = customDeductedFrom || detectSalaryMonthFromFilename(fileName, sEntry.sheetName);
-
-      for (var r = sheetInfo.hdrIdx + 1; r < sheetData.length; r++) {
-        var row = sheetData[r];
-        if (!Array.isArray(row) || !row.length) continue;
-
-        var rawCode = row[sheetInfo.empCodeCol];
-        if (rawCode == null || String(rawCode).trim() === '') continue;
-        var cleanCode = String(rawCode).trim().replace(/\.0+$/, '');
-        var normCode = normalizeCode(cleanCode);
-        if (!normCode || normCode === 'total' || normCode === 'grand' || normCode === 'grandtotal' || normCode === 'subtotal') continue;
-
-        // Avoid double-cutting the same employee from secondary summary tabs within the same workbook
-        if (processedEmpInFile[normCode]) continue;
-
-        // Read exact advance amount from this sheet's matched Advance column
-        var sheetAdvAmt = round2(parseMoney(row[sheetInfo.advCol]));
-        if (!sheetAdvAmt || sheetAdvAmt <= 0) continue;
-
-        // Idempotency: if this employee already has a salary deduction recorded from this fileName, skip
-        var alreadyDeductedForFile = (state.deductions || []).some(function(d) {
-          if (!d || isDeductionTombstoned(d) || getDeductionSourceType(d) === 'manual') return false;
-          var dFile = String(d.fileName || '').trim().toLowerCase();
-          return dFile === cleanFileName && normalizeCode(d.empCode) === normCode;
-        });
-        if (alreadyDeductedForFile) {
-          skippedAlreadyDeducted++;
-          processedEmpInFile[normCode] = true;
-          continue;
-        }
-
-        var empRowName = sheetInfo.empNameCol >= 0 ? String(row[sheetInfo.empNameCol] || '').trim() : '';
-
-        var activeAdvances = (state.advances || []).filter(function(adv) {
-          return adv && !(state.tombstones && state.tombstones[adv.id]) &&
-                 normalizeCode(adv.empCode) === normCode &&
-                 (Number(adv.balanceAmount) || 0) > 0;
-        }).sort(function(a, b) {
-          return (Date.parse(a.advanceDate || a.createdAt || 0) || 0) - (Date.parse(b.advanceDate || b.createdAt || 0) || 0);
-        });
-
-        if (!activeAdvances.length) {
-          skippedNoActiveAdvance++;
-          continue;
-        }
-
-        var remainingFromSheet = sheetAdvAmt;
-        for (var aIdx = 0; aIdx < activeAdvances.length && remainingFromSheet > 0; aIdx++) {
-          var adv = activeAdvances[aIdx];
-          var outBal = round2(Number(adv.balanceAmount) || 0);
-          if (outBal <= 0) continue;
-
-          var deductible = round2(Math.min(remainingFromSheet, outBal));
-          if (deductible <= 0) continue;
-
-          var dedRec = {
-            id: 'ded_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-            advanceId: adv.id,
-            empCode: adv.empCode,
-            empName: adv.empName || empRowName || ('Emp ' + cleanCode),
-            sourceType: 'salary',
-            fileName: fileName,
-            sheetName: sEntry.sheetName,
-            columnName: sheetInfo.advHeaderDisplay,
-            sheetAdvanceAmount: sheetAdvAmt,
-            salaryMonth: salaryMonth,
-            deductedFrom: customDeductedFrom || salaryMonth,
-            previousBalance: outBal,
-            deductedAmount: deductible,
-            remainingBalance: round2(outBal - deductible),
-            deductionDate: dedDate,
-            date: nowIso
-          };
-
-          state.deductions.push(dedRec);
-          deductionsMade.push(dedRec);
-
-          adv.recoveredAmount = round2((Number(adv.recoveredAmount) || 0) + deductible);
-          adv.balanceAmount = Math.max(0, round2((Number(adv.amount) || 0) - adv.recoveredAmount));
-          adv.status = adv.balanceAmount <= 0 ? 'REPAID' : 'PARTIAL';
-          adv.updatedAt = nowIso;
-          if (!Array.isArray(adv.deductions)) adv.deductions = [];
-          adv.deductions.push(dedRec);
-
-          remainingFromSheet = round2(remainingFromSheet - deductible);
-          processedEmpInFile[normCode] = true;
-        }
-      }
-    }
-
-    if (deductionsMade.length > 0) {
-      recalculateAllBalances();
-      saveToLocal();
-      renderUI();
-      pushAuthoritativeToCloud();
-      if (typeof window.renderAllFilesPage === 'function') {
-        try { window.renderAllFilesPage(); } catch (_) {}
-      }
-      if (window.showToast) {
-        window.showToast('💰 Deducted advance from salary sheet for ' + deductionsMade.length + ' entry/entries in ' + fileName);
-      }
-    }
-
-    var existingFileCount = (state.deductions || []).filter(function(d) {
-      return d && !isDeductionTombstoned(d) && getDeductionSourceType(d) !== 'manual' &&
-             String(d.fileName || '').trim().toLowerCase() === cleanFileName;
-    }).length;
-
-    fileObj.__advanceDeductionSummary = {
-      count: deductionsMade.length || existingFileCount,
-      totalDeducted: deductionsMade.reduce(function(sum, d) { return sum + d.deductedAmount; }, 0),
-      deductions: deductionsMade
-    };
-
+    // Auto salary-sheet deduction disabled: Advance deductions are strictly manual only.
+    var fileName = fileObj && fileObj.name ? String(fileObj.name) : '';
     return {
-      processed: deductionsMade.length,
-      deductions: deductionsMade,
-      validSheetsCount: validSheetsCount,
-      skippedAlreadyDeducted: skippedAlreadyDeducted,
-      skippedNoActiveAdvance: skippedNoActiveAdvance,
-      fileName: fileName
+      processed: 0,
+      deductions: [],
+      validSheetsCount: 0,
+      skippedAlreadyDeducted: 0,
+      skippedNoActiveAdvance: 0,
+      fileName: fileName,
+      manualOnly: true
     };
   }
 
   function processAllSalaryFiles() {
-    var files = getUploadedSalaryFiles();
-    var totalProcessed = 0;
-    files.forEach(function(f) {
-      if (!f) return;
-      var res = processSalaryFile(f);
-      totalProcessed += res.processed;
-    });
-    if (totalProcessed === 0) {
-      renderUI();
-    }
-    return totalProcessed;
+    // Auto salary-sheet scanning disabled: Advance deductions are strictly manual only.
+    return 0;
   }
 
   // ── 6. UI RENDERING ──
@@ -2793,7 +2640,7 @@
     html += '  <div>';
     html += '    <div style="font-size:9px;font-weight:900;letter-spacing:1.3px;color:#7c3aed;margin-bottom:5px;text-transform:uppercase">SALARY PAYROLL / ADVANCE &amp; LOAN AUDIT</div>';
     html += '    <div style="font-size:21px;font-weight:850;color:#111827;letter-spacing:-.45px">Advance &amp; Loan Management</div>';
-    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Salary-Sheet Deduction, Cash Voucher, Pending Diff Amount, Month-Wise Data Feed aur Pichle Mahine ka Complete Audit.</div>';
+    html += '    <div style="font-size:11px;color:#64748b;margin-top:5px;max-width:760px;line-height:1.6">Arora Textiles ERP · Manual Advance Deduction, Cash Voucher, Pending Diff Amount, Month-Wise Data Feed aur Pichle Mahine ka Complete Audit.</div>';
     html += '  </div>';
     html += '  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
     html += '    <button onclick="ATPLAdvanceManager.openNewModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 15px;border-radius:9px;background:#312e81;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(49,46,129,0.25)">';
@@ -2811,69 +2658,6 @@
     html += '    <button onclick="ATPLAdvanceManager.openManualDeductionModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:9px;background:#b45309;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(180,83,9,0.25)">';
     html += '      <span>✂️</span> Manual Deduction';
     html += '    </button>';
-    var uploadedFiles = getUploadedSalaryFiles();
-    var selectedFileObj = null;
-    if (state.selectedFileName && state.selectedFileName !== 'ALL' && state.selectedFileName !== 'NONE' && uploadedFiles.length > 0) {
-      selectedFileObj = uploadedFiles.find(function(uf) {
-        return uf && String(uf.name || '').trim().toLowerCase() === String(state.selectedFileName).trim().toLowerCase();
-      }) || null;
-      if (!selectedFileObj) {
-        state.selectedFileName = 'NONE';
-        state.selectedSheetName = 'NONE';
-      }
-    }
-    var isNoneMode = !state.selectedFileName || state.selectedFileName === 'NONE';
-    var isSpecificFile = !!(state.selectedFileName && state.selectedFileName !== 'ALL' && state.selectedFileName !== 'NONE');
-    var fileSheets = selectedFileObj ? extractWorkbookSheets(selectedFileObj) : [];
-    if (isNoneMode) {
-      state.selectedSheetName = 'NONE';
-    } else if (state.selectedSheetName && state.selectedSheetName !== 'ALL' && state.selectedSheetName !== 'NONE') {
-      var hasSheetMatch = fileSheets.some(function(s) {
-        return String(s.sheetName || '').trim().toLowerCase() === String(state.selectedSheetName).trim().toLowerCase();
-      });
-      if (!hasSheetMatch) state.selectedSheetName = 'ALL';
-    }
-    var autoSalaryPlaceholder = isNoneMode
-      ? 'Manual Cut / Optional note'
-      : (selectedFileObj
-        ? detectSalaryMonthFromFilename(selectedFileObj.name, (state.selectedSheetName !== 'ALL' && state.selectedSheetName !== 'NONE') ? state.selectedSheetName : '')
-        : 'Deducted from (e.g. Oct 2026)');
-
-    html += '    <div id="advFileSelect" style="position:relative;display:inline-flex;align-items:center;gap:6px;min-height:38px;border:1px solid #c7d2fe;border-radius:8px;background:#eef2ff;padding:4px 6px 4px 8px;flex-wrap:wrap">';
-    html += '      <span style="font-size:10px;font-weight:800;color:#312e81;white-space:nowrap">📂 File:</span>';
-    html += '      <div style="position:relative;display:inline-block">';
-    html += '        <button type="button" id="advFileDropdownBtn" onclick="ATPLAdvanceManager.toggleFileDropdown(event)" title="Search aur Select karein All Files me se (None = Manual Cut)" style="display:inline-flex;align-items:center;justify-content:space-between;gap:6px;height:30px;line-height:20px;max-width:225px;min-width:155px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:2px 8px;box-sizing:border-box;font-size:11px;font-weight:700;color:' + (isNoneMode ? '#b45309' : '#1e293b') + ';cursor:pointer">';
-    html += '          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (isNoneMode ? '🚫 None (Manual Cut)' : (isSpecificFile ? ('📄 ' + esc(state.selectedFileName)) : ('📁 All Files (' + uploadedFiles.length + ')'))) + '</span>';
-    html += '          <span style="font-size:9px;color:#64748b;flex-shrink:0">▾</span>';
-    html += '        </button>';
-    html += '        <div id="advFileDropdownMenu" onclick="event.stopPropagation()" style="display:' + (state.isFileDropdownOpen ? 'block' : 'none') + ';position:absolute;top:100%;left:0;margin-top:4px;width:275px;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 12px 28px rgba(15,23,42,0.18);z-index:999;overflow:hidden">';
-    html += '          <div style="padding:7px;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;gap:5px">';
-    html += '            <input type="text" id="advFileSearchInput" value="' + esc(state.fileSearchQuery || '') + '" placeholder="🔍 Search file in All Files..." oninput="ATPLAdvanceManager.filterFileDropdown(this.value)" style="flex:1;height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:11px;outline:none;color:#0f172a;background:#fff">';
-    html += '            <button type="button" id="advFileSearchClearBtn" onclick="ATPLAdvanceManager.filterFileDropdown(\'\')" style="display:' + (state.fileSearchQuery ? 'inline-flex' : 'none') + ';align-items:center;justify-content:center;width:24px;height:26px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#64748b;font-size:10px;font-weight:800;cursor:pointer" title="Clear search">✕</button>';
-    html += '          </div>';
-    html += '          <div id="advFileDropdownList" style="max-height:220px;overflow-y:auto">';
-    html +=              buildFileDropdownListHtml(uploadedFiles, state.fileSearchQuery);
-    html += '          </div>';
-    html += '        </div>';
-    html += '      </div>';
-
-    html += '      <span style="font-size:10px;font-weight:800;color:#312e81;white-space:nowrap">📑 Deducted From:</span>';
-    html += '      <select id="advSalarySheetSelect" onchange="ATPLAdvanceManager.setSelectedSheet(this.value)" title="Select karein konsi salary sheet se cut karna hai (None = Manual Cut)" style="height:30px;line-height:22px;min-width:170px;max-width:225px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:2px 8px;box-sizing:border-box;font-size:11px;font-weight:700;color:' + (isNoneMode || state.selectedSheetName === 'NONE' ? '#b45309' : '#1e293b') + ';cursor:pointer;outline:none">';
-    html += '        <option value="NONE"' + (isNoneMode || state.selectedSheetName === 'NONE' ? ' selected' : '') + '>🚫 None (Manual Cut)</option>';
-    html += '        <option value="ALL"' + (!isNoneMode && (!state.selectedSheetName || state.selectedSheetName === 'ALL') ? ' selected' : '') + '>All Salary Sheets (Auto)</option>';
-    fileSheets.forEach(function(fsItem) {
-      var sn = String(fsItem.sheetName || '');
-      var isShSel = !isNoneMode && state.selectedSheetName && sn.trim().toLowerCase() === String(state.selectedSheetName).trim().toLowerCase();
-      html += '        <option value="' + esc(sn) + '"' + (isShSel ? ' selected' : '') + '>📑 ' + esc(sn) + '</option>';
-    });
-    html += '      </select>';
-    html += '      <input type="text" id="advDeductedFromInput" value="' + esc(state.deductedFromLabel || '') + '" oninput="ATPLAdvanceManager.setDeductedFromLabel(this.value)" placeholder="' + esc(autoSalaryPlaceholder) + '" title="Optional: Konsi salary se deducted hua (e.g. Oct 2026 Salary)" style="height:30px;width:145px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:2px 8px;box-sizing:border-box;font-size:11px;font-weight:600;color:#1e293b;outline:none">';
-
-    var btnNoneMode = isNoneMode || state.selectedSheetName === 'NONE';
-    html += '      <button id="advDeductFileBtn" onclick="ATPLAdvanceManager.triggerDeductionScan()" style="display:inline-flex;align-items:center;gap:4px;height:30px;box-sizing:border-box;border:none;border-radius:6px;background:' + (btnNoneMode ? '#b45309' : '#312e81') + ';color:#fff;padding:0 11px;font-size:10.5px;font-weight:800;cursor:pointer;white-space:nowrap" title="' + (btnNoneMode ? 'None selected — Advance manual cut karne ke liye click karein' : (isSpecificFile ? ('Selected file (' + esc(state.selectedFileName) + ') se Advance Deduct karein') : 'Sabhi uploaded files se Advance Deduct / Scan karein')) + '">';
-    html += '        <span>' + (btnNoneMode ? '✂️' : '⚡') + '</span> ' + (btnNoneMode ? 'Manual Cut' : (isSpecificFile ? 'Deduct Adv' : 'Re-Scan Sheets'));
-    html += '      </button>';
-    html += '    </div>';
     html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
     html += '      <span>⬇</span> Export CSV';
     html += '    </button>';
@@ -3196,21 +2980,10 @@
     });
 
     if (!filtered.length) {
-      if (selectedFileLower) {
-        return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
-               '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">📄</div>' +
-               '  <div style="font-size:14px;font-weight:700;color:#334155">No Advance Deductions Yet for ' + esc(state.selectedFileName) + '</div>' +
-               '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Click below to deduct advance from this selected file, or switch back to All Files.</div>' +
-               '  <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' +
-               '    <button type="button" onclick="ATPLAdvanceManager.triggerDeductionScan()" style="padding:8px 16px;background:#312e81;color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer">⚡ Deduct Adv from File</button>' +
-               '    <button type="button" onclick="ATPLAdvanceManager.setSelectedFile(\'ALL\')" style="padding:8px 14px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">Show All Files</button>' +
-               '  </div>' +
-               '</div>';
-      }
       return '<div style="padding:48px 20px;text-align:center;color:#94a3b8;background:#fff">' +
              '  <div style="font-size:36px;margin-bottom:8px;opacity:0.4">📉</div>' +
              '  <div style="font-size:14px;font-weight:700;color:#334155">No Advance Deductions Found</div>' +
-             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Salary sheets with an Advance column, Cash Vouchers, or Manual Deductions will appear here.</div>' +
+             '  <div style="font-size:11px;margin-top:4px;color:#94a3b8">Manual Deductions or Cash Vouchers will appear here.</div>' +
              '</div>';
     }
 
@@ -3478,7 +3251,7 @@
 
     content += '      <div>';
     content += '        <label style="display:block;font-size:10px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:3px">Monthly Reference Cap (Optional)</label>';
-    content += '        <div style="font-size:10px;color:#94a3b8;margin-bottom:5px">Note only — salary sheet deduction cuts the exact Advance column amount present in the uploaded salary sheet.</div>';
+    content += '        <div style="font-size:10px;color:#94a3b8;margin-bottom:5px">Note only — advance deductions are entered manually.</div>';
     content += '        <input type="number" id="advFormCap" min="0" placeholder="0 = No fixed cap" style="width:100%;padding:9px 12px;background:#ffffff;border:1px solid #d1d5db;border-radius:8px;color:#111827;font-size:12px;outline:none">';
     content += '      </div>';
 
@@ -6531,49 +6304,8 @@
       return res;
     },
     triggerDeductionScan: function() {
-      var sel = state.selectedFileName || 'NONE';
-      if (sel === 'NONE' || state.selectedSheetName === 'NONE') {
-        if (window.showToast) window.showToast('ℹ️ None selected — Advance ab manual cut hoga.');
-        openManualDeductionModal();
-        return 0;
-      }
-      if (sel !== 'ALL') {
-        var files = getUploadedSalaryFiles();
-        var selLower = String(sel).trim().toLowerCase();
-        var target = files.find(function(f) {
-          return f && f.name && String(f.name).trim().toLowerCase() === selLower;
-        });
-        if (!target) {
-          if (window.showToast) window.showToast('⚠️ Selected file "' + sel + '" All Files mein nahi mili.');
-          return 0;
-        }
-        var res = processSalaryFile(target, {
-          explicitFileSelection: true,
-          targetSheetName: state.selectedSheetName || 'ALL',
-          deductedFromLabel: state.deductedFromLabel || ''
-        });
-        if (res.processed === 0) {
-          if (window.showToast) {
-            if (res.validSheetsCount === 0) {
-              window.showToast('⚠️ "' + target.name + '" mein koi Advance Deduction column wala valid sheet nahi mila.');
-            } else if (res.skippedAlreadyDeducted > 0 && res.skippedNoActiveAdvance === 0) {
-              window.showToast('ℹ️ "' + target.name + '" ke sabhi advance deductions pehle se cut ho chuke hain.');
-            } else if (res.skippedNoActiveAdvance > 0) {
-              window.showToast('ℹ️ "' + target.name + '" mein Advance column mila, par un employees ka koi pending advance balance nahi hai.');
-            } else {
-              window.showToast('✅ "' + target.name + '" scan ho gayi. Koi pending advance deduction nahi mila.');
-            }
-          }
-          renderUI();
-        }
-        return res.processed;
-      }
-
-      var count = processAllSalaryFiles();
-      if (count === 0) {
-        if (window.showToast) window.showToast('✅ Scanned all salary sheets (Advance column verified). No pending deductions found.');
-      }
-      return count;
+      openManualDeductionModal();
+      return 0;
     }
   };
 
