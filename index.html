@@ -2851,6 +2851,7 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-challan" onclick="goPage('challan')" hidden aria-hidden="true" style="display:none!important;background:rgba(2,132,199,0.15);color:#38bdf8"><span class="vi">🏛️</span>PF & ESIC Challan <span class="vbadge" style="background:#0284c7">NEW</span></div>
       <div class="vitem" id="vn-advance" onclick="goPage('advance')"><span class="vi">💳</span>Advance Management <span class="vbadge vbadge-count" id="advBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
+      <div class="vitem" id="vn-ecrportal" onclick="goPage('ecrportal')"><span class="vi">🏛️</span>PF &amp; ESIC Portal Export <span class="vbadge vbadge-green">ECR</span></div>
       <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge vbadge-blue">NEW</span></div>
       <div class="vitem" id="vn-payslip" onclick="goPage('payslip')"><span class="vi">🧾</span>Employee Pay Slip <span class="vbadge vbadge-green">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
@@ -2994,6 +2995,11 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <!-- ══ PAGE: HR LETTERS & LEAVE APPLICATION ══ -->
     <div class="page" id="page-letter" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
       <div id="letterModuleContainer"></div>
+    </div>
+
+    <!-- ══ PAGE: PF & ESIC PORTAL EXPORT (EPFO ECR & ESIC MC) ══ -->
+    <div class="page" id="page-ecrportal" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
+      <div id="ecrPortalContainer"></div>
     </div>
 
     <!-- ══ PAGE: PARTY AUDIT VAULT (RWS, MWS, INDITEX & CUSTOM) ══ -->
@@ -8285,7 +8291,7 @@ function goPage(name) {
   // Auto-expand the current parent category of active item (works across moved sections)
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal','ecrportal':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp','partyaudit':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -8305,6 +8311,7 @@ function goPage(name) {
   }
   if(name==='advance') { if(window.ATPLAdvanceManager && typeof window.ATPLAdvanceManager.renderUI==='function') window.ATPLAdvanceManager.renderUI(); }
   if(name==='salarypayout') { if(window.ATPLSalaryPayout && typeof window.ATPLSalaryPayout.renderUI==='function') window.ATPLSalaryPayout.renderUI(); }
+  if(name==='ecrportal') { if(window.ATPLPfEsicPortalExport && typeof window.ATPLPfEsicPortalExport.renderUI==='function') window.ATPLPfEsicPortalExport.renderUI(); }
   if(name==='letter') { if(window.ATPLLettersManager) { if(typeof window.ATPLLettersManager.renderUI==='function') window.ATPLLettersManager.renderUI(); if(typeof window.ATPLLettersManager.syncNow==='function') window.ATPLLettersManager.syncNow(false); } }
   if(name==='partyaudit') { if(window.ATPLPartyAudit) { if(typeof window.ATPLPartyAudit.renderUI==='function') window.ATPLPartyAudit.renderUI(); if(typeof window.ATPLPartyAudit.syncNow==='function') window.ATPLPartyAudit.syncNow(false); } }
   if(name==='compliance') populateCompFileSelect();
@@ -18134,6 +18141,7 @@ else AInit();
 <script src="atpl-letters-v1.js?v=20261120-cloud-sync"></script>
 <script src="atpl-salary-payout.js?v=20261118-diff-reconcile-v2"></script>
 <script src="atpl-party-audit-v1.js?v=20261124-v2"></script>
+<script src="atpl-pf-esic-portal-export-v1.js?v=20261124-v1"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl=document.getElementById("crossSyncBtnLbl");
