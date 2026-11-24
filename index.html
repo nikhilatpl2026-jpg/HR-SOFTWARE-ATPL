@@ -2852,7 +2852,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
       <div class="vitem" id="vn-advance" onclick="goPage('advance')"><span class="vi">💳</span>Advance Management <span class="vbadge vbadge-count" id="advBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-salarypayout" onclick="goPage('salarypayout')"><span class="vi">📊</span>Salary &amp; Diff Payout</div>
       <div class="vitem" id="vn-monthlystatus" onclick="goPage('monthlystatus')"><span class="vi">🗓️</span>Monthly Status Report <span class="vbadge vbadge-blue">NEW</span></div>
-      <div class="vitem" id="vn-cardattendance" onclick="goPage('cardattendance')"><span class="vi">🏭</span>Card Manpower <span class="vbadge vbadge-count" id="cardAttBadge" style="display:none">0</span></div>
       <div class="vitem" id="vn-payslip" onclick="goPage('payslip')"><span class="vi">🧾</span>Employee Pay Slip <span class="vbadge vbadge-green">NEW</span></div>
       <div class="vitem" id="vn-bankverify" onclick="ATPLBankVerifierOpen()"><span class="vi">🏦</span>Bank A/C Verifier</div>    </div>
   </div>
@@ -3000,11 +2999,6 @@ body.hr-docs-windowed #page-hrdocs.active.hr-windowed, #page-hrdocs.active.hr-wi
     <!-- ══ PAGE: PARTY AUDIT VAULT (RWS, MWS, INDITEX & CUSTOM) ══ -->
     <div class="page" id="page-partyaudit" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
       <div id="partyAuditContainer"></div>
-    </div>
-
-    <!-- ══ PAGE: CARD MANPOWER & MONTHLY ATTENDANCE COUNT ══ -->
-    <div class="page" id="page-cardattendance" style="flex-direction:column;overflow-y:auto;background:#f8fafc;color:#0f172a;min-height:100%">
-      <div id="cardAttendanceContainer"></div>
     </div>
 
     <!-- ══ PAGE: MONTHLY STATUS REPORT (BASIC WORK DURATION) ══ -->
@@ -8291,7 +8285,7 @@ function goPage(name) {
   // Auto-expand the current parent category of active item (works across moved sections)
   var catMap = {
     'cmd':'cat-dash','files':'cat-dash','test':'cat-dash',
-    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal','cardattendance':'cat-sal',
+    'audit':'cat-sal','compliance':'cat-sal','challan':'cat-sal','advance':'cat-sal','salarypayout':'cat-sal','monthlystatus':'cat-sal','payslip':'cat-sal',
     'newjoin':'cat-emp','dol':'cat-emp','dolverify':'cat-emp','ff':'cat-emp','empmaster':'cat-emp','hrdocs':'cat-emp','letter':'cat-emp','partyaudit':'cat-emp',
     'misspunch':'cat-tools','formula':'cat-tools'
   };
@@ -8313,7 +8307,6 @@ function goPage(name) {
   if(name==='salarypayout') { if(window.ATPLSalaryPayout && typeof window.ATPLSalaryPayout.renderUI==='function') window.ATPLSalaryPayout.renderUI(); }
   if(name==='letter') { if(window.ATPLLettersManager) { if(typeof window.ATPLLettersManager.renderUI==='function') window.ATPLLettersManager.renderUI(); if(typeof window.ATPLLettersManager.syncNow==='function') window.ATPLLettersManager.syncNow(false); } }
   if(name==='partyaudit') { if(window.ATPLPartyAudit) { if(typeof window.ATPLPartyAudit.renderUI==='function') window.ATPLPartyAudit.renderUI(); if(typeof window.ATPLPartyAudit.syncNow==='function') window.ATPLPartyAudit.syncNow(false); } }
-  if(name==='cardattendance') { if(window.ATPLCardAttendance) { if(typeof window.ATPLCardAttendance.renderUI==='function') window.ATPLCardAttendance.renderUI(); if(typeof window.ATPLCardAttendance.syncNow==='function') window.ATPLCardAttendance.syncNow(false); } }
   if(name==='compliance') populateCompFileSelect();
   if(name==='attendanceaudit'){ if(window.ATPLAttendanceAuditor && typeof window.ATPLAttendanceAuditor.init==='function') window.ATPLAttendanceAuditor.init(); }
   if(name==='monthlystatus'){ if(window.ATPLMonthlyStatusReport && typeof window.ATPLMonthlyStatusReport.init==='function') window.ATPLMonthlyStatusReport.init(); }
@@ -18141,7 +18134,6 @@ else AInit();
 <script src="atpl-letters-v1.js?v=20261120-cloud-sync"></script>
 <script src="atpl-salary-payout.js?v=20261118-diff-reconcile-v2"></script>
 <script src="atpl-party-audit-v1.js?v=20261124-v2"></script>
-<script src="atpl-card-attendance-v1.js?v=20261124-v1"></script>
 <script>
 window.atplTriggerCrossSync = async function(manual) {
   var btnLbl=document.getElementById("crossSyncBtnLbl");
@@ -18158,9 +18150,6 @@ window.atplTriggerCrossSync = async function(manual) {
   }
   if(window.ATPLPartyAudit&&typeof window.ATPLPartyAudit.syncNow==="function"){
     addJob("Party Audit Documents",function(){return window.ATPLPartyAudit.syncNow(false)});
-  }
-  if(window.ATPLCardAttendance&&typeof window.ATPLCardAttendance.syncNow==="function"){
-    addJob("Card Manpower Attendance",function(){return window.ATPLCardAttendance.syncNow(false)});
   }
   if(typeof atplDirectServerSync==="function")addJob("Direct file sync",function(){return atplDirectServerSync(true)});
   if(window.ATPLCloudSharedStorageV1&&typeof window.ATPLCloudSharedStorageV1.forceSyncAllFiles==="function"){

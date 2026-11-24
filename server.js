@@ -188,10 +188,6 @@ if (!Array.isArray(syncPartyAudits.docs)) syncPartyAudits.docs = [];
 let syncPartyAuditTombstones = readJsonFile('party_audit_tombstones.json', {}); // docIdLower -> deleted_at ISO
 let syncPartyAuditPartyTombstones = readJsonFile('party_audit_party_tombstones.json', {}); // partyIdLower -> deleted_at ISO
 const PARTY_AUDIT_ATTS_DIR = path.join(DATA_DIR, 'party_audit_atts');
-let syncCardAttendance = readJsonFile('card_attendance.json', { months: {}, tombstones: {} });
-if (!syncCardAttendance || typeof syncCardAttendance !== 'object') syncCardAttendance = { months: {}, tombstones: {} };
-if (!syncCardAttendance.months) syncCardAttendance.months = {};
-if (!syncCardAttendance.tombstones) syncCardAttendance.tombstones = {};
 if (syncLeaveLetters && typeof syncLeaveLetters === 'object' && syncLeaveLetterTombstones && typeof syncLeaveLetterTombstones === 'object') {
   Object.keys(syncLeaveLetterTombstones).forEach(tid => {
     if (syncLeaveLetterTombstones[tid] && syncLeaveLetters[tid]) {
@@ -2465,77 +2461,6 @@ app.delete('/api/sync/party-audit/:id', (req, res) => {
     broadcastEvent('party_audit_deleted', { id, deleted_at: deletedAt });
     forwardPartyAuditToCloud();
     return res.json({ ok: true, deleted: true, id, deleted_at: deletedAt });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// ── Card Manpower & External ERP Monthly Attendance Sync Endpoints ──
-app.get('/api/sync/card-attendance', (req, res) => {
-  return res.json({ ok: true, months: syncCardAttendance.months || {}, tombstones: syncCardAttendance.tombstones || {} });
-});
-
-app.post('/api/sync/card-attendance/bulk', (req, res) => {
-  try {
-    const body = req.body || {};
-    const inTombs = body.tombstones || {};
-    Object.keys(inTombs).forEach(k => {
-      const ts = Date.parse(inTombs[k]) || 0;
-      if (ts > (Date.parse(syncCardAttendance.tombstones[k]) || 0)) syncCardAttendance.tombstones[k] = new Date(ts).toISOString();
-    });
-    const inMonths = body.months || {};
-    Object.keys(inMonths).forEach(mk => {
-      const snap = inMonths[mk];
-      if (!snap || !Array.isArray(snap.rows)) return;
-      const sTs = Date.parse(snap.updatedAt || 0) || 0;
-      const tTs = Date.parse(syncCardAttendance.tombstones[mk] || 0) || 0;
-      if (tTs && tTs >= sTs) return;
-      const curTs = Date.parse((syncCardAttendance.months[mk] && syncCardAttendance.months[mk].updatedAt) || 0) || 0;
-      if (!syncCardAttendance.months[mk] || sTs >= curTs) syncCardAttendance.months[mk] = snap;
-    });
-    incrementVersion();
-    writeJsonFile('card_attendance.json', syncCardAttendance);
-    return res.json({ ok: true, months: syncCardAttendance.months, tombstones: syncCardAttendance.tombstones });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.post('/api/external-erp/attendance-sync', async (req, res) => {
-  try {
-    const { erpUrl, username, password, month, year } = req.body || {};
-    const base = String(erpUrl || '').trim().replace(/\/+$/, '');
-    if (!/^https:\/\//.test(base)) return res.status(400).json({ ok: false, error: 'Valid HTTPS ERP URL required' });
-    if (!username || !password) return res.status(400).json({ ok: false, error: 'Username and password required' });
-
-    const form = new URLSearchParams({ username: String(username), password: String(password) });
-    const loginRes = await fetch(base + '/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString()
-    });
-    if (!loginRes.ok) {
-      const errTxt = await loginRes.text().catch(() => '');
-      return res.status(401).json({ ok: false, error: 'Other ERP login failed (' + loginRes.status + '): ' + errTxt.slice(0, 140) });
-    }
-    const rawCookies = typeof loginRes.headers.getSetCookie === 'function'
-      ? loginRes.headers.getSetCookie()
-      : (loginRes.headers.get('set-cookie') ? [loginRes.headers.get('set-cookie')] : []);
-    const cookieHeader = rawCookies.map(c => String(c).split(';')[0]).filter(Boolean).join('; ');
-    const authHeaders = cookieHeader ? { Cookie: cookieHeader } : {};
-
-    const m = Number(month) || (new Date().getMonth() + 1);
-    const y = Number(year) || new Date().getFullYear();
-    const [attRes, locRes, machRes] = await Promise.all([
-      fetch(base + '/api/v1/attendance/?month=' + m + '&year=' + y, { headers: authHeaders }),
-      fetch(base + '/api/v1/masters/locations', { headers: authHeaders }).catch(() => null),
-      fetch(base + '/api/v1/masters/machines', { headers: authHeaders }).catch(() => null)
-    ]);
-    if (!attRes.ok) return res.status(502).json({ ok: false, error: 'Attendance API returned ' + attRes.status });
-    const attendance = await attRes.json();
-    const locations = locRes && locRes.ok ? await locRes.json().catch(() => []) : [];
-    const machines = machRes && machRes.ok ? await machRes.json().catch(() => []) : [];
-    return res.json({ ok: true, attendance, locations, machines });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message });
   }
