@@ -191,3 +191,25 @@ test('Google Drive round-trip sync across two browsers (custom party, document u
     'Deleted doc must not resurrect on Browser B sync'
   );
 });
+
+test('Renders 5 interactive button-type KPI cards including Expiring <=30d filter', async () => {
+  const drive = new Map();
+  const { win, container } = createBrowserEnv(drive);
+  const soonIso = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+  await win.ATPLPartyAudit.saveDocAndSync({
+    id: 'PA_RWS_EXP_1',
+    partyId: 'RWS',
+    partyName: 'RWS',
+    title: 'RWS Expiring Certificate',
+    category: 'Traceability & Certificates',
+    expiryDate: soonIso,
+    status: 'ready'
+  }, false);
+
+  assert.ok(container.innerHTML.includes('class="pa-kpis"'));
+  assert.ok(container.innerHTML.includes('data-pa-act="filter-expiring"'));
+  assert.ok(container.innerHTML.includes('Expiring (≤30d)'));
+  assert.ok(container.innerHTML.includes('Audit Ready'));
+  assert.ok(container.innerHTML.includes('Needs Update'));
+  assert.ok(container.innerHTML.includes('Active Parties'));
+});

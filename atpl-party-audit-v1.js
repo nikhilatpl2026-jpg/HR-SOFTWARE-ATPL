@@ -103,6 +103,7 @@
     selectedPartyId: 'ALL',
     statusFilter: 'ALL',
     categoryFilter: 'ALL',
+    expiringOnly: false,
     searchQuery: '',
     sortBy: 'newest',
     showChecklist: true,
@@ -1075,11 +1076,25 @@
       '.pa-btn-danger:hover { background:#fef2f2; border-color:#f87171; }',
 
       /* KPI Cards */
-      '.pa-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }',
-      '.pa-kpi { background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:14px 18px; display:flex; flex-direction:column; gap:4px; }',
-      '.pa-kpi-label { font-size:12px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; }',
+      '.pa-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:11px; }',
+      '.pa-kpi { background:#ffffff; border:1px solid #cbd5e1; border-radius:12px; padding:13px 15px; display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:left; cursor:pointer; font-family:inherit; transition:border-color .15s,background .15s,transform .1s; }',
+      '.pa-kpi:hover { border-color:#64748b; background:#f8fafc; }',
+      '.pa-kpi:active { transform:translateY(1px); }',
+      '.pa-kpi.active { border-color:#0f172a; box-shadow:0 0 0 1px #0f172a inset; }',
+      '.pa-kpi.kpi-green { background:#f0fdf4; border-color:#bbf7d0; }',
+      '.pa-kpi.kpi-green:hover { background:#dcfce7; border-color:#4ade80; }',
+      '.pa-kpi.kpi-green.active { border-color:#15803d; box-shadow:0 0 0 1px #15803d inset; }',
+      '.pa-kpi.kpi-amber { background:#fffbeb; border-color:#fde68a; }',
+      '.pa-kpi.kpi-amber:hover { background:#fef3c7; border-color:#f59e0b; }',
+      '.pa-kpi.kpi-amber.active { border-color:#b45309; box-shadow:0 0 0 1px #b45309 inset; }',
+      '.pa-kpi.kpi-rose { background:#fff1f2; border-color:#fecdd3; }',
+      '.pa-kpi.kpi-rose:hover { background:#ffe4e6; border-color:#fb7185; }',
+      '.pa-kpi.kpi-rose.active { border-color:#be123c; box-shadow:0 0 0 1px #be123c inset; }',
+      '.pa-kpi-top { width:100%; display:flex; align-items:center; justify-content:space-between; gap:6px; }',
+      '.pa-kpi-label { font-size:11.5px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.04em; }',
+      '.pa-kpi-hint { font-size:10.5px; font-weight:700; color:#64748b; }',
       '.pa-kpi-val { font-size:24px; font-weight:800; color:#0f172a; font-variant-numeric:tabular-nums; line-height:1.15; }',
-      '.pa-kpi-sub { font-size:12px; color:#64748b; font-variant-numeric:tabular-nums; }',
+      '.pa-kpi-sub { font-size:11.5px; color:#64748b; font-variant-numeric:tabular-nums; }',
 
       /* Button-Type Party Selector Grid */
       '.pa-section { background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:16px 20px; display:flex; flex-direction:column; gap:14px; }',
@@ -1155,7 +1170,7 @@
       '.pa-preview-frame { width:100%; height:100%; min-height:460px; border:1px solid #e2e8f0; border-radius:10px; background:#f1f5f9; }',
       '.pa-toast { position:fixed; bottom:22px; right:22px; background:#0f172a; color:#ffffff; padding:11px 16px; border-radius:10px; font-size:13px; font-weight:600; z-index:99999; opacity:0; pointer-events:none; transition:opacity .2s; }',
       '.pa-toast.show { opacity:1; }',
-      '@media (max-width:1024px) { .pa-checklist-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }', '@media (max-width:900px) { .pa-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .pa-checklist-grid { grid-template-columns:1fr; } .pa-form-grid { grid-template-columns:1fr; } .pa-wrap { padding:14px; } }'
+      '@media (max-width:1180px) { .pa-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }', '@media (max-width:1024px) { .pa-checklist-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }', '@media (max-width:900px) { .pa-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .pa-checklist-grid { grid-template-columns:1fr; } .pa-form-grid { grid-template-columns:1fr; } .pa-wrap { padding:14px; } }'
     ].join('\n');
     var styleEl = doc.createElement('style');
     styleEl.id = 'atplPartyAuditStyles';
@@ -1175,6 +1190,11 @@
       if (selParty !== 'ALL' && String(d.partyId || '').toLowerCase() !== selParty.toLowerCase()) return false;
       if (stFilter !== 'ALL' && d.status !== stFilter) return false;
       if (catFilter !== 'ALL' && d.category !== catFilter) return false;
+      if (state.expiringOnly) {
+        if (!d.expiryDate) return false;
+        var expMs = dateMs(d.expiryDate);
+        if (!expMs || expMs > (Date.now() + 30 * 86400000)) return false;
+      }
       if (q) {
         var hay = [d.title, d.partyName, d.partyId, d.category, d.refNo, d.file_name, d.remarks, d.uploadedBy, d.auditPeriod]
           .join(' ').toLowerCase();
@@ -1218,7 +1238,13 @@
     var ready = docs.filter(function (d) { return d.status === 'ready'; }).length;
     var review = docs.filter(function (d) { return d.status === 'review'; }).length;
     var pending = docs.filter(function (d) { return d.status === 'pending'; }).length;
-    return { total: docs.length, ready: ready, review: review, pending: pending };
+    var cutoff = Date.now() + 30 * 86400000;
+    var expiring = docs.filter(function (d) {
+      if (!d.expiryDate) return false;
+      var ms = dateMs(d.expiryDate);
+      return ms > 0 && ms <= cutoff;
+    }).length;
+    return { total: docs.length, ready: ready, review: review, pending: pending, expiring: expiring };
   }
 
   function isChecklistItemDone(party, itemTitle) {
@@ -1273,12 +1299,44 @@
     html.push('  </div>');
     html.push('</div>');
 
-    // KPI Cards
+    // Interactive Button-Type KPI Cards
+    var chkTotal = (activeParty && Array.isArray(activeParty.checklist)) ? activeParty.checklist.length : 0;
+    var chkDone = (activeParty && chkTotal) ? activeParty.checklist.filter(function (c) { return isChecklistItemDone(activeParty, c.title); }).length : 0;
+    var chkPct = chkTotal ? Math.round((chkDone / chkTotal) * 100) : 0;
     html.push('<div class="pa-kpis">');
-    html.push('  <div class="pa-kpi"><span class="pa-kpi-label">Active Parties</span><span class="pa-kpi-val">' + state.parties.length + '</span><span class="pa-kpi-sub">RWS, MWS, Inditex &amp; custom</span></div>');
-    html.push('  <div class="pa-kpi"><span class="pa-kpi-label">' + (activeParty ? esc(activeParty.name) + ' Docs' : 'Total Audit Docs') + '</span><span class="pa-kpi-val">' + scopedStats.total + '</span><span class="pa-kpi-sub">' + filteredDocs.length + ' shown with filters</span></div>');
-    html.push('  <div class="pa-kpi"><span class="pa-kpi-label">Audit Ready</span><span class="pa-kpi-val" style="color:#047857">' + scopedStats.ready + '</span><span class="pa-kpi-sub">' + readyPct + '% ready for inspection</span></div>');
-    html.push('  <div class="pa-kpi"><span class="pa-kpi-label">In Review / Update</span><span class="pa-kpi-val" style="color:#b45309">' + (scopedStats.review + scopedStats.pending) + '</span><span class="pa-kpi-sub">' + scopedStats.review + ' in review · ' + scopedStats.pending + ' needs update</span></div>');
+    if (activeParty) {
+      html.push('  <button type="button" class="pa-kpi" data-pa-act="toggle-checklist">');
+      html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label">' + esc(activeParty.name) + ' Checklist</span><span class="pa-kpi-hint">' + chkPct + '%</span></div>');
+      html.push('    <span class="pa-kpi-val">' + chkDone + ' / ' + chkTotal + '</span>');
+      html.push('    <span class="pa-kpi-sub">Checklist items ready · Click to toggle</span>');
+      html.push('  </button>');
+    } else {
+      html.push('  <button type="button" class="pa-kpi" data-pa-act="add-party">');
+      html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label">Active Parties</span><span class="pa-kpi-hint">+ Add</span></div>');
+      html.push('    <span class="pa-kpi-val">' + state.parties.length + '</span>');
+      html.push('    <span class="pa-kpi-sub">RWS, MWS, Inditex &amp; custom audits</span>');
+      html.push('  </button>');
+    }
+    html.push('  <button type="button" class="pa-kpi ' + (state.statusFilter === 'ALL' && !state.expiringOnly ? 'active' : '') + '" data-pa-act="filter-status" data-val="ALL">');
+    html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label">' + (activeParty ? esc(activeParty.name) + ' Docs' : 'Total Audit Docs') + '</span><span class="pa-kpi-hint">Show All</span></div>');
+    html.push('    <span class="pa-kpi-val">' + scopedStats.total + '</span>');
+    html.push('    <span class="pa-kpi-sub">' + filteredDocs.length + ' shown in register</span>');
+    html.push('  </button>');
+    html.push('  <button type="button" class="pa-kpi kpi-green ' + (state.statusFilter === 'ready' && !state.expiringOnly ? 'active' : '') + '" data-pa-act="filter-status" data-val="ready">');
+    html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label" style="color:#065f46">Audit Ready</span><span class="pa-kpi-hint" style="color:#047857">' + readyPct + '%</span></div>');
+    html.push('    <span class="pa-kpi-val" style="color:#047857">' + scopedStats.ready + '</span>');
+    html.push('    <span class="pa-kpi-sub" style="color:#065f46">Click to filter ready docs</span>');
+    html.push('  </button>');
+    html.push('  <button type="button" class="pa-kpi kpi-amber ' + (state.statusFilter === 'pending' && !state.expiringOnly ? 'active' : '') + '" data-pa-act="filter-status" data-val="pending">');
+    html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label" style="color:#92400e">Needs Update</span><span class="pa-kpi-hint" style="color:#b45309">Filter</span></div>');
+    html.push('    <span class="pa-kpi-val" style="color:#b45309">' + (scopedStats.pending + scopedStats.review) + '</span>');
+    html.push('    <span class="pa-kpi-sub" style="color:#92400e">' + scopedStats.pending + ' needs update · ' + scopedStats.review + ' in review</span>');
+    html.push('  </button>');
+    html.push('  <button type="button" class="pa-kpi kpi-rose ' + (state.expiringOnly ? 'active' : '') + '" data-pa-act="filter-expiring">');
+    html.push('    <div class="pa-kpi-top"><span class="pa-kpi-label" style="color:#9f1239">Expiring (≤30d)</span><span class="pa-kpi-hint" style="color:#be123c">' + (state.expiringOnly ? 'Active' : 'Check') + '</span></div>');
+    html.push('    <span class="pa-kpi-val" style="color:#be123c">' + scopedStats.expiring + '</span>');
+    html.push('    <span class="pa-kpi-sub" style="color:#9f1239">Expired or due within 30 days</span>');
+    html.push('  </button>');
     html.push('</div>');
 
     // Button-Type Party Selector Section
@@ -1982,6 +2040,7 @@
         }
       } else if (act === 'select-party') {
         state.selectedPartyId = partyId || 'ALL';
+        state.expiringOnly = false;
         renderUI();
       } else if (act === 'toggle-checklist') {
         state.showChecklist = !state.showChecklist;
@@ -1995,7 +2054,12 @@
           category: target.getAttribute('data-doc-cat') || CATEGORIES[0]
         });
       } else if (act === 'filter-status') {
+        state.expiringOnly = false;
         state.statusFilter = target.getAttribute('data-val') || 'ALL';
+        renderUI();
+      } else if (act === 'filter-expiring') {
+        state.expiringOnly = !state.expiringOnly;
+        if (state.expiringOnly) state.sortBy = 'expiry';
         renderUI();
       } else if (act === 'filter-cat') {
         state.categoryFilter = target.getAttribute('data-val') || 'ALL';
