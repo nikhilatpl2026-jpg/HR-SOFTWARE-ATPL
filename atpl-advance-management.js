@@ -192,6 +192,22 @@
     return y + '-' + String(mo).padStart(2, '0');
   }
 
+  function getNextMonthKey(monthKey) {
+    var m = String(monthKey || "").match(/^(\d{4})-(\d{2})$/);
+    if (!m) {
+      var now = new Date();
+      now.setMonth(now.getMonth() + 1);
+      return now.toISOString().slice(0, 7);
+    }
+    var y = parseInt(m[1], 10);
+    var mo = parseInt(m[2], 10) + 1;
+    if (mo > 12) {
+      mo = 1;
+      y += 1;
+    }
+    return y + "-" + String(mo).padStart(2, "0");
+  }
+
   function formatMonthKeyLabel(monthKey) {
     var m = String(monthKey || '').match(/^(\d{4})-(\d{2})$/);
     if (!m) return monthKey || 'Selected Month';
@@ -2658,6 +2674,9 @@
     html += '    <button onclick="ATPLAdvanceManager.openManualDeductionModal()" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border-radius:9px;background:#b45309;color:#fff;font-size:11px;font-weight:800;border:none;cursor:pointer;box-shadow:0 1px 3px rgba(180,83,9,0.25)">';
     html += '      <span>✂️</span> Manual Deduction';
     html += '    </button>';
+    html += '    <button id="advExportExcelBtn" onclick="ATPLAdvanceManager.exportAdvanceExcelReport()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #16a34a;border-radius:8px;background:#16a34a;padding:0 12px;font-size:10.5px;font-weight:800;color:#fff;cursor:pointer;box-shadow:0 1px 2px rgba(22,163,74,0.2)" title="Download Month Cut + Next Month Pending Excel Report (.xlsx)">';
+    html += '      <span>📊</span> Excel Report (Cut + Next Pending)';
+    html += '    </button>';
     html += '    <button onclick="ATPLAdvanceManager.exportDataCSV()" style="display:inline-flex;align-items:center;gap:5px;height:34px;border:1px solid #d1d5db;border-radius:8px;background:#fff;padding:0 12px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
     html += '      <span>⬇</span> Export CSV';
     html += '    </button>';
@@ -2701,6 +2720,8 @@
     html += '        <input type="checkbox" ' + (state.filterTablesByMonth ? 'checked' : '') + ' onchange="ATPLAdvanceManager.toggleFilterTablesByMonth(this.checked)">';
     html += '        <span>Filter Tables to ' + esc(analytics.selected.label) + '</span>';
     html += '      </label>';
+    var nextMonthLbl = formatMonthKeyLabel(getNextMonthKey(analytics.selected.monthKey));
+    html += '      <button type="button" onclick="ATPLAdvanceManager.exportAdvanceExcelReport(\'' + esc(analytics.selected.monthKey) + '\')" style="height:30px;padding:0 12px;border:1px solid #86efac;background:#ecfdf5;color:#15803d;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer" title="Download ' + esc(analytics.selected.label) + ' Deduction + ' + esc(nextMonthLbl) + ' Pending Excel Report">📊 Excel: ' + esc(analytics.selected.label) + ' Cut + ' + esc(nextMonthLbl) + ' Pending</button>';
     html += '      <button type="button" onclick="ATPLAdvanceManager.openMonthFeedModal(\'' + esc(analytics.selected.monthKey) + '\')" style="height:30px;padding:0 12px;border:none;background:#eef2ff;color:#312e81;border:1px solid #c7d2fe;border-radius:7px;font-size:11px;font-weight:800;cursor:pointer">➕ Feed Data for ' + esc(analytics.selected.label) + '</button>';
     html += '    </div>';
     html += '  </div>';
@@ -2807,6 +2828,7 @@
       html += '      <option value="voucher"' + (state.deductionSourceFilter === 'voucher' ? ' selected' : '') + '>🧾 Cash Voucher Only</option>';
       html += '      <option value="manual"' + (state.deductionSourceFilter === 'manual' ? ' selected' : '') + '>✍️ All Manual / Cash Voucher</option>';
       html += '    </select>';
+      html += '    <button type="button" onclick="ATPLAdvanceManager.exportAdvanceExcelReport(\'' + esc(analytics.selected.monthKey) + '\')" style="height:32px;padding:0 12px;border:none;border-radius:7px;background:#15803d;color:#fff;font-size:10.5px;font-weight:800;cursor:pointer" title="Download Excel Report: ' + esc(analytics.selected.label) + ' Cuts &amp; ' + esc(nextMonthLbl) + ' Pending">📊 Download Deduction + Next Month Pending Excel</button>';
     } else if (state.activeTab === 'pending_diff') {
       html += '    <select onchange="ATPLAdvanceManager.setPendingDiffCategoryFilter(this.value)" style="height:32px;border:1px solid #d1d5db;border-radius:7px;background:#fff;padding:0 10px;font-size:10px;font-weight:700;color:#475569;cursor:pointer">';
       html += '      <option value="ALL"' + (state.pendingDiffCategoryFilter === 'ALL' ? ' selected' : '') + '>All Types (Salary / Adv / Diff)</option>';
@@ -6055,6 +6077,523 @@
     document.body.removeChild(link);
   }
 
+
+  // ── 8B. ADVANCE DEDUCTION + NEXT MONTH PENDING EXCEL REPORT (.xlsx) ──
+  function buildAdvanceDeductionExcelReportData(targetMonthKey) {
+    recalculateAllBalances();
+    var monthKey = /^\d{4}-\d{2}$/.test(String(targetMonthKey || ""))
+      ? String(targetMonthKey)
+      : (state.selectedMonth || new Date().toISOString().slice(0, 7));
+    var nextMonthKey = getNextMonthKey(monthKey);
+    var monthLabel = formatMonthKeyLabel(monthKey);
+    var nextMonthLabel = formatMonthKeyLabel(nextMonthKey);
+
+    var advances = (state.advances || []).filter(function(a) { return !!a; });
+    var deductions = (state.deductions || []).filter(function(d) { return d && !isDeductionTombstoned(d); });
+    var pendingDiffs = (state.pendingDiffs || []).filter(function(p) { return p && !isPendingDiffTombstoned(p); });
+
+    // Map advances by ID so deductions can always reference their parent advance
+    var advById = {};
+    advances.forEach(function(a) {
+      if (a && a.id) advById[a.id] = a;
+    });
+
+    // Track which advances had any deduction on or before monthKey (handles back/forward-dated edge cases)
+    var advHasDedUpToMonth = {};
+    deductions.forEach(function(d) {
+      var dmk = getDeductionMonthKey(d);
+      if ((!dmk || dmk <= monthKey) && d.advanceId) {
+        advHasDedUpToMonth[d.advanceId] = true;
+      }
+    });
+
+    var empMap = {};
+    function ensureEmp(code, name) {
+      var k = normalizeCode(code);
+      if (!k) return null;
+      if (!empMap[k]) {
+        var mRec = findEmployeeByCode(code) || {};
+        empMap[k] = {
+          empCode: String(code || mRec.emp_id || mRec.code || "").trim(),
+          empName: String(mRec.name || mRec.emp_name || name || ("Emp " + code)).trim(),
+          department: String(mRec.dept || mRec.department || mRec.cat1 || "").trim(),
+          designation: String(mRec.desig || mRec.designation || "").trim(),
+          givenBefore: 0,
+          givenInMonth: 0,
+          totalGivenUpToMonth: 0,
+          deductedBefore: 0,
+          cutInMonth: 0,
+          cutSalary: 0,
+          cutVoucher: 0,
+          cutManual: 0,
+          totalDeductedUpToMonth: 0,
+          openingBalance: 0,
+          nextMonthPending: 0,
+          monthlyCap: 0,
+          pendingDiffBalance: 0,
+          currentLiveBalance: 0,
+          advanceDates: [],
+          cutDetails: [],
+          remarksList: []
+        };
+      }
+      return empMap[k];
+    }
+
+    // Per-advance tracking up to end of monthKey to compute accurate monthlyCap / EMI for remaining open advances
+    var advDedUpToMonthById = {};
+    deductions.forEach(function(d) {
+      var dmk = getDeductionMonthKey(d);
+      if (!dmk || dmk <= monthKey) {
+        var amt = round2(Number(d.deductedAmount) || 0);
+        if (d.advanceId) {
+          advDedUpToMonthById[d.advanceId] = round2((advDedUpToMonthById[d.advanceId] || 0) + amt);
+        }
+      }
+    });
+
+    advances.forEach(function(a) {
+      var e = ensureEmp(a.empCode, a.empName);
+      if (!e) return;
+      var amt = round2(Number(a.amount) || 0);
+      var liveBal = round2(Number(a.balanceAmount) || 0);
+      var amk = getAdvanceMonthKey(a);
+      e.currentLiveBalance = round2(e.currentLiveBalance + liveBal);
+
+      var includeUpToMonth = (!amk || amk <= monthKey || !!advHasDedUpToMonth[a.id]);
+      if (includeUpToMonth) {
+        e.totalGivenUpToMonth = round2(e.totalGivenUpToMonth + amt);
+        if (amk === monthKey) {
+          e.givenInMonth = round2(e.givenInMonth + amt);
+        } else {
+          e.givenBefore = round2(e.givenBefore + amt);
+        }
+        if (a.advanceDate && e.advanceDates.indexOf(a.advanceDate) < 0) {
+          e.advanceDates.push(a.advanceDate);
+        }
+        var advDedUpTo = round2(advDedUpToMonthById[a.id] || 0);
+        var advRemAfterMonth = Math.max(0, round2(amt - advDedUpTo));
+        if (advRemAfterMonth > 0) {
+          var cap = round2(Number(a.monthlyCap) || 0);
+          if (cap > 0) {
+            e.monthlyCap = round2(e.monthlyCap + Math.min(cap, advRemAfterMonth));
+          }
+        }
+      }
+      if (a.remarks && e.remarksList.indexOf(String(a.remarks).trim()) < 0) {
+        e.remarksList.push(String(a.remarks).trim());
+      }
+    });
+
+    var monthDeductionRows = [];
+    deductions.forEach(function(d) {
+      var e = ensureEmp(d.empCode, d.empName);
+      if (!e) return;
+      var amt = round2(Number(d.deductedAmount) || 0);
+      var dmk = getDeductionMonthKey(d);
+      var dDate = getDeductionDateStr(d) || "";
+      var sType = getDeductionSourceType(d);
+      var isCv = isCashVoucherDeduction(d);
+
+      if (!dmk || dmk < monthKey) {
+        e.deductedBefore = round2(e.deductedBefore + amt);
+        e.totalDeductedUpToMonth = round2(e.totalDeductedUpToMonth + amt);
+      } else if (dmk === monthKey) {
+        e.cutInMonth = round2(e.cutInMonth + amt);
+        e.totalDeductedUpToMonth = round2(e.totalDeductedUpToMonth + amt);
+        var sourceLabel = isCv ? "Cash Voucher" : (sType === "manual" ? "Manual Deduction" : "Salary Sheet");
+        var modeDetail = isCv
+          ? ("Cash Voucher" + (d.signedBy ? " (Signed: " + d.signedBy + ")" : ""))
+          : (sType === "manual"
+            ? ((d.deductionMode || d.columnName || "Manual") + (d.deductedFrom ? " - " + d.deductedFrom : "") + (d.deductedFromFile ? " [" + d.deductedFromFile + "]" : ""))
+            : ((d.deductedFrom || d.salaryMonth || "Salary Sheet") + (d.fileName ? " [" + d.fileName + "]" : "")));
+        if (sType === "salary") e.cutSalary = round2(e.cutSalary + amt);
+        else if (isCv) e.cutVoucher = round2(e.cutVoucher + amt);
+        else e.cutManual = round2(e.cutManual + amt);
+
+        e.cutDetails.push((dDate ? dDate + " · " : "") + sourceLabel + ": Rs." + amt);
+        monthDeductionRows.push({
+          deductionDate: dDate || monthKey,
+          cutMonth: monthLabel,
+          empCode: e.empCode,
+          empName: e.empName,
+          department: e.department,
+          sourceType: sourceLabel,
+          modeDetail: modeDetail,
+          deductedAmount: amt,
+          remarks: String(d.remarks || "").trim()
+        });
+      }
+    });
+
+    pendingDiffs.forEach(function(p) {
+      var pmk = getPendingDiffMonthKey(p);
+      var bal = round2(Number(p.pendingBalance) || 0);
+      if (bal <= 0) return;
+      if (pmk && pmk > monthKey) return;
+      var e = ensureEmp(p.empCode, p.empName);
+      if (!e) return;
+      e.pendingDiffBalance = round2(e.pendingDiffBalance + bal);
+    });
+
+    var summaryRows = [];
+    var nextMonthPendingRows = [];
+    var empNextPendingMap = {};
+
+    Object.keys(empMap).forEach(function(k) {
+      var e = empMap[k];
+      e.openingBalance = Math.max(0, round2(e.givenBefore - e.deductedBefore));
+      e.nextMonthPending = Math.max(0, round2(e.totalGivenUpToMonth - e.totalDeductedUpToMonth));
+      empNextPendingMap[k] = e.nextMonthPending;
+
+      var hasActivityOrPending = e.cutInMonth > 0 || e.givenInMonth > 0 || e.nextMonthPending > 0 || e.pendingDiffBalance > 0;
+      if (!hasActivityOrPending) return;
+
+      if (e.cutInMonth > 0 && e.nextMonthPending <= 0) {
+        e.status = "CUT & CLEARED (NIL FOR " + nextMonthLabel.toUpperCase() + ")";
+      } else if (e.cutInMonth > 0 && e.nextMonthPending > 0) {
+        e.status = "CUT IN " + monthLabel.toUpperCase() + " -> PENDING FOR " + nextMonthLabel.toUpperCase();
+      } else if (e.nextMonthPending > 0) {
+        e.status = "PENDING FOR " + nextMonthLabel.toUpperCase();
+      } else {
+        e.status = "PENDING DIFF ONLY";
+      }
+
+      summaryRows.push(e);
+      if (e.nextMonthPending > 0 || e.pendingDiffBalance > 0) {
+        nextMonthPendingRows.push(e);
+      }
+    });
+
+    // Attach employee post-month pending balance onto each deduction transaction row
+    monthDeductionRows.sort(function(a, b) {
+      return String(a.deductionDate || "").localeCompare(String(b.deductionDate || "")) ||
+             String(a.empCode || "").localeCompare(String(b.empCode || ""), undefined, { numeric: true });
+    });
+    monthDeductionRows.forEach(function(r) {
+      var rem = empNextPendingMap[normalizeCode(r.empCode)] || 0;
+      r.nextMonthPending = rem;
+      r.statusAfterCut = rem > 0 ? ("PENDING FOR " + nextMonthLabel.toUpperCase()) : ("CLEARED (NIL FOR " + nextMonthLabel.toUpperCase() + ")");
+    });
+
+    summaryRows.sort(function(a, b) {
+      var pa = (a.cutInMonth > 0 ? 2 : 0) + (a.nextMonthPending > 0 ? 1 : 0);
+      var pb = (b.cutInMonth > 0 ? 2 : 0) + (b.nextMonthPending > 0 ? 1 : 0);
+      if (pb !== pa) return pb - pa;
+      return String(a.empCode || "").localeCompare(String(b.empCode || ""), undefined, { numeric: true });
+    });
+
+    nextMonthPendingRows.sort(function(a, b) {
+      if (b.nextMonthPending !== a.nextMonthPending) return b.nextMonthPending - a.nextMonthPending;
+      return String(a.empCode || "").localeCompare(String(b.empCode || ""), undefined, { numeric: true });
+    });
+
+    var totals = {
+      employeesCutCount: 0,
+      employeesNextPendingCount: 0,
+      openingBalance: 0,
+      givenInMonth: 0,
+      cutInMonth: 0,
+      cutSalary: 0,
+      cutVoucher: 0,
+      cutManual: 0,
+      totalRecoveredUpToMonth: 0,
+      nextMonthPending: 0,
+      monthlyCap: 0,
+      pendingDiffBalance: 0,
+      currentLiveBalance: 0
+    };
+    summaryRows.forEach(function(r) {
+      if (r.cutInMonth > 0) totals.employeesCutCount++;
+      if (r.nextMonthPending > 0) totals.employeesNextPendingCount++;
+      totals.openingBalance = round2(totals.openingBalance + r.openingBalance);
+      totals.givenInMonth = round2(totals.givenInMonth + r.givenInMonth);
+      totals.cutInMonth = round2(totals.cutInMonth + r.cutInMonth);
+      totals.cutSalary = round2(totals.cutSalary + r.cutSalary);
+      totals.cutVoucher = round2(totals.cutVoucher + r.cutVoucher);
+      totals.cutManual = round2(totals.cutManual + r.cutManual);
+      totals.totalRecoveredUpToMonth = round2(totals.totalRecoveredUpToMonth + r.totalDeductedUpToMonth);
+      totals.nextMonthPending = round2(totals.nextMonthPending + r.nextMonthPending);
+      totals.monthlyCap = round2(totals.monthlyCap + r.monthlyCap);
+      totals.pendingDiffBalance = round2(totals.pendingDiffBalance + r.pendingDiffBalance);
+      totals.currentLiveBalance = round2(totals.currentLiveBalance + r.currentLiveBalance);
+    });
+
+    return {
+      monthKey: monthKey,
+      monthLabel: monthLabel,
+      nextMonthKey: nextMonthKey,
+      nextMonthLabel: nextMonthLabel,
+      summaryRows: summaryRows,
+      nextMonthPendingRows: nextMonthPendingRows,
+      monthDeductionRows: monthDeductionRows,
+      allAdvances: advances,
+      totals: totals
+    };
+  }
+
+  function exportAdvanceExcelReport(targetMonthKey) {
+    var report = buildAdvanceDeductionExcelReportData(targetMonthKey);
+    if (!report.summaryRows.length && !report.allAdvances.length) {
+      if (window.showToast) window.showToast("⚠️ No advance or deduction records found to export.");
+      else alert("No advance or deduction records found to export.");
+      return { ok: false, reason: "EMPTY" };
+    }
+
+    var mLbl = report.monthLabel;
+    var nLbl = report.nextMonthLabel;
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var safeMonthSlug = report.monthKey.replace(/[^0-9A-Za-z_-]/g, "_");
+    var fileName = "ATPL_Advance_Cut_" + safeMonthSlug + "_NextMonth_Pending_" + report.nextMonthKey.replace(/[^0-9A-Za-z_-]/g, "_") + ".xlsx";
+
+    // Sheet 1: Month Cut & Next Month Pending (Combined Summary)
+    var s1Aoa = [
+      ["ARORA TEXTILES PVT. LTD. — ADVANCE DEDUCTION & NEXT MONTH PENDING REPORT"],
+      ["Deduction Month: " + mLbl + "  |  Next Month Pending: " + nLbl + "  |  Generated: " + todayStr],
+      [
+        "Employees Cut (" + mLbl + "): " + report.totals.employeesCutCount,
+        "Total Cut (" + mLbl + "): Rs." + report.totals.cutInMonth,
+        "Next Month Pending Employees (" + nLbl + "): " + report.totals.employeesNextPendingCount,
+        "Total Next Month Pending (" + nLbl + "): Rs." + report.totals.nextMonthPending
+      ],
+      [],
+      [
+        "S.No.",
+        "Emp Code",
+        "Employee Name",
+        "Department",
+        "Opening Balance (" + mLbl + ") (INR)",
+        "Adv Given in " + mLbl + " (INR)",
+        "Adv Cut in " + mLbl + " (INR)",
+        "Salary Cut (INR)",
+        "Cash Voucher Cut (INR)",
+        "Other Manual Cut (INR)",
+        "Cut Date / Mode Details",
+        "Total Recovered Till " + mLbl + " (INR)",
+        "Next Month Pending (" + nLbl + ") (INR)",
+        "Monthly Cap / Next EMI (INR)",
+        "Pending Diff Balance (INR)",
+        "Current Live Balance (INR)",
+        "Status",
+        "Remarks"
+      ]
+    ];
+    report.summaryRows.forEach(function(r, idx) {
+      s1Aoa.push([
+        idx + 1,
+        r.empCode,
+        r.empName,
+        r.department || "-",
+        r.openingBalance,
+        r.givenInMonth,
+        r.cutInMonth,
+        r.cutSalary,
+        r.cutVoucher,
+        r.cutManual,
+        r.cutDetails.join(" | ") || "-",
+        r.totalDeductedUpToMonth,
+        r.nextMonthPending,
+        r.monthlyCap,
+        r.pendingDiffBalance,
+        r.currentLiveBalance,
+        r.status,
+        r.remarksList.join("; ") || ""
+      ]);
+    });
+    s1Aoa.push([
+      "",
+      "TOTAL",
+      report.summaryRows.length + " Employees",
+      "",
+      report.totals.openingBalance,
+      report.totals.givenInMonth,
+      report.totals.cutInMonth,
+      report.totals.cutSalary,
+      report.totals.cutVoucher,
+      report.totals.cutManual,
+      "",
+      report.totals.totalRecoveredUpToMonth,
+      report.totals.nextMonthPending,
+      report.totals.monthlyCap,
+      report.totals.pendingDiffBalance,
+      report.totals.currentLiveBalance,
+      "",
+      ""
+    ]);
+
+    // Sheet 2: Next Month Pending List ONLY (Actionable carry-forward sheet)
+    var s2Aoa = [
+      ["NEXT MONTH PENDING ADVANCE LIST — " + nLbl.toUpperCase() + " (AFTER " + mLbl.toUpperCase() + " DEDUCTIONS)"],
+      ["Total Pending Employees: " + report.nextMonthPendingRows.length + "  |  Total Pending Advance: Rs." + report.totals.nextMonthPending + "  |  Pending Diff: Rs." + report.totals.pendingDiffBalance],
+      [],
+      [
+        "S.No.",
+        "Emp Code",
+        "Employee Name",
+        "Department",
+        "Advance Date(s)",
+        "Total Disbursed Till " + mLbl + " (INR)",
+        "Cut in " + mLbl + " (INR)",
+        "Total Recovered Till " + mLbl + " (INR)",
+        "Pending for " + nLbl + " (INR)",
+        "Suggested Next Cut / Monthly Cap (INR)",
+        "Pending Diff Balance (INR)",
+        "Total Next Month Recovery Due (INR)",
+        "Remarks"
+      ]
+    ];
+    var s2TotalDisb = 0, s2TotalCut = 0, s2TotalRec = 0, s2TotalPend = 0, s2TotalCap = 0, s2TotalDiff = 0, s2TotalDue = 0;
+    report.nextMonthPendingRows.forEach(function(r, idx) {
+      var suggested = r.monthlyCap > 0 ? Math.min(r.monthlyCap, r.nextMonthPending) : r.nextMonthPending;
+      var combinedDue = round2(r.nextMonthPending + r.pendingDiffBalance);
+      s2TotalDisb = round2(s2TotalDisb + r.totalGivenUpToMonth);
+      s2TotalCut = round2(s2TotalCut + r.cutInMonth);
+      s2TotalRec = round2(s2TotalRec + r.totalDeductedUpToMonth);
+      s2TotalPend = round2(s2TotalPend + r.nextMonthPending);
+      s2TotalCap = round2(s2TotalCap + suggested);
+      s2TotalDiff = round2(s2TotalDiff + r.pendingDiffBalance);
+      s2TotalDue = round2(s2TotalDue + combinedDue);
+      s2Aoa.push([
+        idx + 1,
+        r.empCode,
+        r.empName,
+        r.department || "-",
+        r.advanceDates.join(", ") || "-",
+        r.totalGivenUpToMonth,
+        r.cutInMonth,
+        r.totalDeductedUpToMonth,
+        r.nextMonthPending,
+        suggested,
+        r.pendingDiffBalance,
+        combinedDue,
+        r.remarksList.join("; ") || ""
+      ]);
+    });
+    s2Aoa.push([
+      "",
+      "TOTAL",
+      report.nextMonthPendingRows.length + " Pending Employees",
+      "",
+      "",
+      s2TotalDisb,
+      s2TotalCut,
+      s2TotalRec,
+      s2TotalPend,
+      s2TotalCap,
+      s2TotalDiff,
+      s2TotalDue,
+      ""
+    ]);
+
+    // Sheet 3: Month Deductions Detail (Line-by-line cuts in selected month)
+    var s3Aoa = [
+      ["ADVANCE DEDUCTIONS DETAIL — " + mLbl.toUpperCase()],
+      ["Total Transactions: " + report.monthDeductionRows.length + "  |  Total Cut Amount: Rs." + report.totals.cutInMonth],
+      [],
+      [
+        "S.No.",
+        "Deduction Date",
+        "Cut Month",
+        "Emp Code",
+        "Employee Name",
+        "Department",
+        "Cut Type",
+        "Mode / File / Voucher",
+        "Deducted Amount (INR)",
+        "Emp Pending for " + nLbl + " (INR)",
+        "Status After Cut",
+        "Remarks"
+      ]
+    ];
+    var s3CutSum = 0;
+    report.monthDeductionRows.forEach(function(d, idx) {
+      s3CutSum = round2(s3CutSum + d.deductedAmount);
+      s3Aoa.push([
+        idx + 1,
+        d.deductionDate,
+        d.cutMonth,
+        d.empCode,
+        d.empName,
+        d.department || "-",
+        d.sourceType,
+        d.modeDetail,
+        d.deductedAmount,
+        d.nextMonthPending,
+        d.statusAfterCut,
+        d.remarks
+      ]);
+    });
+    s3Aoa.push(["", "TOTAL", "", "", report.monthDeductionRows.length + " Cuts", "", "", "", s3CutSum, "", "", ""]);
+
+    // Sheet 4: All Advances Register
+    var s4Aoa = [
+      ["ALL ADVANCES REGISTER (COMPLETE AUDIT BACKUP)"],
+      [],
+      ["S.No.", "Advance ID", "Emp Code", "Employee Name", "Advance Date", "Amount (INR)", "Recovered (INR)", "Current Balance (INR)", "Monthly Cap (INR)", "Status", "Remarks"]
+    ];
+    report.allAdvances.forEach(function(a, idx) {
+      s4Aoa.push([
+        idx + 1,
+        a.id || "",
+        a.empCode || "",
+        a.empName || "",
+        a.advanceDate || "",
+        round2(Number(a.amount) || 0),
+        round2(Number(a.recoveredAmount) || 0),
+        round2(Number(a.balanceAmount) || 0),
+        round2(Number(a.monthlyCap) || 0),
+        a.status || "",
+        a.remarks || ""
+      ]);
+    });
+
+    if (window.XLSX && window.XLSX.utils && typeof window.XLSX.write === "function") {
+      var wb = window.XLSX.utils.book_new();
+      function appendStyledSheet(aoa, sheetTitle, widths) {
+        var ws = window.XLSX.utils.aoa_to_sheet(aoa);
+        ws["!cols"] = widths.map(function(w) { return { wch: w }; });
+        window.XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
+      }
+      appendStyledSheet(s1Aoa, "Cut & Next Pending", [6, 12, 24, 18, 16, 15, 16, 13, 15, 14, 30, 16, 18, 15, 15, 15, 30, 26]);
+      appendStyledSheet(s2Aoa, "Next Month Pending", [6, 12, 24, 18, 18, 17, 15, 17, 18, 18, 16, 18, 26]);
+      appendStyledSheet(s3Aoa, "Month Cut Details", [6, 13, 12, 12, 24, 18, 16, 30, 16, 18, 26, 26]);
+      appendStyledSheet(s4Aoa, "All Advances Ledger", [6, 18, 12, 24, 13, 14, 14, 16, 14, 12, 28]);
+
+      var wbout = window.XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      var blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(function() { try { URL.revokeObjectURL(url); } catch (_) {} }, 1500);
+
+      if (window.showToast) {
+        window.showToast("✅ Excel Report Downloaded: " + mLbl + " Cut (" + report.totals.employeesCutCount + " emp · " + formatINR(report.totals.cutInMonth) + ") & " + nLbl + " Pending (" + report.totals.employeesNextPendingCount + " emp · " + formatINR(report.totals.nextMonthPending) + ")");
+      }
+      return { ok: true, fileName: fileName, workbook: wb, report: report };
+    }
+
+    // Fallback CSV if SheetJS is unavailable
+    var csvLines = s1Aoa.map(function(row) {
+      return row.map(function(cell) {
+        var s = String(cell == null ? "" : cell);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(",");
+    }).join("\n");
+    var csvBlob = new Blob([csvLines], { type: "text/csv;charset=utf-8;" });
+    var csvUrl = URL.createObjectURL(csvBlob);
+    var csvLink = document.createElement("a");
+    csvLink.href = csvUrl;
+    csvLink.download = fileName.replace(/\.xlsx$/, ".csv");
+    document.body.appendChild(csvLink);
+    csvLink.click();
+    document.body.removeChild(csvLink);
+    return { ok: true, fileName: csvLink.download, report: report };
+  }
+
   // ── 9. PUBLIC API ──
   var ATPLAdvanceManager = {
     version: '2.0.0-ENTERPRISE',
@@ -6178,6 +6717,9 @@
     processAllSalaryFiles: processAllSalaryFiles,
     renderUI: renderUI,
     exportDataCSV: exportDataCSV,
+    getNextMonthKey: getNextMonthKey,
+    buildAdvanceDeductionExcelReportData: buildAdvanceDeductionExcelReportData,
+    exportAdvanceExcelReport: exportAdvanceExcelReport,
     setTab: function(tab) {
       state.activeTab = tab;
       renderUI();

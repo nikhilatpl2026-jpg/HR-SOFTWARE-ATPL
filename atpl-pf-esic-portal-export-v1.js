@@ -43,6 +43,8 @@
     epfWageBase: 'basic_or_pf', // 'basic_or_pf' | 'gross'
     activeTab: 'pf-ecr', // 'pf-ecr' | 'esic-return' | 'breakdown' | 'missing-ids'
     searchQuery: '',
+    fileSearchQuery: '',
+    sheetSearchQuery: '',
     showMapping: false,
     colMap: {
       empCode: '',
@@ -199,48 +201,103 @@
   function getWorkbookGrids(fileObj) {
     var out = {};
     if (!fileObj) return out;
-    if (fileObj.sheets && typeof fileObj.sheets === 'object') {
+    // 1. Array-form fileObj.sheets: [{ name, rows/data }]
+    if (Array.isArray(fileObj.sheets)) {
+      fileObj.sheets.forEach(function (sItem, idx) {
+        if (!sItem) return;
+        var sn = String(sItem.name || sItem.sheetName || ("Sheet" + (idx + 1)));
+        var grid = Array.isArray(sItem.rows) ? sItem.rows : (Array.isArray(sItem.data) ? sItem.data : null);
+        if (Array.isArray(grid) && grid.length >= 2) out[sn] = grid;
+      });
+    } else if (fileObj.sheets && typeof fileObj.sheets === "object") {
+      // 2. Object-form fileObj.sheets: { SheetName: [[...]] | { rows/data } }
       Object.keys(fileObj.sheets).forEach(function (name) {
-        var grid = fileObj.sheets[name];
+        var entry = fileObj.sheets[name];
+        var grid = Array.isArray(entry)
+          ? entry
+          : (entry && Array.isArray(entry.rows) ? entry.rows : (entry && Array.isArray(entry.data) ? entry.data : null));
         if (Array.isArray(grid) && grid.length >= 2) out[name] = grid;
       });
     }
-    if ((!Object.keys(out).length) && fileObj.wb && fileObj.wb.Sheets && root.XLSX && root.XLSX.utils) {
-      (fileObj.wb.SheetNames || Object.keys(fileObj.wb.Sheets)).forEach(function (name) {
-        var ws = fileObj.wb.Sheets[name];
-        if (!ws) return;
-        var grid = root.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-        if (Array.isArray(grid) && grid.length >= 2) out[name] = grid;
-      });
+    // 3. Parse from wb / buf / base64 if grids not already populated
+    if (!Object.keys(out).length) {
+      var wb = fileObj.wb;
+      if (!wb) {
+        try {
+          if (fileObj.buf && typeof root.parseWB === "function") {
+            wb = root.parseWB(fileObj.buf);
+          } else if (fileObj.buf && root.XLSX && typeof root.XLSX.read === "function") {
+            wb = root.XLSX.read(fileObj.buf, { type: "array" });
+          } else if ((fileObj.original_b64 || fileObj.file_data) && root.XLSX && typeof root.XLSX.read === "function") {
+            var rawB64 = String(fileObj.original_b64 || fileObj.file_data).replace(/^data:[^;]+;base64,/, "");
+            wb = root.XLSX.read(rawB64, { type: "base64" });
+          }
+        } catch (_) {}
+      }
+      if (wb && wb.Sheets && root.XLSX && root.XLSX.utils) {
+        (wb.SheetNames || Object.keys(wb.Sheets)).forEach(function (name) {
+          var ws = wb.Sheets[name];
+          if (!ws) return;
+          try {
+            var grid = root.XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: true });
+            if (Array.isArray(grid) && grid.length >= 2) out[name] = grid;
+          } catch (_) {}
+        });
+      }
     }
     return out;
   }
 
   function getLoadedWorkbooks() {
-    var list = [];
-    var seen = {};
+    var byKey = {};
+    var order = [];
     function pushFile(f) {
       if (!f || !f.name) return;
-      var name = String(f.name);
-      if (/\.json$/i.test(name)) return;
+      var name = String(f.name).trim();
+      if (!name || /\.json$/i.test(name)) return;
       var grids = getWorkbookGrids(f);
-      if (!Object.keys(grids).length) return;
-      if (seen[name]) return;
-      seen[name] = true;
-      list.push({
-        name: name,
-        raw: f,
-        grids: grids,
-        sheetNames: Object.keys(grids)
-      });
+      var sheetCount = Object.keys(grids).length;
+      if (!sheetCount) return;
+      var key = name.toLowerCase();
+      if (!byKey[key]) {
+        byKey[key] = {
+          name: name,
+          raw: f,
+          grids: grids,
+          sheetNames: Object.keys(grids)
+        };
+        order.push(key);
+      } else if (sheetCount > byKey[key].sheetNames.length) {
+        byKey[key] = {
+          name: name,
+          raw: f,
+          grids: grids,
+          sheetNames: Object.keys(grids)
+        };
+      }
     }
+    try {
+      if (typeof root.getAllLoadedSalaryFiles === "function") {
+        var loaded = root.getAllLoadedSalaryFiles();
+        if (Array.isArray(loaded)) loaded.forEach(pushFile);
+      }
+    } catch (_) {}
     if (Array.isArray(root.FILES)) root.FILES.forEach(pushFile);
-    if (root.ATPLCentralFileSync && root.ATPLCentralFileSync.fileMap && typeof root.ATPLCentralFileSync.fileMap === 'object') {
-      Object.keys(root.ATPLCentralFileSync.fileMap).forEach(function (k) {
-        pushFile(root.ATPLCentralFileSync.fileMap[k]);
-      });
+    try {
+      if (root.ATPLCentralFileSync && typeof root.ATPLCentralFileSync.getModuleFiles === "function") {
+        var modFiles = root.ATPLCentralFileSync.getModuleFiles("salary");
+        if (Array.isArray(modFiles)) modFiles.forEach(pushFile);
+      }
+    } catch (_) {}
+    if (root.ATPLCentralFileSync && root.ATPLCentralFileSync.fileMap) {
+      var fm = root.ATPLCentralFileSync.fileMap;
+      if (typeof fm.forEach === "function") {
+        fm.forEach(function (val) { pushFile(val); });
+      } else if (typeof fm === "object") {
+        Object.keys(fm).forEach(function (k) { pushFile(fm[k]); });
+      }
     }
-    return list;
+    return order.map(function (k) { return byKey[k]; });
   }
 
   function buildMasterLookup() {
@@ -251,9 +308,9 @@
     if (root.EM && Array.isArray(root.EM.data)) sources.push(root.EM.data);
     sources.forEach(function (arr) {
       arr.forEach(function (emp) {
-        if (!emp || typeof emp !== 'object') return;
-        var code = normalizeCode(emp.emp_id || emp.code || emp.empCode || emp.id || '');
-        var nameKey = normalizePersonName(emp.name || emp.emp_name || '');
+        if (!emp || typeof emp !== "object") return;
+        var code = normalizeCode(emp.emp_id || emp.code || emp.empCode || emp.id || "");
+        var nameKey = normalizePersonName(emp.name || emp.emp_name || "");
         if (code && !byCode[code]) byCode[code] = emp;
         if (nameKey && !byName[nameKey]) byName[nameKey] = emp;
       });
@@ -261,39 +318,117 @@
     return { byCode: byCode, byName: byName };
   }
 
-  function findColIndex(headers, patterns, excludes) {
+  function normHdrText(h) {
+    return String(h == null ? "" : h).toLowerCase().replace(/[^a-z0-9%.\s]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function findColIndex(headers, patterns, excludes, preferAfterIdx) {
     for (var p = 0; p < patterns.length; p++) {
       var rx = patterns[p];
+      var matches = [];
       for (var i = 0; i < headers.length; i++) {
-        var h = String(headers[i] || '').toLowerCase().replace(/[^a-z0-9%.\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        var h = normHdrText(headers[i]);
         if (!h) continue;
         if (excludes && excludes.test(h)) continue;
-        if (rx.test(h)) return i;
+        if (rx.test(h)) matches.push(i);
+      }
+      if (matches.length) {
+        if (typeof preferAfterIdx === "number" && preferAfterIdx >= 0 && matches.length > 1) {
+          var after = matches.filter(function (idx) { return idx > preferAfterIdx; });
+          if (after.length) return after[0];
+        }
+        return matches[0];
       }
     }
     return -1;
+  }
+
+  function isLikelySubHeaderRow(row) {
+    if (!Array.isArray(row)) return false;
+    var nonEmpty = 0;
+    var headerTokens = 0;
+    var numericDataCells = 0;
+    for (var i = 0; i < row.length; i++) {
+      var raw = String(row[i] == null ? "" : row[i]).trim();
+      if (!raw) continue;
+      nonEmpty++;
+      if (/^\d+(\.\d+)?$/.test(raw) && raw.length >= 3) numericDataCells++;
+      var low = raw.toLowerCase();
+      if (/^(12%|13%|0\.75%|3\.25%|8\.33%|basic|hra|gross|days|rate|amt|amount|earned|actual|pf|epf|esi|esic|ded|net|total|ot|hrs|hours|bonus|allow|wd|present|absent|paid|payable|code|name|uan|ip)$/.test(low) ||
+          /\b(12%|0\.75%|basic|hra|earned|rate|days|deduction|payable|employee|employer|wages|salary)\b/.test(low)) {
+        headerTokens++;
+      }
+    }
+    if (nonEmpty === 0) return false;
+    return headerTokens >= 2 && numericDataCells <= 1;
+  }
+
+  function buildMergedHeaders(grid, bestRowIdx) {
+    var mainRow = Array.isArray(grid[bestRowIdx]) ? grid[bestRowIdx] : [];
+    var prevRow = bestRowIdx > 0 && Array.isArray(grid[bestRowIdx - 1]) ? grid[bestRowIdx - 1] : null;
+    var nextRow = (bestRowIdx + 1 < grid.length) && isLikelySubHeaderRow(grid[bestRowIdx + 1]) ? grid[bestRowIdx + 1] : null;
+    var maxCols = Math.max(mainRow.length, prevRow ? prevRow.length : 0, nextRow ? nextRow.length : 0);
+
+    // Check if prevRow is a section/group header row (e.g. RATE | EARNED | DEDUCTIONS | EMPLOYEE)
+    var usePrev = false;
+    if (prevRow) {
+      var prevJoined = prevRow.map(normHdrText).join(" ");
+      var prevNonEmpty = prevRow.filter(function (c) { return String(c == null ? "" : c).trim() !== ""; }).length;
+      if (prevNonEmpty >= 2 && prevNonEmpty <= maxCols &&
+          /\b(earning|earnings|earned|actual|rate|fixed|fix|deduction|deductions|statutory|employee|employer|attendance|days|salary|wages|pf|epf|esi|esic|gross|basic)\b/.test(prevJoined) &&
+          !/arora\s+textiles|salary\s+sheet\s+for|month\s+of\s+20\d\d/.test(prevJoined)) {
+        usePrev = true;
+      }
+    }
+
+    var hdr = [];
+    var carryPrev = "";
+    for (var c = 0; c < maxCols; c++) {
+      var cur = String(mainRow[c] == null ? "" : mainRow[c]).replace(/\s+/g, " ").trim();
+      var pTxt = "";
+      if (usePrev) {
+        var rawP = String(prevRow[c] == null ? "" : prevRow[c]).replace(/\s+/g, " ").trim();
+        if (rawP) carryPrev = rawP;
+        // Carry short group prefix (max 30 chars) across merged columns
+        pTxt = (rawP || (cur && carryPrev.length <= 30 ? carryPrev : ""));
+      }
+      var nTxt = nextRow ? String(nextRow[c] == null ? "" : nextRow[c]).replace(/\s+/g, " ").trim() : "";
+
+      var parts = [];
+      if (pTxt && cur && normHdrText(cur).indexOf(normHdrText(pTxt)) < 0) parts.push(pTxt);
+      if (cur) parts.push(cur);
+      else if (pTxt && !nTxt) parts.push(pTxt);
+      if (nTxt && normHdrText(parts.join(" ")).indexOf(normHdrText(nTxt)) < 0) parts.push(nTxt);
+
+      var merged = parts.join(" ").replace(/\s+/g, " ").trim();
+      hdr.push(merged || ("Col " + (c + 1)));
+    }
+    return {
+      headers: hdr,
+      dataStartRow: nextRow ? (bestRowIdx + 2) : (bestRowIdx + 1)
+    };
   }
 
   function detectHeaderAndCols(grid) {
     if (!Array.isArray(grid) || grid.length < 2) return null;
     var bestRowIdx = -1;
     var bestScore = -1;
-    var scanLimit = Math.min(grid.length, 18);
+    var scanLimit = Math.min(grid.length, 30);
     for (var r = 0; r < scanLimit; r++) {
       var row = grid[r];
       if (!Array.isArray(row)) continue;
       var nonEmpty = 0;
       var score = 0;
       for (var c = 0; c < row.length; c++) {
-        var txt = String(row[c] == null ? '' : row[c]).toLowerCase().trim();
+        var txt = normHdrText(row[c]);
         if (!txt) continue;
         nonEmpty++;
-        if (/(emp.*code|emp.*id|e\.?code|code|card|token)/.test(txt)) score += 4;
-        if (/(emp.*name|employee.*name|worker.*name|\bname\b)/.test(txt)) score += 4;
+        if (/(emp.*code|emp.*id|e\s*code|employee\s*id|code|card\s*no|token)/.test(txt)) score += 4;
+        if (/(emp.*name|employee.*name|name\s*of\s*(?:the\s*)?emp|worker.*name|\bname\b)/.test(txt)) score += 4;
         if (/(gross|earning|salary|payable|net|wages)/.test(txt)) score += 3;
         if (/(\bbasic\b|epf.*wage|pf.*wage)/.test(txt)) score += 3;
         if (/(\bpf\b|epf|\besic?\b|esi|uan|ip\s*no)/.test(txt)) score += 3;
-        if (/(\bwd\b|work.*day|paid.*day|present|days)/.test(txt)) score += 2;
+        if (/(\bwd\b|work.*day|paid.*day|payable.*day|present|days|att)/.test(txt)) score += 2;
       }
       if (nonEmpty >= 3 && score > bestScore) {
         bestScore = score;
@@ -301,31 +436,99 @@
       }
     }
     if (bestRowIdx < 0 || bestScore < 5) return null;
-    var hdr = (grid[bestRowIdx] || []).map(function (h, idx) {
-      var s = String(h == null ? '' : h).replace(/\s+/g, ' ').trim();
-      return s || ('Col ' + (idx + 1));
-    });
+
+    var built = buildMergedHeaders(grid, bestRowIdx);
+    var hdr = built.headers;
+    var dataStartRow = built.dataStartRow;
+
+    var iDays = findColIndex(hdr, [
+      /^paid\s*days?$/, /^payable\s*days?$/, /^pay\s*days?$/, /^total\s*paid\s*days?$/,
+      /^wd$/, /^w\s*d$/, /^work(?:ing)?\s*days?$/, /^present\s*days?$/, /^p\s*days?$/,
+      /^days\s*worked$/, /^att(?:endance)?\s*days?$/, /^days$/,
+      /\b(paid\s*days?|payable\s*days?|working\s*days?|days\s*worked|present\s*days?|pay\s*days?|ttl\s*days?|total\s*days?)\b/
+    ], /\b(ncp|absent|month\s*of\s*days|month\s*days|total\s*month|weekly|off|sunday|holiday|hol|ot|overtime|rate|half)\b/);
 
     var cols = {
-      empCode: findColIndex(hdr, [/^emp\s*code$/, /^e\s*code$/, /^emp\s*id$/, /^code$/, /\b(emp\s*code|employee\s*code|employee\s*id|emp\s*id|token\s*no)\b/]),
-      empName: findColIndex(hdr, [/^emp\s*name$/, /^employee\s*name$/, /^worker\s*name$/, /^name$/, /\b(emp\s*name|employee\s*name|worker\s*name|member\s*name)\b/], /\b(father|husband|bank|dept|department|sheet|file)\b/),
-      uan: findColIndex(hdr, [/^uan$/, /^uan\s*no$/, /^pf\s*uan$/, /^pf\s*no$/, /^pf\s*number$/, /\b(uan|pf\s*no|pf\s*number|epf\s*no)\b/], /\b(amount|amt|ded|12|13|wage|rate)\b/),
-      esicIp: findColIndex(hdr, [/^esic?\s*ip$/, /^ip\s*no$/, /^ip\s*number$/, /^esic?\s*no$/, /^esic?\s*number$/, /\b(ip\s*number|ip\s*no|esic?\s*ip|esic?\s*no|esic?\s*number)\b/], /\b(amount|amt|ded|0\.?75|3\.?25|wage|rate)\b/),
-      days: findColIndex(hdr, [/^wd$/, /^paid\s*days?$/, /^work(?:ing)?\s*days?$/, /^present\s*days?$/, /^pay\s*days?$/, /^days$/, /\b(working\s*days?|paid\s*days?|days\s*worked|present\s*days?|pay\s*days?)\b/], /\b(ncp|absent|weekly|off|sunday)\b/),
-      basic: findColIndex(hdr, [/^earned\s*basic$/, /^actual\s*basic$/, /^basic\s*wages?$/, /^basic\s*pay$/, /^basic$/, /^epf\s*wages?$/, /^pf\s*wages?$/, /\b(earned\s*basic|basic\s*salary|basic\s*wages?|basic\s*pay|epf\s*wages?|pf\s*wages?)\b/], /\b(rate|fix|fixed)\b/),
-      gross: findColIndex(hdr, [/^gross\s*wages?$/, /^gross\s*salary$/, /^gross\s*earning$/, /^total\s*earning$/, /^gross\s*pay$/, /^gross$/, /\b(gross\s*wages?|gross\s*salary|total\s*earning|gross\s*amt|gross\s*amount)\b/], /\b(rate|fix|fixed|net\s*pay)\b/),
-      netPay: findColIndex(hdr, [/^net\s*pay(?:able|ment)?$/, /^net\s*salary$/, /^compliance\s*(?:net|amt|amount|pay)$/, /\b(net\s*payable|net\s*payment|net\s*salary)\b/]),
-      pfDed: findColIndex(hdr, [/^pf\s*12%?$/, /^epf\s*12%?$/, /^ee\s*pf$/, /^pf\s*ded(?:uction)?$/, /^epf\s*ded(?:uction)?$/, /^pf$/, /\b(pf\s*12|epf\s*12|pf\s*ded|ee\s*pf|emp\s*pf)\b/], /\b(13|employer|uan|no|number|id|wage|rate|eps|edli|admin|diff|status|check)\b/),
-      esicDed: findColIndex(hdr, [/^esic?\s*0\.?75%?$/, /^ee\s*esic?$/, /^esic?\s*ded(?:uction)?$/, /^esic?$/, /\b(esic?\s*0\.?75|esic?\s*ded|ee\s*esic?|emp\s*esic?)\b/], /\b(3\.?25|employer|ip|no|number|id|wage|rate|status|check)\b/)
+      empCode: findColIndex(hdr, [
+        /^emp\s*code$/, /^e\s*code$/, /^emp\s*id$/, /^employee\s*id$/, /^employee\s*code$/,
+        /^code$/, /^card\s*no$/, /^card$/, /^token\s*no$/, /^emp\s*no$/,
+        /\b(emp\s*code|employee\s*code|employee\s*id|emp\s*id|token\s*no|card\s*no|e\s*code)\b/
+      ], /\b(pf|esi|esic|uan|bank|ifsc|pin|zip|branch)\b/),
+      empName: findColIndex(hdr, [
+        /^emp\s*name$/, /^employee\s*name$/, /^name\s*of\s*employee$/, /^name\s*of\s*the\s*employee$/,
+        /^worker\s*name$/, /^member\s*name$/, /^staff\s*name$/, /^name$/,
+        /\b(emp\s*name|employee\s*name|name\s*of\s*(?:the\s*)?employee|worker\s*name|member\s*name|staff\s*name)\b/
+      ], /\b(father|husband|bank|dept|department|sheet|file|company|unit|contractor|branch)\b/),
+      uan: findColIndex(hdr, [
+        /^uan$/, /^uan\s*no$/, /^uan\s*number$/, /^pf\s*uan$/, /^pf\s*no$/, /^pf\s*number$/, /^epf\s*no$/,
+        /\b(uan|pf\s*no|pf\s*number|epf\s*no|epf\s*number|universal\s*account)\b/
+      ], /\b(amount|amt|ded|12|13|wage|rate|share|cont|diff)\b/),
+      esicIp: findColIndex(hdr, [
+        /^esic?\s*ip$/, /^ip\s*no$/, /^ip\s*number$/, /^esic?\s*no$/, /^esic?\s*number$/,
+        /\b(ip\s*number|ip\s*no|esic?\s*ip|esic?\s*no|esic?\s*number|insurance\s*no)\b/
+      ], /\b(amount|amt|ded|0\.?75|3\.?25|wage|rate|share|cont|diff)\b/),
+      days: iDays,
+      // Prefer Earned/Actual Basic (or the Basic column AFTER Paid Days when fixed & earned Basic both exist!)
+      basic: findColIndex(hdr, [
+        /^earned\s*basic(?:\s*salary|\s*wages?)?$/, /^basic\s*earned$/, /^actual\s*basic(?:\s*salary|\s*wages?)?$/,
+        /^epf\s*wages?$/, /^pf\s*wages?$/, /^basic\s*wages?$/, /^basic\s*pay$/, /^basic\s*salary$/, /^basic$/,
+        /\b(earned\s*basic|basic\s*earned|actual\s*basic|epf\s*wages?|pf\s*wages?|basic\s*salary|basic\s*wages?|basic\s*pay)\b/,
+        /\bbasic\b/
+      ], /\b(rate|fix|fixed|hra|da|gross|pf|esi|ot|bonus)\b/, iDays),
+      // Prefer Total Gross / Gross Earned (after Paid Days) over Fixed Rate Gross
+      gross: findColIndex(hdr, [
+        /^total\s*gross\s*salary$/, /^total\s*gross$/, /^gross\s*earned\s*salary$/, /^gross\s*earned$/,
+        /^earned\s*gross(?:\s*salary)?$/, /^actual\s*gross$/, /^gross\s*wages?$/, /^gross\s*earning(?:s)?$/,
+        /^total\s*earning(?:s)?$/, /^gross\s*salary$/, /^gross\s*pay$/, /^gross$/,
+        /\b(total\s*gross|gross\s*earned|earned\s*gross|actual\s*gross|gross\s*wages?|total\s*earning|gross\s*salary|gross\s*amt|gross\s*amount)\b/,
+        /\bgross\b/
+      ], /\b(rate|fix|fixed|net\s*pay|manual|diff|deduction)\b/, iDays),
+      netPay: findColIndex(hdr, [
+        /^net\s*pay(?:able|ment)?$/, /^net\s*salary$/, /^compliance\s*(?:net|amt|amount|pay)$/,
+        /\b(net\s*payable|net\s*payment|net\s*salary|net\s*paid)\b/
+      ], /\b(diff|manual)\b/),
+      pfDed: findColIndex(hdr, [
+        /^pf\s*12%?$/, /^epf\s*12%?$/, /^ee\s*pf$/, /^emp\s*pf$/, /^employee\s*pf$/,
+        /^pf\s*ded(?:uction)?$/, /^epf\s*ded(?:uction)?$/, /^pf\s*amt$/, /^pf\s*amount$/,
+        /^deductions?\s*pf(?:\s*12%?)?$/, /^pf$/, /^epf$/,
+        /\b(pf\s*12|epf\s*12|pf\s*ded|epf\s*ded|ee\s*pf|emp\s*pf|employee\s*pf|pf\s*amt|pf\s*amount)\b/,
+        /\b(pf|epf)\b/
+      ], /\b(13|employer|er\b|uan|no|number|id|wage|rate|eps|edli|admin|diff|status|check|applicable|eligible|code)\b/),
+      esicDed: findColIndex(hdr, [
+        /^esic?\s*0\.?75%?$/, /^ee\s*esic?$/, /^emp\s*esic?$/, /^employee\s*esic?$/,
+        /^esic?\s*ded(?:uction)?$/, /^esic?\s*amt$/, /^esic?\s*amount$/,
+        /^deductions?\s*esic?(?:\s*0\.?75%?)?$/, /^esic?$/,
+        /\b(esic?\s*0\.?75|esic?\s*ded|ee\s*esic?|emp\s*esic?|employee\s*esic?|esic?\s*amt|esic?\s*amount)\b/,
+        /\b(esic|esi)\b/
+      ], /\b(3\.?25|employer|er\b|ip|no|number|id|wage|rate|status|check|applicable|eligible|code)\b/)
     };
 
     if (cols.gross < 0 && cols.netPay >= 0) cols.gross = cols.netPay;
 
+    // Count real employee rows in this sheet so tab selection & chip counts are accurate
+    var empRowCount = 0;
+    for (var dr = dataStartRow; dr < grid.length; dr++) {
+      var dRow = grid[dr];
+      if (isSkippableRow(dRow, cols.empCode, cols.empName)) continue;
+      var cTxt = cols.empCode >= 0 ? normalizeCode(dRow[cols.empCode]) : "";
+      var nTxt = cols.empName >= 0 ? String(dRow[cols.empName] == null ? "" : dRow[cols.empName]).trim() : "";
+      if (!cTxt && !nTxt) continue;
+      if (!nTxt && !/\d{2,}/.test(cTxt)) continue;
+      var bVal = cols.basic >= 0 ? Math.max(0, numVal(dRow[cols.basic])) : 0;
+      var gVal = cols.gross >= 0 ? Math.max(0, numVal(dRow[cols.gross])) : 0;
+      var pVal = cols.pfDed >= 0 ? Math.max(0, numVal(dRow[cols.pfDed])) : 0;
+      var eVal = cols.esicDed >= 0 ? Math.max(0, numVal(dRow[cols.esicDed])) : 0;
+      if (bVal === 0 && gVal === 0 && pVal === 0 && eVal === 0) continue;
+      empRowCount++;
+    }
+
     return {
       headerRowIdx: bestRowIdx,
+      dataStartRow: dataStartRow,
       headers: hdr,
       cols: cols,
-      score: bestScore + grid.length * 0.01
+      empRowCount: empRowCount,
+      score: bestScore + Math.min(empRowCount, 500) * 0.05
     };
   }
 
@@ -333,21 +536,28 @@
     if (!wbEntry || !wbEntry.grids) return [];
     var tabs = [];
     Object.keys(wbEntry.grids).forEach(function (sheetName) {
-      var low = String(sheetName || '').toLowerCase();
-      if (/\b(summary|abstract|chart|pivot|rough|index)\b/.test(low)) return;
+      var low = String(sheetName || "").toLowerCase();
+      if (/\b(summary|abstract|chart|pivot|rough|index|bank\s*transfer|neft|rtgs)\b/.test(low)) return;
       var grid = wbEntry.grids[sheetName];
       var det = detectHeaderAndCols(grid);
       if (!det) return;
+      var isMasterName = /\b(fourmala|formula|final|compliance|master|main|all\s*emp|consolidated|combined|manisha)\b/.test(low);
+      var isSecondaryName = /\b(jiska|remove|hdfc|icici|sbi|axis|neft|rtgs|cheque|cash\s*payment|copy|old|bak|backup|diff|dept\s*wise|department\s*wise|category\s*wise)\b/.test(low);
       var score = det.score;
-      if (/\b(fourmala|formula|final|compliance|master|main|salary|payroll|workers|staff|non\s*staff|manisha)\b/.test(low)) score += 30;
-      if (/\b(jiska|remove|hdfc|icici|sbi|axis|neft|rtgs|copy|old|bak|backup|diff)\b/.test(low)) score -= 40;
+      if (isMasterName) score += 35;
+      else if (/\b(salary|payroll|workers|staff|non\s*staff)\b/.test(low)) score += 15;
+      if (isSecondaryName) score -= 50;
       if (det.cols.pfDed >= 0 || det.cols.esicDed >= 0) score += 20;
       tabs.push({
         sheetName: sheetName,
         headerRowIdx: det.headerRowIdx,
+        dataStartRow: det.dataStartRow,
         headers: det.headers,
         cols: det.cols,
-        rowCount: Math.max(0, grid.length - det.headerRowIdx - 1),
+        rowCount: det.empRowCount,
+        rawRowCount: Math.max(0, grid.length - det.dataStartRow),
+        isMasterName: isMasterName,
+        isSecondaryName: isSecondaryName,
         score: score
       });
     });
@@ -355,34 +565,64 @@
     return tabs;
   }
 
+  function chooseDefaultTabs(tabs) {
+    if (!tabs || !tabs.length) return [];
+    var primaryTabs = tabs.filter(function (tb) { return !tb.isSecondaryName && tb.rowCount > 0; });
+    if (!primaryTabs.length) return [tabs[0].sheetName];
+    if (primaryTabs.length === 1) return [primaryTabs[0].sheetName];
+
+    // If a named Combined Master sheet exists (e.g. Compliance, FOURMALA, Main) and holds significant rows, use it alone
+    var masterTab = primaryTabs.find(function (tb) { return tb.isMasterName; });
+    var totalEmpAcrossPrimary = primaryTabs.reduce(function (sum, tb) { return sum + tb.rowCount; }, 0);
+    if (masterTab && (masterTab.rowCount >= totalEmpAcrossPrimary * 0.45 || primaryTabs.length <= 2)) {
+      return [masterTab.sheetName];
+    }
+    // If the top tab already holds >= 60% of all rows across primary tabs, it is the combined sheet
+    if (primaryTabs[0].rowCount >= totalEmpAcrossPrimary * 0.6) {
+      return [primaryTabs[0].sheetName];
+    }
+    // Otherwise this workbook is split into department tabs (like 34-tab Final Salary Sheet) -> read ALL valid department tabs!
+    return primaryTabs.map(function (tb) { return tb.sheetName; });
+  }
+
   function isSkippableRow(row, iCode, iName) {
     if (!Array.isArray(row)) return true;
     var nonEmpty = false;
     for (var i = 0; i < row.length; i++) {
-      if (String(row[i] == null ? '' : row[i]).trim() !== '') {
+      if (String(row[i] == null ? "" : row[i]).trim() !== "") {
         nonEmpty = true;
         break;
       }
     }
     if (!nonEmpty) return true;
-    var cVal = iCode >= 0 ? String(row[iCode] == null ? '' : row[iCode]).trim() : '';
-    var nVal = iName >= 0 ? String(row[iName] == null ? '' : row[iName]).trim() : '';
-    var firstVal = String(row[0] == null ? '' : row[0]).trim();
-    var rxStop = /^(total|grand\s*total|sub\s*total|sum|summary|page\s*total|net\s*total|prepared\s*by|checked\s*by|approved\s*by|verified\s*by|authori[sz]ed|signatory|signature|sr\.?\s*no\.?|s\.?\s*no\.?|emp\s*code|employee\s*id)(\b|:)/i;
+    var cVal = iCode >= 0 ? String(row[iCode] == null ? "" : row[iCode]).trim() : "";
+    var nVal = iName >= 0 ? String(row[iName] == null ? "" : row[iName]).trim() : "";
+    var firstVal = String(row[0] == null ? "" : row[0]).trim();
+    var rxStop = /^(total|grand\s*total|sub\s*total|sum|summary|page\s*total|net\s*total|dept\s*total|department\s*total|prepared\s*by|checked\s*by|approved\s*by|verified\s*by|authori[sz]ed|signatory|signature|sr\.?\s*no\.?|s\.?\s*no\.?|emp\s*code|employee\s*id)(\b|:)/i;
     if (rxStop.test(cVal) || rxStop.test(nVal) || rxStop.test(firstVal)) return true;
     for (var k = 0; k < Math.min(row.length, 5); k++) {
-      if (/^(grand\s*total|sub\s*total|total\s*:|net\s*total|prepared\s*by|approved\s*by)/i.test(String(row[k] == null ? '' : row[k]).trim())) {
+      if (/^(grand\s*total|sub\s*total|total\s*:|net\s*total|prepared\s*by|approved\s*by)/i.test(String(row[k] == null ? "" : row[k]).trim())) {
         return true;
       }
     }
     return false;
   }
 
-  function resolveColIdx(headers, overrideVal, autoIdx) {
-    if (overrideVal !== '' && overrideVal !== null && overrideVal !== undefined) {
+  function resolveColIdx(headers, overrideVal, autoIdx, primaryHeaders) {
+    if (overrideVal !== "" && overrideVal !== null && overrideVal !== undefined) {
+      if (overrideVal === "__NONE__") return -1;
       var parsed = parseInt(overrideVal, 10);
-      if (!isNaN(parsed) && parsed >= 0 && parsed < headers.length) return parsed;
-      if (overrideVal === '__NONE__') return -1;
+      if (!isNaN(parsed) && parsed >= 0) {
+        // When reading multiple tabs with slightly different column orders, match by header label if primaryHeaders differs
+        if (primaryHeaders && primaryHeaders[parsed] && headers[parsed] !== primaryHeaders[parsed]) {
+          var targetNorm = normHdrText(primaryHeaders[parsed]);
+          for (var j = 0; j < headers.length; j++) {
+            if (normHdrText(headers[j]) === targetNorm) return j;
+          }
+          return autoIdx;
+        }
+        if (parsed < headers.length) return parsed;
+      }
     }
     return autoIdx;
   }
@@ -394,7 +634,7 @@
     var tabs = analyzeWorkbookTabs(wbEntry);
     var activeTabNames = Array.isArray(s.selectedSheets) && s.selectedSheets.length
       ? s.selectedSheets.filter(function (n) { return wbEntry && wbEntry.grids && wbEntry.grids[n]; })
-      : (tabs.length ? [tabs[0].sheetName] : []);
+      : chooseDefaultTabs(tabs);
 
     var master = buildMasterLookup();
     var allColHeaders = [];
@@ -412,17 +652,18 @@
       }
 
       var cm = s.colMap || {};
-      var iCode = resolveColIdx(det.headers, cm.empCode, det.cols.empCode);
-      var iName = resolveColIdx(det.headers, cm.empName, det.cols.empName);
-      var iUan = resolveColIdx(det.headers, cm.uan, det.cols.uan);
-      var iIp = resolveColIdx(det.headers, cm.esicIp, det.cols.esicIp);
-      var iDays = resolveColIdx(det.headers, cm.days, det.cols.days);
-      var iBasic = resolveColIdx(det.headers, cm.basic, det.cols.basic);
-      var iGross = resolveColIdx(det.headers, cm.gross, det.cols.gross);
-      var iPf = resolveColIdx(det.headers, cm.pfDed, det.cols.pfDed);
-      var iEsic = resolveColIdx(det.headers, cm.esicDed, det.cols.esicDed);
+      var iCode = resolveColIdx(det.headers, cm.empCode, det.cols.empCode, allColHeaders);
+      var iName = resolveColIdx(det.headers, cm.empName, det.cols.empName, allColHeaders);
+      var iUan = resolveColIdx(det.headers, cm.uan, det.cols.uan, allColHeaders);
+      var iIp = resolveColIdx(det.headers, cm.esicIp, det.cols.esicIp, allColHeaders);
+      var iDays = resolveColIdx(det.headers, cm.days, det.cols.days, allColHeaders);
+      var iBasic = resolveColIdx(det.headers, cm.basic, det.cols.basic, allColHeaders);
+      var iGross = resolveColIdx(det.headers, cm.gross, det.cols.gross, allColHeaders);
+      var iPf = resolveColIdx(det.headers, cm.pfDed, det.cols.pfDed, allColHeaders);
+      var iEsic = resolveColIdx(det.headers, cm.esicDed, det.cols.esicDed, allColHeaders);
 
-      for (var r = det.headerRowIdx + 1; r < grid.length; r++) {
+      var startRow = typeof det.dataStartRow === "number" ? det.dataStartRow : (det.headerRowIdx + 1);
+      for (var r = startRow; r < grid.length; r++) {
         var row = grid[r];
         if (isSkippableRow(row, iCode, iName)) continue;
 
@@ -446,6 +687,9 @@
         seenEmp[empKey] = true;
 
         var mRec = (empCode && master.byCode[empCode]) || (empName && master.byName[normalizePersonName(empName)]) || {};
+        if (!empCode && mRec) {
+          empCode = normalizeCode(mRec.emp_id || mRec.code || mRec.empCode || mRec.id || "");
+        }
         var ov = ovMap[empCode] || ovMap[empKey] || {};
 
         var sheetUan = iUan >= 0 ? digitsOnly(row[iUan]) : '';
@@ -832,6 +1076,18 @@
       '.ecrp-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; align-items: center; }',
       '.ecrp-chip { border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; padding: 5px 11px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; }',
       '.ecrp-chip.active { background: #0f172a; border-color: #0f172a; color: #ffffff; }',
+      '.ecrp-file-search-wrap { position: relative; display: flex; flex-direction: column; gap: 6px; }',
+      '.ecrp-file-search-bar { display: flex; align-items: center; gap: 6px; }',
+      '.ecrp-file-search-bar input { flex: 1; min-width: 180px; }',
+      '.ecrp-file-count { font-size: 11px; font-weight: 700; color: #0369a1; background: #f0f9ff; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }',
+      '.ecrp-file-menu { position: absolute; top: 38px; left: 0; right: 0; z-index: 40; max-height: 250px; overflow-y: auto; background: #ffffff; border: 1px solid #94a3b8; border-radius: 10px; box-shadow: 0 10px 26px rgba(15,23,42,0.14); padding: 4px; }',
+      '.ecrp-file-item { width: 100%; text-align: left; border: none; background: transparent; padding: 7px 10px; border-radius: 7px; font-size: 12px; font-weight: 600; color: #0f172a; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; }',
+      '.ecrp-file-item:hover { background: #f1f5f9; }',
+      '.ecrp-file-item.active { background: #e0f2fe; color: #0369a1; font-weight: 800; }',
+      '.ecrp-read-bar { margin-top: 10px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; font-size: 11.5px; color: #334155; }',
+      '.ecrp-col-pill { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 700; }',
+      '.ecrp-col-ok { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }',
+      '.ecrp-col-miss { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }',
       '.ecrp-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 12px; }',
       '.ecrp-tab { border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; padding: 7px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; }',
       '.ecrp-tab.active { background: #0f172a; border-color: #0f172a; color: #ffffff; }',
@@ -931,11 +1187,39 @@
     // Selector + Settings card
     h += '<div class="ecrp-card">';
     h += '<div class="ecrp-ctrl-grid">';
-    h += '<div class="ecrp-field" style="min-width:260px;flex:1"><label for="ecrpFileSelect">1. Select Salary Sheet</label><select id="ecrpFileSelect" class="ecrp-select">';
-    workbooks.forEach(function (wb) {
+    var fileQ = String(state.settings.fileSearchQuery || "").trim().toLowerCase();
+    var matchedWorkbooks = workbooks.filter(function (wb) {
+      if (!fileQ) return true;
+      return wb.name.toLowerCase().indexOf(fileQ) >= 0;
+    });
+    h += '<div class="ecrp-field" style="min-width:310px;flex:1.4">';
+    h += '<label for="ecrpFileSearchInput">1. Select Salary Sheet <span class="ecrp-file-count" id="ecrpFileMatchCount">' + matchedWorkbooks.length + ' / ' + workbooks.length + ' files</span></label>';
+    h += '<div class="ecrp-file-search-wrap">';
+    h += '<div class="ecrp-file-search-bar">';
+    h += '<input type="search" id="ecrpFileSearchInput" class="ecrp-input" autocomplete="off" placeholder="🔍 Search salary sheet (e.g. Jan 2026, April, Feb)..." value="' + escHtml(state.settings.fileSearchQuery || "") + '">';
+    if (fileQ) {
+      h += '<button type="button" class="ecrp-btn" id="ecrpClearFileSearchBtn" style="padding:6px 10px;font-size:11px" title="Clear file search">✕</button>';
+    }
+    h += '</div>';
+    h += '<div id="ecrpFileSearchMenu" class="ecrp-file-menu" style="display:' + (fileQ ? "block" : "none") + '">';
+    if (matchedWorkbooks.length) {
+      matchedWorkbooks.forEach(function (wb) {
+        var isSel = wb.name === selectedWb.name;
+        h += '<button type="button" class="ecrp-file-item' + (isSel ? " active" : "") + '" data-ecrp-pick-file="' + escHtml(wb.name) + '"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ' + escHtml(wb.name) + '</span><span style="font-size:10.5px;color:#64748b;flex-shrink:0">' + wb.sheetNames.length + ' tabs' + (isSel ? " ✓" : "") + '</span></button>';
+      });
+    } else {
+      h += '<div style="padding:10px;text-align:center;font-size:12px;color:#64748b">Koi file match nahi hui: "' + escHtml(state.settings.fileSearchQuery) + '"</div>';
+    }
+    h += '</div>';
+    h += '<select id="ecrpFileSelect" class="ecrp-select">';
+    var selectOptions = matchedWorkbooks.slice();
+    if (!selectOptions.some(function (w) { return w.name === selectedWb.name; })) {
+      selectOptions.unshift(selectedWb);
+    }
+    selectOptions.forEach(function (wb) {
       h += '<option value="' + escHtml(wb.name) + '"' + (wb.name === selectedWb.name ? ' selected' : '') + '>' + escHtml(wb.name) + ' (' + wb.sheetNames.length + ' tabs)</option>';
     });
-    h += '</select></div>';
+    h += '</select></div></div>';
 
     h += '<div class="ecrp-field"><label for="ecrpMonthDays">Month Days</label><select id="ecrpMonthDays" class="ecrp-select">';
     [28, 29, 30, 31].forEach(function (d) {
@@ -957,10 +1241,42 @@
     h += '<div><button type="button" class="ecrp-btn" id="ecrpToggleMappingBtn">⚙ Column Mapping</button></div>';
     h += '</div>';
 
-    // Sheet tab selector
+    // Selected File Read Summary Bar
+    var colCheckList = [
+      { key: "empCode", label: "Code" },
+      { key: "empName", label: "Name" },
+      { key: "days", label: "Days" },
+      { key: "basic", label: "Basic" },
+      { key: "gross", label: "Gross" },
+      { key: "pfDed", label: "PF" },
+      { key: "esicDed", label: "ESIC" }
+    ];
+    h += '<div class="ecrp-read-bar">';
+    h += '<div>📄 <strong>' + escHtml(selectedWb.name) + '</strong> · Reading <strong>' + computed.activeTabNames.length + ' / ' + computed.tabs.length + '</strong> salary tabs · <strong>' + t.totalEmployees + '</strong> employees parsed</div>';
+    h += '<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><span style="font-weight:700;color:#64748b">Cols:</span>';
+    colCheckList.forEach(function (cc) {
+      var idx = resolveColIdx(computed.colHeaders, (state.settings.colMap || {})[cc.key], computed.detectedMap[cc.key]);
+      var ok = idx >= 0;
+      h += '<span class="ecrp-col-pill ' + (ok ? "ecrp-col-ok" : "ecrp-col-miss") + '">' + cc.label + (ok ? " ✓" : " —") + '</span>';
+    });
+    h += '</div></div>';
+
+    // Sheet tab selector with Select All / Best Tab / Tab Search
     if (computed.tabs.length > 0) {
-      h += '<div class="ecrp-chip-row"><span style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase">Sheet Tabs:</span>';
-      computed.tabs.forEach(function (tb) {
+      var tabQ = String(state.settings.sheetSearchQuery || "").trim().toLowerCase();
+      var visibleTabs = computed.tabs.filter(function (tb) {
+        if (!tabQ) return true;
+        return tb.sheetName.toLowerCase().indexOf(tabQ) >= 0;
+      });
+      h += '<div class="ecrp-chip-row"><span style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase">Sheet Tabs (' + computed.activeTabNames.length + '/' + computed.tabs.length + '):</span>';
+      if (computed.tabs.length > 1) {
+        h += '<button type="button" class="ecrp-btn" id="ecrpSelectAllTabsBtn" style="padding:4px 9px;font-size:11px">✓ All Salary Tabs</button>';
+        h += '<button type="button" class="ecrp-btn" id="ecrpBestTabOnlyBtn" style="padding:4px 9px;font-size:11px">★ Best Tab Only</button>';
+      }
+      if (computed.tabs.length > 6) {
+        h += '<input type="search" id="ecrpSheetSearchInput" class="ecrp-input" placeholder="🔍 Filter tabs..." value="' + escHtml(state.settings.sheetSearchQuery || "") + '" style="padding:4px 8px;font-size:11.5px;width:155px">';
+      }
+      visibleTabs.forEach(function (tb) {
         var active = computed.activeTabNames.indexOf(tb.sheetName) >= 0;
         h += '<button type="button" class="ecrp-chip' + (active ? ' active' : '') + '" data-ecrp-sheet="' + escHtml(tb.sheetName) + '">' + escHtml(tb.sheetName) + ' (' + tb.rowCount + ')</button>';
       });
@@ -1070,7 +1386,7 @@
     h += '<div class="ecrp-tbl-wrap"><table class="ecrp-tbl"><thead><tr>' +
       '<th>Code</th><th>UAN (12 Digit)</th><th>Member Name</th><th>Gross</th><th>EPF Wage</th><th>EPS Wage</th><th>EDLI Wage</th><th>EE 12%</th><th>EPS 8.33%</th><th>ER Diff</th><th>NCP Days</th>' +
       '</tr></thead><tbody>';
-    pfRows.slice(0, 150).forEach(function (r) {
+    pfRows.slice(0, 500).forEach(function (r) {
       h += '<tr>' +
         '<td><strong>' + escHtml(r.empCode) + '</strong></td>' +
         '<td>' + (r.uanValid ? '<span class="ecrp-badge ecrp-badge-ok">' + escHtml(r.uan) + '</span>' : '<span class="ecrp-badge ecrp-badge-err">' + escHtml(r.uan || 'MISSING UAN') + '</span>') + '</td>' +
@@ -1081,7 +1397,7 @@
     });
     if (!pfRows.length) h += '<tr><td colspan="11" style="text-align:center;padding:24px;color:#64748b">Koi PF eligible employee is filter me nahi mila.</td></tr>';
     h += '</tbody></table></div>';
-    if (pfRows.length > 150) h += '<div style="margin-top:8px;font-size:11.5px;color:#64748b">Table preview me pehle 150 rows dikh rahe hain; download file me saari ' + exportedCount + ' rows hongi.</div>';
+    if (pfRows.length > 500) h += '<div style="margin-top:8px;font-size:11.5px;color:#64748b">Table preview me pehle 500 rows dikh rahe hain; download file me saari ' + exportedCount + ' rows hongi.</div>';
     return h;
   }
 
@@ -1096,7 +1412,7 @@
     h += '<div class="ecrp-tbl-wrap"><table class="ecrp-tbl"><thead><tr>' +
       '<th>Code</th><th>IP Number (10 Digit)</th><th>IP Name</th><th>Days Worked</th><th>Total Monthly Wages</th><th>EE 0.75%</th><th>ER 3.25%</th><th>Reason Code</th><th>Last Working Day</th>' +
       '</tr></thead><tbody>';
-    esicRows.slice(0, 150).forEach(function (r) {
+    esicRows.slice(0, 500).forEach(function (r) {
       h += '<tr>' +
         '<td><strong>' + escHtml(r.empCode) + '</strong></td>' +
         '<td>' + (r.ipValid ? '<span class="ecrp-badge ecrp-badge-ok">' + escHtml(r.esicIp) + '</span>' : '<span class="ecrp-badge ecrp-badge-err">' + escHtml(r.esicIp || 'MISSING IP') + '</span>') + '</td>' +
@@ -1145,7 +1461,7 @@
     h += '<div class="ecrp-tbl-wrap"><table class="ecrp-tbl"><thead><tr>' +
       '<th>Code</th><th>Name</th><th>Days</th><th>Basic</th><th>Gross</th><th>EPF Wage</th><th>EE PF</th><th>ER EPS</th><th>ER Diff</th><th>ESIC Wage</th><th>EE ESIC</th><th>ER ESIC</th>' +
       '</tr></thead><tbody>';
-    rows.slice(0, 150).forEach(function (r) {
+    rows.slice(0, 500).forEach(function (r) {
       h += '<tr>' +
         '<td><strong>' + escHtml(r.empCode) + '</strong></td>' +
         '<td>' + escHtml(r.name) + '</td>' +
@@ -1190,15 +1506,118 @@
     var uploadInp = container.querySelector('#ecrpDirectUploadInput');
     if (uploadInp) uploadInp.onchange = function () { handleDirectSheetUpload(this); };
 
+    function selectWorkbookByName(fileName) {
+      if (!fileName) return;
+      state.settings.selectedFileName = fileName;
+      state.settings.selectedSheets = [];
+      state.settings.sheetSearchQuery = "";
+      state.settings.fileSearchQuery = "";
+      state.settings.monthDays = guessMonthDaysFromName(fileName);
+      state.settings.colMap = Object.assign({}, DEFAULT_SETTINGS.colMap);
+      saveSettings();
+      renderUI();
+    }
+
     var fileSel = container.querySelector('#ecrpFileSelect');
     if (fileSel) {
       fileSel.onchange = function () {
-        state.settings.selectedFileName = this.value;
-        state.settings.selectedSheets = [];
-        state.settings.monthDays = guessMonthDaysFromName(this.value);
-        state.settings.colMap = Object.assign({}, DEFAULT_SETTINGS.colMap);
+        selectWorkbookByName(this.value);
+      };
+    }
+
+    var fileSearchInp = container.querySelector('#ecrpFileSearchInput');
+    var fileSearchMenu = container.querySelector('#ecrpFileSearchMenu');
+    var fileCountBadge = container.querySelector('#ecrpFileMatchCount');
+    if (fileSearchInp) {
+      var updateFileSearchDom = function (queryVal) {
+        state.settings.fileSearchQuery = queryVal;
+        var qLow = String(queryVal || "").trim().toLowerCase();
+        var allWbs = getLoadedWorkbooks();
+        var matched = allWbs.filter(function (w) {
+          return !qLow || w.name.toLowerCase().indexOf(qLow) >= 0;
+        });
+        if (fileCountBadge) fileCountBadge.textContent = matched.length + " / " + allWbs.length + " files";
+        if (fileSel) {
+          var selOpts = matched.slice();
+          var curSel = state.selectedWorkbook;
+          if (curSel && !selOpts.some(function (w) { return w.name === curSel.name; })) selOpts.unshift(curSel);
+          fileSel.innerHTML = selOpts.map(function (wb) {
+            return '<option value="' + escHtml(wb.name) + '"' + (curSel && wb.name === curSel.name ? " selected" : "") + '>' + escHtml(wb.name) + ' (' + wb.sheetNames.length + ' tabs)</option>';
+          }).join("");
+        }
+        if (fileSearchMenu) {
+          if (qLow) {
+            fileSearchMenu.style.display = "block";
+            if (matched.length) {
+              fileSearchMenu.innerHTML = matched.map(function (wb) {
+                var isSel = state.selectedWorkbook && wb.name === state.selectedWorkbook.name;
+                return '<button type="button" class="ecrp-file-item' + (isSel ? " active" : "") + '" data-ecrp-pick-file="' + escHtml(wb.name) + '"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📄 ' + escHtml(wb.name) + '</span><span style="font-size:10.5px;color:#64748b;flex-shrink:0">' + wb.sheetNames.length + ' tabs' + (isSel ? " ✓" : "") + '</span></button>';
+              }).join("");
+              Array.prototype.forEach.call(fileSearchMenu.querySelectorAll("[data-ecrp-pick-file]"), function (b) {
+                b.onclick = function () { selectWorkbookByName(this.getAttribute("data-ecrp-pick-file")); };
+              });
+            } else {
+              fileSearchMenu.innerHTML = '<div style="padding:10px;text-align:center;font-size:12px;color:#64748b">Koi file match nahi hui: "' + escHtml(queryVal) + '"</div>';
+            }
+          } else {
+            fileSearchMenu.style.display = "none";
+          }
+        }
+      };
+      fileSearchInp.oninput = function () {
+        updateFileSearchDom(this.value);
+      };
+      fileSearchInp.onkeydown = function (ev) {
+        if (ev && ev.key === "Enter") {
+          var firstItem = fileSearchMenu && fileSearchMenu.querySelector("[data-ecrp-pick-file]");
+          if (firstItem) {
+            ev.preventDefault();
+            selectWorkbookByName(firstItem.getAttribute("data-ecrp-pick-file"));
+          }
+        } else if (ev && ev.key === "Escape") {
+          this.value = "";
+          updateFileSearchDom("");
+        }
+      };
+    }
+    var clearFileSearchBtn = container.querySelector('#ecrpClearFileSearchBtn');
+    if (clearFileSearchBtn) {
+      clearFileSearchBtn.onclick = function () {
+        state.settings.fileSearchQuery = "";
         saveSettings();
         renderUI();
+      };
+    }
+    Array.prototype.forEach.call(container.querySelectorAll("[data-ecrp-pick-file]"), function (b) {
+      b.onclick = function () { selectWorkbookByName(this.getAttribute("data-ecrp-pick-file")); };
+    });
+
+    var selAllTabsBtn = container.querySelector('#ecrpSelectAllTabsBtn');
+    if (selAllTabsBtn && state.computed) {
+      selAllTabsBtn.onclick = function () {
+        var validTabs = (state.computed.tabs || []).filter(function (tb) { return !tb.isSecondaryName && tb.rowCount > 0; });
+        var list = validTabs.length ? validTabs : (state.computed.tabs || []);
+        state.settings.selectedSheets = list.map(function (tb) { return tb.sheetName; });
+        saveSettings();
+        renderUI();
+      };
+    }
+    var bestTabBtn = container.querySelector('#ecrpBestTabOnlyBtn');
+    if (bestTabBtn && state.computed && state.computed.tabs && state.computed.tabs.length) {
+      bestTabBtn.onclick = function () {
+        state.settings.selectedSheets = [state.computed.tabs[0].sheetName];
+        saveSettings();
+        renderUI();
+      };
+    }
+    var sheetSearchInp = container.querySelector('#ecrpSheetSearchInput');
+    if (sheetSearchInp) {
+      sheetSearchInp.oninput = function () {
+        state.settings.sheetSearchQuery = this.value;
+        saveSettings();
+        renderUI();
+        var el = container.querySelector('#ecrpSheetSearchInput');
+        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
       };
     }
 
@@ -1339,8 +1758,10 @@
     buildEsicSheetRows: buildEsicSheetRows,
     buildEsicWorkbook: buildEsicWorkbook,
     buildEsicCsvText: buildEsicCsvText,
+    getLoadedWorkbooks: getLoadedWorkbooks,
     detectHeaderAndCols: detectHeaderAndCols,
     analyzeWorkbookTabs: analyzeWorkbookTabs,
+    chooseDefaultTabs: chooseDefaultTabs,
     sanitizePortalName: sanitizePortalName,
     getState: function () { return state; },
     setSettings: function (patch) {

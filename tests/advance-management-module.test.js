@@ -297,4 +297,81 @@ test('Advance Management Module - Enterprise Tests (Manual-Only Deduction & Empl
     assert.equal(manSalRes.deductions[0].deductedFromFile, 'June_Payroll_2026.xlsx');
     assert.equal(mockWindow.ATPLAdvanceManager.getEmployeeOutstandingBalance('25924'), 9000);
   });
+
+  await t.test("7. Advance Deduction + Next Month Pending Excel Report (.xlsx) covers month cuts, cleared dues, and next-month carry-forward pending", () => {
+    const XLSX = require(path.join(rootDir, "xlsx.full.min.js"));
+    const { mockWindow, container } = makeMockWindow([
+      { emp_id: "101", name: "SAMPAT LAL", dept: "FELTING", desig: "Operator" },
+      { emp_id: "102", name: "SURENDRA KUMAR", dept: "CARDING", desig: "Helper" },
+      { emp_id: "103", name: "BULLURAM", dept: "WASHING", desig: "Operator" }
+    ]);
+    mockWindow.XLSX = XLSX;
+    mockWindow.Blob = globalThis.Blob;
+    mockWindow.URL = { createObjectURL: () => "blob:mock-xlsx", revokeObjectURL: () => {} };
+    let lastDownload = "";
+    mockWindow.document.createElement = () => ({
+      style: {},
+      setAttribute: function(k, v) { if (k === "download") lastDownload = v; },
+      click: function() { if (this.download) lastDownload = this.download; }
+    });
+    mockWindow.document.body = { appendChild: () => {}, removeChild: () => {} };
+
+    const ctx = vm.createContext(mockWindow);
+    vm.runInContext(advanceJsContent, ctx);
+
+    // Emp 101: ₹10,000 advance in Mar 2026, ₹3,000 cut in Apr 2026 -> ₹7,000 pending for May 2026
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: "adv_101", empCode: "101", amount: 10000, monthlyCap: 3000, advanceDate: "2026-03-10", remarks: "Home repair"
+    });
+    mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: "101", amount: 3000, deductionDate: "2026-04-30", mode: "Manual Salary Adjustment", deductedFromSalary: "April 2026", remarks: "April cut"
+    });
+
+    // Emp 102: ₹4,000 advance in Apr 2026, ₹4,000 fully cut in Apr 2026 -> ₹0 pending for May 2026 (Cleared)
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: "adv_102", empCode: "102", amount: 4000, advanceDate: "2026-04-02", remarks: "Medical"
+    });
+    mockWindow.ATPLAdvanceManager.deductAdvanceManually({
+      empCode: "102", amount: 4000, deductionDate: "2026-04-30", mode: "Cash Voucher", remarks: "Full cash settled"
+    });
+
+    // Emp 103: ₹5,000 advance in Mar 2026, NO cut in Apr 2026 -> ₹5,000 pending for May 2026
+    mockWindow.ATPLAdvanceManager.addOrUpdateAdvance({
+      id: "adv_103", empCode: "103", amount: 5000, monthlyCap: 2000, advanceDate: "2026-03-15", remarks: "Family"
+    });
+
+    mockWindow.ATPLAdvanceManager.setSelectedMonth("2026-04");
+    assert(container.innerHTML.includes("exportAdvanceExcelReport"), "UI must render Excel Report download button");
+    mockWindow.ATPLAdvanceManager.setTab("deductions");
+    assert(container.innerHTML.includes("Download Deduction + Next Month Pending Excel"), "Deductions tab must show Excel download button");
+
+    const res = mockWindow.ATPLAdvanceManager.exportAdvanceExcelReport("2026-04");
+    assert.equal(res.ok, true, "Excel export must succeed");
+    assert.ok(res.fileName.includes("2026-04") && res.fileName.includes("2026-05") && res.fileName.endsWith(".xlsx"));
+    assert.equal(lastDownload, res.fileName, "Download link must trigger .xlsx download");
+    assert.deepEqual(res.workbook.SheetNames, ["Cut & Next Pending", "Next Month Pending", "Month Cut Details", "All Advances Ledger"]);
+
+    const rep = res.report;
+    assert.equal(rep.monthKey, "2026-04");
+    assert.equal(rep.nextMonthKey, "2026-05");
+    assert.equal(rep.totals.employeesCutCount, 2, "2 employees had deductions in April 2026");
+    assert.equal(rep.totals.cutInMonth, 7000, "Total April cuts = 3000 + 4000");
+    assert.equal(rep.totals.employeesNextPendingCount, 2, "2 employees carry pending balance into May 2026");
+    assert.equal(rep.totals.nextMonthPending, 12000, "Total May 2026 pending = 7000 (101) + 5000 (103)");
+
+    const r101 = rep.summaryRows.find(r => r.empCode === "101");
+    const r102 = rep.summaryRows.find(r => r.empCode === "102");
+    const r103 = rep.summaryRows.find(r => r.empCode === "103");
+    assert.equal(r101.cutInMonth, 3000);
+    assert.equal(r101.nextMonthPending, 7000);
+    assert.equal(r102.cutInMonth, 4000);
+    assert.equal(r102.nextMonthPending, 0);
+    assert.equal(r103.cutInMonth, 0);
+    assert.equal(r103.nextMonthPending, 5000);
+
+    // Next Month Pending sheet must ONLY include 101 and 103 (NOT cleared 102)
+    assert.deepEqual(Array.from(rep.nextMonthPendingRows, r => r.empCode).sort(), ["101", "103"]);
+    // Month Cut Details must have 2 transactions (101 and 102)
+    assert.equal(rep.monthDeductionRows.length, 2);
+  });
 });

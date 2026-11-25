@@ -183,3 +183,58 @@ test('ESIC zero-wage left worker auto-populates Reason Code 2 + DD/MM/YYYY LWD &
   assert.equal(esicRows[1][4], 2);
   assert.equal(esicRows[1][5], '15/10/2026');
 });
+
+test("Salary Sheet Search Box, Multi-Tab Department Workbook Auto-Reading, and Duplicate Fixed vs Earned Column Disambiguation", () => {
+  const deptSheet1 = [
+    ["ARORA TEXTILES PVT. LTD."],
+    ["S.No.", "Employee ID", "Name of employee", "Basic", "HRA", "Gross Total Salary", "Paid Days", "Basic", "HRA", "Gross Earned Salary", "Total Gross salary", "PF@12%", "ESIC @0.75%"],
+    ["1", "135", "SAMPAT LAL", "15120", "5880", "21000", "26", "12681", "4932", "17613", "18100", "1522", "136"],
+    ["2", "387", "SURENDRA KUMAR", "15120", "5880", "21000", "25", "12194", "4742", "16936", "17200", "1463", "129"],
+    ["", "Grand Total", "", "", "", "", "", "24875", "", "34549", "35300", "2985", "265"]
+  ];
+  const deptSheet2 = [
+    ["ARORA TEXTILES PVT. LTD."],
+    ["S.No.", "Emp Code", "Employee Name", "Paid Days", "Earned Basic", "Gross Wages", "PF 12%", "ESIC 0.75%"],
+    ["1", "419", "BULLURAM", "25", "12000", "15500", "1440", "117"],
+    ["2", "512", "RAMESH CHAND", "28", "14000", "18000", "1680", "135"]
+  ];
+  const wbEntry = {
+    name: "Final Salary Sheet Jan 2026 (1) (1).xls",
+    sheets: {
+      Summary: [["Dept", "Total"], ["FELTING", "35300"]],
+      FELTING: deptSheet1,
+      CARDING: deptSheet2,
+      "HDFC BANK": [["Emp Code", "Name", "Net Payable"], ["135", "SAMPAT LAL", "16000"]]
+    }
+  };
+  const { api, container } = loadPortalModule({
+    files: [wbEntry, { name: "Final Salary Sheet April 2026.xls", sheets: { STAFF: deptSheet2 } }],
+    master: [
+      { emp_id: "135", name: "SAMPAT LAL", pf_no: "101234567890", esi_no: "2707123456" },
+      { emp_id: "387", name: "SURENDRA KUMAR", pf_no: "101234567891", esi_no: "2707123457" },
+      { emp_id: "419", name: "BULLURAM", pf_no: "101234567892", esi_no: "2707123458" },
+      { emp_id: "512", name: "RAMESH CHAND", pf_no: "101234567893", esi_no: "2707123459" }
+    ]
+  });
+
+  api.renderUI();
+  assert.ok(container.innerHTML.includes("id=\"ecrpFileSearchInput\""), "Salary sheet search box must render");
+  assert.ok(container.innerHTML.includes("id=\"ecrpFileSelect\""), "Salary sheet select dropdown must render");
+  assert.ok(container.innerHTML.includes("id=\"ecrpSelectAllTabsBtn\""), "All Salary Tabs button must render for multi-tab workbook");
+
+  const computed = api.getState().computed;
+  assert.equal(computed.activeTabNames.length, 2, "Must auto-select both FELTING and CARDING department tabs (skipping Summary & HDFC BANK)");
+  assert.equal(computed.rows.length, 4, "Must parse all 4 employees across both department tabs");
+
+  // Verify duplicate Basic/Gross disambiguation picked EARNED Basic (12681) and Total Gross (18100), NOT fixed rate Basic (15120) / Gross Total (21000)!
+  const sampat = computed.rows.find(r => r.empCode === "135");
+  assert.ok(sampat, "Employee 135 SAMPAT LAL must be parsed");
+  assert.equal(sampat.paidDays, 26);
+  assert.equal(sampat.basic, 12681, "Must pick Earned Basic AFTER Paid Days, not fixed rate Basic 15120");
+  assert.equal(sampat.gross, 18100, "Must pick Total Gross Salary AFTER Paid Days, not fixed Gross Total 21000");
+
+  const bulluram = computed.rows.find(r => r.empCode === "419");
+  assert.ok(bulluram, "Employee 419 BULLURAM from second tab CARDING must also be parsed");
+  assert.equal(bulluram.basic, 12000);
+  assert.equal(bulluram.gross, 15500);
+});
