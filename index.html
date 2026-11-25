@@ -21839,8 +21839,8 @@ document.addEventListener('click', function(e) {
     }
     if (field === 'earnGross') {
       if (/\b(net|deduction|take home)\b/.test(h)) return -1;
-      if (/^(total gross earned salary|total earned gross|total earned salary|total earnings|gross earned salary)$/.test(h)) return 116;
-      if (/^(eran gross salary|earn gross salary|earned gross salary|earned gross|eran gross|earn gross)$/.test(h)) return 94;
+      if (/^(total gross salary|total gross earned salary|total earned gross|total earned salary|total earnings|total gross)$/.test(h)) return 120;
+      if (/^(gross earned salary|eran gross salary|earn gross salary|earned gross salary|earned gross|eran gross|earn gross)$/.test(h)) return 94;
       if (isEarnHdr && hasTok(/^gross$/)) return 84;
       return -1;
     }
@@ -22100,7 +22100,7 @@ document.addEventListener('click', function(e) {
       var extraEarn = otherAllow + incentive;
       var earnFourSum = earnBasic + earnHra + earnBonus + earnOt;
       var earnAllSum = earnFourSum + extraEarn;
-      var earnGross = cols.earnGross >= 0 ? rawEarnGrossIfMapped : earnAllSum;
+      var earnGross = earnAllSum > 0 ? earnAllSum : (cols.earnGross >= 0 ? rawEarnGrossIfMapped : 0);
 
       var dedSum = pf + esiAmt + advance + otherDed;
       var totalDed = cols.totalDed >= 0 ? roundMoney(parseNum(row[cols.totalDed])) : dedSum;
@@ -22198,11 +22198,14 @@ document.addEventListener('click', function(e) {
       rateBonus: String(emp.rateBonus),
       rateOt: String(emp.rateOt),
       rateGross: String(emp.rateGross),
-      earnBasic: String(emp.earnBasic),
-      earnHra: String(emp.earnHra),
-      earnBonus: String(emp.earnBonus + (emp.otherAllow || 0) + (emp.incentive || 0)),
-      earnOt: String(emp.earnOt),
-      earnGross: String(emp.earnGross),
+      earnBasic: String(roundMoney(emp.earnBasic || 0)),
+      earnHra: String(roundMoney(emp.earnHra || 0)),
+      earnBonus: String(roundMoney((emp.earnBonus || 0) + (emp.otherAllow || 0) + (emp.incentive || 0))),
+      earnOt: String(roundMoney(emp.earnOt || 0)),
+      earnGross: String((function() {
+        var sum = roundMoney((emp.earnBasic || 0) + (emp.earnHra || 0) + (emp.earnBonus || 0) + (emp.otherAllow || 0) + (emp.incentive || 0) + (emp.earnOt || 0));
+        return sum > 0 ? sum : roundMoney(emp.earnGross || 0);
+      })()),
       pf: String(emp.pf),
       esiAmt: String(emp.esiAmt),
       advance: String(emp.advance + (emp.otherDed || 0)),
@@ -23572,7 +23575,12 @@ document.addEventListener('click', function(e) {
         if (saved.settings) state.settings = Object.assign(state.settings, saved.settings);
         state.fileName = saved.fileName || '';
         state.sheetName = saved.sheetName || '';
-        state.rows = Array.isArray(saved.rows) ? saved.rows : [];
+        state.rows = Array.isArray(saved.rows) ? saved.rows.map(function(r) {
+          if (!r) return r;
+          var eSum = roundMoney((r.earnBasic || 0) + (r.earnHra || 0) + (r.earnBonus || 0) + (r.otherAllow || 0) + (r.incentive || 0) + (r.earnOt || 0));
+          if (eSum > 0) r.earnGross = eSum;
+          return r;
+        }) : [];
         state.selectedKeys = saved.selectedKeys || {};
       }
       syncStateToSettingsInputs();

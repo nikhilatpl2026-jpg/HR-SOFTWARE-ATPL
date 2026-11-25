@@ -215,3 +215,47 @@ test('MonthlyStatusReport auto-detects Feb-25 (28 days), daily muster 1..28, and
   assert.equal(sched.counts.wo, 4);
   assert.equal(sched.counts.a, 3);
 });
+
+test("Pay Slip Earning Details Total sums Basic + HRA + Bonus + Over Time (27427, not Basic+HRA subtotal 25875)", () => {
+  const { doc, els } = makeMockDom({
+    psgMonthSel: "6",
+    psgYearInput: "2026",
+    psgCompanyInput: "ARORA TEXTILES PVT.LTD,",
+    psgLayoutMode: "TWIN",
+    psgEmpCodeMode: "ORIGINAL",
+    psgErpFileSelect: ""
+  });
+  const sheetBothCols = [
+    ["ARORA TEXTILES PVT. LTD. JULY 2026"],
+    ["Employee ID", "Name of employee", "Department", "Month Of Days", "Paid Days", "Basic", "HRA", "Gross Total Salary", "Earn Basic", "Earn HRA", "Gross Earned Salary", "Earned Bonus 8.33%", "Earned OverTime Amount", "Total Gross salary", "PF@12%", "ESIC @0.75%", "Advance", "Total Deduction", "Net Payable"],
+    ["00135", "SAMPAT LAL", "PRODUCTION", 31, 29, 19915, 7745, 27660, 18630, 7245, 25875, 1552, 0, 27427, 1800, 140, 0, 1940, 25487]
+  ];
+  const sheetOnlySubtotalCol = [
+    ["ARORA TEXTILES PVT. LTD. JULY 2026"],
+    ["Employee ID", "Name of employee", "Department", "Month Of Days", "Paid Days", "Basic", "HRA", "Gross Total Salary", "Earn Basic", "Earn HRA", "Gross Earned Salary", "Earned Bonus 8.33%", "Earned OverTime Amount", "PF@12%", "ESIC @0.75%", "Advance", "Total Deduction", "Net Payable"],
+    ["00135", "SAMPAT LAL", "PRODUCTION", 31, 29, 19915, 7745, 27660, 18630, 7245, 25875, 1552, 0, 1800, 140, 0, 1940, 25487]
+  ];
+  const ctx = {
+    document: doc,
+    window: null,
+    FILES: [
+      { name: "July_2026_Salary.xlsx", sheets: { "Main Sheet": sheetBothCols, "Subtotal Only": sheetOnlySubtotalCol } }
+    ],
+    indexedDB: null,
+    console
+  };
+  ctx.window = ctx;
+  vm.runInNewContext(extractScriptById("atplPaySlipGeneratorScript"), ctx);
+  const psg = ctx.ATPLPaySlipGenerator;
+  els.psgErpFileSelect.value = "0";
+  psg.loadFromErpSelect();
+
+  assert.ok(els.psgPreviewContainer.innerHTML.includes("27427"), "Pay Slip preview Earning Total must be 27427 (18630+7245+1552+0)");
+  assert.ok(!els.psgPreviewContainer.innerHTML.includes(">25875<"), "Pay Slip preview must NOT show Basic+HRA subtotal 25875");
+  assert.ok(els.psgListTbody.innerHTML.includes("27427"), "List table Earning Total must be 27427");
+
+  // Also test sheet that only has Gross Earned Salary (25875) without Total Gross salary column
+  psg.switchWorkbookSheet("Subtotal Only");
+  assert.ok(els.psgPreviewContainer.innerHTML.includes("27427"), "Even when sheet only has Gross Earned Salary subtotal 25875, Pay Slip Total must sum Basic+HRA+Bonus+OT = 27427");
+  assert.ok(!els.psgPreviewContainer.innerHTML.includes(">25875<"), "Subtotal 25875 must never replace 27427 in Pay Slip preview");
+});
