@@ -881,7 +881,13 @@
     if (!r) return null;
     var type = String(r.type || 'esic').toLowerCase();
     var hash = String(r.hash || r.fileHash || r.fingerprint || '').toLowerCase();
-    var ids = Array.isArray(r.ids) ? r.ids.slice() : [].concat(Array.isArray(r.digitIds) ? r.digitIds : [], Array.isArray(r.alnumIds) ? r.alnumIds : []);
+    var rawIds = [].concat(
+      Array.isArray(r.ids) ? r.ids : [],
+      Array.isArray(r.digitIds) ? r.digitIds : [],
+      Array.isArray(r.alnumIds) ? r.alnumIds : [],
+      Array.isArray(r.member_ids) ? r.member_ids : []
+    );
+    var cleanIds = Array.from(new Set(rawIds.map(String).filter(Boolean)));
     return {
       id: r.id,
       cloudRecordId: r.cloudRecordId || r.id,
@@ -895,9 +901,9 @@
       mime: r.mime || (String(r.name || '').toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
       period: r.period || '',
       periodSource: r.periodSource || '',
-      ids: Array.from(new Set(ids.map(String).filter(Boolean))),
-      parseStatus: r.parseStatus || 'ready',
-      parseError: r.parseError || '',
+      ids: cleanIds,
+      parseStatus: cleanIds.length ? 'ready' : (r.parseStatus || 'error'),
+      parseError: cleanIds.length ? '' : (r.parseError || ''),
       uploadedAt: r.uploadedAt || new Date().toISOString(),
       updatedAt: r.updatedAt || r.uploadedAt || new Date().toISOString(),
       driveFileName: r.driveFileName || (hash ? dolOrigFileName(type, { hash: hash, id: r.id }) : ''),
@@ -975,6 +981,8 @@
       var ids = Array.from(new Set([].concat(donor.ids || [], winner.ids || [])));
       map[k] = Object.assign({}, donor, winner, {
         ids: ids,
+        parseStatus: ids.length ? 'ready' : (winner.parseStatus || donor.parseStatus || 'error'),
+        parseError: ids.length ? '' : (winner.parseError || donor.parseError || ''),
         hasOriginalFile: !!(winner.hasOriginalFile || donor.hasOriginalFile),
         driveFileName: winner.driveFileName || donor.driveFileName
       });
@@ -1059,6 +1067,7 @@
       // Read-Modify-Write vault index
       var vFile = dolVaultFileName(type);
       var dl = await downloadJsonFromDrive(vFile);
+      if (dl && dl.transientError) throw new Error('Vault read failed before save — ' + dl.transientError);
       var remoteVault = (dl.data && typeof dl.data === 'object') ? dl.data : { version: 1, type: type, records: [], tombstones: {} };
       var mergedTombs = dolMergeTombstones(remoteVault.tombstones || {}, dolReadTombstones());
       dolClearTombstone(type, rec, mergedTombs);
@@ -1098,6 +1107,7 @@
     return await queueWrite(type, async function() {
       var vFile = dolVaultFileName(type);
       var dl = await downloadJsonFromDrive(vFile);
+      if (dl && dl.transientError) throw new Error('Vault read failed before update — ' + dl.transientError);
       var remoteVault = (dl.data && typeof dl.data === 'object') ? dl.data : { version: 1, type: type, records: [], tombstones: {} };
       var mergedTombs = dolMergeTombstones(remoteVault.tombstones || {}, dolReadTombstones());
       dolClearTombstone(type, rec, mergedTombs);
@@ -1142,6 +1152,7 @@
     return await queueWrite(type, async function() {
       var vFile = dolVaultFileName(type);
       var dl = await downloadJsonFromDrive(vFile);
+      if (dl && dl.transientError) throw new Error('Vault read failed before delete — ' + dl.transientError);
       var remoteVault = (dl.data && typeof dl.data === 'object') ? dl.data : { version: 1, type: type, records: [], tombstones: {} };
       var mergedTombs = dolMergeTombstones(remoteVault.tombstones || {}, dolReadTombstones());
       ks.forEach(function(k) {

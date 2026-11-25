@@ -60,7 +60,7 @@ root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__=BUILD;
 
 var DB_NAME='ATPL_COMPLIANCE_DOL_V2', DB_VER=1, STORE='challans';
 var LEGACY_DB_NAME='ATPL_COMPLIANCE_DOL_V1',LEGACY_DB_VER=1,LEGACY_STORE='files';
-var state={esic:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:"2025"},pf:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:"2025"}};
+var state={esic:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:""},pf:{rows:[],index:{},periods:[],selected:{},viewMode:"year12",activeYear:""}};
 var excelWorker=null,excelSeq=0,excelPending={};
 var cloudSyncPromises={esic:null,pf:null},cloudLastSync={esic:0,pf:0},cloudRetryTimer=0,cloudWriteTail=Promise.resolve(),CLOUD_BATCH_SIZE=16;
 var localPreviewPrepared=false,cloudMode={esic:'unknown',pf:'unknown'};
@@ -576,7 +576,7 @@ function normalizeAlpha(v){var s=String(v==null?'':v).toUpperCase().replace(/[^A
 function validId(type,v){var d=normalizeDigits(v);if(type==='esic')return d&&d.length===10?d:'';if(d&&d.length===12)return d;return normalizeAlpha(v)}
 function fileMime(name){var e=String(name||'').split('.').pop().toLowerCase();if(e==='pdf')return'application/pdf';if(e==='csv')return'text/csv';return'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}
 function uid(type,hash){return'v2_'+type+'_'+String(hash||'').slice(0,24)}
-function recordIds(r){return Array.from(new Set([].concat(Array.isArray(r&&r.ids)?r.ids:[],Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean)))}
+function recordIds(r){var contribs=Array.isArray(r&&r.contributions)?r.contributions.map(function(c){return c&&(c.memberId||c.id||"")}).filter(Boolean):[];return Array.from(new Set([].concat(Array.isArray(r&&r.ids)?r.ids:[],Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[],Array.isArray(r&&r.member_ids)?r.member_ids:[],contribs).map(String).filter(Boolean)))}
 function pfEvidence(ids,text){
   ids=Array.isArray(ids)?ids.map(String):[];text=String(text||'').toUpperCase();
   var twelve=ids.filter(function(x){return /^\d{12}$/.test(normalizeDigits(x))}).length;
@@ -813,18 +813,18 @@ async function sha256(buf){
 
 function parsePeriodCore(s){
   s=String(s||'').toLowerCase();
-  var m=s.match(/\b(20\d{2})[\s._\/-](0?[1-9]|1[0-2])\b/);if(m)return m[1]+'-'+String(Number(m[2])).padStart(2,'0');
-  m=s.match(/\b(0?[1-9]|1[0-2])[\s._\/-](20\d{2})\b/);if(m)return m[2]+'-'+String(Number(m[1])).padStart(2,'0');
-  m=s.match(/\b(0?[1-9]|1[0-2])[\s._\/-](\d{2})\b/);if(m){var y=Number(m[2]);if(y>=20&&y<=40)return'20'+String(y).padStart(2,'0')+'-'+String(Number(m[1])).padStart(2,'0')}
-  m=s.match(/(?:^|[^a-z0-9])(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s._\/-]*(20\d{2}|\d{2})(?=$|[^0-9])/);
-  if(m){var mo=MONTHS[m[1]],yy=m[2].length===2?'20'+m[2]:m[2];if(mo)return yy+'-'+String(mo).padStart(2,'0')}
+  var m=s.match(/(?:^|[^a-z0-9])(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[\s._\/-]*(20\d{2}|\d{2})(?=$|[^0-9])/);
+  if(m){var mo=MONTHS[m[1]],yy=m[2].length===2?'20'+m[2]:m[2];if(mo&&Number(yy)>=2000&&Number(yy)<=2045)return yy+'-'+String(mo).padStart(2,'0')}
   m=s.match(/(?:^|[^0-9])(20\d{2}|\d{2})[\s._\/-]*(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?=$|[^a-z0-9])/);
-  if(m){var mo2=MONTHS[m[2]],yy2=m[1].length===2?'20'+m[1]:m[1];if(mo2)return yy2+'-'+String(mo2).padStart(2,'0')}
+  if(m){var mo2=MONTHS[m[2]],yy2=m[1].length===2?'20'+m[1]:m[1];if(mo2&&Number(yy2)>=2000&&Number(yy2)<=2045)return yy2+'-'+String(mo2).padStart(2,'0')}
+  m=s.match(/(?:^|[^0-9])(20\d{2})[\s._\/-](0?[1-9]|1[0-2])(?=$|[^0-9\/.-])/);if(m)return m[1]+'-'+String(Number(m[2])).padStart(2,'0');
+  m=s.match(/(?:^|[^0-9\/.-])(0?[1-9]|1[0-2])[\s._\/-](20\d{2})(?=$|[^0-9])/);if(m)return m[2]+'-'+String(Number(m[1])).padStart(2,'0');
+  m=s.match(/(?:^|[^0-9\/.-])(0?[1-9]|1[0-2])[\s._\/-](\d{2})(?=$|[^0-9\/.-])/);if(m){var y=Number(m[2]);if(y>=20&&y<=40)return'20'+String(y).padStart(2,'0')+'-'+String(Number(m[1])).padStart(2,'0')}
   return''
 }
 function inferPeriod(name,text){
   var p=parsePeriodCore(name);if(p)return{period:p,source:'filename'};
-  var low=String(text||'').toLowerCase(),keys=['contribution period','wage period','challan month','contribution month'];
+  var low=String(text||'').toLowerCase(),keys=['wage month','return month','contribution period','wage period','challan month','contribution month','salary month','ecr month','for the month of','month of'];
   for(var i=0;i<keys.length;i++){var pos=low.indexOf(keys[i]);if(pos>=0){var x=parsePeriodCore(low.slice(pos,pos+160));if(x)return{period:x,source:'document'}}}
   return{period:'',source:'manual'}
 }
@@ -847,10 +847,10 @@ function ensureExcelWorker(){
   try{
     var src=[
       "self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');",
-      "function digs(v){var s=String(v==null?'':v).trim().replace(/^['\\\"]|['\\\"]$/g,'').replace(/\\.0+$/,'');return /^\\d{8,20}$/.test(s)?s:''}",
+      "function digs(v){if(typeof v==='number'&&isFinite(v)){if(Math.floor(v)!==v)return'';var ns=String(v);return /^\\d{8,20}$/.test(ns)?ns:''}var s=String(v==null?'':v).trim().replace(/^['\\\"]|['\\\"]$/g,'');if(/[eE]/.test(s)){var n=Number(s);if(isFinite(n)&&Math.floor(n)===n)s=String(n)}s=s.replace(/\\.0+$/,'').trim();if(/^\\d{8,20}$/.test(s))return s;if(/^\\d[\\d\\s\/_-]*\\d$/.test(s)){var d2=s.replace(/\\D/g,'');if(d2.length>=8&&d2.length<=20)return d2}return''}",
       "function alp(v){var s=String(v==null?'':v).toUpperCase().replace(/[^A-Z0-9]/g,'');return s.length>=8&&s.length<=32&&/\\d/.test(s)?s:''}",
-      "function add(type,v,set){var s=String(v==null?'':v).trim();if(!s)return;if(type==='esic'){(s.match(/\\b\\d{10}\\b/g)||[]).forEach(function(x){var z=digs(x);if(z&&z.length===10)set[z]=1})}else{s.split(/[\\s,;|]+/).forEach(function(x){var d=digs(x),a=alp(x),z=d&&d.length===12?d:a;if(z)set[z]=1});(s.match(/\\b\\d{12}\\b/g)||[]).forEach(function(x){set[x]=1})}}",
-      "self.onmessage=function(e){var d=e.data||{},id=d.id;try{var wb=XLSX.read(d.buffer,{type:'array',cellDates:false,cellText:true}),set={},sample='',sheets=[];wb.SheetNames.forEach(function(sn,si){var rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});for(var r=0;r<rows.length;r++){var row=rows[r]||[];for(var c=0;c<row.length;c++){add(d.type,row[c],set);if(sample.length<12000)sample+=' '+String(row[c]||'')}}sheets.push({name:sn,rows:rows});self.postMessage({id:id,progress:true,pct:Math.round((si+1)/wb.SheetNames.length*100)})});self.postMessage({id:id,ok:true,ids:Object.keys(set),sample:sample.slice(0,12000),sheets:sheets},[])}catch(err){self.postMessage({id:id,ok:false,error:String(err&&err.message||err)})}}"
+      "function add(type,v,set){var d0=digs(v);if(type==='esic'){if(d0&&d0.length===10)set[d0]=1}else{if(d0&&d0.length===12)set[d0]=1}var s=String(v==null?'':v).trim();if(!s)return;if(type==='esic'){(s.match(/\\b\\d{10}\\b/g)||[]).forEach(function(x){var z=digs(x);if(z&&z.length===10)set[z]=1})}else{s.split(/[\\s,;|]+/).forEach(function(x){var d=digs(x),a=alp(x),z=d&&d.length===12?d:a;if(z)set[z]=1});(s.match(/\\b\\d{12}\\b/g)||[]).forEach(function(x){set[x]=1})}}",
+      "self.onmessage=function(e){var d=e.data||{},id=d.id;try{var wb=XLSX.read(d.buffer,{type:'array',cellDates:false,cellText:true}),set={},sample='',sheets=[];wb.SheetNames.forEach(function(sn,si){var ws=wb.Sheets[sn],rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}),rawRows=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});for(var r=0;r<rows.length;r++){var row=rows[r]||[],rrow=rawRows[r]||[];var len=Math.max(row.length,rrow.length);for(var c=0;c<len;c++){if(rrow[c]!==undefined&&rrow[c]!=='')add(d.type,rrow[c],set);if(row[c]!==undefined&&row[c]!=='')add(d.type,row[c],set);if(sample.length<12000)sample+=' '+String(row[c]!=null&&row[c]!==''?row[c]:(rrow[c]||''))}}sheets.push({name:sn,rows:rows});self.postMessage({id:id,progress:true,pct:Math.round((si+1)/wb.SheetNames.length*100)})});self.postMessage({id:id,ok:true,ids:Object.keys(set),sample:sample.slice(0,12000),sheets:sheets},[])}catch(err){self.postMessage({id:id,ok:false,error:String(err&&err.message||err)})}}"
     ].join('\n');
     excelWorker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
     excelWorker.onmessage=function(e){var d=e.data||{},p=excelPending[d.id];if(!p)return;if(d.progress){if(p.progress)p.progress(d.pct||0);return}delete excelPending[d.id];if(d.ok)p.resolve(d);else p.reject(new Error(d.error||'Excel parse failed'))};
@@ -864,9 +864,10 @@ function parseExcel(buf,type,progress){
       if(!root.XLSX)throw new Error('Excel engine unavailable');
       var wb=root.XLSX.read(buf,{type:'array',cellDates:false,cellText:true}),set=new Set(),sample='',sheets=[];
       for(var si=0;si<wb.SheetNames.length;si++){
-        var sn=wb.SheetNames[si],rows=root.XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:false,defval:''});
+        var sn=wb.SheetNames[si],ws=wb.Sheets[sn],rows=root.XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}),rawRows=root.XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});
         for(var r=0;r<rows.length;r++){
-          var row=rows[r]||[];for(var cc=0;cc<row.length;cc++){collectToken(type,row[cc],set);if(sample.length<12000)sample+=' '+String(row[cc]||'')}
+          var row=rows[r]||[],rrow=rawRows[r]||[],len=Math.max(row.length,rrow.length);
+          for(var cc=0;cc<len;cc++){if(rrow[cc]!==undefined&&rrow[cc]!=='')collectToken(type,rrow[cc],set);if(row[cc]!==undefined&&row[cc]!=='')collectToken(type,row[cc],set);if(sample.length<12000)sample+=' '+String(row[cc]!=null&&row[cc]!==''?row[cc]:(rrow[cc]||''))}
           if(r%250===0)await tick()
         }
         sheets.push({name:sn,rows:rows});if(progress)progress(Math.round((si+1)/wb.SheetNames.length*100));await tick()
@@ -888,13 +889,24 @@ async function parsePdf(buf,type,progress){
     var page=await doc.getPage(p),tc=await page.getTextContent(),arr=tc.items||[],txt='',lineMap={};
     for(var i=0;i<arr.length;i++){
       var cur=arr[i],s=cur.str||'';collectToken(type,s,set);txt+=' '+s;items++;
-      var ly=cur.transform&&cur.transform[5],lx=cur.transform&&cur.transform[4],lk=String(Math.round(Number(ly||0)/2)*2);(lineMap[lk]||(lineMap[lk]=[])).push({x:Number(lx||0),s:String(s||'')});
+      var ly=cur.transform&&cur.transform[5],lx=cur.transform&&cur.transform[4],lk=String(Math.round(Number(ly||0)/2)*2);(lineMap[lk]||(lineMap[lk]=[])).push({x:Number(lx||0),w:Number(cur.width||0),s:String(s||'')});
       if(i<arr.length-1){
         var nx=arr[i+1],a=normalizeDigits(s),b=normalizeDigits(nx.str||''),y1=cur.transform&&cur.transform[5],y2=nx.transform&&nx.transform[5],x1=cur.transform&&cur.transform[4],x2=nx.transform&&nx.transform[4],gap=(x1!=null&&x2!=null)?x2-(x1+(cur.width||0)):999;
         if(a&&b&&a.length<12&&b.length<12&&a.length+b.length>=8&&a.length+b.length<=20&&y1!=null&&y2!=null&&Math.abs(y1-y2)<1.8&&gap>-3&&gap<14)collectToken(type,a+b,set)
       }
     }
-    Object.keys(lineMap).sort(function(a,b){return Number(b)-Number(a)}).forEach(function(k){var line=lineMap[k].sort(function(a,b){return a.x-b.x}).map(function(x){return x.s}).join(' ').replace(/\s+/g,' ').trim();if(line)lines.push(line)});
+    Object.keys(lineMap).sort(function(a,b){return Number(b)-Number(a)}).forEach(function(k){
+      var sorted=lineMap[k].sort(function(a,b){return a.x-b.x});
+      var digitRun='',prevEnd=null;
+      for(var si2=0;si2<sorted.length;si2++){
+        var seg=sorted[si2],ds=normalizeDigits(seg.s),segGap=(prevEnd!=null)?(seg.x-prevEnd):0;
+        if(ds&&ds.length<12&&(prevEnd==null||segGap<16)){digitRun+=ds;prevEnd=seg.x+(seg.w||0);if((type==='esic'&&digitRun.length===10)||(type!=='esic'&&digitRun.length===12))collectToken(type,digitRun,set)}
+        else{if(digitRun)collectToken(type,digitRun,set);digitRun=(ds&&ds.length<12)?ds:'';prevEnd=ds?(seg.x+(seg.w||0)):null}
+      }
+      if(digitRun)collectToken(type,digitRun,set);
+      var line=sorted.map(function(x){return x.s}).join(' ').replace(/\s+/g,' ').trim();
+      if(line){lines.push(line);collectToken(type,line,set)}
+    });
     if(sample.length<12000)sample+=' '+txt;
     try{page.cleanup()}catch(_){}
     if(progress)progress(Math.round(p/doc.numPages*100));await tick()
@@ -1264,12 +1276,12 @@ async function refresh(type){
         r.blob=old.blob||null;r.viewerSheets=old.viewerSheets||null;r.opfsPath=old.opfsPath||null;r.storage=old.storage||'cloud-index';
         r.cloudOnly=!(r.blob||r.opfsPath);r.hasOriginalFile=!!(r.hasOriginalFile||old.hasOriginalFile);
         if(!r.driveFileName&&old.driveFileName)r.driveFileName=old.driveFileName;
-        if(Array.isArray(old.ids)&&old.ids.length&&(!Array.isArray(r.ids)||old.ids.length>r.ids.length)){
+        if(Array.isArray(old.ids)&&old.ids.length){
           r.ids=Array.from(new Set([].concat(r.ids||[],old.ids)));
-          if(r.ids.length)r.parseStatus='ready';
         }
         if(old.period&&(!r.period||Date.parse(old.updatedAt||'')>Date.parse(r.updatedAt||''))){r.period=old.period;r.periodSource=old.periodSource||r.periodSource}
       }
+      if(Array.isArray(r.ids)&&r.ids.length){r.parseStatus='ready';r.parseError=''}
       r.sharedAuthoritative=true;
       if(pack.mode==='drive-sheets'){r.sharedSource='drive-sheets'}
       return r
@@ -1418,7 +1430,8 @@ function renderFiles(type){
 
   // --- MODE 1: 12 MONTHS YEAR VIEW (All 12 Challans for 2025/Chosen Year) ---
   if(mode==='year12'){
-    var targetYear = yf || state[type].activeYear || '2025';
+    var availYears = Object.keys(libraryYearRows(type)).filter(function(y){return y!=='Unknown'}).sort().reverse();
+    var targetYear = yf || state[type].activeYear || availYears[0] || String(new Date().getFullYear());
     var yearRows = rows.filter(function(r){return r.period && String(r.period).slice(0,4)===targetYear});
     var mNames=['January','February','March','April','May','June','July','August','September','October','November','December'];
     var mShort=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1631,9 +1644,9 @@ function cloudRecordFromLocal(r){
   return{id:r.cloudRecordId||r.id,type:r.type,name:r.name,size:r.size||0,lastModified:r.lastModified||0,uploadedAt:r.uploadedAt||'',updatedAt:r.updatedAt||r.uploadedAt||new Date().toISOString(),period:r.period||'',periodSource:r.periodSource||'',detail:'ATPL DOL V2 shared cloud index',digitIds:digits,alnumIds:alnums,fileHash:r.hash||'',fingerprint:r.hash||'',parseVersion:'v3-cloud-only-final13-delete-fix',cloudConfirmedAt:r.cloudConfirmedAt||''}
 }
 function localRecordFromCloud(r){
-  var ids=Array.from(new Set([].concat(Array.isArray(r&&r.digitIds)?r.digitIds:[],Array.isArray(r&&r.alnumIds)?r.alnumIds:[]).map(String).filter(Boolean))),hash=String(r&&r.fileHash||r&&r.fingerprint||''),type=String(r&&r.type||'');
+  var ids=recordIds(r),hash=String(r&&r.hash||r&&r.fileHash||r&&r.fingerprint||'').toLowerCase(),type=String(r&&r.type||'').toLowerCase();
   var id=hash&&type?uid(type,hash):String(r&&r.id||'');
-  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,contributions:[],indexCount:Number(r&&r.indexCount||0)||0,indexStatus:String(r&&r.indexStatus||''),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedBy:String(r&&r.uploadedBy||''),uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name)),sharedAuthoritative:true,sharedSource:String(r&&r._sharedSource||r&&r.sharedSource||((r&&r.hasOriginalFile)?'dedicated':'historical'))}
+  return{id:id||String(r&&r.id||uid(type||'esic',hash)),cloudRecordId:String(r&&r.cloudRecordId||r&&r.id||''),version:2,type:type,name:String(r&&r.name||'Cloud challan'),size:Number(r&&r.size||0)||0,lastModified:Number(r&&r.lastModified||0)||0,hash:hash,fileHash:hash,period:String(r&&r.period||''),periodSource:String(r&&r.periodSource||'cloud'),ids:ids,contributions:Array.isArray(r&&r.contributions)?r.contributions:[],indexCount:Number(r&&r.indexCount||0)||0,indexStatus:String(r&&r.indexStatus||''),parseStatus:ids.length?'ready':'error',parseError:ids.length?'':'Cloud index has no IDs',uploadedBy:String(r&&r.uploadedBy||''),uploadedAt:String(r&&r.uploadedAt||''),updatedAt:String(r&&r.updatedAt||r&&r.uploadedAt||new Date().toISOString()),driveFileName:String(r&&r.driveFileName||''),ids_truncated:!!(r&&r.ids_truncated),ids_count:Number(r&&r.ids_count||0)||0,blob:null,viewerSheets:null,storage:'cloud-index',cloudSynced:true,cloudConfirmedAt:String(r&&r.cloudConfirmedAt||r&&r.updatedAt||r&&r.uploadedAt||''),cloudOnly:true,hasOriginalFile:!!(r&&r.hasOriginalFile),mime:String(r&&r.mime||fileMime(r&&r.name)),sharedAuthoritative:true,sharedSource:String(r&&r._sharedSource||r&&r.sharedSource||((r&&r.hasOriginalFile)?'dedicated':'historical'))}
 }
 async function sanitizeLocalTypeMixups(){
   var all=await dbAll(),pf=all.filter(function(r){return r&&r.type==='pf'}),fixed=0;
@@ -1795,7 +1808,7 @@ async function upload(type,fileList){
     pack={mode:(vaultApi()&&vaultApi().authority==='supabase')?'supabase':(drv?'drive-sheets':'legacy'),records:[],dedicatedCount:0,legacyCount:0,partialErrors:[String(e&&e.message||e)]};
   }
   var mode=(pack.mode==='v4'||pack.mode==='supabase'||pack.mode==='drive-sheets')?pack.mode:(drv?'drive-sheets':'legacy'),byHash={};
-  (pack.records||[]).forEach(function(x){var h=String(x.fileHash||x.fingerprint||'');if(h)byHash[h]=localRecordFromCloud(x)});
+  (pack.records||[]).forEach(function(x){var h=String(x.hash||x.fileHash||x.fingerprint||'').toLowerCase();if(h)byHash[h]=localRecordFromCloud(x)});
   var staged=0,indexed=0,dups=0,attached=0,warns=[],cloudQueue=[],cloud={saved:0,failed:0,indexPending:0};
   for(var i=0;i<files.length;i++){
     var f=files[i];setStatus(type,'Checking '+(i+1)+' / '+files.length+' · '+f.name);
@@ -1810,7 +1823,8 @@ async function upload(type,fileList){
         var dupCheck=await vaultApi().check(hash,'user_upload',type);if(dupCheck&&dupCheck.duplicate){var dr=localRecordFromCloud(dupCheck.record||{});if(dr.type&&dr.type!==type)cross=dr;else existing=existing||dr}
       }
       if(cross){dups++;warns.push(f.name+': already belongs to '+(cross.type==='pf'?'PF → DOL':'ESIC → DOL')+' — cross-module duplicate blocked');buf=null;continue}
-      if(existing){
+      var existingValidIds=existing?recordIds(existing).map(function(v){return validId(type,v)}).filter(Boolean):[];
+      if(existing&&existingValidIds.length>0&&existing.period){
         try{await clearSharedDeleteTombstone(type,existing)}catch(re){throw new Error('Cannot restore deleted challan marker: '+(re.message||re))}clearDeleteTombstone(type,existing);
         var localExisting=await dbGet(existing.id);
         if(!localExisting){
@@ -1951,6 +1965,24 @@ function unindexedBlocksDol(type,r,last){
   return recordIds(r).map(function(x){return validId(type,x)}).filter(Boolean).length===0
 }
 function detailText(d){return root.ATPLDOLIndexV1&&typeof root.ATPLDOLIndexV1.detailsText==='function'?root.ATPLDOLIndexV1.detailsText(d):''}
+function missingMonthsBetween(lastPeriod,coveragePeriods){
+  if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(String(lastPeriod||'')))return[];
+  var valid=(Array.isArray(coveragePeriods)?coveragePeriods:[]).filter(function(p){return /^20\d{2}-(0[1-9]|1[0-2])$/.test(String(p||''))}).sort();
+  if(!valid.length)return[];
+  var maxP=valid[valid.length-1];
+  if(maxP<=lastPeriod)return[];
+  var covSet={};valid.forEach(function(p){covSet[p]=1});
+  var y=Number(lastPeriod.slice(0,4)),m=Number(lastPeriod.slice(5,7));
+  var endY=Number(maxP.slice(0,4)),endM=Number(maxP.slice(5,7));
+  var out=[],guard=0;
+  while(guard++<240){
+    m++;if(m>12){m=1;y++}
+    if(y>endY||(y===endY&&m>endM))break;
+    var key=String(y)+'-'+String(m).padStart(2,'0');
+    if(!covSet[key])out.push(key);
+  }
+  return out;
+}
 async function searchAsync(type,qs,box){
   var pack=null,v=vaultApi(),freshLibrary=null,freshRows=null;
   await loadSharedDeleteTombstones(type,false);
@@ -1977,14 +2009,30 @@ async function searchAsync(type,qs,box){
   pack=pack?mergeSearchPacks(type,qs,pack,local):local;
   var coverage=Array.isArray(pack.coverage)?pack.coverage:state[type].periods||[],unindexed=Array.isArray(pack.unindexed)?pack.unindexed:[],h='<table class="cd2-table"><thead><tr><th>ID / EMPLOYEE</th><th>LAST CONTRIBUTION / DOL</th><th>SOURCE & DETAILS</th><th>CONTRIBUTION TIMELINE</th></tr></thead><tbody>';
   qs.forEach(function(id){
-    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,blocking=unindexed.filter(function(r){return unindexedBlocksDol(type,r,last)}),strictlyNewerBlocking=blocking.filter(function(r){return !r.period||(last&&String(r.period)>String(last))}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
+    var m=Array.isArray(pack.matches&&pack.matches[id])?pack.matches[id].slice():[],unresolved=m.filter(function(r){return!r.period}),known=m.filter(function(r){return!!r.period}).sort(function(a,b){return String(a.period).localeCompare(String(b.period))}),latest=known.length?known[known.length-1]:null,months=Array.from(new Set(known.map(function(r){return r.period}))).sort(),last=latest&&latest.period||'',later=last?coverage.filter(function(p){return p>last}).length:0,missingAfterLast=last?missingMonthsBetween(last,coverage):[],blocking=unindexed.filter(function(r){return unindexedBlocksDol(type,r,last)}),strictlyNewerBlocking=blocking.filter(function(r){return !r.period||(last&&String(r.period)>String(last))}),name=(latest&&latest.employeeName)||((m.find(function(x){return!!x.employeeName})||{}).employeeName)||'';
     if(!m.length){
       var emptyMsg=blocking.length?'<span class="cd2-warn">Index incomplete</span><div style="font-size:8px;margin-top:2px">'+blocking.length+' challan(s) need indexing</div>':'<span class="cd2-bad">No contribution record found in uploaded challans.</span>';
       h+='<tr><td><b>'+esc(id)+'</b></td><td>'+emptyMsg+'</td><td>—</td><td>—</td></tr>';return
     }
-    var dol=unresolved.length?'<span class="cd2-warn">Set source month first</span>':('<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference</div>'+(strictlyNewerBlocking.length?'<div style="font-size:8px;color:#b45309;margin-top:2px">⚠ '+strictlyNewerBlocking.length+' unindexed/undated challan(s) skipped</div>':''));
+    var dol;
+    if(unresolved.length){
+      dol='<span class="cd2-warn">Set source month first</span>';
+    }else if(missingAfterLast.length||strictlyNewerBlocking.length){
+      var missLabels=missingAfterLast.map(periodLabel).join(', ');
+      dol='<span class="cd2-warn">'+periodLabel(last)+' (Unverified)</span>'+
+        (missingAfterLast.length?'<div style="font-size:8px;color:#b45309;margin-top:3px;font-weight:800">⚠ '+esc(missLabels)+' challan not uploaded after '+esc(periodLabel(last))+' — upload missing month(s) for accurate DOL</div>':'')+
+        (strictlyNewerBlocking.length?'<div style="font-size:8px;color:#b45309;margin-top:2px">⚠ '+strictlyNewerBlocking.length+' unindexed/undated challan(s) skipped</div>':'');
+    }else{
+      var verifiedNote=later>0?('Year '+esc(String(last).slice(0,4))+' · Latest contribution = DOL reference'):('Year '+esc(String(last).slice(0,4))+' · Present in latest uploaded challan');
+      dol='<span class="cd2-last">'+periodLabel(last)+'</span><div style="font-size:8px;color:#166534;margin-top:2px">'+verifiedNote+'</div>';
+    }
     var dt=latest?detailText(latest.details):'',src=latest?'<b>'+esc(latest.sourceChallan||'Saved challan')+'</b><div style="font-size:8px;color:#64748b;margin-top:3px">'+esc(dt||'Contribution found; amount detail not available in source format.')+'</div>':'—';
-    h+='<tr><td><b>'+esc(id)+'</b>'+(name?'<div style="font-size:9px;color:#475569;margin-top:3px">'+esc(name)+'</div>':'')+'</td><td>'+dol+'</td><td>'+src+'</td><td><div class="cd2-months">'+(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+esc(later+' later uploaded month(s) checked; gaps ignored')+'</div></td></tr>'
+    var monthChips=(months.length?months.map(function(p){return'<span>'+periodLabel(p)+'</span>'}).join(''):'—')+
+      (missingAfterLast.length?missingAfterLast.map(function(p){return'<span style="background:#fff7ed;color:#c2410c;border:1px solid #fed7aa">'+periodLabel(p)+' (Missing)</span>'}).join(''):'');
+    var timelineNote=missingAfterLast.length
+      ?(missingAfterLast.length+' missing month(s) not uploaded after '+periodLabel(last)+' · '+later+' later uploaded month(s) checked')
+      :(later+' later uploaded month(s) checked; gaps ignored');
+    h+='<tr><td><b>'+esc(id)+'</b>'+(name?'<div style="font-size:9px;color:#475569;margin-top:3px">'+esc(name)+'</div>':'')+'</td><td>'+dol+'</td><td>'+src+'</td><td><div class="cd2-months">'+monthChips+'</div><div style="font-size:8px;color:'+(missingAfterLast.length?'#b45309':'#64748b')+';margin-top:4px">'+esc(timelineNote)+'</div></td></tr>'
   });
   h+='</tbody></table>';box.innerHTML=h;setStatus(type,'Search complete ✓ · complete saved history checked · gaps ignored · no PDF/Excel re-parse'+(unindexed.length?' · '+unindexed.length+' challan(s) still need indexing':'')+(pack.source==='local-fallback'?' · compatibility index used':''))
 }
@@ -2119,6 +2167,8 @@ function wire(type){
     var colAll=e.target.closest&&e.target.closest('#cd2-'+type+'-collapseall');
     if(colAll){files.querySelectorAll('details.cd2-yearfolder').forEach(function(d){d.open=false});return}
 
+    var pk=e.target.closest&&e.target.closest('[data-cd2-pick]');
+    if(pk){if(inp){requestPersistentStorage().then(function(){var st=$('cd2-'+type+'-storage');if(st)st.textContent=storageLabel();inp.click()});}return}
     var v=e.target.closest&&e.target.closest('[data-cd2-view]');
     if(v){openViewer(type,v.getAttribute('data-cd2-view'));return}
     var dl=e.target.closest&&e.target.closest('[data-cd2-download]');
@@ -2213,7 +2263,7 @@ async function boot(){
 function start(){setTimeout(function(){boot().catch(function(e){console.error('Compliance DOL V2 boot failed',e)})},180)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 
-root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},syncCloud:syncCloudIndexes,version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__}};
+root.ATPLComplianceDOLV2={refresh:refresh,open:function(type,id){return openViewer(type,id)},syncCloud:syncCloudIndexes,version:function(){return root.__ATPL_COMPLIANCE_DOL_REBUILD_V2__},_helpers:{parsePeriodCore:parsePeriodCore,inferPeriod:inferPeriod,localRecordFromCloud:localRecordFromCloud,recordIds:recordIds,missingMonthsBetween:missingMonthsBetween,librarySearchPack:librarySearchPack,searchAsync:searchAsync}};
   // Attach Original File function (inside IIFE so state, sha256, opfsSave, dbPut are in scope)
   root.cd2AttachOriginalFile = async function(type, id, input) {
     if (!input || !input.files || !input.files[0]) return;
