@@ -3485,6 +3485,175 @@
   }
 
   // ── SIGNED ADVANCE SLIP MODAL (UPLOAD / VIEW / SYNC ACROSS BROWSERS) ──
+  var slipZoomState = {
+    scale: 1,
+    minScale: 0.5,
+    maxScale: 6,
+    baseW: 0,
+    baseH: 0,
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+    docBound: false
+  };
+
+  function ensureSlipBaseSize(viewport, img) {
+    if (!viewport || !img) return false;
+    if (slipZoomState.baseW > 0 && slipZoomState.baseH > 0) return true;
+    var cw = img.clientWidth || 0;
+    var ch = img.clientHeight || 0;
+    if ((!cw || !ch) && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      var vw = Math.max(200, (viewport.clientWidth || 620) - 24);
+      var vh = Math.max(200, (viewport.clientHeight || 380) - 24);
+      var fit = Math.min(vw / img.naturalWidth, vh / img.naturalHeight, 1);
+      cw = Math.round(img.naturalWidth * fit);
+      ch = Math.round(img.naturalHeight * fit);
+    }
+    if (cw > 0 && ch > 0) {
+      slipZoomState.baseW = cw;
+      slipZoomState.baseH = ch;
+      return true;
+    }
+    return false;
+  }
+
+  function applySlipZoom(nextScale, clientX, clientY) {
+    var viewport = document.getElementById('advSlipZoomViewport');
+    var img = document.getElementById('advSlipZoomImg');
+    if (!viewport || !img) return;
+    if (!ensureSlipBaseSize(viewport, img)) return;
+
+    var clamped = Math.max(slipZoomState.minScale, Math.min(slipZoomState.maxScale, Number(nextScale) || 1));
+    if (Math.abs(clamped - 1) < 0.05 && ((slipZoomState.scale > 1 && clamped <= 1.05) || (slipZoomState.scale < 1 && clamped >= 0.95))) {
+      clamped = 1;
+    }
+
+    var imgRect = typeof img.getBoundingClientRect === 'function' ? img.getBoundingClientRect() : null;
+    var hasCursor = imgRect && typeof clientX === 'number' && typeof clientY === 'number' && imgRect.width > 0 && imgRect.height > 0;
+    var relX = 0.5;
+    var relY = 0.5;
+    if (hasCursor && clientX >= imgRect.left && clientX <= imgRect.right && clientY >= imgRect.top && clientY <= imgRect.bottom) {
+      relX = (clientX - imgRect.left) / imgRect.width;
+      relY = (clientY - imgRect.top) / imgRect.height;
+    }
+
+    slipZoomState.scale = clamped;
+    if (Math.abs(clamped - 1) < 0.001) {
+      img.style.width = slipZoomState.baseW + 'px';
+      img.style.height = slipZoomState.baseH + 'px';
+    } else {
+      img.style.maxWidth = 'none';
+      img.style.maxHeight = 'none';
+      img.style.width = Math.max(40, Math.round(slipZoomState.baseW * clamped)) + 'px';
+      img.style.height = Math.max(40, Math.round(slipZoomState.baseH * clamped)) + 'px';
+    }
+
+    if (hasCursor && typeof img.getBoundingClientRect === 'function') {
+      var newRect = img.getBoundingClientRect();
+      var targetX = newRect.left + relX * newRect.width;
+      var targetY = newRect.top + relY * newRect.height;
+      viewport.scrollLeft += (targetX - clientX);
+      viewport.scrollTop += (targetY - clientY);
+    }
+
+    var pctEl = document.getElementById('advSlipZoomPct');
+    if (pctEl) pctEl.textContent = Math.round(clamped * 100) + '%';
+    viewport.style.cursor = clamped > 1.02 ? 'grab' : 'zoom-in';
+  }
+
+  function zoomSlipBy(deltaStep) {
+    var viewport = document.getElementById('advSlipZoomViewport');
+    var rect = viewport && typeof viewport.getBoundingClientRect === 'function' ? viewport.getBoundingClientRect() : null;
+    var cx = rect ? (rect.left + rect.width / 2) : undefined;
+    var cy = rect ? (rect.top + rect.height / 2) : undefined;
+    applySlipZoom(slipZoomState.scale + (Number(deltaStep) || 0), cx, cy);
+  }
+
+  function resetSlipZoom() {
+    var viewport = document.getElementById('advSlipZoomViewport');
+    var img = document.getElementById('advSlipZoomImg');
+    slipZoomState.scale = 1;
+    slipZoomState.dragging = false;
+    if (img) {
+      img.style.width = '';
+      img.style.height = '';
+      img.style.maxWidth = 'calc(100% - 20px)';
+      img.style.maxHeight = '356px';
+      slipZoomState.baseW = 0;
+      slipZoomState.baseH = 0;
+    }
+    if (viewport) {
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+      viewport.style.cursor = 'zoom-in';
+    }
+    var pctEl = document.getElementById('advSlipZoomPct');
+    if (pctEl) pctEl.textContent = '100%';
+  }
+
+  function initSlipPreviewZoom() {
+    slipZoomState.scale = 1;
+    slipZoomState.baseW = 0;
+    slipZoomState.baseH = 0;
+    slipZoomState.dragging = false;
+
+    var viewport = document.getElementById('advSlipZoomViewport');
+    var img = document.getElementById('advSlipZoomImg');
+    if (!viewport || !img) return;
+
+    if (typeof viewport.addEventListener === 'function' && !viewport._atplZoomBound) {
+      viewport._atplZoomBound = true;
+      viewport.addEventListener('wheel', function(e) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+        var delta = (e && e.deltaY !== undefined) ? e.deltaY : (e && e.wheelDelta !== undefined ? -e.wheelDelta : 0);
+        if (!delta) return;
+        var factor = delta < 0 ? 1.15 : (1 / 1.15);
+        applySlipZoom(slipZoomState.scale * factor, e.clientX, e.clientY);
+      }, { passive: false });
+
+      viewport.addEventListener('mousedown', function(e) {
+        if (!e || e.button !== 0) return;
+        if (viewport.scrollWidth <= viewport.clientWidth + 2 && viewport.scrollHeight <= viewport.clientHeight + 2) return;
+        slipZoomState.dragging = true;
+        slipZoomState.startX = e.clientX;
+        slipZoomState.startY = e.clientY;
+        slipZoomState.startScrollLeft = viewport.scrollLeft;
+        slipZoomState.startScrollTop = viewport.scrollTop;
+        viewport.style.cursor = 'grabbing';
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+      });
+
+      viewport.addEventListener('dblclick', function(e) {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+        if (slipZoomState.scale > 1.05) {
+          resetSlipZoom();
+        } else {
+          applySlipZoom(2.2, e ? e.clientX : undefined, e ? e.clientY : undefined);
+        }
+      });
+    }
+
+    if (!slipZoomState.docBound && typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      slipZoomState.docBound = true;
+      document.addEventListener('mousemove', function(e) {
+        if (!slipZoomState.dragging) return;
+        var vp = document.getElementById('advSlipZoomViewport');
+        if (!vp) { slipZoomState.dragging = false; return; }
+        vp.scrollLeft = slipZoomState.startScrollLeft - (e.clientX - slipZoomState.startX);
+        vp.scrollTop = slipZoomState.startScrollTop - (e.clientY - slipZoomState.startY);
+      });
+      document.addEventListener('mouseup', function() {
+        if (!slipZoomState.dragging) return;
+        slipZoomState.dragging = false;
+        var vp = document.getElementById('advSlipZoomViewport');
+        if (vp) vp.style.cursor = slipZoomState.scale > 1.02 ? 'grab' : 'zoom-in';
+      });
+    }
+  }
+
   function renderSlipPreviewHtml(slipPayload) {
     if (!slipPayload || !slipPayload.dataUrl) {
       return '<div style="padding:28px 16px;text-align:center;color:#94a3b8;font-size:12px">Abhi koi signed slip upload nahi hui hai.<br>Upar se Diary / Director sign wali photo ya PDF select karein.</div>';
@@ -3493,7 +3662,22 @@
     if (isPdf) {
       return '<iframe src="' + slipPayload.dataUrl + '" style="width:100%;height:340px;border:1px solid #e2e8f0;border-radius:8px;background:#fff"></iframe>';
     }
-    return '<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px"><img src="' + slipPayload.dataUrl + '" alt="Signed Advance Slip" style="max-width:100%;max-height:360px;border-radius:6px;object-fit:contain;box-shadow:0 4px 12px rgba(15,23,42,0.12)"></div>';
+    return (
+      '<div style="border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;overflow:hidden">' +
+      '  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;background:#eef2ff;border-bottom:1px solid #dbeafe;flex-wrap:wrap">' +
+      '    <span style="font-size:10.5px;font-weight:700;color:#312e81">🖱️ Mouse Wheel se Zoom In / Out · Double-Click ya Drag karke dekhein</span>' +
+      '    <div style="display:flex;align-items:center;gap:5px">' +
+      '      <button type="button" id="advSlipZoomOutBtn" onclick="ATPLAdvanceManager.zoomSlipBy(-0.25)" style="width:26px;height:24px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer;line-height:1" title="Zoom Out">−</button>' +
+      '      <span id="advSlipZoomPct" style="min-width:44px;text-align:center;font-size:11px;font-weight:800;color:#312e81;background:#fff;border:1px solid #c7d2fe;border-radius:6px;padding:3px 6px">100%</span>' +
+      '      <button type="button" id="advSlipZoomInBtn" onclick="ATPLAdvanceManager.zoomSlipBy(0.25)" style="width:26px;height:24px;border:1px solid #cbd5e1;background:#fff;color:#1e293b;border-radius:6px;font-size:13px;font-weight:800;cursor:pointer;line-height:1" title="Zoom In">+</button>' +
+      '      <button type="button" id="advSlipZoomResetBtn" onclick="ATPLAdvanceManager.resetSlipZoom()" style="height:24px;padding:0 8px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer" title="Reset Zoom">↺ Reset</button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div id="advSlipZoomViewport" style="width:100%;height:380px;overflow:auto;background:#f8fafc;display:flex;position:relative;user-select:none;cursor:zoom-in">' +
+      '    <img id="advSlipZoomImg" src="' + slipPayload.dataUrl + '" alt="Signed Advance Slip" draggable="false" style="margin:auto;display:block;max-width:calc(100% - 20px);max-height:356px;border-radius:6px;object-fit:contain;box-shadow:0 4px 12px rgba(15,23,42,0.12)">' +
+      '  </div>' +
+      '</div>'
+    );
   }
 
   function renderStagedSlipQueueHtml(advanceId) {
@@ -3712,6 +3896,7 @@
         if (!box) return;
         if (payload && payload.dataUrl) {
           box.innerHTML = renderSlipPreviewHtml(payload);
+          initSlipPreviewZoom();
         } else {
           box.innerHTML = '<div style="padding:24px;text-align:center;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:11.5px;font-weight:700">⚠️ Cloud se slip abhi fetch nahi ho paayi. Sync dabakar retry karein ya nayi slip upload karein.</div>';
         }
@@ -3754,7 +3939,7 @@
           ? ('<span style="color:#15803d">✅ ' + comps.length + ' Slips Ready (Latest: ' + esc(lastComp.fileName) + ')</span>')
           : ('<span style="color:#15803d">✅ Ready: ' + esc(lastComp.fileName) + ' (' + formatSlipSize(lastComp.size) + ')</span>');
       }
-      if (previewEl) previewEl.innerHTML = renderSlipPreviewHtml(lastComp);
+      if (previewEl) { previewEl.innerHTML = renderSlipPreviewHtml(lastComp); initSlipPreviewZoom(); }
     }).catch(function(err) {
       state.stagedModalSlip = null;
       showSlipModalError(err && err.message ? err.message : 'Slip file read nahi ho saki.');
@@ -5018,6 +5203,10 @@
   }
 
   function closeModal() {
+    slipZoomState.dragging = false;
+    slipZoomState.scale = 1;
+    slipZoomState.baseW = 0;
+    slipZoomState.baseH = 0;
     state.openHistoryEmpCode = null;
     state.openSlipAdvanceId = null;
     state.stagedFormSlip = null;
@@ -6819,6 +7008,8 @@
     addMoreAdvDateFromModal: addMoreAdvDateFromModal,
     removeMoreAdvDateFromModal: removeMoreAdvDateFromModal,
     onSlipFileSelected: onSlipFileSelected,
+    zoomSlipBy: zoomSlipBy,
+    resetSlipZoom: resetSlipZoom,
     saveSlipModal: saveSlipModal,
     removeSlipModal: removeSlipModal,
     downloadSlip: downloadSlip,

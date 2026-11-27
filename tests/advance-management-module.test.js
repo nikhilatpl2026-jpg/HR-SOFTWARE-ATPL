@@ -374,4 +374,120 @@ test('Advance Management Module - Enterprise Tests (Manual-Only Deduction & Empl
     // Month Cut Details must have 2 transactions (101 and 102)
     assert.equal(rep.monthDeductionRows.length, 2);
   });
+
+  await t.test('8. Signed Advance Slip preview supports mouse-wheel zoom in/out, zoom buttons, and reset', async () => {
+    const elements = new Map();
+    const wheelListeners = [];
+    const viewportEl = {
+      style: {},
+      clientWidth: 640,
+      clientHeight: 380,
+      scrollWidth: 640,
+      scrollHeight: 380,
+      scrollLeft: 0,
+      scrollTop: 0,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 380, right: 640, bottom: 380 }),
+      addEventListener: (ev, fn) => { if (ev === 'wheel') wheelListeners.push(fn); }
+    };
+    const imgEl = {
+      style: {},
+      clientWidth: 260,
+      clientHeight: 350,
+      naturalWidth: 520,
+      naturalHeight: 700,
+      getBoundingClientRect: () => ({
+        left: 190,
+        top: 15,
+        width: parseInt(imgEl.style.width, 10) || 260,
+        height: parseInt(imgEl.style.height, 10) || 350,
+        right: 190 + (parseInt(imgEl.style.width, 10) || 260),
+        bottom: 15 + (parseInt(imgEl.style.height, 10) || 350)
+      })
+    };
+    const pctEl = { textContent: '100%' };
+    const previewBoxEl = {
+      _html: '',
+      get innerHTML() { return this._html; },
+      set innerHTML(val) {
+        this._html = String(val || '');
+        if (this._html.includes('id="advSlipZoomViewport"')) {
+          elements.set('advSlipZoomViewport', viewportEl);
+          elements.set('advSlipZoomImg', imgEl);
+          elements.set('advSlipZoomPct', pctEl);
+        }
+      }
+    };
+    elements.set('advSlipPreviewBox', previewBoxEl);
+
+    const { mockWindow, modal } = makeMockWindow();
+    const origGetEl = mockWindow.document.getElementById;
+    mockWindow.document.getElementById = (id) => {
+      if (elements.has(id)) return elements.get(id);
+      return origGetEl(id);
+    };
+    vm.runInNewContext(advanceJsContent, mockWindow);
+    const mgr = mockWindow.ATPLAdvanceManager;
+    assert.ok(typeof mgr.zoomSlipBy === 'function', 'zoomSlipBy must be exposed');
+    assert.ok(typeof mgr.resetSlipZoom === 'function', 'resetSlipZoom must be exposed');
+
+    mgr.addOrUpdateAdvance({
+      id: 'adv_zoom_1',
+      empCode: '25191',
+      empName: 'UMMAID SINGH',
+      advanceDate: '2026-11-24',
+      amount: 15000
+    });
+    const upRes = await mgr.uploadAdvanceSlip('adv_zoom_1', {
+      fileName: 'slip.jpg',
+      mimeType: 'image/jpeg',
+      size: 120,
+      dataUrl: 'data:image/jpeg;base64,ZmFrZQ=='
+    });
+    assert.equal(upRes.ok, true);
+
+    mgr.openSlipModal('adv_zoom_1');
+    await new Promise((r) => setTimeout(r, 25));
+
+    assert.ok(previewBoxEl.innerHTML.includes('id="advSlipZoomViewport"'), 'Slip preview must render zoom viewport');
+    assert.ok(previewBoxEl.innerHTML.includes('id="advSlipZoomImg"'), 'Slip preview must render zoomable image');
+    assert.equal(wheelListeners.length, 1, 'Wheel zoom listener must be attached to slip viewport');
+
+    // Scroll up (wheel zoom in)
+    let prevented = false;
+    wheelListeners[0]({
+      deltaY: -120,
+      clientX: 300,
+      clientY: 180,
+      preventDefault: () => { prevented = true; },
+      stopPropagation: () => {}
+    });
+    assert.equal(prevented, true, 'Mouse wheel on slip must prevent outer modal scrolling');
+    assert.equal(pctEl.textContent, '115%', 'Wheel up must zoom in to 115%');
+    assert.equal(imgEl.style.width, '299px');
+
+    // Scroll up again -> further zoom in
+    wheelListeners[0]({
+      deltaY: -120,
+      clientX: 300,
+      clientY: 180,
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    assert.equal(pctEl.textContent, '132%');
+
+    // Scroll down -> zoom out
+    wheelListeners[0]({
+      deltaY: 120,
+      clientX: 300,
+      clientY: 180,
+      preventDefault: () => {},
+      stopPropagation: () => {}
+    });
+    assert.equal(pctEl.textContent, '115%');
+
+    // Reset button restores 100%
+    mgr.resetSlipZoom();
+    assert.equal(pctEl.textContent, '100%');
+    assert.equal(imgEl.style.maxHeight, '356px');
+  });
 });
