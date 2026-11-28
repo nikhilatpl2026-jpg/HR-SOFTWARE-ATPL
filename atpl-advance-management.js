@@ -6715,8 +6715,16 @@
     s3Aoa.push(["", "TOTAL", "", "", report.monthDeductionRows.length + " Cuts", "", "", "", s3CutSum, "", "", ""]);
 
     // Sheet 4: All Advances Register
+    var s4TotGiven = 0, s4TotRec = 0, s4TotBal = 0, s4TotCap = 0;
+    report.allAdvances.forEach(function(a) {
+      s4TotGiven = round2(s4TotGiven + (Number(a.amount) || 0));
+      s4TotRec = round2(s4TotRec + (Number(a.recoveredAmount) || 0));
+      s4TotBal = round2(s4TotBal + (Number(a.balanceAmount) || 0));
+      s4TotCap = round2(s4TotCap + (Number(a.monthlyCap) || 0));
+    });
     var s4Aoa = [
       ["ALL ADVANCES REGISTER (COMPLETE AUDIT BACKUP)"],
+      ["Total Advances: " + report.allAdvances.length + "  |  Total Disbursed: Rs." + s4TotGiven + "  |  Recovered: Rs." + s4TotRec + "  |  Live Balance: Rs." + s4TotBal],
       [],
       ["S.No.", "Advance ID", "Emp Code", "Employee Name", "Advance Date", "Amount (INR)", "Recovered (INR)", "Current Balance (INR)", "Monthly Cap (INR)", "Status", "Remarks"]
     ];
@@ -6735,20 +6743,334 @@
         a.remarks || ""
       ]);
     });
+    s4Aoa.push(["", "TOTAL", report.allAdvances.length + " Advances", "", "", s4TotGiven, s4TotRec, s4TotBal, s4TotCap, "", ""]);
+
+    // Place Sheet 1 KPI summary cards cleanly into balanced merged spans across columns
+    s1Aoa[2] = [
+      "Employees Cut (" + mLbl + "): " + report.totals.employeesCutCount, "", "", "",
+      "Total Cut (" + mLbl + "): Rs." + Number(report.totals.cutInMonth || 0).toLocaleString("en-IN"), "", "", "",
+      "Next Pending Staff (" + nLbl + "): " + report.totals.employeesNextPendingCount, "", "", "", "",
+      "Total Next Pending (" + nLbl + "): Rs." + Number(report.totals.nextMonthPending || 0).toLocaleString("en-IN"), "", "", "", ""
+    ];
+
+    function colIdxToLettersAdv(idx) {
+      var n = idx + 1, s = "";
+      while (n > 0) {
+        var r = (n - 1) % 26;
+        s = String.fromCharCode(65 + r) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+
+    function styleAdvanceReportWorkbookBytes(XLSX, wb) {
+      var rawArr = XLSX.write(wb, { type: "array", bookType: "xlsx", compression: false });
+      if (!XLSX.CFB || typeof XLSX.CFB.read !== "function" || typeof TextEncoder === "undefined") {
+        return new Uint8Array(rawArr);
+      }
+      var zip = XLSX.CFB.read(new Uint8Array(rawArr), { type: "array" });
+      var encoder = new TextEncoder();
+      var decoder = new TextDecoder();
+
+      // Rich Executive OOXML Style Sheet:
+      // 0: default bordered
+      // 1: Banner Title (Deep Navy #0F172A, white bold 13pt)
+      // 2: Subtitle Bar (#DBEAFE, dark navy bold 10pt)
+      // 3: KPI Pill Card (#EEF2FF, indigo bold 10pt, thin indigo border)
+      // 4: Table Header (#1E3A8A, white bold 10.5pt, wrapped, centered, medium bottom)
+      // 5: Data Left White | 6: Data Left Zebra (#F8FAFC)
+      // 7: Data Center White | 8: Data Center Zebra
+      // 9: Currency Right White (₹#,##0) | 10: Currency Right Zebra
+      // 11: Cut/Recovered Highlight (₹#,##0, Soft Indigo #EEF2FF, Bold #3730A3)
+      // 12: Pending/Due Highlight (₹#,##0, Soft Amber/Warm #FFF7ED, Bold #B45309)
+      // 13: Status Green Settled/Cleared (#DCFCE7, Bold #166534, centered)
+      // 14: Status Amber/Red Pending (#FEE2E2, Bold #991B1B, centered)
+      // 15: Total Label Left (#DBEAFE, Bold #0F172A, double bottom border)
+      // 16: Total Currency Right (₹#,##0, #DBEAFE, Bold #0F172A, double bottom border)
+      var customStylesXml = [
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">',
+        '  <numFmts count="1">',
+        '    <numFmt numFmtId="164" formatCode="&quot;₹&quot;#,##0;&quot;-₹&quot;#,##0;&quot;₹&quot;0"/>',
+        '  </numFmts>',
+        '  <fonts count="8">',
+        '    <font><sz val="10"/><color rgb="FF0F172A"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="13"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10"/><color rgb="FF1E3A8A"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10.5"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10"/><color rgb="FF3730A3"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10"/><color rgb="FFB45309"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10"/><color rgb="FF166534"/><name val="Calibri"/><family val="2"/></font>',
+        '    <font><b/><sz val="10"/><color rgb="FF991B1B"/><name val="Calibri"/><family val="2"/></font>',
+        '  </fonts>',
+        '  <fills count="11">',
+        '    <fill><patternFill patternType="none"/></fill>',
+        '    <fill><patternFill patternType="gray125"/></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FF0F172A"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFDBEAFE"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFEEF2FF"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FF1E3A8A"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFF8FAFC"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFFFF7ED"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFDCFCE7"/></patternFill></fill>',
+        '    <fill><patternFill patternType="solid"><fgColor rgb="FFFEE2E2"/></patternFill></fill>',
+        '  </fills>',
+        '  <borders count="6">',
+        '    <border><left/><right/><top/><bottom/><diagonal/></border>',
+        '    <border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border>',
+        '    <border><left style="thin"><color rgb="FF93C5FD"/></left><right style="thin"><color rgb="FF93C5FD"/></right><top style="thin"><color rgb="FF93C5FD"/></top><bottom style="thin"><color rgb="FF93C5FD"/></bottom><diagonal/></border>',
+        '    <border><left style="thin"><color rgb="FF1E40AF"/></left><right style="thin"><color rgb="FF1E40AF"/></right><top style="medium"><color rgb="FF0F172A"/></top><bottom style="medium"><color rgb="FF0F172A"/></bottom><diagonal/></border>',
+        '    <border><left style="thin"><color rgb="FFCBD5E1"/></left><right style="thin"><color rgb="FFCBD5E1"/></right><top style="thin"><color rgb="FFCBD5E1"/></top><bottom style="thin"><color rgb="FFCBD5E1"/></bottom><diagonal/></border>',
+        '    <border><left style="thin"><color rgb="FF1E3A8A"/></left><right style="thin"><color rgb="FF1E3A8A"/></right><top style="medium"><color rgb="FF1E3A8A"/></top><bottom style="double"><color rgb="FF0F172A"/></bottom><diagonal/></border>',
+        '  </borders>',
+        '  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>',
+        '  <cellXfs count="17">',
+        '    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="1" fillId="2" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" indent="1"/></xf>',
+        '    <xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" indent="1"/></xf>',
+        '    <xf numFmtId="0" fontId="4" fillId="4" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="3" fillId="5" borderId="3" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>',
+        '    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+        '    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>',
+        '    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+        '    <xf numFmtId="164" fontId="0" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+        '    <xf numFmtId="164" fontId="0" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+        '    <xf numFmtId="164" fontId="4" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+        '    <xf numFmtId="164" fontId="5" fillId="8" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="6" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="7" fillId="10" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>',
+        '    <xf numFmtId="0" fontId="2" fillId="3" borderId="5" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>',
+        '    <xf numFmtId="164" fontId="2" fillId="3" borderId="5" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',
+        '  </cellXfs>',
+        '  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>',
+        '  <dxfs count="0"/>',
+        '  <tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>',
+        '</styleSheet>'
+      ].join('\n');
+
+      var findZipEntry = function(target) {
+        if (Array.isArray(zip.FullPaths)) {
+          var idx = zip.FullPaths.findIndex(function(p) { return String(p || "").endsWith("/" + target) || String(p || "") === target; });
+          if (idx >= 0 && zip.FileIndex[idx]) return zip.FileIndex[idx];
+        }
+        var base = target.split("/").pop();
+        return zip.FileIndex.find(function(f) { return f && (f.name === target || f.name === "/" + target || f.name === base); });
+      };
+      var updateEntryBytes = function(entry, str) {
+        var bytes = encoder.encode(str);
+        entry.content = bytes;
+        entry.size = bytes.length;
+        if ("csize" in entry) delete entry.csize;
+        if ("crc" in entry) delete entry.crc;
+      };
+
+      var stylesEntry = findZipEntry("xl/styles.xml");
+      if (stylesEntry) updateEntryBytes(stylesEntry, customStylesXml);
+
+      var colLettersToIdx = function(ref) {
+        var m = /^([A-Z]+)(\d+)$/.exec(ref || "");
+        if (!m) return { col: 0, row: 1 };
+        var col = 0;
+        for (var i = 0; i < m[1].length; i++) col = col * 26 + (m[1].charCodeAt(i) - 64);
+        return { col: col - 1, row: Number(m[2]) };
+      };
+
+      var metaMap = wb.__atplAdvMeta || {};
+      (wb.SheetNames || []).forEach(function(sheetName, sIdx) {
+        var sheetPath = "xl/worksheets/sheet" + (sIdx + 1) + ".xml";
+        var entry = findZipEntry(sheetPath);
+        if (!entry || !entry.content) return;
+        var ws = wb.Sheets[sheetName];
+        var mInfo = metaMap[sheetName] || { headerRow1: 4, kpiRow1: 0, freezeCols: 3, numCols: [], centerCols: [], cutCols: [], pendingCols: [], statusCol: -1 };
+        var hdrRow = Number(mInfo.headerRow1) || 4;
+        var kpiRow = Number(mInfo.kpiRow1) || 0;
+        var numSet = new Set(mInfo.numCols || []);
+        var ctrSet = new Set(mInfo.centerCols || []);
+        var cutSet = new Set(mInfo.cutCols || []);
+        var pendSet = new Set(mInfo.pendingCols || []);
+        var statusCol = Number(mInfo.statusCol);
+        var refRange = ws && ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]) : { e: { r: 0, c: 0 } };
+        var lastRow1 = refRange.e.r + 1;
+        var lastCol0 = Math.max(0, refRange.e.c || 0);
+
+        var pickStyle = function(col0, row1) {
+          if (row1 === 1) return 1;
+          if (row1 === 2) return 2;
+          if (kpiRow && row1 === kpiRow) return 3;
+          if (row1 < hdrRow) return 0;
+          if (row1 === hdrRow) return 4;
+          if (row1 === lastRow1 && lastRow1 > hdrRow) return numSet.has(col0) ? 16 : 15;
+          var isZebra = (row1 - hdrRow) % 2 === 0;
+          var cellRef = colIdxToLettersAdv(col0) + row1;
+          var cell = ws ? ws[cellRef] : null;
+          var numVal = cell && typeof cell.v === "number" ? cell.v : 0;
+          var strVal = cell && cell.v != null ? String(cell.v).toLowerCase() : "";
+
+          if (col0 === statusCol) {
+            if (/clear|settled|paid/.test(strVal)) return 13;
+            if (/pending|carry|active|due|unpaid/.test(strVal)) return 14;
+            return isZebra ? 8 : 7;
+          }
+          if (cutSet.has(col0) && numVal > 0) return 11;
+          if (pendSet.has(col0) && numVal > 0) return 12;
+          if (numSet.has(col0)) return isZebra ? 10 : 9;
+          if (ctrSet.has(col0)) return isZebra ? 8 : 7;
+          return isZebra ? 6 : 5;
+        };
+
+        var xml = decoder.decode(new Uint8Array(entry.content));
+        if (!/<sheetPr\b/.test(xml)) {
+          xml = xml.replace(/<dimension\b/, '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension');
+        }
+
+        var xSplit = Math.max(0, Number(mInfo.freezeCols) || 0);
+        var ySplit = hdrRow;
+        var topLeftCol = colIdxToLettersAdv(xSplit);
+        var topLeftRow = ySplit + 1;
+        var freezeTag = xSplit > 0
+          ? '<sheetViews><sheetView tabSelected="' + (sIdx === 0 ? 1 : 0) + '" showGridLines="1" workbookViewId="0"><pane xSplit="' + xSplit + '" ySplit="' + ySplit + '" topLeftCell="' + topLeftCol + topLeftRow + '" activePane="bottomRight" state="frozen"/></sheetView></sheetViews>'
+          : '<sheetViews><sheetView tabSelected="' + (sIdx === 0 ? 1 : 0) + '" showGridLines="1" workbookViewId="0"><pane ySplit="' + ySplit + '" topLeftCell="A' + topLeftRow + '" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>';
+        if (/<sheetViews>[\s\S]*?<\/sheetViews>/.test(xml)) {
+          xml = xml.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/, freezeTag);
+        } else if (/<sheetFormatPr\b/.test(xml)) {
+          xml = xml.replace(/<sheetFormatPr\b/, freezeTag + "<sheetFormatPr");
+        } else {
+          xml = xml.replace(/<cols\b|<sheetData\b/, function(m) { return freezeTag + m; });
+        }
+
+        xml = xml.replace(/<row\b([^>]*)>([\s\S]*?)<\/row>/g, function(rowFull, rowAttrs, rowInner) {
+          var rowMatch = /r="(\d+)"/.exec(rowAttrs);
+          var row1 = rowMatch ? Number(rowMatch[1]) : 1;
+          var cellsByCol = new Map();
+          rowInner.replace(/<c\s+([^>]*?)(\/)?>(?:([\s\S]*?)<\/c>)?/g, function(cFull, attrs, selfClose, bodyXml) {
+            var rm = /r="([A-Z]+\d+)"/.exec(attrs);
+            if (!rm) return "";
+            var pos = colLettersToIdx(rm[1]);
+            var styleId = pickStyle(pos.col, pos.row);
+            var cleanAttrs = attrs.replace(/\s*s="\d+"/g, "").trim();
+            var rebuilt = selfClose
+              ? '<c ' + cleanAttrs + ' s="' + styleId + '"/>'
+              : '<c ' + cleanAttrs + ' s="' + styleId + '">' + (bodyXml || "") + "</c>";
+            cellsByCol.set(pos.col, rebuilt);
+            return "";
+          });
+          var fullCells = [];
+          for (var c = 0; c <= lastCol0; c++) {
+            if (cellsByCol.has(c)) {
+              fullCells.push(cellsByCol.get(c));
+            } else {
+              var addr = colIdxToLettersAdv(c) + row1;
+              fullCells.push('<c r="' + addr + '" s="' + pickStyle(c, row1) + '"/>');
+            }
+          }
+          return "<row " + rowAttrs.trim() + ">" + fullCells.join("") + "</row>";
+        });
+
+        xml = xml.replace(/<pageMargins\b[^>]*\/>/g, "").replace(/<pageSetup\b[^>]*\/>/g, "");
+        var printXml = '<pageMargins left="0.35" right="0.35" top="0.45" bottom="0.45" header="0.25" footer="0.25"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>';
+        if (/<ignoredErrors\b/.test(xml)) {
+          xml = xml.replace(/<ignoredErrors\b/, printXml + "<ignoredErrors");
+        } else if (/<\/worksheet>/.test(xml)) {
+          xml = xml.replace(/<\/worksheet>/, printXml + "</worksheet>");
+        }
+        updateEntryBytes(entry, xml);
+      });
+
+      var outZip = XLSX.CFB.write(zip, { fileType: "zip", type: "array", compression: true });
+      return new Uint8Array(outZip);
+    }
 
     if (window.XLSX && window.XLSX.utils && typeof window.XLSX.write === "function") {
       var wb = window.XLSX.utils.book_new();
-      function appendStyledSheet(aoa, sheetTitle, widths) {
+      wb.__atplAdvMeta = {};
+      function appendStyledSheet(aoa, sheetTitle, widths, meta) {
+        var name = sheetTitle.slice(0, 31);
         var ws = window.XLSX.utils.aoa_to_sheet(aoa);
-        ws["!cols"] = widths.map(function(w) { return { wch: w }; });
-        window.XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
-      }
-      appendStyledSheet(s1Aoa, "Cut & Next Pending", [6, 12, 24, 18, 16, 15, 16, 13, 15, 14, 30, 16, 18, 15, 15, 15, 30, 26]);
-      appendStyledSheet(s2Aoa, "Next Month Pending", [6, 12, 24, 18, 18, 17, 15, 17, 18, 18, 16, 18, 26]);
-      appendStyledSheet(s3Aoa, "Month Cut Details", [6, 13, 12, 12, 24, 18, 16, 30, 16, 18, 26, 26]);
-      appendStyledSheet(s4Aoa, "All Advances Ledger", [6, 18, 12, 24, 13, 14, 14, 16, 14, 12, 28]);
+        var maxCol = (aoa[meta.headerRow1 - 1] || widths || []).length - 1;
+        // Auto-fit widths while honoring comfortable minimums
+        var autoWidths = widths.map(function(minW, cIdx) {
+          var best = minW;
+          for (var r = meta.headerRow1 - 1; r < aoa.length; r++) {
+            var val = aoa[r] && aoa[r][cIdx] != null ? String(aoa[r][cIdx]) : "";
+            var len = val.length + (r === meta.headerRow1 - 1 ? 4 : 3);
+            if (len > best) best = Math.min(len, 42);
+          }
+          return { wch: best };
+        });
+        ws["!cols"] = autoWidths;
 
-      var wbout = window.XLSX.write(wb, { bookType: "xlsx", type: "array" });
+        var merges = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: maxCol } },
+          { s: { r: 1, c: 0 }, e: { r: 1, c: maxCol } }
+        ];
+        if (meta.kpiRow1 === 3) {
+          merges.push(
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } },
+            { s: { r: 2, c: 4 }, e: { r: 2, c: 7 } },
+            { s: { r: 2, c: 8 }, e: { r: 2, c: 12 } },
+            { s: { r: 2, c: 13 }, e: { r: 2, c: maxCol } }
+          );
+        }
+        ws["!merges"] = merges;
+
+        // Generous executive row heights
+        ws["!rows"] = aoa.map(function(_, idx) {
+          var r1 = idx + 1;
+          if (r1 === 1) return { hpt: 30 };
+          if (r1 === 2) return { hpt: 21 };
+          if (meta.kpiRow1 && r1 === meta.kpiRow1) return { hpt: 22 };
+          if (r1 < meta.headerRow1) return { hpt: 8 };
+          if (r1 === meta.headerRow1) return { hpt: 32 };
+          if (r1 === aoa.length) return { hpt: 24 };
+          return { hpt: 20 };
+        });
+
+        // Enable Excel AutoFilter across header + data rows
+        if (aoa.length > meta.headerRow1 + 1) {
+          ws["!autofilter"] = {
+            ref: "A" + meta.headerRow1 + ":" + colIdxToLettersAdv(maxCol) + (aoa.length - 1)
+          };
+        }
+
+        wb.__atplAdvMeta[name] = meta;
+        window.XLSX.utils.book_append_sheet(wb, ws, name);
+      }
+
+      appendStyledSheet(
+        s1Aoa,
+        "Cut & Next Pending",
+        [7, 12, 24, 16, 17, 16, 16, 14, 16, 15, 28, 17, 18, 16, 16, 16, 26, 24],
+        { headerRow1: 5, kpiRow1: 3, freezeCols: 3, centerCols: [0, 1], numCols: [4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15], cutCols: [6, 7, 8, 9, 11], pendingCols: [12, 14, 15], statusCol: 16 }
+      );
+      appendStyledSheet(
+        s2Aoa,
+        "Next Month Pending",
+        [7, 12, 24, 16, 18, 18, 16, 18, 18, 18, 17, 19, 24],
+        { headerRow1: 4, kpiRow1: 0, freezeCols: 3, centerCols: [0, 1, 4], numCols: [5, 6, 7, 8, 9, 10, 11], cutCols: [6, 7], pendingCols: [8, 10, 11], statusCol: -1 }
+      );
+      appendStyledSheet(
+        s3Aoa,
+        "Month Cut Details",
+        [7, 13, 12, 12, 24, 16, 16, 28, 17, 18, 24, 24],
+        { headerRow1: 4, kpiRow1: 0, freezeCols: 5, centerCols: [0, 1, 2, 3], numCols: [8, 9], cutCols: [8], pendingCols: [9], statusCol: 10 }
+      );
+      appendStyledSheet(
+        s4Aoa,
+        "All Advances Ledger",
+        [7, 18, 12, 24, 13, 15, 15, 17, 15, 13, 26],
+        { headerRow1: 4, kpiRow1: 0, freezeCols: 4, centerCols: [0, 2, 4], numCols: [5, 6, 7, 8], cutCols: [6], pendingCols: [7], statusCol: 9 }
+      );
+
+      wb.Props = {
+        Title: "ATPL Advance Deduction & Next Month Pending Report",
+        Subject: mLbl + " Deductions & " + nLbl + " Carry Forward",
+        Author: "Arora Textiles HR Software",
+        CreatedDate: new Date()
+      };
+
+      var wbout = styleAdvanceReportWorkbookBytes(window.XLSX, wb);
       var blob = new Blob([wbout], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       var url = URL.createObjectURL(blob);
       var link = document.createElement("a");
@@ -6762,7 +7084,7 @@
       if (window.showToast) {
         window.showToast("✅ Excel Report Downloaded: " + mLbl + " Cut (" + report.totals.employeesCutCount + " emp · " + formatINR(report.totals.cutInMonth) + ") & " + nLbl + " Pending (" + report.totals.employeesNextPendingCount + " emp · " + formatINR(report.totals.nextMonthPending) + ")");
       }
-      return { ok: true, fileName: fileName, workbook: wb, report: report };
+      return { ok: true, fileName: fileName, workbook: wb, bytes: wbout, report: report };
     }
 
     // Fallback CSV if SheetJS is unavailable

@@ -17,7 +17,7 @@ test('Advance Management Module - Enterprise Tests (Manual-Only Deduction & Empl
 
     const mockWindow = {
       console,
-      Math, Date, JSON, Number, String, Array, Object, Boolean, RegExp, parseInt, parseFloat, isNaN, Promise, setTimeout,
+      Math, Date, JSON, Number, String, Array, Object, Boolean, RegExp, parseInt, parseFloat, isNaN, Promise, setTimeout, TextEncoder, TextDecoder,
       alert: () => {},
       confirm: () => true,
       fetch: async () => ({ ok: false, json: async () => ({}) }),
@@ -373,6 +373,42 @@ test('Advance Management Module - Enterprise Tests (Manual-Only Deduction & Empl
     assert.deepEqual(Array.from(rep.nextMonthPendingRows, r => r.empCode).sort(), ["101", "103"]);
     // Month Cut Details must have 2 transactions (101 and 102)
     assert.equal(rep.monthDeductionRows.length, 2);
+
+    // Styled OOXML Excel verification (borders, INR format, frozen panes, autofilter, landscape print, strict ECMA-376 order)
+    assert.ok(res.bytes && ArrayBuffer.isView(res.bytes) && res.bytes.byteLength > 2000, "Export must produce non-empty .xlsx bytes");
+    const xlsxBytes = new Uint8Array(res.bytes);
+    const parsedWb = XLSX.read(xlsxBytes, { type: "array", cellStyles: true });
+    assert.deepEqual(parsedWb.SheetNames, ["Cut & Next Pending", "Next Month Pending", "Month Cut Details", "All Advances Ledger"]);
+    const zip = XLSX.CFB.read(xlsxBytes, { type: "array" });
+    const dec = new TextDecoder();
+    const findXml = (suffix) => {
+      const idx = (zip.FullPaths || []).findIndex(fp => String(fp || "").endsWith(suffix));
+      assert.ok(idx >= 0, "Missing OOXML entry: " + suffix);
+      return dec.decode(new Uint8Array(zip.FileIndex[idx].content));
+    };
+    const stylesXml = findXml("xl/styles.xml");
+    assert.ok(stylesXml.includes("<numFmt numFmtId=\"164\""), "Must register INR currency numFmt 164");
+    assert.ok(stylesXml.includes("<cellXfs count=\"17\">"), "Must include all 17 executive cell styles");
+
+    const sheet1Xml = findXml("xl/worksheets/sheet1.xml");
+    assert.ok(sheet1Xml.includes("state=\"frozen\""), "Sheet 1 must freeze header/name panes");
+    assert.ok(sheet1Xml.includes("<mergeCells"), "Sheet 1 must include merged banner and KPI cards");
+    assert.ok(sheet1Xml.includes("<autoFilter"), "Sheet 1 must enable Excel AutoFilter");
+    assert.ok(sheet1Xml.includes("orientation=\"landscape\"") && sheet1Xml.includes("fitToWidth=\"1\""), "Sheet 1 must use landscape fit-to-width page setup");
+    assert.ok(/s="1"/.test(sheet1Xml) && /s="4"/.test(sheet1Xml) && /s="16"/.test(sheet1Xml), "Sheet 1 must apply banner, header, and total styles");
+    // ECMA-376 strict tag ordering check across all 4 sheets
+    const ecOrder = ["sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData", "autoFilter", "mergeCells", "pageMargins", "pageSetup", "ignoredErrors"];
+    for (let s = 1; s <= 4; s++) {
+      const sXml = findXml("xl/worksheets/sheet" + s + ".xml");
+      let prevIdx = -1;
+      for (const tag of ecOrder) {
+        const pos = sXml.indexOf("<" + tag);
+        if (pos >= 0) {
+          assert.ok(pos > prevIdx, "ECMA-376 tag out of order on sheet" + s + " at <" + tag);
+          prevIdx = pos;
+        }
+      }
+    }
   });
 
   await t.test('8. Signed Advance Slip preview supports mouse-wheel zoom in/out, zoom buttons, and reset', async () => {
