@@ -20,6 +20,346 @@
     lastActiveMonth: null
   };
 
+  // ─────────────────────────────────────────────────────────────────
+  // 0. AUTO-UPDATING LIVE COMPLIANCE RULES ENGINE (2026+ FUTURE-PROOF)
+  // ─────────────────────────────────────────────────────────────────
+  var RULES_STORAGE_KEY = 'ATPL_AI_COMPLIANCE_RULES_V1';
+  var RULES_CLOUD_SYS_ID = '__ATPL_SYS__AI_COMPLIANCE_RULES_V1';
+  var RULES_MANIFEST_URL = 'compliance-rules-latest.json';
+  var DEFAULT_COMPLIANCE_RULES = {
+    version: '2026.11.28',
+    updatedAt: '2026-11-28T00:00:00.000Z',
+    updatedBy: 'ATPL 2026 Statutory Engine',
+    pfCeiling: 25000,
+    pfCeilingEffective: '2026-09',
+    pfPreSepCeiling: 15000,
+    pfEmployeePct: 12,
+    pfEpsPct: 8.33,
+    pfEpfPct: 3.67,
+    pfEdliPct: 0.5,
+    pfAdminPct: 0.5,
+    esicGrossCeiling: 21000,
+    esicPwdCeiling: 25000,
+    esicEmployeePct: 0.75,
+    esicEmployerPct: 3.25,
+    esicDailyExempt: 176,
+    minBasicPctOfGross: 50,
+    maxDeductionPctOfGross: 50,
+    otMultiplier: 2,
+    maxWeeklyHours: 48,
+    maxQuarterlyOtHours: 115,
+    maxMonthlyOtWarnHours: 48,
+    fnfSettlementDays: 2,
+    gratuityPermYears: 5,
+    gratuityFteYears: 1,
+    gratuityTaxFreeCap: 2000000,
+    bonusMinPct: 8.33,
+    bonusMaxPct: 20,
+    bonusMinDays: 30,
+    customRules: [
+      {
+        id: 'builtin_epf_25k_sep2026',
+        title: 'EPF Wage Ceiling ₹25,000 (Eff. 17 Sep 2026)',
+        category: 'PF',
+        keywords: ['epf', 'pf', '25000', 'ceiling', '5109'],
+        effectiveFrom: '2026-09-17',
+        summary: 'EPFO wage ceiling ₹15,000 se badh kar ₹25,000/month (Basic+DA) ho chuki hai. Max employee share ₹3,000 aur max EPS pension ₹2,083.',
+        auditorNote: 'Sep 2026+ sheets par ₹15,000 cap lock hone par short-deduction demand aa sakti hai.',
+        checkMetric: '',
+        checkThreshold: null,
+        enabled: true
+      },
+      {
+        id: 'builtin_code_wages_50pct',
+        title: 'Code on Wages 50% Basic & 50% Max Deduction Cap',
+        category: 'LABOUR_CODE',
+        keywords: ['50%', 'wage', 'deduction', 'fnf', '2 days', 'labour code'],
+        effectiveFrom: '2026-04-01',
+        summary: 'Basic+DA kam se kam 50% CTC hona chahiye; total deductions earned gross ke 50% se upar nahi ja sakti; F&F 2 working days mein mandatory hai.',
+        auditorNote: 'High advance deductions ya low basic% par auditor add-back / illegal deduction mark karta hai.',
+        checkMetric: '',
+        checkThreshold: null,
+        enabled: true
+      }
+    ]
+  };
+
+  function cloneRuleBundle(src) {
+    var base = Object.assign({}, DEFAULT_COMPLIANCE_RULES);
+    if (src && typeof src === 'object') {
+      Object.keys(DEFAULT_COMPLIANCE_RULES).forEach(function(k) {
+        if (k === 'customRules') return;
+        if (src[k] !== undefined && src[k] !== null && src[k] !== '') {
+          base[k] = typeof DEFAULT_COMPLIANCE_RULES[k] === 'number'
+            ? (isFinite(Number(src[k])) ? Number(src[k]) : DEFAULT_COMPLIANCE_RULES[k])
+            : String(src[k]);
+        }
+      });
+      var rawList = Array.isArray(src.customRules) ? src.customRules : DEFAULT_COMPLIANCE_RULES.customRules;
+      base.customRules = rawList.filter(function(r) { return r && (r.title || r.summary); }).map(function(r, idx) {
+        return {
+          id: String(r.id || ('cr_' + idx + '_' + Date.now())),
+          title: String(r.title || 'Custom Rule'),
+          category: String(r.category || 'OTHER').toUpperCase(),
+          keywords: Array.isArray(r.keywords)
+            ? r.keywords.map(function(w) { return String(w || '').trim().toLowerCase(); }).filter(Boolean)
+            : String(r.keywords || '').split(/[,;]+/).map(function(w) { return w.trim().toLowerCase(); }).filter(Boolean),
+          effectiveFrom: String(r.effectiveFrom || ''),
+          summary: String(r.summary || ''),
+          auditorNote: String(r.auditorNote || ''),
+          checkMetric: String(r.checkMetric || ''),
+          checkThreshold: (r.checkThreshold !== undefined && r.checkThreshold !== null && r.checkThreshold !== '' && isFinite(Number(r.checkThreshold)))
+            ? Number(r.checkThreshold) : null,
+          enabled: r.enabled !== false
+        };
+      });
+    } else {
+      base.customRules = DEFAULT_COMPLIANCE_RULES.customRules.map(function(r) {
+        return Object.assign({}, r, { keywords: (r.keywords || []).slice() });
+      });
+    }
+    return base;
+  }
+
+  var _activeRulesCache = null;
+  var _lastRemoteSyncAttempt = 0;
+
+  var ComplianceRulesEngine = {
+    getRules: function() {
+      if (_activeRulesCache) return _activeRulesCache;
+      var parsed = null;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          var raw = localStorage.getItem(RULES_STORAGE_KEY);
+          if (raw) parsed = JSON.parse(raw);
+        }
+      } catch (_) {}
+      _activeRulesCache = cloneRuleBundle(parsed);
+      return _activeRulesCache;
+    },
+    saveRules: function(nextBundle, opts) {
+      opts = opts || {};
+      var normalized = cloneRuleBundle(nextBundle);
+      if (!opts.preserveTimestamp) {
+        normalized.updatedAt = new Date().toISOString();
+        normalized.version = new Date().toISOString().slice(0, 10).replace(/-/g, '.') + (opts.tag ? ('-' + opts.tag) : '-live');
+      }
+      if (opts.updatedBy) normalized.updatedBy = String(opts.updatedBy);
+      _activeRulesCache = normalized;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(normalized));
+          localStorage.setItem('ATPL_TRIGGER_EVENT', JSON.stringify({
+            action: 'ai_compliance_rules_updated',
+            version: normalized.version,
+            updatedAt: normalized.updatedAt,
+            ts: Date.now()
+          }));
+        }
+      } catch (_) {}
+      try {
+        if (typeof BroadcastChannel !== 'undefined') {
+          var bc = new BroadcastChannel('ATPL_AI_RULES_SYNC');
+          bc.postMessage({ action: 'rules_updated', bundle: normalized });
+          bc.close();
+        }
+      } catch (_) {}
+      if (!opts.skipCloudPush) {
+        this.pushToCloud(normalized).catch(function() {});
+      }
+      this.refreshSubtitle();
+      return normalized;
+    },
+    resetDefaults: function() {
+      var def = cloneRuleBundle(DEFAULT_COMPLIANCE_RULES);
+      def.updatedAt = new Date().toISOString();
+      def.updatedBy = 'Reset to 2026 Defaults';
+      return this.saveRules(def, { preserveTimestamp: true, tag: 'default' });
+    },
+    refreshSubtitle: function() {
+      try {
+        var sub = document.getElementById('aiCommanderSub');
+        var r = this.getRules();
+        if (sub) {
+          sub.textContent = 'Rules v' + r.version + ' · PF ₹' + r.pfCeiling.toLocaleString('en-IN') + ' · ESIC ₹' + r.esicGrossCeiling.toLocaleString('en-IN') + ' · Ctrl+K';
+        }
+      } catch (_) {}
+    },
+    getAuthToken: function() {
+      try {
+        var ss = typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+        var ls = typeof localStorage !== 'undefined' ? localStorage : null;
+        return String(
+          (ss && (ss.getItem('ATPL_RemoteToken_V1') || ss.getItem('ATPL_SharedToken_V1'))) ||
+          (ls && (ls.getItem('ATPL_RemoteToken_V1') || ls.getItem('ATPL_SharedToken_V1'))) || ''
+        ).trim();
+      } catch (_) { return ''; }
+    },
+    pushToCloud: async function(bundle) {
+      try {
+        if (typeof window === 'undefined' || !window.ATPLCloudAPI || typeof window.ATPLCloudAPI.request !== 'function') return false;
+        var tk = this.getAuthToken();
+        if (!tk || /^(FAST_AUTH_|OFFLINE_|ADMIN_|LOCAL_)/i.test(tk)) return false;
+        await window.ATPLCloudAPI.request({
+          action: 'upsertEmployeeMaster',
+          token: tk,
+          emp_id: RULES_CLOUD_SYS_ID,
+          kind: 'ai_compliance_rules',
+          record_json: JSON.stringify(Object.assign({ emp_id: RULES_CLOUD_SYS_ID, _atpl_system: true, kind: 'ai_compliance_rules' }, bundle)),
+          payload: JSON.stringify(bundle)
+        }, { timeout: 14000, source: 'ai-rules' });
+        return true;
+      } catch (_) { return false; }
+    },
+    syncLatestRules: async function(forceManual) {
+      var now = Date.now();
+      if (!forceManual && now - _lastRemoteSyncAttempt < 90000) {
+        return { ok: true, updated: false, source: 'cached', bundle: this.getRules() };
+      }
+      _lastRemoteSyncAttempt = now;
+      var current = this.getRules();
+      var curMs = Date.parse(current.updatedAt || 0) || 0;
+      var best = null;
+      var source = '';
+
+      // 1. Check live repo manifest (compliance-rules-latest.json)
+      try {
+        var isHttp = typeof window !== 'undefined' && window.location && /^https?:/i.test(String(window.location.protocol || ''));
+        if ((isHttp || forceManual) && typeof fetch === 'function') {
+          var res = await fetch(RULES_MANIFEST_URL + '?_ts=' + Date.now(), { cache: 'no-store' });
+          if (res && res.ok) {
+            var remoteJson = await res.json();
+            if (remoteJson && remoteJson.pfCeiling) {
+              var rMs = Date.parse(remoteJson.updatedAt || 0) || 0;
+              if (rMs > curMs) {
+                best = remoteJson;
+                source = 'manifest';
+                curMs = rMs;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2. Check Cloud SystemVaultChunks (cross-browser Admin updates)
+      try {
+        if (typeof window !== 'undefined' && window.ATPLCloudAPI && typeof window.ATPLCloudAPI.request === 'function') {
+          var tk = this.getAuthToken();
+          if (tk) {
+            var cloudRes = await window.ATPLCloudAPI.request({
+              action: 'getSystemRecords',
+              kind: 'ai_compliance_rules',
+              token: tk
+            }, { timeout: 10000, source: 'ai-rules', cacheMs: forceManual ? 0 : 10000 });
+            if (cloudRes && cloudRes.ok && Array.isArray(cloudRes.records)) {
+              cloudRes.records.forEach(function(rec) {
+                if (!rec || String(rec.id || rec.chunk_id || '') !== RULES_CLOUD_SYS_ID) return;
+                try {
+                  var parsed = JSON.parse(rec.payload || '{}');
+                  var cMs = Date.parse(parsed.updatedAt || rec.updated_at || 0) || 0;
+                  if (parsed && parsed.pfCeiling && cMs > curMs) {
+                    best = parsed;
+                    source = 'cloud';
+                    curMs = cMs;
+                  }
+                } catch (_) {}
+              });
+            }
+          }
+        }
+      } catch (_) {}
+
+      if (best) {
+        var saved = this.saveRules(best, { preserveTimestamp: true, skipCloudPush: true });
+        return { ok: true, updated: true, source: source, bundle: saved };
+      }
+      return { ok: true, updated: false, source: 'up-to-date', bundle: current };
+    },
+    parseCircularText: function(rawText) {
+      var txt = String(rawText || '').trim();
+      if (!txt) return { ok: false, error: 'EMPTY_TEXT' };
+      if (txt.charAt(0) === '{') {
+        try {
+          var jsonObj = JSON.parse(txt);
+          if (jsonObj && (jsonObj.pfCeiling || jsonObj.esicGrossCeiling || jsonObj.customRules)) {
+            var merged = Object.assign({}, this.getRules(), jsonObj);
+            var savedJson = this.saveRules(merged, { tag: 'json', updatedBy: 'JSON Import' });
+            return { ok: true, changes: ['Full JSON Rules imported (v' + savedJson.version + ')'], bundle: savedJson };
+          }
+        } catch (_) {}
+      }
+      var cur = cloneRuleBundle(this.getRules());
+      var changes = [];
+      function pickNum(re) {
+        var m = txt.match(re);
+        if (!m) return null;
+        var v = Number(String(m[1] || '').replace(/,/g, ''));
+        return isFinite(v) && v > 0 ? v : null;
+      }
+      var pfN = pickNum(/(?:pf|epf|provident\s*fund)[^0-9]{0,35}?(?:₹|rs\.?|inr)?\s*(\d{2},\d{3}|\d{5,6})/i);
+      if (pfN && pfN >= 10000 && pfN <= 200000 && pfN !== cur.pfCeiling) {
+        changes.push('PF Ceiling: ₹' + cur.pfCeiling.toLocaleString('en-IN') + ' → ₹' + pfN.toLocaleString('en-IN'));
+        cur.pfCeiling = pfN;
+      }
+      var esiN = pickNum(/(?:esic|esi)[^0-9]{0,35}?(?:₹|rs\.?|inr)?\s*(\d{2},\d{3}|\d{5,6})/i);
+      if (esiN && esiN >= 10000 && esiN <= 200000 && esiN !== cur.esicGrossCeiling) {
+        changes.push('ESIC Ceiling: ₹' + cur.esicGrossCeiling.toLocaleString('en-IN') + ' → ₹' + esiN.toLocaleString('en-IN'));
+        cur.esicGrossCeiling = esiN;
+      }
+      var basicPct = pickNum(/(?:basic|wage\s*definition)[^0-9]{0,30}?(\d{2})\s*%/i);
+      if (basicPct && basicPct >= 30 && basicPct <= 80 && basicPct !== cur.minBasicPctOfGross) {
+        changes.push('Min Basic %: ' + cur.minBasicPctOfGross + '% → ' + basicPct + '%');
+        cur.minBasicPctOfGross = basicPct;
+      }
+      var dedPct = pickNum(/(?:deduction\s*(?:cap|limit)|max\s*deduction)[^0-9]{0,30}?(\d{2})\s*%/i);
+      if (dedPct && dedPct >= 20 && dedPct <= 75 && dedPct !== cur.maxDeductionPctOfGross) {
+        changes.push('Max Deduction Cap: ' + cur.maxDeductionPctOfGross + '% → ' + dedPct + '%');
+        cur.maxDeductionPctOfGross = dedPct;
+      }
+      var otWarn = pickNum(/(?:monthly\s*ot|ot\s*(?:limit|cap))[^0-9]{0,25}?(\d{2,3})\s*(?:hr|hrs|hour)/i);
+      if (otWarn && otWarn >= 10 && otWarn <= 200 && otWarn !== cur.maxMonthlyOtWarnHours) {
+        changes.push('Monthly OT Alert: ' + cur.maxMonthlyOtWarnHours + 'h → ' + otWarn + 'h');
+        cur.maxMonthlyOtWarnHours = otWarn;
+      }
+      var shortTitle = txt.split(/[\r\n.]/)[0].trim().slice(0, 68) || 'Updated Compliance Rule';
+      var words = txt.toLowerCase().replace(/[^a-z0-9%\s]/g, ' ').split(/\s+/).filter(function(w) {
+        return w.length >= 3 && ['rule','update','karo','kar','hai','the','and','for','with','naya','new','add'].indexOf(w) < 0;
+      });
+      var uniqueKw = [];
+      words.forEach(function(w) { if (uniqueKw.indexOf(w) < 0 && uniqueKw.length < 8) uniqueKw.push(w); });
+      var cat = /pf|epf|uan/i.test(txt) ? 'PF' : (/esic|esi/i.test(txt) ? 'ESIC' : (/bonus/i.test(txt) ? 'BONUS' : (/gratuity/i.test(txt) ? 'GRATUITY' : (/labour|wage|f&f|fnf|ot/i.test(txt) ? 'LABOUR_CODE' : 'OTHER'))));
+      var autoMetric = '';
+      var autoThresh = null;
+      var mOt = txt.match(/ot\s*(?:>|above|zyada|se\s*zyada)\s*(\d+)/i);
+      if (mOt) { autoMetric = 'OT_GT'; autoThresh = Number(mOt[1]); }
+      cur.customRules.unshift({
+        id: 'cr_' + Date.now(),
+        title: shortTitle,
+        category: cat,
+        keywords: uniqueKw,
+        effectiveFrom: new Date().toISOString().slice(0, 10),
+        summary: txt.slice(0, 320),
+        auditorNote: 'User-updated circular / rule entry.',
+        checkMetric: autoMetric,
+        checkThreshold: autoThresh,
+        enabled: true
+      });
+      if (!changes.length) changes.push('Custom Rule Added: ' + shortTitle);
+      var saved = this.saveRules(cur, { tag: 'rule', updatedBy: 'AI Rule Update' });
+      return { ok: true, changes: changes, bundle: saved };
+    }
+  };
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', function(ev) {
+      if (!ev) return;
+      if (ev.key === RULES_STORAGE_KEY || ev.key === 'ATPL_TRIGGER_EVENT') {
+        _activeRulesCache = null;
+        ComplianceRulesEngine.refreshSubtitle();
+      }
+    });
+  }
+
   var KnowledgeGraph = {
     employees: {},        // key: empCode & normalized name -> profile
     months: {},           // key: monthKey (e.g. '2026-07') -> aggregate stats
@@ -630,26 +970,121 @@
 
 
     // ══════════════════════════════════════════════════════════════════
+    // 0. SELF-UPDATING RULES COMMANDS (NATURAL LANGUAGE + LIVE SYNC)
+    // ══════════════════════════════════════════════════════════════════
+    if (lower.match(/^(?:check|sync|refresh|pull)\s*(?:latest\s*)?rules|rules?\s*(?:sync|update|refresh|check)\s*karo|naye\s*rules?\s*check/i)) {
+      var curRules0 = ComplianceRulesEngine.getRules();
+      if (typeof window !== 'undefined' && window.AroraAICommander && typeof window.AroraAICommander.syncRulesNow === 'function') {
+        setTimeout(function() { window.AroraAICommander.syncRulesNow(true); }, 10);
+      }
+      return {
+        html: '🔄 <strong>Live Compliance Rules Sync Triggered</strong><br><br>' +
+          '• <strong>Active Version:</strong> <code>v' + escHtml(curRules0.version) + '</code><br>' +
+          '• <strong>PF Cap:</strong> ₹' + curRules0.pfCeiling.toLocaleString('en-IN') + ' · <strong>ESIC Cap:</strong> ₹' + curRules0.esicGrossCeiling.toLocaleString('en-IN') + '<br>' +
+          '• <strong>Basic / Deduction Cap:</strong> ' + curRules0.minBasicPctOfGross + '% / ' + curRules0.maxDeductionPctOfGross + '% · <strong>Custom Rules:</strong> ' + (curRules0.customRules || []).length + '<br><br>' +
+          '<button type="button" class="ai-act-btn" onclick="window.AroraAICommander.toggleRulesPanel(true)">⚙️ Open Rules Engine</button>'
+      };
+    }
+
+    if (lower.match(/^(?:update|add|set|change)\s*rule\b|^naya\s*rule\b|^new\s*rule\b|(?:pf|epf|esic|esi|bonus|gratuity|deduction|basic|ot|fnf).*(?:kar\s*do|karo|badlo|set\s*karo|update\s*karo)/i) &&
+        !lower.match(/kya\s*hai|batao|explain|formula|\?$/)) {
+      var curR = cloneRuleBundle(ComplianceRulesEngine.getRules());
+      var updNotes = [];
+      var numPick = function(re) {
+        var m = raw.match(re);
+        if (!m) return null;
+        var val = Number(String(m[1] || '').replace(/,/g, ''));
+        return isFinite(val) && val > 0 ? val : null;
+      };
+      var pfSet = numPick(/(?:pf|epf).*?(?:ceiling|limit|celling|cap)?[^0-9]{0,20}(?:₹|rs\.?|inr)?\s*(\d{2},\d{3}|\d{4,6})/i);
+      if (pfSet && pfSet >= 10000 && pfSet <= 200000) {
+        updNotes.push('PF Wage Ceiling: ₹' + curR.pfCeiling.toLocaleString('en-IN') + ' → <strong>₹' + pfSet.toLocaleString('en-IN') + '</strong>');
+        curR.pfCeiling = pfSet;
+      }
+      var esiSet = numPick(/(?:esic|esi).*?(?:ceiling|limit|celling|cap)?[^0-9]{0,20}(?:₹|rs\.?|inr)?\s*(\d{2},\d{3}|\d{4,6})/i);
+      if (esiSet && esiSet >= 10000 && esiSet <= 200000) {
+        updNotes.push('ESIC Gross Ceiling: ₹' + curR.esicGrossCeiling.toLocaleString('en-IN') + ' → <strong>₹' + esiSet.toLocaleString('en-IN') + '</strong>');
+        curR.esicGrossCeiling = esiSet;
+      }
+      var dedSet = numPick(/(?:deduction).*?(?:cap|limit)?[^0-9]{0,18}(\d{2})\s*%/i);
+      if (dedSet && dedSet >= 20 && dedSet <= 80) {
+        updNotes.push('Max Deduction Cap: ' + curR.maxDeductionPctOfGross + '% → <strong>' + dedSet + '%</strong>');
+        curR.maxDeductionPctOfGross = dedSet;
+      }
+      var basicSet = numPick(/(?:basic|wage).*?(?:rule|min)?[^0-9]{0,18}(\d{2})\s*%/i);
+      if (basicSet && basicSet >= 25 && basicSet <= 80) {
+        updNotes.push('Min Basic % Rule: ' + curR.minBasicPctOfGross + '% → <strong>' + basicSet + '%</strong>');
+        curR.minBasicPctOfGross = basicSet;
+      }
+      var otSet = numPick(/(?:ot|overtime).*?(?:limit|cap|alert|max)?[^0-9]{0,18}(\d{1,3})\s*(?:hr|hrs|hour)/i);
+      if (otSet && otSet >= 8 && otSet <= 200) {
+        if (/quarter/i.test(raw)) {
+          updNotes.push('Quarterly OT Cap: ' + curR.maxQuarterlyOtHours + 'h → <strong>' + otSet + 'h</strong>');
+          curR.maxQuarterlyOtHours = otSet;
+        } else {
+          updNotes.push('Monthly OT Alert: ' + curR.maxMonthlyOtWarnHours + 'h → <strong>' + otSet + 'h</strong>');
+          curR.maxMonthlyOtWarnHours = otSet;
+        }
+      }
+      var fnfSet = numPick(/(?:fnf|f&f|settlement)[^0-9]{0,18}(\d{1,2})\s*day/i);
+      if (fnfSet && fnfSet >= 1 && fnfSet <= 30) {
+        updNotes.push('F&F Settlement Window: ' + curR.fnfSettlementDays + ' days → <strong>' + fnfSet + ' days</strong>');
+        curR.fnfSettlementDays = fnfSet;
+      }
+      var bMinSet = numPick(/bonus\s*min[^0-9]{0,15}(\d+(?:\.\d+)?)\s*%/i);
+      if (bMinSet && bMinSet > 0 && bMinSet <= 50) {
+        updNotes.push('Bonus Min %: ' + curR.bonusMinPct + '% → <strong>' + bMinSet + '%</strong>');
+        curR.bonusMinPct = bMinSet;
+      }
+
+      if (updNotes.length > 0 && !lower.match(/^(?:add|naya|new)\s*rule/i)) {
+        var saved1 = ComplianceRulesEngine.saveRules(curR, { tag: 'live', updatedBy: 'Chat Command' });
+        return {
+          html: '✅ <strong>AI Compliance Rule Live Updated (v' + escHtml(saved1.version) + ')!</strong><br><br>' +
+            updNotes.map(function(n) { return '• ' + n; }).join('<br>') +
+            '<br><br>Ab Q&amp;A aur <strong>Mam → Compliance Auditor</strong> dono automatically is naye rule ke hisaab se chalenge aur sabhi browsers mein sync ho gaya hai.<br><br>' +
+            '<button type="button" class="ai-act-btn" onclick="window.AroraAICommander.sendQuery(\'Mam compliance audit karo\')">🛡️ Re-Scan Compliance Sheet</button> ' +
+            '<button type="button" class="ai-act-btn" style="background:#1e293b;border-color:rgba(148,163,184,0.35)" onclick="window.AroraAICommander.toggleRulesPanel(true)">⚙️ View Rules</button>'
+        };
+      }
+      var cleanedRuleText = raw.replace(/^(?:update|add|set|change|naya|new)\s*rule\s*[:\-]?\s*/i, '').trim() || raw;
+      var ext = ComplianceRulesEngine.parseCircularText(cleanedRuleText);
+      if (ext && ext.ok) {
+        return {
+          html: '✅ <strong>New Rule Saved &amp; Activated (v' + escHtml(ext.bundle.version) + ')!</strong><br><br>' +
+            ext.changes.map(function(c) { return '• ' + escHtml(c); }).join('<br>') +
+            '<br><br>Ab aap is rule par sawal pooch sakte hain ya live audit scan chala sakte hain.<br><br>' +
+            '<button type="button" class="ai-act-btn" onclick="window.AroraAICommander.toggleRulesPanel(true)">⚙️ Manage Rules</button>'
+        };
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 100X SUPER-INTELLIGENCE: STATUTORY, LABOUR LAWS & RULES EXPERT
     // ══════════════════════════════════════════════════════════════════
+    var R = ComplianceRulesEngine.getRules();
 
-    // 1. PF WAGE CEILING / NEW 2026 CEILING / EPF RULES
-    if (lower.match(/(pf|epf|provident\s*fund).*(ceiling|limit|celling|new\s*limit|hike|15000|21000|25000|rule|percentage|rules)/i) ||
+    // 1. PF WAGE CEILING / DYNAMIC CEILING / EPF RULES
+    if (lower.match(/(pf|epf|provident\s*fund).*(ceiling|limit|celling|new\s*limit|hike|15000|21000|25000|30000|rule|percentage|rules)/i) ||
         lower.match(/(ceiling|celling|limit).*(pf|epf)/i)) {
+      var pfMaxEmp = Math.round(R.pfCeiling * (R.pfEmployeePct / 100));
+      var pfMaxEps = Math.round(R.pfCeiling * (R.pfEpsPct / 100));
+      var pfMaxEpf = Math.round(R.pfCeiling * (R.pfEpfPct / 100));
+      var pfMaxEdli = Math.round(R.pfCeiling * (R.pfEdliPct / 100));
       var pfHtml = '<div style="line-height:1.7">';
-      pfHtml += '🏛️ <strong>EPF Wage Ceiling &amp; Latest 2026 Rules (Code on Social Security, 2020):</strong><br><br>';
-      pfHtml += '📌 <strong>1. Latest Statutory Wage Ceiling (Effective 17 Sep 2026):</strong><br>';
-      pfHtml += '• <strong>₹25,000 per month (Basic + DA)</strong> — Govt Notification S.O. 5109(E) ke baad limit ₹15,000 se badh kar <strong>₹25,000</strong> ho chuki hai.<br>';
-      pfHtml += '• Jin employees ki Basic + DA ₹25,000 ya usse kam hai, unke liye EPF, EPS aur EDLI <strong>Mandatory (Anivarya)</strong> hai.<br>';
-      pfHtml += '• <em>Historical Note:</em> Sept 2026 se pehle ki purani sheets par ₹15,000 (max ₹1,800) ceiling laagu thi.<br><br>';
-      pfHtml += '📌 <strong>2. Monthly Contribution Breakdown (₹25,000 Ceiling par):</strong><br>';
-      pfHtml += '• <strong>Employee Share:</strong> <strong>12%</strong> of Basic + DA (₹25,000 cap par max <strong>₹3,000</strong>).<br>';
-      pfHtml += '• <strong>Employer Share:</strong> <strong>12%</strong> total + admin/EDLI:<br>';
-      pfHtml += '  - <strong>3.67%</strong> ➔ EPF (max ₹917 on ceiling)<br>';
-      pfHtml += '  - <strong>8.33%</strong> ➔ EPS Pension (max <strong>₹2,083</strong> on ₹25,000)<br>';
-      pfHtml += '  - <strong>0.50%</strong> ➔ EDLI (max ₹125) + <strong>0.50%</strong> Admin Charges<br><br>';
-      pfHtml += '📌 <strong>3. 50% Wage Definition Rule (Labour Codes):</strong><br>';
-      pfHtml += '• Agar Basic + DA total remuneration (CTC) ke 50% se kam hai, toh excess allowances ko Wage mein add-back karke PF calculate karna hota hai.<br>';
+      pfHtml += '🏛️ <strong>EPF Wage Ceiling &amp; Active Rules (v' + escHtml(R.version) + '):</strong><br><br>';
+      pfHtml += '📌 <strong>1. Active Statutory Wage Ceiling (Eff. ' + escHtml(R.pfCeilingEffective) + '):</strong><br>';
+      pfHtml += '• <strong>₹' + R.pfCeiling.toLocaleString('en-IN') + ' per month (Basic + DA)</strong> — Purani limit ₹' + R.pfPreSepCeiling.toLocaleString('en-IN') + ' se updated active limit <strong>₹' + R.pfCeiling.toLocaleString('en-IN') + '</strong> hai.<br>';
+      pfHtml += '• Jin employees ki Basic + DA ₹' + R.pfCeiling.toLocaleString('en-IN') + ' ya usse kam hai, unke liye EPF, EPS aur EDLI <strong>Mandatory (Anivarya)</strong> hai.<br><br>';
+      pfHtml += '📌 <strong>2. Monthly Contribution Breakdown (₹' + R.pfCeiling.toLocaleString('en-IN') + ' Ceiling par):</strong><br>';
+      pfHtml += '• <strong>Employee Share:</strong> <strong>' + R.pfEmployeePct + '%</strong> of Basic + DA (ceiling par max <strong>₹' + pfMaxEmp.toLocaleString('en-IN') + '</strong>).<br>';
+      pfHtml += '• <strong>Employer Share:</strong><br>';
+      pfHtml += '  - <strong>' + R.pfEpfPct + '%</strong> ➔ EPF (max ₹' + pfMaxEpf.toLocaleString('en-IN') + ')<br>';
+      pfHtml += '  - <strong>' + R.pfEpsPct + '%</strong> ➔ EPS Pension (max <strong>₹' + pfMaxEps.toLocaleString('en-IN') + '</strong>)<br>';
+      pfHtml += '  - <strong>' + R.pfEdliPct + '%</strong> ➔ EDLI (max ₹' + pfMaxEdli.toLocaleString('en-IN') + ') + <strong>' + R.pfAdminPct + '%</strong> Admin Charges<br><br>';
+      pfHtml += '📌 <strong>3. ' + R.minBasicPctOfGross + '% Wage Definition Rule (Labour Codes):</strong><br>';
+      pfHtml += '• Agar Basic + DA total CTC ke ' + R.minBasicPctOfGross + '% se kam hai, toh excess allowances ko Wage mein add-back karke PF calculate karna hota hai.<br><br>';
+      pfHtml += '<button type="button" class="ai-act-btn" onclick="window.AroraAICommander.toggleRulesPanel(true)">⚙️ Update PF / Statutory Rules</button>';
       pfHtml += '</div>';
       return { html: pfHtml };
     }
@@ -658,28 +1093,36 @@
     if (lower.match(/(esic|esi|bima).*(ceiling|limit|celling|rule|coverage|percentage|rate)/i) ||
         lower.match(/(ceiling|celling|limit).*(esic|esi)/i)) {
       var esiHtml = '<div style="line-height:1.7">';
-      esiHtml += '🏥 <strong>ESIC (Code on Social Security) Wage Limit &amp; Rules:</strong><br><br>';
+      esiHtml += '🏥 <strong>ESIC (Code on Social Security) Active Limit &amp; Rules (v' + escHtml(R.version) + '):</strong><br><br>';
       esiHtml += '📌 <strong>1. Statutory Gross Wage Ceiling:</strong><br>';
-      esiHtml += '• <strong>₹21,000 per month (Gross Wages)</strong> · Specially-abled (PwD) ke liye <strong>₹25,000/month</strong>.<br>';
-      esiHtml += '• <strong>Contribution Period Rule:</strong> <strong>Apr–Sep</strong> aur <strong>Oct–Mar</strong> — agar employee period ki shuruat mein covered hai aur beech mein salary ₹21,000 cross kare, toh us 6-month period ke end tak ESIC continue rehta hai.<br><br>';
+      esiHtml += '• <strong>₹' + R.esicGrossCeiling.toLocaleString('en-IN') + ' per month (Gross Wages)</strong> · Specially-abled (PwD) ke liye <strong>₹' + R.esicPwdCeiling.toLocaleString('en-IN') + '/month</strong>.<br>';
+      esiHtml += '• <strong>Contribution Period Rule:</strong> <strong>Apr–Sep</strong> aur <strong>Oct–Mar</strong> — period start mein covered hone par beech mein salary ₹' + R.esicGrossCeiling.toLocaleString('en-IN') + ' cross kare toh period end tak ESIC continue rehta hai.<br><br>';
       esiHtml += '📌 <strong>2. Contribution Rates:</strong><br>';
-      esiHtml += '• <strong>Employee Share:</strong> <strong>0.75%</strong> · <strong>Employer Share:</strong> <strong>3.25%</strong> (Total 4.00%).<br><br>';
+      esiHtml += '• <strong>Employee Share:</strong> <strong>' + R.esicEmployeePct + '%</strong> · <strong>Employer Share:</strong> <strong>' + R.esicEmployerPct + '%</strong> (Total ' + (R.esicEmployeePct + R.esicEmployerPct).toFixed(2) + '%).<br><br>';
       esiHtml += '📌 <strong>3. Daily Wage Exemption:</strong><br>';
-      esiHtml += '• Average daily wage <strong>₹176 ya usse kam</strong> hone par Employee 0.75% share exempt rehta hai (Employer ko 3.25% dena hota hai).<br>';
+      esiHtml += '• Average daily wage <strong>₹' + R.esicDailyExempt + ' ya usse kam</strong> hone par Employee ' + R.esicEmployeePct + '% share exempt rehta hai (Employer ko ' + R.esicEmployerPct + '% dena hota hai).<br>';
       esiHtml += '</div>';
       return { html: esiHtml };
     }
 
     // 3. LABOUR CODES / 50% WAGE / DEDUCTION CAP / F&F TIMELINE
     if (lower.match(/(labour\s*code|labor\s*code|50%|fifty\s*percent|wage\s*definition|deduction\s*limit|deduction\s*cap|2\s*days|new\s*rule|latest\s*rule)/i)) {
+      var pfCapMax = Math.round(R.pfCeiling * (R.pfEmployeePct / 100));
       var lcHtml = '<div style="line-height:1.7">';
-      lcHtml += '⚖️ <strong>Latest 2026 Indian Labour Codes Compliance Summary:</strong><br><br>';
-      lcHtml += '• <strong>PF Ceiling ₹25,000:</strong> 17 Sep 2026 se EPF mandatory wage limit ₹25,000/month (max ₹3,000 employee share).<br>';
-      lcHtml += '• <strong>50% Wage Definition Rule:</strong> Basic + DA + Retaining kam se kam total salary ka <strong>50%</strong> hona chahiye; excess allowances Wages mein add-back hote hain.<br>';
-      lcHtml += '• <strong>50% Max Deduction Cap (Code on Wages):</strong> Total deductions (PF + ESIC + Advance + Fines) earned gross ke <strong>50%</strong> se zyada nahi ho sakti.<br>';
-      lcHtml += '• <strong>F&amp;F Settlement Window:</strong> Resignation / termination / retrenchment ke <strong>2 working days</strong> ke andar final wages pay karna mandatory hai.<br>';
-      lcHtml += '• <strong>Overtime &amp; Hours:</strong> OT minimum <strong>2x</strong> normal rate; weekly max <strong>48 hrs</strong> aur quarterly OT cap <strong>115 hrs</strong> (Factories Act).<br>';
-      lcHtml += '• <strong>Gratuity (FTE):</strong> Permanent ke liye 5 years, Fixed-Term Employees (FTE) ke liye <strong>1 year</strong> par pro-rata gratuity.<br>';
+      lcHtml += '⚖️ <strong>Active Indian Labour Codes Compliance Summary (v' + escHtml(R.version) + '):</strong><br><br>';
+      lcHtml += '• <strong>PF Ceiling ₹' + R.pfCeiling.toLocaleString('en-IN') + ':</strong> EPF mandatory wage limit ₹' + R.pfCeiling.toLocaleString('en-IN') + '/month (max ₹' + pfCapMax.toLocaleString('en-IN') + ' employee share).<br>';
+      lcHtml += '• <strong>' + R.minBasicPctOfGross + '% Wage Definition Rule:</strong> Basic + DA + Retaining kam se kam total salary ka <strong>' + R.minBasicPctOfGross + '%</strong> hona chahiye; excess allowances Wages mein add-back hote hain.<br>';
+      lcHtml += '• <strong>' + R.maxDeductionPctOfGross + '% Max Deduction Cap (Code on Wages):</strong> Total deductions (PF + ESIC + Advance + Fines) earned gross ke <strong>' + R.maxDeductionPctOfGross + '%</strong> se zyada nahi ho sakti.<br>';
+      lcHtml += '• <strong>F&amp;F Settlement Window:</strong> Resignation / termination / retrenchment ke <strong>' + R.fnfSettlementDays + ' working days</strong> ke andar final wages pay karna mandatory hai.<br>';
+      lcHtml += '• <strong>Overtime &amp; Hours:</strong> OT minimum <strong>' + R.otMultiplier + 'x</strong> normal rate; weekly max <strong>' + R.maxWeeklyHours + ' hrs</strong> aur quarterly OT cap <strong>' + R.maxQuarterlyOtHours + ' hrs</strong>.<br>';
+      lcHtml += '• <strong>Gratuity (FTE):</strong> Permanent ke liye ' + R.gratuityPermYears + ' years, Fixed-Term Employees (FTE) ke liye <strong>' + R.gratuityFteYears + ' year</strong> par pro-rata gratuity.<br>';
+      var activeCustoms = (R.customRules || []).filter(function(cr) { return cr && cr.enabled && String(cr.id || '').indexOf('builtin_') !== 0; });
+      if (activeCustoms.length) {
+        lcHtml += '<br>📌 <strong>Custom / Newly Added Rules (' + activeCustoms.length + '):</strong><br>';
+        activeCustoms.slice(0, 4).forEach(function(cr) {
+          lcHtml += '• <strong>' + escHtml(cr.title) + ':</strong> ' + escHtml(cr.summary) + '<br>';
+        });
+      }
       lcHtml += '</div>';
       return { html: lcHtml };
     }
@@ -687,11 +1130,11 @@
     // 4. BONUS ACT / CODE ON WAGES BONUS RULES
     if (lower.match(/(bonus|diwali\s*bonus).*(rule|calculation|percentage|formula|limit|ceiling|act)/i)) {
       var bHtml = '<div style="line-height:1.7">';
-      bHtml += '🎁 <strong>Statutory Bonus Rules (Code on Wages / Payment of Bonus):</strong><br><br>';
-      bHtml += '• <strong>Eligibility:</strong> Kam se kam <strong>30 working days</strong> kaam kiya ho (wages ceiling ke andar).<br>';
-      bHtml += '• <strong>Minimum Bonus:</strong> <strong>8.33%</strong> of Earned Basic+DA (subject to notified wage floor).<br>';
-      bHtml += '• <strong>Maximum Bonus:</strong> Up to <strong>20%</strong> allocable surplus ke hisaab se.<br>';
-      bHtml += '• <strong>50% Rule Impact:</strong> Agar Basic total CTC ke 50% se kam rakhi gayi ho, toh add-back Wages par bonus calculation check hoti hai.<br>';
+      bHtml += '🎁 <strong>Statutory Bonus Rules (v' + escHtml(R.version) + '):</strong><br><br>';
+      bHtml += '• <strong>Eligibility:</strong> Kam se kam <strong>' + R.bonusMinDays + ' working days</strong> kaam kiya ho.<br>';
+      bHtml += '• <strong>Minimum Bonus:</strong> <strong>' + R.bonusMinPct + '%</strong> of Earned Basic+DA.<br>';
+      bHtml += '• <strong>Maximum Bonus:</strong> Up to <strong>' + R.bonusMaxPct + '%</strong> allocable surplus ke hisaab se.<br>';
+      bHtml += '• <strong>' + R.minBasicPctOfGross + '% Rule Impact:</strong> Agar Basic total CTC ke ' + R.minBasicPctOfGross + '% se kam rakhi gayi ho, toh add-back Wages par bonus calculation check hoti hai.<br>';
       bHtml += '</div>';
       return { html: bHtml };
     }
@@ -700,10 +1143,10 @@
     if (lower.match(/(gratuity).*(rule|formula|calculation|limit|act|sal|years)/i)) {
       var gHtml = '<div style="line-height:1.7">';
       gHtml += '💰 <strong>Gratuity Rules (Code on Social Security, 2020):</strong><br><br>';
-      gHtml += '• <strong>Permanent Staff:</strong> Minimum <strong>5 continuous years</strong> (death/disability par waived).<br>';
-      gHtml += '• <strong>Fixed-Term Employees (FTE):</strong> Sirf <strong>1 year</strong> service complete karne par pro-rata gratuity applicable!<br>';
-      gHtml += '• <strong>Formula:</strong> <code>(15 × Last Drawn Wages (Basic+DA, min 50% CTC) × Years) ÷ 26</code><br>';
-      gHtml += '• <strong>Tax-Free Cap:</strong> <strong>₹20,00,000 (20 Lakh)</strong>.<br>';
+      gHtml += '• <strong>Permanent Staff:</strong> Minimum <strong>' + R.gratuityPermYears + ' continuous years</strong> (death/disability par waived).<br>';
+      gHtml += '• <strong>Fixed-Term Employees (FTE):</strong> Sirf <strong>' + R.gratuityFteYears + ' year</strong> service complete karne par pro-rata gratuity applicable!<br>';
+      gHtml += '• <strong>Formula:</strong> <code>(15 × Last Drawn Wages (Basic+DA, min ' + R.minBasicPctOfGross + '% CTC) × Years) ÷ 26</code><br>';
+      gHtml += '• <strong>Tax-Free Cap:</strong> <strong>₹' + R.gratuityTaxFreeCap.toLocaleString('en-IN') + '</strong>.<br>';
       gHtml += '</div>';
       return { html: gHtml };
     }
@@ -714,8 +1157,8 @@
       dHtml += '📐 <strong>Factory &amp; Payroll Divisor Calculations (ATPL Standard):</strong><br><br>';
       dHtml += '• <strong>Standard Factory Divisor:</strong> <strong>26 Days</strong>.<br>';
       dHtml += '• <strong>Per Day Rate:</strong> <code>Daily Rate = Monthly Basic ÷ 26</code>.<br>';
-      dHtml += '• <strong>Overtime (Minimum Double Rate):</strong> <code>OT Rate/Hr = (Basic ÷ 26 ÷ 8) × 2</code> (ya Gross ÷ 104).<br>';
-      dHtml += '• <strong>Max Deduction Guard:</strong> Total Deduction ≤ 50% of Gross Earned.<br>';
+      dHtml += '• <strong>Overtime (' + R.otMultiplier + 'x Rate):</strong> <code>OT Rate/Hr = (Basic ÷ 26 ÷ 8) × ' + R.otMultiplier + '</code> (ya Gross ÷ 104).<br>';
+      dHtml += '• <strong>Max Deduction Guard:</strong> Total Deduction ≤ ' + R.maxDeductionPctOfGross + '% of Gross Earned.<br>';
       dHtml += '</div>';
       return { html: dHtml };
     }
@@ -951,6 +1394,26 @@
       }
     }
 
+    // ── MATCH USER-ADDED CUSTOM COMPLIANCE RULES ──
+    var customList = (ComplianceRulesEngine.getRules().customRules || []).filter(function(cr) { return cr && cr.enabled; });
+    var matchedRules = customList.filter(function(cr) {
+      var titleHit = cr.title && lower.indexOf(cr.title.toLowerCase()) >= 0;
+      var kwHits = (cr.keywords || []).filter(function(kw) { return kw.length >= 2 && lower.indexOf(kw) >= 0; }).length;
+      return titleHit || kwHits >= 2 || (kwHits >= 1 && /rule|niyam|policy|act|circular/i.test(lower));
+    });
+    if (matchedRules.length) {
+      var crHtml = '📘 <strong>Matched Active Compliance Rules (' + matchedRules.length + '):</strong><br><br>';
+      matchedRules.slice(0, 5).forEach(function(cr) {
+        crHtml += '<div class="ai-kpi-card">';
+        crHtml += '  <div style="display:flex;justify-content:space-between;gap:8px"><strong>' + escHtml(cr.title) + '</strong><span class="ai-dossier-badge">' + escHtml(cr.category) + '</span></div>';
+        if (cr.effectiveFrom) crHtml += '  <div style="font-size:10.5px;color:#94a3b8;margin-top:2px">Effective: ' + escHtml(cr.effectiveFrom) + '</div>';
+        crHtml += '  <div style="font-size:12px;color:#e2e8f0;margin-top:5px">' + escHtml(cr.summary) + '</div>';
+        if (cr.auditorNote) crHtml += '  <div style="font-size:11px;color:#93c5fd;margin-top:4px">Auditor Note: ' + escHtml(cr.auditorNote) + '</div>';
+        crHtml += '</div>';
+      });
+      return { html: crHtml };
+    }
+
     // ── GENERAL INTELLIGENT SEARCH (OPEN-ENDED) ──
     return renderOpenSearch(raw);
   }
@@ -1021,9 +1484,16 @@
 
   function analyzeMamComplianceSnapshot(snap) {
     var rows = Array.isArray(snap && snap.rows) ? snap.rows : [];
+    var R = ComplianceRulesEngine.getRules();
     var monthKey = String((snap && snap.month) || '');
-    var isPostSep2026 = !monthKey || monthKey >= '2026-09';
-    var pfCeiling = isPostSep2026 ? 25000 : 15000;
+    var isPostSep2026 = !monthKey || monthKey >= (R.pfCeilingEffective || '2026-09');
+    var pfCeiling = isPostSep2026 ? Number(R.pfCeiling || 25000) : Number(R.pfPreSepCeiling || 15000);
+    var esicLimit = Number(R.esicGrossCeiling || 21000);
+    var esicDailyExempt = Number(R.esicDailyExempt || 176);
+    var minBasicRatio = Number(R.minBasicPctOfGross || 50) / 100;
+    var maxDedRatio = Number(R.maxDeductionPctOfGross || 50) / 100;
+    var monthlyOtWarn = Number(R.maxMonthlyOtWarnHours || 48);
+    var quarterlyOtCap = Number(R.maxQuarterlyOtHours || 115);
 
     var deptStats = {};
     rows.forEach(function(r) {
@@ -1127,36 +1597,40 @@
         );
       }
 
-      // 4. New 2026 ₹25,000 PF Ceiling Alert
-      if (isPostSep2026 && hasPfId && paidDays > 0 && r.pfMode === 'CAP_15000' && earnBasic > 15000) {
-        pushFinding(
-          r, 'High', 'PF_NEW_25K_CEILING',
-          'Purana ₹15,000 PF Cap laga hai (Nayi limit ₹25,000 hai)',
-          '17 Sep 2026 se EPF ceiling ₹' + pfCeiling.toLocaleString('en-IN') + ' ho gayi hai. Abhi ' + formatINRVal(pfEmp) + ' kata jabki Earn Basic ' + formatINRVal(earnBasic) + ' hai.',
-          'Auditor naye ₹25,000 EPFO rule ke hisaab se short-deduction demand nikal sakta hai.',
-          { pfMode: 'FULL_12' },
-          'Naye ₹25,000 rule ke hisaab se FULL_12 apply karein'
-        );
+      // 4. Dynamic PF Wage Ceiling Check (₹25,000+ or Updated Rule)
+      if (isPostSep2026 && hasPfId && paidDays > 0 && earnBasic > R.pfPreSepCeiling) {
+        var expectedPfCap = Math.min(earnBasic, pfCeiling);
+        var expectedPfEmp = Math.round(expectedPfCap * (Number(R.pfEmployeePct || 12) / 100));
+        if (r.pfMode === 'CAP_15000' || (pfCeiling > 25000 && pfEmp > 0 && pfEmp + 30 < expectedPfEmp)) {
+          pushFinding(
+            r, 'High', 'PF_NEW_25K_CEILING',
+            'Purana PF Cap laga hai (Active limit ₹' + pfCeiling.toLocaleString('en-IN') + ' hai)',
+            'Active EPF ceiling ₹' + pfCeiling.toLocaleString('en-IN') + ' ke mutabiq PF ' + formatINRVal(expectedPfEmp) + ' hona chahiye (abhi ' + formatINRVal(pfEmp) + ' on Earn Basic ' + formatINRVal(earnBasic) + ').',
+            'Auditor active ₹' + pfCeiling.toLocaleString('en-IN') + ' EPFO rule ke hisaab se short-deduction demand nikal sakta hai.',
+            { pfMode: 'FULL_12' },
+            'Active ₹' + pfCeiling.toLocaleString('en-IN') + ' rule ke hisaab se FULL_12 apply karein'
+          );
+        }
       }
 
-      // 5. ESIC ₹21,000 Ceiling & ₹176 Daily Exemption Checks
+      // 5. Dynamic ESIC Ceiling & Daily Exemption Checks
       if (paidDays > 0 && gross > 0) {
         var avgDaily = totalGross / Math.max(1, paidDays);
-        if (hasEsiId && gross <= 21000 && esiEmp === 0 && avgDaily > 176 && r.esiMode !== 'NONE') {
+        if (hasEsiId && gross <= esicLimit && esiEmp === 0 && avgDaily > esicDailyExempt && r.esiMode !== 'NONE') {
           pushFinding(
             r, 'High', 'ESI_MISSED_UNDER_21K',
-            'Gross ≤ ₹21,000 aur ESIC No hai par ESIC ₹0 hai',
-            'Daily wage ' + formatINRVal(avgDaily) + ' (>₹176) hai aur Gross ' + formatINRVal(gross) + ' ESIC slab mein aata hai.',
+            'Gross ≤ ₹' + esicLimit.toLocaleString('en-IN') + ' aur ESIC No hai par ESIC ₹0 hai',
+            'Daily wage ' + formatINRVal(avgDaily) + ' (>₹' + esicDailyExempt + ') hai aur Gross ' + formatINRVal(gross) + ' ESIC slab mein aata hai.',
             'ESIC Inspector non-deduction par employer + employee dono share + 12% interest maang sakta hai.',
             { esiMode: 'TOTAL_GROSS' },
             'ESIC Mode = TOTAL_GROSS apply karein'
           );
-        } else if (gross > 21000 && esiEmp > 0) {
+        } else if (gross > esicLimit && esiEmp > 0) {
           pushFinding(
             r, 'Medium', 'ESI_ABOVE_21K_PROOF',
-            'Gross ₹21,000 se upar hai par ESIC (' + formatINRVal(esiEmp) + ') kat raha hai',
+            'Gross ₹' + esicLimit.toLocaleString('en-IN') + ' se upar hai par ESIC (' + formatINRVal(esiEmp) + ') kat raha hai',
             'Gross ' + formatINRVal(gross) + ' limit se upar hai. Sirf Apr–Sep / Oct–Mar mid-period continuation mein valid hota hai.',
-            'Auditor check karega ki kya employee period start mein ₹21,000 ke andar tha.',
+            'Auditor check karega ki kya employee period start mein ₹' + esicLimit.toLocaleString('en-IN') + ' ke andar tha.',
             { esiMode: 'NONE' },
             'Mid-period proof nahi ho toh ESIC Mode = NONE karein'
           );
@@ -1174,37 +1648,37 @@
           { overtimeHours: safeOt },
           'OT ko realistic ' + safeOt + ' hrs par adjust karein'
         );
-      } else if (ot > 48) {
+      } else if (ot > monthlyOtWarn) {
         pushFinding(
           r, 'Medium', 'HIGH_MONTHLY_OT',
-          'Monthly OT ' + ot + ' hrs (>48 hrs) — Quarterly 115-hr limit risk',
-          'Factories Act / Labour Code ke hisaab se quarterly OT cap 115 hrs hota hai.',
+          'Monthly OT ' + ot + ' hrs (>' + monthlyOtWarn + ' hrs) — Quarterly ' + quarterlyOtCap + '-hr limit risk',
+          'Active rule ke hisaab se quarterly OT cap ' + quarterlyOtCap + ' hrs aur monthly warn ' + monthlyOtWarn + ' hrs hai.',
           'Lagatar 2-3 mahine itna OT hone par Inspector safety/working-hours violation mark kar sakta hai.',
-          { overtimeHours: 32 },
-          'OT hours 32 hrs tak review/cap karein'
+          { overtimeHours: Math.min(32, monthlyOtWarn) },
+          'OT hours ' + Math.min(32, monthlyOtWarn) + ' hrs tak review/cap karein'
         );
       }
 
-      // 7. Labour Code 50% Wage Definition Check
-      if (gross > 0 && basic > 0 && (basic / gross) < 0.50 && paidDays > 0) {
-        var minBasic50 = Math.round(gross * 0.50);
+      // 7. Dynamic Labour Code Wage Definition Check
+      if (gross > 0 && basic > 0 && (basic / gross) < minBasicRatio && paidDays > 0) {
+        var minBasicTarget = Math.round(gross * minBasicRatio);
         pushFinding(
           r, 'Insight', 'WAGE_CODE_50_PCT',
-          'Basic (' + Math.round((basic / gross) * 100) + '%) total Gross ke 50% se kam hai',
-          'Labour Code 50% Wage Definition ke mutabiq Basic+DA kam se kam ' + formatINRVal(minBasic50) + ' hona chahiye.',
+          'Basic (' + Math.round((basic / gross) * 100) + '%) total Gross ke ' + R.minBasicPctOfGross + '% se kam hai',
+          'Active Labour Code ' + R.minBasicPctOfGross + '% Wage Definition ke mutabiq Basic+DA kam se kam ' + formatINRVal(minBasicTarget) + ' hona chahiye.',
           'Auditor excess allowances ko Wages mein add-back karke PF aur Gratuity liability badha sakta hai.',
-          { basic: minBasic50 },
-          'Basic ko 50% (' + formatINRVal(minBasic50) + ') par align karein'
+          { basic: minBasicTarget },
+          'Basic ko ' + R.minBasicPctOfGross + '% (' + formatINRVal(minBasicTarget) + ') par align karein'
         );
       }
 
-      // 8. Code on Wages 50% Maximum Deduction Cap
-      if (totalGross > 0 && totDed > totalGross * 0.50) {
-        var maxAdv = Math.max(0, Math.floor((totalGross * 0.50) - pfEmp - esiEmp));
+      // 8. Dynamic Code on Wages Maximum Deduction Cap
+      if (totalGross > 0 && totDed > totalGross * maxDedRatio) {
+        var maxAdv = Math.max(0, Math.floor((totalGross * maxDedRatio) - pfEmp - esiEmp));
         pushFinding(
           r, 'High', 'DEDUCTION_OVER_50_PCT',
-          'Deduction (' + formatINRVal(totDed) + ') Gross Earned ke 50% se zyada hai!',
-          'Code on Wages ke hisaab se total deduction ' + formatINRVal(totalGross * 0.50) + ' se upar nahi ja sakti.',
+          'Deduction (' + formatINRVal(totDed) + ') Gross Earned ke ' + R.maxDeductionPctOfGross + '% se zyada hai!',
+          'Active rule ke hisaab se total deduction ' + formatINRVal(totalGross * maxDedRatio) + ' se upar nahi ja sakti.',
           'Labour Officer isko illegal wage deduction maan kar penalty laga sakta hai.',
           { advance: maxAdv },
           'Advance deduction ko ' + formatINRVal(maxAdv) + ' par cap karein'
@@ -1246,6 +1720,38 @@
           'Paid Days / OT / Basic check karke gap verify karein'
         );
       }
+
+      // 11. User-Added Custom Rules with Auto-Audit Thresholds
+      (R.customRules || []).forEach(function(cr) {
+        if (!cr || !cr.enabled || !cr.checkMetric || cr.checkThreshold === null || !isFinite(Number(cr.checkThreshold))) return;
+        var th = Number(cr.checkThreshold);
+        var hit = false;
+        var patchObj = null;
+        if (cr.checkMetric === 'OT_GT' && paidDays > 0 && ot > th) {
+          hit = true;
+          patchObj = { overtimeHours: th };
+        } else if (cr.checkMetric === 'BASIC_PCT_LT' && paidDays > 0 && gross > 0 && ((basic / gross) * 100) < th) {
+          hit = true;
+          patchObj = { basic: Math.round(gross * (th / 100)) };
+        } else if (cr.checkMetric === 'DED_PCT_GT' && paidDays > 0 && totalGross > 0 && ((totDed / totalGross) * 100) > th) {
+          hit = true;
+          patchObj = { advance: Math.max(0, Math.floor((totalGross * (th / 100)) - pfEmp - esiEmp)) };
+        } else if (cr.checkMetric === 'GROSS_GT' && paidDays > 0 && gross > th) {
+          hit = true;
+        } else if (cr.checkMetric === 'BASIC_GT' && paidDays > 0 && basic > th) {
+          hit = true;
+        }
+        if (hit) {
+          pushFinding(
+            r, 'Insight', 'CUSTOM_' + cr.id,
+            cr.title + ' (Custom Rule Alert)',
+            cr.summary || ('Active custom rule threshold (' + th + ') trigger hua.'),
+            cr.auditorNote || 'User-defined compliance rule check.',
+            patchObj,
+            'Custom rule "' + cr.title + '" ke mutabiq adjust karein'
+          );
+        }
+      });
     });
 
     return {
@@ -1253,6 +1759,8 @@
       monthLabel: (snap && snap.monthLabel) || monthKey || 'Active Sheet',
       rowsCount: rows.length,
       pfCeilingApplied: pfCeiling,
+      esicLimitApplied: esicLimit,
+      ruleVersion: R.version,
       findings: findings
     };
   }
@@ -1279,7 +1787,7 @@
     var out = '<div style="line-height:1.55">';
     out += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
     out += '  <strong style="font-size:13.5px;color:#f8fafc">🛡️ Auditor Brain Scan · ' + escHtml(audit.monthLabel) + '</strong>';
-    out += '  <span style="font-size:11px;color:#94a3b8">' + audit.rowsCount + ' rows · PF Cap ₹' + audit.pfCeilingApplied.toLocaleString('en-IN') + '</span>';
+    out += '  <span style="font-size:11px;color:#94a3b8">v' + escHtml(audit.ruleVersion || '2026') + ' · ' + audit.rowsCount + ' rows · PF ₹' + audit.pfCeilingApplied.toLocaleString('en-IN') + ' · ESIC ₹' + (audit.esicLimitApplied || 21000).toLocaleString('en-IN') + '</span>';
     out += '</div>';
 
     if (!list.length) {
@@ -1480,25 +1988,32 @@
   }
 
   function renderStatutoryAdvisory(query) {
-    var out = '📚 <strong>Latest 2026 Indian Labour Compliance Guidelines (ATPL ERP):</strong><br><br>';
+    var R = ComplianceRulesEngine.getRules();
+    var pfMaxEmp = Math.round(R.pfCeiling * (R.pfEmployeePct / 100));
+    var pfMaxEps = Math.round(R.pfEpsPct ? R.pfCeiling * (R.pfEpsPct / 100) : 0);
+    var out = '📚 <strong>Active Indian Labour Compliance Guidelines (Rules v' + escHtml(R.version) + '):</strong><br><br>';
     if (query.indexOf('pf') >= 0 || query.indexOf('labour') >= 0) {
-      out += '• <strong>EPF (Code on Social Security, 2020 — Eff. 17 Sep 2026):</strong><br>';
-      out += '  - Mandatory Wage Ceiling: <strong>₹25,000/month</strong> (updated from ₹15,000).<br>';
-      out += '  - Employee Share: <strong>12%</strong> (max ₹3,000 on ceiling) · Employer: <strong>3.67% EPF + 8.33% EPS (max ₹2,083) + 0.50% EDLI + 0.50% Admin</strong>.<br><br>';
+      out += '• <strong>EPF (Code on Social Security — Eff. ' + escHtml(R.pfCeilingEffective) + '):</strong><br>';
+      out += '  - Mandatory Wage Ceiling: <strong>₹' + R.pfCeiling.toLocaleString('en-IN') + '/month</strong>.<br>';
+      out += '  - Employee Share: <strong>' + R.pfEmployeePct + '%</strong> (max ₹' + pfMaxEmp.toLocaleString('en-IN') + ') · Employer: <strong>' + R.pfEpfPct + '% EPF + ' + R.pfEpsPct + '% EPS (max ₹' + pfMaxEps.toLocaleString('en-IN') + ') + ' + R.pfEdliPct + '% EDLI + ' + R.pfAdminPct + '% Admin</strong>.<br><br>';
     }
     if (query.indexOf('esic') >= 0 || query.indexOf('labour') >= 0) {
       out += '• <strong>ESIC:</strong><br>';
-      out += '  - Statutory Gross Limit: <strong>₹21,000/month</strong> (PwD: ₹25,000) · Contribution Periods: Apr–Sep &amp; Oct–Mar.<br>';
-      out += '  - Employee: <strong>0.75%</strong> (exempt ≤ ₹176/day) · Employer: <strong>3.25%</strong>.<br><br>';
+      out += '  - Statutory Gross Limit: <strong>₹' + R.esicGrossCeiling.toLocaleString('en-IN') + '/month</strong> (PwD: ₹' + R.esicPwdCeiling.toLocaleString('en-IN') + ') · Contribution Periods: Apr–Sep &amp; Oct–Mar.<br>';
+      out += '  - Employee: <strong>' + R.esicEmployeePct + '%</strong> (exempt ≤ ₹' + R.esicDailyExempt + '/day) · Employer: <strong>' + R.esicEmployerPct + '%</strong>.<br><br>';
     }
     if (query.indexOf('bonus') >= 0 || query.indexOf('labour') >= 0) {
-      out += '• <strong>Statutory Bonus (Code on Wages):</strong> <strong>8.33%</strong> min to <strong>20%</strong> max (30+ working days).<br><br>';
+      out += '• <strong>Statutory Bonus (Code on Wages):</strong> <strong>' + R.bonusMinPct + '%</strong> min to <strong>' + R.bonusMaxPct + '%</strong> max (' + R.bonusMinDays + '+ working days).<br><br>';
     }
     if (query.indexOf('gratuity') >= 0 || query.indexOf('labour') >= 0) {
-      out += '• <strong>Gratuity:</strong> (15 × Last Wages × Years) ÷ 26 · 5 years permanent / <strong>1 year Fixed-Term (FTE)</strong>.<br><br>';
+      out += '• <strong>Gratuity:</strong> (15 × Last Wages × Years) ÷ 26 · ' + R.gratuityPermYears + ' years permanent / <strong>' + R.gratuityFteYears + ' year Fixed-Term (FTE)</strong>.<br><br>';
     }
-    out += '• <strong>50% Wage &amp; Deduction Rule:</strong> Basic+DA ≥ 50% CTC; total deductions ≤ 50% earned gross; F&amp;F payable within 2 working days.<br><br>';
-    out += '💡 <em>"Mam compliance audit karo" likh kar live salary sheet par turant auditor check chalayein.</em>';
+    out += '• <strong>' + R.minBasicPctOfGross + '% Wage &amp; ' + R.maxDeductionPctOfGross + '% Deduction Rule:</strong> Basic+DA ≥ ' + R.minBasicPctOfGross + '% CTC; total deductions ≤ ' + R.maxDeductionPctOfGross + '% earned gross; F&amp;F payable within ' + R.fnfSettlementDays + ' working days.<br><br>';
+    var customExtras = (R.customRules || []).filter(function(cr) { return cr && cr.enabled && String(cr.id || '').indexOf('builtin_') !== 0; });
+    if (customExtras.length) {
+      out += '• <strong>Added Custom Rules (' + customExtras.length + '):</strong> ' + customExtras.map(function(c) { return escHtml(c.title); }).join(' · ') + '<br><br>';
+    }
+    out += '💡 <em>Naya rule update karne ke liye <strong>⚙️ Rules Engine</strong> kholein ya likhein: "Update rule: PF ceiling 30000"</em>';
     return { html: out };
   }
 
@@ -1736,6 +2251,12 @@
       '.ai-kpi-card { background:#0f172a;border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:11px;margin-bottom:8px; }',
       '#aiMiniFixBox input, #aiMiniFixBox select { background:#162033;border:1px solid rgba(148,163,184,0.26);color:#f8fafc;border-radius:7px;padding:6px 8px;font-size:12px;width:100%;box-sizing:border-box; }',
       '#aiMiniFixBox label { display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:3px;text-transform:uppercase; }',
+      '#aiRulesPanel { display:none;background:#0f172a;border-bottom:1px solid rgba(96,165,250,0.35);padding:12px 14px;max-height:330px;overflow-y:auto;flex-shrink:0;color:#e2e8f0;font-size:12px; }',
+      '#aiRulesPanel input, #aiRulesPanel select, #aiRulesPanel textarea { background:#162033;border:1px solid rgba(148,163,184,0.26);color:#f8fafc;border-radius:7px;padding:6px 8px;font-size:12px;width:100%;box-sizing:border-box;font-family:inherit; }',
+      '#aiRulesPanel label { display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:3px;text-transform:uppercase; }',
+      '.ai-rules-tabs { display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap; }',
+      '.ai-rules-tab { background:#162033;border:1px solid rgba(148,163,184,0.24);color:#cbd5e1;padding:5px 10px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer; }',
+      '.ai-rules-tab.active { background:#2563eb;border-color:#60a5fa;color:#fff; }',
       '@media (prefers-reduced-motion: reduce) { #atplAiContainer, .ai-typing-dots span, .ai-mic-btn.active { animation:none !important;transition:none !important; } }',
       '@media (max-width: 640px) { #atplAiContainer { bottom:0 !important;right:0 !important;left:0 !important;width:100vw !important;max-width:100vw !important;height:92vh !important;max-height:92vh !important;border-radius:16px 16px 0 0 !important; } }'
     ].join('\n');
@@ -1768,6 +2289,7 @@
       '    </div>',
       '  </div>',
       '  <div class="ai-head-btns">',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnRules" title="Live Compliance Rules Engine (Update / Sync Rules)" onclick="window.AroraAICommander.toggleRulesPanel()">⚙️</button>',
       '    <button type="button" class="ai-icon-btn" id="aiBtnTTS" title="Voice Output (Speak)" onclick="window.AroraAICommander.toggleTTS()">🔊</button>',
       '    <button type="button" class="ai-icon-btn" id="aiBtnWide" title="Wide / Compact View" onclick="window.AroraAICommander.toggleWide()">↔</button>',
       '    <button type="button" class="ai-icon-btn" id="aiBtnFullscreen" title="Fullscreen Mode" onclick="window.AroraAICommander.toggleFullscreen()">⛶</button>',
@@ -1779,6 +2301,7 @@
       '  <span class="ai-meta-label">Data Index</span>',
       '  <button type="button" class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'Files and features summary\')">Scan Loaded Data</button>',
       '</div>',
+      '<div id="aiRulesPanel"></div>',
       '<div id="atplAiMessages">',
       '  <div class="ai-row bot"><div class="ai-msg-wrap"><div class="ai-msg-bubble">' + renderWelcomeHtml() + '</div></div></div>',
       '</div>',
@@ -1786,6 +2309,8 @@
       '<div class="ai-chips-wrap" id="aiChipsWrap">',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'July 2026 total salary payout kitna hai?\')">💰 Salary Payout</button>',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Sabse jyada OT kisne kiya?\')">⏱️ Top Overtime</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Mam compliance audit karo\')">🛡️ Auditor Check</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.toggleRulesPanel()">⚙️ Update Rules</button>',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'ESIC aur Divisor anomalies scan karo\')">🚨 Compliance Scan</button>',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Executive summary do\')">📊 MD Briefing</button>',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Punch out blank hai random fill karo\')">⚡ Fill Punches</button>',
@@ -1914,6 +2439,99 @@
     }
   }
 
+  function renderRulesPanelContent() {
+    var panel = document.getElementById('aiRulesPanel');
+    if (!panel) return;
+    var R = ComplianceRulesEngine.getRules();
+    var tab = UI.rulesTab || 'thresholds';
+    var html = [
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">',
+      '  <div>',
+      '    <strong style="font-size:12.5px;color:#93c5fd">⚙️ Live Compliance Rules Engine · v' + escHtml(R.version) + '</strong>',
+      '    <div style="font-size:10.5px;color:#94a3b8">Yahan rule update karne par Q&amp;A + Mam Auditor dono turant update &amp; sync hote hain</div>',
+      '  </div>',
+      '  <div style="display:flex;gap:6px">',
+      '    <button type="button" class="ai-rules-tab" onclick="window.AroraAICommander.syncRulesNow()">🔄 Sync Latest</button>',
+      '    <button type="button" class="ai-rules-tab" onclick="window.AroraAICommander.resetRulesToDefault()">↺ Reset</button>',
+      '    <button type="button" class="ai-rules-tab" onclick="window.AroraAICommander.toggleRulesPanel(false)">✕</button>',
+      '  </div>',
+      '</div>',
+      '<div class="ai-rules-tabs">',
+      '  <button type="button" class="ai-rules-tab' + (tab === 'thresholds' ? ' active' : '') + '" onclick="window.AroraAICommander.setRulesTab(\'thresholds\')">1. Statutory Limits</button>',
+      '  <button type="button" class="ai-rules-tab' + (tab === 'custom' ? ' active' : '') + '" onclick="window.AroraAICommander.setRulesTab(\'custom\')">2. Custom Rules (' + (R.customRules || []).length + ')</button>',
+      '  <button type="button" class="ai-rules-tab' + (tab === 'circular' ? ' active' : '') + '" onclick="window.AroraAICommander.setRulesTab(\'circular\')">3. Paste Notification / JSON</button>',
+      '</div>'
+    ];
+
+    if (tab === 'thresholds') {
+      html.push(
+        '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px">',
+        '  <div><label>PF Ceiling (₹)</label><input id="aiRulePfCeiling" type="number" value="' + escHtml(R.pfCeiling) + '"></div>',
+        '  <div><label>PF Eff (YYYY-MM)</label><input id="aiRulePfEff" type="text" value="' + escHtml(R.pfCeilingEffective) + '"></div>',
+        '  <div><label>PF Emp %</label><input id="aiRulePfEmpPct" type="number" step="0.01" value="' + escHtml(R.pfEmployeePct) + '"></div>',
+        '  <div><label>PF EPS %</label><input id="aiRulePfEpsPct" type="number" step="0.01" value="' + escHtml(R.pfEpsPct) + '"></div>',
+        '  <div><label>ESIC Ceiling (₹)</label><input id="aiRuleEsiCeiling" type="number" value="' + escHtml(R.esicGrossCeiling) + '"></div>',
+        '  <div><label>ESIC PwD (₹)</label><input id="aiRuleEsiPwd" type="number" value="' + escHtml(R.esicPwdCeiling) + '"></div>',
+        '  <div><label>ESIC Emp %</label><input id="aiRuleEsiEmpPct" type="number" step="0.01" value="' + escHtml(R.esicEmployeePct) + '"></div>',
+        '  <div><label>ESIC Daily Exempt</label><input id="aiRuleEsiDaily" type="number" value="' + escHtml(R.esicDailyExempt) + '"></div>',
+        '  <div><label>Min Basic %</label><input id="aiRuleMinBasic" type="number" value="' + escHtml(R.minBasicPctOfGross) + '"></div>',
+        '  <div><label>Max Deduction %</label><input id="aiRuleMaxDed" type="number" value="' + escHtml(R.maxDeductionPctOfGross) + '"></div>',
+        '  <div><label>OT Warn (Hrs/Mo)</label><input id="aiRuleOtWarn" type="number" value="' + escHtml(R.maxMonthlyOtWarnHours) + '"></div>',
+        '  <div><label>OT Cap (Hrs/Qtr)</label><input id="aiRuleOtQuarter" type="number" value="' + escHtml(R.maxQuarterlyOtHours) + '"></div>',
+        '  <div><label>F&amp;F Days</label><input id="aiRuleFnfDays" type="number" value="' + escHtml(R.fnfSettlementDays) + '"></div>',
+        '  <div><label>FTE Gratuity Yrs</label><input id="aiRuleFteGrat" type="number" value="' + escHtml(R.gratuityFteYears) + '"></div>',
+        '  <div><label>Bonus Min %</label><input id="aiRuleBonusMin" type="number" step="0.01" value="' + escHtml(R.bonusMinPct) + '"></div>',
+        '  <div><label>Bonus Max %</label><input id="aiRuleBonusMax" type="number" step="0.01" value="' + escHtml(R.bonusMaxPct) + '"></div>',
+        '</div>',
+        '<div style="display:flex;justify-content:flex-end;gap:8px">',
+        '  <button type="button" class="ai-act-btn" style="background:#16a34a;border-color:#22c55e;color:#fff" onclick="window.AroraAICommander.saveRuleThresholdsFromUI()">💾 Save &amp; Sync Rules</button>',
+        '</div>'
+      );
+    } else if (tab === 'custom') {
+      html.push(
+        '<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:8px">',
+        '  <div><label>New Rule Title</label><input id="aiCustomRuleTitle" type="text" placeholder="e.g. LWF Half-Yearly Deduction"></div>',
+        '  <div><label>Category</label><select id="aiCustomRuleCat"><option value="PF">PF</option><option value="ESIC">ESIC</option><option value="LABOUR_CODE">LABOUR_CODE</option><option value="BONUS">BONUS</option><option value="GRATUITY">GRATUITY</option><option value="OTHER" selected>OTHER</option></select></div>',
+        '  <div><label>Effective Date</label><input id="aiCustomRuleEff" type="text" value="' + escHtml(new Date().toISOString().slice(0, 10)) + '"></div>',
+        '</div>',
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">',
+        '  <div><label>Keywords (comma separated)</label><input id="aiCustomRuleKw" type="text" placeholder="e.g. lwf, welfare, june"></div>',
+        '  <div><label>Live Sheet Check (Optional)</label><select id="aiCustomRuleMetric"><option value="">Q&amp;A Only (No Sheet Check)</option><option value="OT_GT">OT Hours &gt; Threshold</option><option value="BASIC_PCT_LT">Basic % of Gross &lt; Threshold</option><option value="DED_PCT_GT">Deduction % of Gross &gt; Threshold</option><option value="GROSS_GT">Gross Salary &gt; Threshold</option><option value="BASIC_GT">Basic Salary &gt; Threshold</option></select></div>',
+        '  <div><label>Threshold Value</label><input id="aiCustomRuleThresh" type="number" placeholder="e.g. 25"></div>',
+        '</div>',
+        '<div style="margin-bottom:8px"><label>Rule Summary / Circular Detail</label><textarea id="aiCustomRuleSummary" rows="2" placeholder="Rule detail likhein..."></textarea></div>',
+        '<div style="display:flex;justify-content:flex-end;margin-bottom:10px">',
+        '  <button type="button" class="ai-act-btn" style="background:#16a34a;border-color:#22c55e;color:#fff" onclick="window.AroraAICommander.addCustomRuleFromUI()">➕ Add Rule</button>',
+        '</div>'
+      );
+      (R.customRules || []).forEach(function(cr) {
+        html.push(
+          '<div style="background:#162033;border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:8px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px">',
+          '  <div style="min-width:0">',
+          '    <div style="font-weight:700;color:' + (cr.enabled ? '#f8fafc' : '#64748b') + '">' + escHtml(cr.title) + ' <span style="font-size:10px;color:#93c5fd">[' + escHtml(cr.category) + ']</span></div>',
+          '    <div style="font-size:11px;color:#94a3b8;margin-top:2px">' + escHtml(cr.summary) + '</div>',
+          '  </div>',
+          '  <div style="display:flex;gap:5px;flex-shrink:0">',
+          '    <button type="button" class="ai-rules-tab" onclick="window.AroraAICommander.toggleCustomRule(\'' + escHtml(cr.id) + '\')">' + (cr.enabled ? 'ON' : 'OFF') + '</button>',
+          '    <button type="button" class="ai-rules-tab" onclick="window.AroraAICommander.deleteCustomRule(\'' + escHtml(cr.id) + '\')">🗑</button>',
+          '  </div>',
+          '</div>'
+        );
+      });
+    } else {
+      html.push(
+        '<div style="margin-bottom:8px"><label>Govt Notification / Rule Text ya JSON yahan paste karein</label>',
+        '<textarea id="aiCircularText" rows="4" placeholder="Example: Govt notification — EPF wage ceiling revised to ₹30,000 and ESIC limit ₹25,000 effective next month."></textarea></div>',
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">',
+        '  <span style="font-size:11px;color:#94a3b8">AI automatically PF/ESIC/Basic/OT numbers extract karke naya rule save kar dega.</span>',
+        '  <button type="button" class="ai-act-btn" style="background:#2563eb;color:#fff" onclick="window.AroraAICommander.applyCircularFromUI()">✨ Extract &amp; Apply Rule</button>',
+        '</div>'
+      );
+    }
+
+    panel.innerHTML = html.join('\n');
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // 5. PUBLIC API & HOOKS
   // ─────────────────────────────────────────────────────────────────
@@ -1923,6 +2541,14 @@
       var box = document.getElementById('atplAiContainer');
       if (box) box.style.display = 'flex';
       UI.isOpen = true;
+
+      ComplianceRulesEngine.refreshSubtitle();
+      ComplianceRulesEngine.syncLatestRules(false).then(function(res) {
+        if (res && res.updated) {
+          ComplianceRulesEngine.refreshSubtitle();
+          if (UI.rulesPanelOpen) renderRulesPanelContent();
+        }
+      }).catch(function() {});
 
       refreshKnowledgeGraph();
       renderActiveFilesBar();
@@ -2045,6 +2671,155 @@
         '• PF: <b>' + formatINRVal(r.pfEmployee) + '</b> · ESIC: <b>' + formatINRVal(r.esiEmployee) + '</b> · Net Payable: <strong style="color:#4ade80">' + formatINRVal(r.netPayable) + '</strong>',
         false
       );
+    },
+
+    toggleRulesPanel: function(forceOpen) {
+      buildUI();
+      var panel = document.getElementById('aiRulesPanel');
+      if (!panel) return;
+      var nextOpen = forceOpen === undefined ? !UI.rulesPanelOpen : !!forceOpen;
+      UI.rulesPanelOpen = nextOpen;
+      panel.style.display = nextOpen ? 'block' : 'none';
+      var btn = document.getElementById('aiBtnRules');
+      if (btn) btn.classList.toggle('active', nextOpen);
+      if (nextOpen) {
+        if (!UI.rulesTab) UI.rulesTab = 'thresholds';
+        renderRulesPanelContent();
+      }
+    },
+
+    setRulesTab: function(tabName) {
+      UI.rulesTab = tabName || 'thresholds';
+      renderRulesPanelContent();
+    },
+
+    saveRuleThresholdsFromUI: function() {
+      var R = cloneRuleBundle(ComplianceRulesEngine.getRules());
+      var numField = function(id, fallback) {
+        var el = document.getElementById(id);
+        if (!el) return fallback;
+        var n = Number(el.value);
+        return isFinite(n) && n >= 0 ? n : fallback;
+      };
+      var strField = function(id, fallback) {
+        var el = document.getElementById(id);
+        return el && el.value ? String(el.value).trim() : fallback;
+      };
+      R.pfCeiling = numField('aiRulePfCeiling', R.pfCeiling);
+      R.pfCeilingEffective = strField('aiRulePfEff', R.pfCeilingEffective);
+      R.pfEmployeePct = numField('aiRulePfEmpPct', R.pfEmployeePct);
+      R.pfEpsPct = numField('aiRulePfEpsPct', R.pfEpsPct);
+      R.esicGrossCeiling = numField('aiRuleEsiCeiling', R.esicGrossCeiling);
+      R.esicPwdCeiling = numField('aiRuleEsiPwd', R.esicPwdCeiling);
+      R.esicEmployeePct = numField('aiRuleEsiEmpPct', R.esicEmployeePct);
+      R.esicDailyExempt = numField('aiRuleEsiDaily', R.esicDailyExempt);
+      R.minBasicPctOfGross = numField('aiRuleMinBasic', R.minBasicPctOfGross);
+      R.maxDeductionPctOfGross = numField('aiRuleMaxDed', R.maxDeductionPctOfGross);
+      R.maxMonthlyOtWarnHours = numField('aiRuleOtWarn', R.maxMonthlyOtWarnHours);
+      R.maxQuarterlyOtHours = numField('aiRuleOtQuarter', R.maxQuarterlyOtHours);
+      R.fnfSettlementDays = numField('aiRuleFnfDays', R.fnfSettlementDays);
+      R.gratuityFteYears = numField('aiRuleFteGrat', R.gratuityFteYears);
+      R.bonusMinPct = numField('aiRuleBonusMin', R.bonusMinPct);
+      R.bonusMaxPct = numField('aiRuleBonusMax', R.bonusMaxPct);
+      var saved = ComplianceRulesEngine.saveRules(R, { tag: 'custom', updatedBy: 'Rules UI' });
+      renderRulesPanelContent();
+      appendMsg(
+        '✅ <strong>Statutory Rules Updated &amp; Synced (v' + escHtml(saved.version) + ')!</strong><br>' +
+        '• PF Ceiling: <b>₹' + saved.pfCeiling.toLocaleString('en-IN') + '</b> · ESIC: <b>₹' + saved.esicGrossCeiling.toLocaleString('en-IN') + '</b> · Min Basic: <b>' + saved.minBasicPctOfGross + '%</b> · Max Ded: <b>' + saved.maxDeductionPctOfGross + '%</b><br>' +
+        '<button type="button" class="ai-act-btn" onclick="window.AroraAICommander.sendQuery(\'Mam compliance audit karo\')">🛡️ Re-Scan Compliance Sheet</button>',
+        false
+      );
+    },
+
+    addCustomRuleFromUI: function() {
+      var titleEl = document.getElementById('aiCustomRuleTitle');
+      var sumEl = document.getElementById('aiCustomRuleSummary');
+      var title = titleEl ? String(titleEl.value || '').trim() : '';
+      var summary = sumEl ? String(sumEl.value || '').trim() : '';
+      if (!title && !summary) return;
+      var catEl = document.getElementById('aiCustomRuleCat');
+      var effEl = document.getElementById('aiCustomRuleEff');
+      var kwEl = document.getElementById('aiCustomRuleKw');
+      var metEl = document.getElementById('aiCustomRuleMetric');
+      var thEl = document.getElementById('aiCustomRuleThresh');
+      var R = cloneRuleBundle(ComplianceRulesEngine.getRules());
+      var kwRaw = kwEl ? String(kwEl.value || '').trim() : '';
+      var kwList = kwRaw
+        ? kwRaw.split(/[,;]+/).map(function(x) { return x.trim().toLowerCase(); }).filter(Boolean)
+        : (title + ' ' + summary).toLowerCase().replace(/[^a-z0-9%\s]/g, ' ').split(/\s+/).filter(function(w) { return w.length >= 3; }).slice(0, 6);
+      var thVal = thEl && thEl.value !== '' && isFinite(Number(thEl.value)) ? Number(thEl.value) : null;
+      R.customRules.unshift({
+        id: 'cr_' + Date.now(),
+        title: title || summary.slice(0, 60),
+        category: catEl ? String(catEl.value || 'OTHER') : 'OTHER',
+        effectiveFrom: effEl ? String(effEl.value || '').trim() : new Date().toISOString().slice(0, 10),
+        keywords: kwList,
+        summary: summary || title,
+        auditorNote: 'Custom rule added via Rules Engine.',
+        checkMetric: metEl ? String(metEl.value || '') : '',
+        checkThreshold: thVal,
+        enabled: true
+      });
+      var saved = ComplianceRulesEngine.saveRules(R, { tag: 'custom', updatedBy: 'Custom Rule UI' });
+      UI.rulesTab = 'custom';
+      renderRulesPanelContent();
+      appendMsg('✅ <strong>Custom Rule Added (v' + escHtml(saved.version) + '):</strong> ' + escHtml(title || summary), false);
+    },
+
+    toggleCustomRule: function(ruleId) {
+      var R = cloneRuleBundle(ComplianceRulesEngine.getRules());
+      R.customRules = R.customRules.map(function(cr) {
+        if (cr.id === ruleId) cr.enabled = !cr.enabled;
+        return cr;
+      });
+      ComplianceRulesEngine.saveRules(R, { tag: 'toggle' });
+      renderRulesPanelContent();
+    },
+
+    deleteCustomRule: function(ruleId) {
+      var R = cloneRuleBundle(ComplianceRulesEngine.getRules());
+      R.customRules = R.customRules.filter(function(cr) { return cr.id !== ruleId; });
+      ComplianceRulesEngine.saveRules(R, { tag: 'remove' });
+      renderRulesPanelContent();
+    },
+
+    applyCircularFromUI: function() {
+      var ta = document.getElementById('aiCircularText');
+      if (!ta || !ta.value.trim()) return;
+      var res = ComplianceRulesEngine.parseCircularText(ta.value);
+      if (res && res.ok) {
+        renderRulesPanelContent();
+        appendMsg(
+          '✨ <strong>Circular / JSON Rule Extracted &amp; Synced (v' + escHtml(res.bundle.version) + ')!</strong><br>' +
+          res.changes.map(function(c) { return '• ' + escHtml(c); }).join('<br>') +
+          '<br><button type="button" class="ai-act-btn" onclick="window.AroraAICommander.sendQuery(\'Mam compliance audit karo\')">🛡️ Re-Scan Compliance Sheet</button>',
+          false
+        );
+      }
+    },
+
+    syncRulesNow: async function(silentChat) {
+      var res = await ComplianceRulesEngine.syncLatestRules(true);
+      if (UI.rulesPanelOpen) renderRulesPanelContent();
+      if (!silentChat) {
+        var r = (res && res.bundle) || ComplianceRulesEngine.getRules();
+        appendMsg(
+          (res && res.updated ? '✅ <strong>Naye Rules Sync Ho Gaye (' + escHtml(res.source) + ')!</strong>' : '✅ <strong>Rules Already Up-to-Date!</strong>') +
+          '<br>• Active Version: <code>v' + escHtml(r.version) + '</code> · PF Cap: <b>₹' + r.pfCeiling.toLocaleString('en-IN') + '</b> · ESIC: <b>₹' + r.esicGrossCeiling.toLocaleString('en-IN') + '</b>',
+          false
+        );
+      }
+      return res;
+    },
+
+    resetRulesToDefault: function() {
+      var def = ComplianceRulesEngine.resetDefaults();
+      renderRulesPanelContent();
+      appendMsg('↺ <strong>Rules Reset to Built-in 2026 Defaults (v' + escHtml(def.version) + ').</strong>', false);
+    },
+
+    getRulesSnapshot: function() {
+      return ComplianceRulesEngine.getRules();
     },
 
     close: function() {

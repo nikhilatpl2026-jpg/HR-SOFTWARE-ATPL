@@ -96,6 +96,25 @@ test('Arora AI Commander 2026 Compliance Brain & Mini Fix Box', async (t) => {
         getElementById: (id) => els[id] || null,
         addEventListener: () => {}
       },
+      localStorage: (() => {
+        const mem = {};
+        return {
+          getItem: (k) => (Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null),
+          setItem: (k, v) => { mem[k] = String(v); },
+          removeItem: (k) => { delete mem[k]; },
+          _mem: mem
+        };
+      })(),
+      sessionStorage: (() => {
+        const mem = { ATPL_RemoteToken_V1: 'TOK_TEST_123' };
+        return {
+          getItem: (k) => (Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null),
+          setItem: (k, v) => { mem[k] = String(v); }
+        };
+      })(),
+      fetch: null,
+      ATPLCloudAPI: null,
+      location: { protocol: 'https:', hostname: 'nikhilatpl2026-jpg.github.io' },
       addEventListener: () => {}
     };
     sandbox.window = sandbox;
@@ -182,5 +201,92 @@ test('Arora AI Commander 2026 Compliance Brain & Mini Fix Box', async (t) => {
     sandbox.AroraAICommander.openComplianceFixBox('cf_1_25202');
     assert.equal(els.aiMiniFixBox.style.display, 'block');
     assert.ok(els.aiMiniFixBox.innerHTML.includes('25202'));
+  });
+
+  await t.test('3. Chat natural-language rule updates immediately update Q&A answers AND Mam Compliance Auditor', () => {
+    const sampleRows = [
+      { uid: 'u3', empId: '25303', name: 'MANOJ VERMA', department: 'FELTING', paidDays: 26, workingDays: 24, overtimeHours: 6, basic: 28000, gross: 30000, earnBasic: 28000, totalGross: 31000, pfNo: 'PF303', esiNo: 'NA', pfEmployee: 3000, esiEmployee: 0, totalDeduction: 3000, netPayable: 28000, pfMode: 'FULL_12', esiMode: 'NONE' }
+    ];
+    const { sandbox, els } = makeHarness(sampleRows, '2026-11');
+    sandbox.AroraAICommander.open();
+    let lastBotHtml = '';
+    const origAppend = els.atplAiMessages.appendChild;
+    els.atplAiMessages.appendChild = function (ch) {
+      origAppend.call(this, ch);
+      if (ch && ch.className && ch.className.includes('bot')) lastBotHtml = collectHtml(ch);
+    };
+
+    // Update PF ceiling to 30000 via chat
+    sandbox.AroraAICommander.sendQuery('Update rule: PF ceiling 30000');
+    assert.ok(lastBotHtml.includes('30,000'), 'Confirmation must echo ₹30,000');
+
+    // Q&A immediately answers with 30,000 & 3,600 (12% of 30k)
+    sandbox.AroraAICommander.sendQuery('PF ceiling rule kya hai?');
+    assert.ok(lastBotHtml.includes('30,000'), 'PF Q&A must dynamically update to ₹30,000');
+    assert.ok(lastBotHtml.includes('3,600'), 'PF Q&A must dynamically calculate ₹3,600 max employee share');
+
+    // Auditor scan immediately flags 25303 because PF was capped at 3000 instead of 3360 (12% of 28k under 30k ceiling)
+    sandbox.AroraAICommander.sendQuery('Mam compliance audit karo');
+    assert.ok(lastBotHtml.includes('25303'), 'Auditor must immediately catch short PF under updated ₹30,000 ceiling');
+    assert.ok(lastBotHtml.includes('30,000'), 'Auditor output must reflect ₹30,000 ceiling');
+
+    // Add a custom rule via chat & ask about it
+    sandbox.AroraAICommander.sendQuery('Add rule: LWF ₹25 June and December me katega');
+    assert.ok(lastBotHtml.includes('New Rule Saved'), 'Custom rule save confirmation expected');
+    sandbox.AroraAICommander.sendQuery('LWF rule kya hai?');
+    assert.ok(lastBotHtml.includes('LWF'), 'Custom rule must be searchable immediately in Q&A');
+  });
+
+  await t.test('4. Rules Engine UI, Circular Extractor, Custom Audit Threshold, and Remote/Cloud Auto-Sync work end-to-end', async () => {
+    const sampleRows = [
+      { uid: 'u10', empId: '25999', name: 'DINESH PAL', department: 'WEAVING', paidDays: 26, workingDays: 24, overtimeHours: 28, basic: 18000, gross: 20000, earnBasic: 18000, totalGross: 22000, pfNo: 'PF999', esiNo: 'ESI999', pfEmployee: 2160, esiEmployee: 165, totalDeduction: 2325, netPayable: 19675, pfMode: 'FULL_12', esiMode: 'TOTAL_GROSS' }
+    ];
+    const { sandbox, els } = makeHarness(sampleRows, '2026-11');
+    sandbox.AroraAICommander.open();
+    let lastBotHtml = '';
+    const origAppend = els.atplAiMessages.appendChild;
+    els.atplAiMessages.appendChild = function (ch) {
+      origAppend.call(this, ch);
+      if (ch && ch.className && ch.className.includes('bot')) lastBotHtml = collectHtml(ch);
+    };
+
+    // Open Rules Engine panel & add custom sheet-audit rule (OT > 20)
+    sandbox.AroraAICommander.toggleRulesPanel(true);
+    assert.equal(els.aiRulesPanel.style.display, 'block');
+    sandbox.AroraAICommander.setRulesTab('custom');
+    els.aiCustomRuleTitle.value = 'Factory Max 20h OT Policy';
+    els.aiCustomRuleCat.value = 'AUDIT_TRAP';
+    els.aiCustomRuleKw.value = 'ot, 20h, factory';
+    els.aiCustomRuleMetric.value = 'OT_GT';
+    els.aiCustomRuleThresh.value = '20';
+    els.aiCustomRuleSummary.value = '20 ghante se upar OT ke liye plant head approval chahiye.';
+    sandbox.AroraAICommander.addCustomRuleFromUI();
+
+    sandbox.AroraAICommander.sendQuery('Mam compliance audit karo');
+    assert.ok(lastBotHtml.includes('Factory Max 20h OT Policy'), 'Live sheet scan must run user-added custom OT rule');
+
+    // Circular text extraction
+    sandbox.AroraAICommander.setRulesTab('circular');
+    els.aiCircularText.value = 'Govt Notification: EPF wage ceiling revised to ₹32,000 and ESIC limit revised to ₹25,000 effective next quarter.';
+    sandbox.AroraAICommander.applyCircularFromUI();
+    const snap1 = sandbox.AroraAICommander.getRulesSnapshot();
+    assert.equal(snap1.pfCeiling, 32000);
+    assert.equal(snap1.esicGrossCeiling, 25000);
+
+    // Remote manifest / Cloud sync updates rules if newer timestamp exists
+    const futureTs = new Date(Date.now() + 86400000).toISOString();
+    sandbox.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        version: '2027.01.01',
+        updatedAt: futureTs,
+        pfCeiling: 35000,
+        esicGrossCeiling: 26000
+      })
+    });
+    const syncRes = await sandbox.AroraAICommander.syncRulesNow();
+    assert.equal(syncRes.updated, true);
+    assert.equal(sandbox.AroraAICommander.getRulesSnapshot().pfCeiling, 35000);
+    assert.equal(sandbox.AroraAICommander.getRulesSnapshot().esicGrossCeiling, 26000);
   });
 });
