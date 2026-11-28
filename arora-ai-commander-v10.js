@@ -1188,16 +1188,65 @@
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 4. UI CREATION & CONTROLLER (GLASSMORPHIC + FULLSCREEN)
+  // 4. CSS & EXECUTIVE WORKSPACE UI
   // ─────────────────────────────────────────────────────────────────
   var UI = {
     isOpen: false,
+    isWide: false,
     isFullscreen: false,
     isListening: false,
     speechSynthesisActive: false,
     recognition: null,
-    history: []
+    history: [],
+    promptHistory: [],
+    promptHistoryIdx: -1
   };
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function formatNowTime() {
+    try {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function renderWelcomeHtml() {
+    return [
+      '<div class="ai-welcome">',
+      '  <div class="ai-welcome-title">Namaste Bhai — Arora HR Assistant ready hai</div>',
+      '  <div class="ai-welcome-desc">Employee Master, Salary Sheets, Attendance aur Statutory Compliance se koi bhi exact sawal poochhein (ya 🎙️ mic se bolein).</div>',
+      '  <div class="ai-welcome-examples">',
+      '    <button type="button" class="ai-ex-btn" onclick="window.AroraAICommander.sendQuery(\'July 2026 total salary payout kitna hai?\')">"July 2026 total salary payout kitna hai?"</button>',
+      '    <button type="button" class="ai-ex-btn" onclick="window.AroraAICommander.sendQuery(\'Sabse jyada OT kisne kiya?\')">"Sabse jyada OT kisne kiya?"</button>',
+      '    <button type="button" class="ai-ex-btn" onclick="window.AroraAICommander.sendQuery(\'Executive summary do\')">"Executive summary / MD briefing do"</button>',
+      '  </div>',
+      '</div>'
+    ].join('');
+  }
+
+  function renderActiveFilesBar() {
+    var metaBar = document.getElementById('aiMetaBar');
+    if (!metaBar) return;
+    var html = '<span class="ai-meta-label">Data Index</span>';
+    if (KnowledgeGraph.filesSummary && KnowledgeGraph.filesSummary.length) {
+      KnowledgeGraph.filesSummary.forEach(function(f) {
+        var safeName = escHtml(f.name || 'Sheet');
+        var qArg = String(f.name || 'Sheet').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        html += '<button type="button" class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'' + qArg + ' summary\')" title="' + safeName + '">' + escHtml(String(f.name || 'Sheet').slice(0, 20)) + ' · ' + (f.totalRows || 0) + '</button>';
+      });
+    } else {
+      html += '<button type="button" class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'Files and features summary\')">Scan Loaded Data</button>';
+    }
+    metaBar.innerHTML = html;
+  }
 
   function injectStyles() {
     if (document.getElementById('arora-ai-v10-css')) return;
@@ -1205,65 +1254,162 @@
     style.id = 'arora-ai-v10-css';
     style.textContent = [
       '#atplAiContainer {',
-      '  position:fixed;bottom:84px;right:20px;width:420px;height:580px;',
-      '  background:rgba(15,23,42,0.95);border:1px solid rgba(129,140,248,0.3);',
-      '  border-radius:20px;box-shadow:0 25px 60px rgba(0,0,0,0.5), 0 0 30px rgba(99,102,241,0.2);',
-      '  backdrop-filter:blur(16px);display:none;flex-direction:column;overflow:hidden;',
-      '  z-index:99998;font-family:Plus Jakarta Sans,Inter,sans-serif;color:#f8fafc;transition:all .25s ease;',
+      '  position:fixed;bottom:86px;right:20px;width:480px;height:640px;',
+      '  max-width:calc(100vw - 32px);max-height:calc(100vh - 104px);',
+      '  background:#0b1220;border:1px solid rgba(148,163,184,0.22);',
+      '  border-radius:16px;box-shadow:0 24px 64px rgba(2,6,23,0.62);',
+      '  display:none;flex-direction:column;overflow:hidden;',
+      '  z-index:99998;font-family:"Plus Jakarta Sans","DM Sans",-apple-system,BlinkMacSystemFont,sans-serif;',
+      '  color:#f1f5f9;font-variant-numeric:tabular-nums;',
+      '  transition:width 0.18s cubic-bezier(0.16,1,0.3,1),height 0.18s cubic-bezier(0.16,1,0.3,1),border-radius 0.18s ease;',
+      '}',
+      '#atplAiContainer.wide {',
+      '  width:740px;height:min(760px,calc(100vh - 96px));',
       '}',
       '#atplAiContainer.fullscreen {',
-      '  bottom:0;right:0;width:100vw;height:100vh;border-radius:0;border:none;',
+      '  bottom:0;right:0;width:100vw;height:100vh;max-width:100vw;max-height:100vh;border-radius:0;border:none;',
+      '}',
+      '#atplAiContainer.fullscreen #atplAiMessages,',
+      '#atplAiContainer.fullscreen .ai-chips-wrap,',
+      '#atplAiContainer.fullscreen .ai-input-wrap {',
+      '  padding-left:max(24px,calc(50% - 460px));padding-right:max(24px,calc(50% - 460px));',
+      '}',
+      '#atplAiContainer button:focus-visible, #atplAiContainer textarea:focus-visible {',
+      '  outline:2px solid #60a5fa;outline-offset:2px;',
       '}',
       '.ai-head {',
-      '  padding:14px 18px;background:linear-gradient(135deg,rgba(79,70,229,0.9),rgba(147,51,234,0.85));',
-      '  display:flex;align-items:center;justify-content:between;border-bottom:1px solid rgba(255,255,255,0.1);',
+      '  padding:13px 16px;background:#0f172a;border-bottom:1px solid rgba(148,163,184,0.16);',
+      '  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;',
       '}',
-      '.ai-head-title { font-size:14px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px; }',
-      '.ai-head-sub { font-size:10px;color:rgba(255,255,255,0.75);margin-top:2px; }',
-      '.ai-head-btns { display:flex;align-items:center;gap:6px;margin-left:auto; }',
-      '.ai-icon-btn { background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:8px;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s; }',
-      '.ai-icon-btn:hover { background:rgba(255,255,255,0.3);transform:scale(1.05); }',
+      '.ai-head-brand { display:flex;align-items:center;gap:10px;min-width:0; }',
+      '.ai-brand-mark {',
+      '  width:34px;height:34px;border-radius:9px;background:#1e293b;border:1px solid rgba(148,163,184,0.24);',
+      '  display:flex;align-items:center;justify-content:center;color:#93c5fd;flex-shrink:0;',
+      '}',
+      '.ai-head-title { font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }',
+      '.ai-head-sub { font-size:11px;color:#94a3b8;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }',
+      '.ai-head-btns { display:flex;align-items:center;gap:6px;flex-shrink:0; }',
+      '.ai-icon-btn {',
+      '  background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.16);color:#cbd5e1;',
+      '  border-radius:8px;width:32px;height:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;',
+      '  font-size:13px;transition:background 0.15s,color 0.15s,border-color 0.15s;',
+      '}',
+      '.ai-icon-btn:hover { background:rgba(148,163,184,0.2);color:#ffffff;border-color:rgba(148,163,184,0.34); }',
+      '.ai-icon-btn.active { background:#1d4ed8;border-color:#60a5fa;color:#ffffff; }',
       '.ai-meta-bar {',
-      '  padding:6px 14px;background:rgba(0,0,0,0.25);border-bottom:1px solid rgba(255,255,255,0.06);',
-      '  display:flex;align-items:center;gap:6px;font-size:10px;color:#94a3b8;overflow-x:auto;',
+      '  padding:7px 16px;background:#0d1526;border-bottom:1px solid rgba(148,163,184,0.12);',
+      '  display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8;overflow-x:auto;flex-shrink:0;',
       '}',
-      '.ai-tag { background:rgba(99,102,241,0.2);border:1px solid rgba(129,140,248,0.4);color:#c7d2fe;padding:2px 8px;border-radius:12px;cursor:pointer;white-space:nowrap; }',
-      '.ai-tag:hover { background:rgba(99,102,241,0.4); }',
-      '#atplAiMessages { flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px; }',
+      '.ai-meta-bar::-webkit-scrollbar, .ai-chips-wrap::-webkit-scrollbar { height:4px; }',
+      '.ai-meta-bar::-webkit-scrollbar-thumb, .ai-chips-wrap::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.25);border-radius:4px; }',
+      '.ai-meta-label { font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;margin-right:2px; }',
+      '.ai-tag {',
+      '  background:#162033;border:1px solid rgba(148,163,184,0.2);color:#cbd5e1;',
+      '  padding:3px 9px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;',
+      '  transition:background 0.15s,border-color 0.15s,color 0.15s;',
+      '}',
+      '.ai-tag:hover { background:#1e293b;border-color:#60a5fa;color:#ffffff; }',
+      '#atplAiMessages {',
+      '  flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#0b1220;',
+      '}',
+      '#atplAiMessages::-webkit-scrollbar { width:6px; }',
+      '#atplAiMessages::-webkit-scrollbar-thumb { background:rgba(148,163,184,0.24);border-radius:6px; }',
       '.ai-row { display:flex;width:100%; }',
       '.ai-row.user { justify-content:flex-end; }',
       '.ai-row.bot { justify-content:flex-start; }',
+      '.ai-msg-wrap { display:flex;flex-direction:column;max-width:92%;min-width:0; }',
+      '.ai-row.user .ai-msg-wrap { max-width:82%;align-items:flex-end; }',
       '.ai-msg-bubble {',
-      '  max-width:86%;padding:10px 14px;border-radius:14px;font-size:12px;line-height:1.6;',
-      '  box-shadow:0 2px 8px rgba(0,0,0,0.15);word-break:break-word;',
+      '  padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.58;',
+      '  word-break:break-word;overflow-x:auto;',
       '}',
-      '.ai-row.bot .ai-msg-bubble { background:#1e293b;border:1px solid rgba(255,255,255,0.08);color:#e2e8f0;border-bottom-left-radius:3px; }',
-      '.ai-row.user .ai-msg-bubble { background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-bottom-right-radius:3px;font-weight:500; }',
-      '.ai-chips-wrap { padding:8px 12px;background:rgba(15,23,42,0.8);border-top:1px solid rgba(255,255,255,0.05);display:flex;gap:6px;overflow-x:auto; }',
-      '.ai-chip { background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#cbd5e1;padding:5px 10px;border-radius:14px;font-size:10px;cursor:pointer;white-space:nowrap;transition:all .15s; }',
-      '.ai-chip:hover { background:rgba(99,102,241,0.25);border-color:#818cf8;color:#fff; }',
-      '.ai-input-wrap { padding:12px;background:#0f172a;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:8px; }',
-      '#atplAiInput { flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#fff;padding:10px 14px;border-radius:12px;font-size:12px;outline:none;font-family:inherit; }',
-      '#atplAiInput:focus { border-color:#818cf8;background:rgba(255,255,255,0.09); }',
-      '.ai-send-btn { width:38px;height:38px;background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;border-radius:10px;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s; }',
-      '.ai-send-btn:hover { transform:scale(1.05); }',
-      '.ai-mic-btn { width:38px;height:38px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px; }',
-      '.ai-mic-btn.active { background:#ef4444;color:#fff;animation:micPulse 1.2s infinite; }',
-      '@keyframes micPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1);box-shadow:0 0 12px rgba(239,68,68,0.8)} }',
-      '.ai-act-btn { background:rgba(99,102,241,0.2);border:1px solid rgba(129,140,248,0.4);color:#c7d2fe;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;margin-top:4px; }',
-      '.ai-act-btn:hover { background:rgba(99,102,241,0.4);color:#fff; }',
-      '.ai-table { width:100%;border-collapse:collapse;font-size:11px;margin-top:6px; }',
-      '.ai-table th, .ai-table td { padding:5px 7px;border:1px solid rgba(255,255,255,0.1);text-align:left; }',
-      '.ai-table th { background:rgba(255,255,255,0.07);color:#94a3b8;font-weight:700; }',
-      '@media (max-width: 600px) { #atplAiContainer { bottom: 0 !important; right: 0 !important; left: 0 !important; width: 100vw !important; height: 92vh !important; border-radius: 20px 20px 0 0 !important; } }',
-      '.ai-dossier-card { background:rgba(30,41,59,0.7);border:1px solid rgba(129,140,248,0.3);border-radius:12px;padding:12px;margin:4px 0; }',
-      '.ai-dossier-head { display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px;margin-bottom:8px; }',
-      '.ai-dossier-badge { font-size:10px;font-weight:800;background:rgba(99,102,241,0.25);color:#a5b4fc;padding:2px 8px;border-radius:10px; }',
-      '.ai-dossier-grid { display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px; }',
-      '.ai-dossier-grid .lbl { color:#94a3b8; }',
-      '.ai-kpi-card { background:rgba(15,23,42,0.8);border:1px solid rgba(56,189,248,0.3);border-radius:10px;padding:10px;margin-bottom:8px; }'
+      '.ai-row.bot .ai-msg-bubble {',
+      '  background:#131c31;border:1px solid rgba(148,163,184,0.16);color:#e2e8f0;border-bottom-left-radius:4px;',
+      '}',
+      '.ai-row.user .ai-msg-bubble {',
+      '  background:#1e3a8a;border:1px solid rgba(96,165,250,0.3);color:#f8fafc;border-bottom-right-radius:4px;font-weight:500;',
+      '}',
+      '.ai-msg-foot {',
+      '  display:flex;align-items:center;gap:10px;margin-top:4px;padding:0 2px;font-size:10.5px;color:#64748b;',
+      '}',
+      '.ai-copy-btn {',
+      '  background:transparent;border:none;color:#94a3b8;font-size:10.5px;font-weight:600;cursor:pointer;padding:2px 4px;border-radius:4px;',
+      '  transition:color 0.15s,background 0.15s;',
+      '}',
+      '.ai-copy-btn:hover { color:#f8fafc;background:rgba(148,163,184,0.12); }',
+      '.ai-welcome-title { font-size:14px;font-weight:700;color:#f8fafc;margin-bottom:4px; }',
+      '.ai-welcome-desc { font-size:12.5px;color:#94a3b8;line-height:1.5;margin-bottom:10px; }',
+      '.ai-welcome-examples { display:flex;flex-direction:column;gap:6px; }',
+      '.ai-ex-btn {',
+      '  text-align:left;background:#0f172a;border:1px solid rgba(148,163,184,0.18);color:#cbd5e1;',
+      '  padding:7px 10px;border-radius:8px;font-size:12px;cursor:pointer;transition:border-color 0.15s,background 0.15s,color 0.15s;',
+      '}',
+      '.ai-ex-btn:hover { border-color:#60a5fa;background:#162238;color:#ffffff; }',
+      '.ai-typing-dots { display:inline-flex;align-items:center;gap:4px;margin-right:8px;vertical-align:middle; }',
+      '.ai-typing-dots span { width:5px;height:5px;border-radius:50%;background:#60a5fa;animation:aiDotPulse 1s infinite ease-in-out; }',
+      '.ai-typing-dots span:nth-child(2) { animation-delay:0.15s; }',
+      '.ai-typing-dots span:nth-child(3) { animation-delay:0.3s; }',
+      '@keyframes aiDotPulse { 0%,80%,100%{opacity:0.3;transform:scale(0.85)} 40%{opacity:1;transform:scale(1.1)} }',
+      '.ai-chips-wrap {',
+      '  padding:8px 14px;background:#0d1526;border-top:1px solid rgba(148,163,184,0.12);',
+      '  display:flex;gap:6px;overflow-x:auto;flex-shrink:0;',
+      '}',
+      '.ai-chip {',
+      '  background:#162033;border:1px solid rgba(148,163,184,0.2);color:#e2e8f0;',
+      '  padding:6px 11px;border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0;',
+      '  transition:background 0.15s,border-color 0.15s,color 0.15s;',
+      '}',
+      '.ai-chip:hover { background:#1e293b;border-color:#60a5fa;color:#ffffff; }',
+      '.ai-input-wrap {',
+      '  padding:11px 14px 12px;background:#0f172a;border-top:1px solid rgba(148,163,184,0.16);',
+      '  display:flex;align-items:flex-end;gap:8px;flex-shrink:0;',
+      '}',
+      '#atplAiInput {',
+      '  flex:1;background:#131c31;border:1px solid rgba(148,163,184,0.24);color:#f8fafc;',
+      '  padding:9px 12px;border-radius:10px;font-size:13px;line-height:1.4;outline:none;font-family:inherit;',
+      '  resize:none;min-height:40px;max-height:110px;overflow-y:auto;box-sizing:border-box;',
+      '}',
+      '#atplAiInput::placeholder { color:#64748b; }',
+      '#atplAiInput:focus { border-color:#60a5fa;background:#162038; }',
+      '.ai-send-btn {',
+      '  height:40px;padding:0 15px;background:#2563eb;border:none;border-radius:10px;color:#ffffff;',
+      '  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-size:13px;font-weight:700;flex-shrink:0;',
+      '  transition:background 0.15s,transform 0.15s;',
+      '}',
+      '.ai-send-btn:hover { background:#1d4ed8; }',
+      '.ai-mic-btn {',
+      '  width:40px;height:40px;background:#162033;border:1px solid rgba(148,163,184,0.24);',
+      '  border-radius:10px;color:#cbd5e1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;',
+      '  transition:background 0.15s,border-color 0.15s;',
+      '}',
+      '.ai-mic-btn:hover { background:#1e293b;border-color:#60a5fa;color:#ffffff; }',
+      '.ai-mic-btn.active { background:#dc2626;border-color:#f87171;color:#fff;animation:micPulse 1.2s infinite; }',
+      '@keyframes micPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06);box-shadow:0 0 12px rgba(239,68,68,0.65)} }',
+      '.ai-act-btn {',
+      '  background:#1e3a8a;border:1px solid rgba(96,165,250,0.4);color:#e0e7ff;',
+      '  padding:6px 12px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer;transition:background 0.15s;margin-top:4px;',
+      '}',
+      '.ai-act-btn:hover { background:#2563eb;color:#fff; }',
+      '.ai-table { width:100%;border-collapse:collapse;font-size:12px;margin-top:8px;font-variant-numeric:tabular-nums; }',
+      '.ai-table th, .ai-table td { padding:7px 9px;border:1px solid rgba(148,163,184,0.18);text-align:left;white-space:nowrap; }',
+      '.ai-table th { background:#0f172a;color:#94a3b8;font-weight:700;font-size:11px; }',
+      '.ai-table tbody tr:nth-child(even) { background:rgba(148,163,184,0.04); }',
+      '.ai-dossier-card { background:#0f172a;border:1px solid rgba(148,163,184,0.22);border-radius:10px;padding:12px;margin:4px 0; }',
+      '.ai-dossier-head { display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid rgba(148,163,184,0.14);padding-bottom:8px;margin-bottom:8px;gap:8px; }',
+      '.ai-dossier-badge { font-size:10.5px;font-weight:700;background:#1e293b;border:1px solid rgba(148,163,184,0.25);color:#93c5fd;padding:2px 8px;border-radius:6px;white-space:nowrap; }',
+      '.ai-dossier-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px; }',
+      '.ai-dossier-grid .lbl { color:#94a3b8;font-size:11px; }',
+      '.ai-kpi-card { background:#0f172a;border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:11px;margin-bottom:8px; }',
+      '@media (prefers-reduced-motion: reduce) { #atplAiContainer, .ai-typing-dots span, .ai-mic-btn.active { animation:none !important;transition:none !important; } }',
+      '@media (max-width: 640px) { #atplAiContainer { bottom:0 !important;right:0 !important;left:0 !important;width:100vw !important;max-width:100vw !important;height:92vh !important;max-height:92vh !important;border-radius:16px 16px 0 0 !important; } }'
     ].join('\n');
     document.head.appendChild(style);
+  }
+
+  function autoResizeInput(el) {
+    if (!el) return;
+    el.style.height = '40px';
+    el.style.height = Math.min(110, Math.max(40, el.scrollHeight || 40)) + 'px';
   }
 
   function buildUI() {
@@ -1272,70 +1418,92 @@
 
     var el = document.createElement('div');
     el.id = 'atplAiContainer';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Arora HR Assistant');
     el.innerHTML = [
       '<div class="ai-head">',
-      '  <div>',
-      '    <div class="ai-head-title">⚡ Arora AI Commander <span style="font-size:10px;background:rgba(34,197,94,0.25);color:#4ade80;padding:2px 6px;border-radius:8px">v10 PRO</span></div>',
-      '    <div class="ai-head-sub" id="aiCommanderSub">Universal Schema Learner • Voice Enabled</div>',
+      '  <div class="ai-head-brand">',
+      '    <div class="ai-brand-mark" aria-hidden="true">',
+      '      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>',
+      '    </div>',
+      '    <div style="min-width:0">',
+      '      <div class="ai-head-title">Arora HR Assistant</div>',
+      '      <div class="ai-head-sub" id="aiCommanderSub">Payroll · Attendance · Compliance · Ctrl+K</div>',
+      '    </div>',
       '  </div>',
       '  <div class="ai-head-btns">',
-      '    <button class="ai-icon-btn" id="aiBtnTTS" title="Voice Output (Speak)" onclick="window.AroraAICommander.toggleTTS()">🔊</button>',
-      '    <button class="ai-icon-btn" id="aiBtnFullscreen" title="Fullscreen Mode" onclick="window.AroraAICommander.toggleFullscreen()">⛶</button>',
-      '    <button class="ai-icon-btn" id="aiBtnClear" title="Clear Chat" onclick="window.AroraAICommander.clearChat()">🗑</button>',
-      '    <button class="ai-icon-btn" id="aiBtnClose" title="Close" onclick="window.AroraAICommander.toggle()">✕</button>',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnTTS" title="Voice Output (Speak)" onclick="window.AroraAICommander.toggleTTS()">🔊</button>',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnWide" title="Wide / Compact View" onclick="window.AroraAICommander.toggleWide()">↔</button>',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnFullscreen" title="Fullscreen Mode" onclick="window.AroraAICommander.toggleFullscreen()">⛶</button>',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnClear" title="Clear Chat" onclick="window.AroraAICommander.clearChat()">🗑</button>',
+      '    <button type="button" class="ai-icon-btn" id="aiBtnClose" title="Close (Esc)" onclick="window.AroraAICommander.toggle()">✕</button>',
       '  </div>',
       '</div>',
       '<div class="ai-meta-bar" id="aiMetaBar">',
-      '  <span style="font-weight:700;color:#cbd5e1">Active Files:</span>',
-      '  <span class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'Files and features summary\')">📂 Scan All</span>',
+      '  <span class="ai-meta-label">Data Index</span>',
+      '  <button type="button" class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'Files and features summary\')">Scan Loaded Data</button>',
       '</div>',
       '<div id="atplAiMessages">',
-      '  <div class="ai-row bot">',
-      '    <div class="ai-msg-bubble">',
-      '      👋 <strong>Namaste Bhai!</strong> Main Arora AI Commander (v10) hoon.<br><br>',
-      '      Maine system ka schema aur data index kar liya hai. Aap voice me ya likh kar koi bhi sawal pooch sakte hain!',
-      '    </div>',
-      '  </div>',
+      '  <div class="ai-row bot"><div class="ai-msg-wrap"><div class="ai-msg-bubble">' + renderWelcomeHtml() + '</div></div></div>',
       '</div>',
       '<div class="ai-chips-wrap" id="aiChipsWrap">',
-      '  <button class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'July 2026 total salary payout kitna hai?\')">💰 July Payout</button>',
-      '  <button class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Sabse jyada OT kisne kiya?\')">⏱️ Highest Overtime</button>',
-      '  <button class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'ESIC aur Divisor anomalies scan karo\')">🚨 Compliance Scan</button>',
-      '  <button class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Punch out blank hai random fill karo\')">⚡ Fill Punches</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'July 2026 total salary payout kitna hai?\')">💰 Salary Payout</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Sabse jyada OT kisne kiya?\')">⏱️ Top Overtime</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'ESIC aur Divisor anomalies scan karo\')">🚨 Compliance Scan</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Executive summary do\')">📊 MD Briefing</button>',
+      '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Punch out blank hai random fill karo\')">⚡ Fill Punches</button>',
       '</div>',
       '<div class="ai-input-wrap">',
-      '  <button class="ai-mic-btn" id="aiMicBtn" title="Voice Input (Hindi/English)" onclick="window.AroraAICommander.toggleVoice()">🎙️</button>',
-      '  <input id="atplAiInput" placeholder="Poochho kuch bhi... jaise \'22157 ka salary\', \'Top OT workers\'" />',
-      '  <button class="ai-send-btn" id="aiSendBtn" onclick="window.AroraAICommander.onSend()">➤</button>',
+      '  <button type="button" class="ai-mic-btn" id="aiMicBtn" title="Voice Input (Hindi / English)" onclick="window.AroraAICommander.toggleVoice()">🎙️</button>',
+      '  <textarea id="atplAiInput" rows="1" placeholder="Sawal poochhein... (e.g. 22157 ka salary, Top OT workers)"></textarea>',
+      '  <button type="button" class="ai-send-btn" id="aiSendBtn" onclick="window.AroraAICommander.onSend()">Send ➤</button>',
       '</div>'
     ].join('\n');
 
     document.body.appendChild(el);
 
-    // Event listeners
     var inp = document.getElementById('atplAiInput');
     if (inp) {
+      inp.addEventListener('input', function() { autoResizeInput(inp); });
       inp.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           window.AroraAICommander.onSend();
+          return;
+        }
+        if (e.key === 'ArrowUp' && !inp.value.trim() && UI.promptHistory.length) {
+          e.preventDefault();
+          if (UI.promptHistoryIdx < 0) UI.promptHistoryIdx = UI.promptHistory.length - 1;
+          else if (UI.promptHistoryIdx > 0) UI.promptHistoryIdx--;
+          inp.value = UI.promptHistory[UI.promptHistoryIdx] || '';
+          autoResizeInput(inp);
+        } else if (e.key === 'ArrowDown' && UI.promptHistoryIdx >= 0) {
+          e.preventDefault();
+          if (UI.promptHistoryIdx < UI.promptHistory.length - 1) {
+            UI.promptHistoryIdx++;
+            inp.value = UI.promptHistory[UI.promptHistoryIdx] || '';
+          } else {
+            UI.promptHistoryIdx = -1;
+            inp.value = '';
+          }
+          autoResizeInput(inp);
         }
       });
     }
 
-    // Connect voice speech recognition if available
     var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       UI.recognition = new SpeechRecognition();
       UI.recognition.continuous = false;
       UI.recognition.interimResults = false;
-      UI.recognition.lang = 'hi-IN'; // Works for Hindi, Hinglish and English
+      UI.recognition.lang = 'hi-IN';
 
       UI.recognition.onresult = function(event) {
         var transcript = event.results[0][0].transcript;
         var inp2 = document.getElementById('atplAiInput');
         if (inp2) {
           inp2.value = transcript;
+          autoResizeInput(inp2);
           window.AroraAICommander.onSend();
         }
         UI.isListening = false;
@@ -1362,14 +1530,46 @@
     if (!box) return;
     var row = document.createElement('div');
     row.className = 'ai-row ' + (isUser ? 'user' : 'bot');
-    row.innerHTML = '<div class="ai-msg-bubble">' + html + '</div>';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'ai-msg-wrap';
+
+    var bubble = document.createElement('div');
+    bubble.className = 'ai-msg-bubble';
+    bubble.innerHTML = isUser ? escHtml(html).replace(/\n/g, '<br>') : html;
+    wrap.appendChild(bubble);
+
+    var foot = document.createElement('div');
+    foot.className = 'ai-msg-foot';
+    var timeSpan = document.createElement('span');
+    timeSpan.textContent = formatNowTime();
+    foot.appendChild(timeSpan);
+
+    if (!isUser) {
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'ai-copy-btn';
+      copyBtn.textContent = '📋 Copy';
+      copyBtn.onclick = function() {
+        var txt = (bubble.innerText || bubble.textContent || '').trim();
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          navigator.clipboard.writeText(txt).then(function() {
+            copyBtn.textContent = '✓ Copied';
+            setTimeout(function() { copyBtn.textContent = '📋 Copy'; }, 1500);
+          }).catch(function() {});
+        }
+      };
+      foot.appendChild(copyBtn);
+    }
+
+    wrap.appendChild(foot);
+    row.appendChild(wrap);
     box.appendChild(row);
     box.scrollTop = box.scrollHeight;
 
-    // Optional TTS for bot
     if (!isUser && UI.speechSynthesisActive && ('speechSynthesis' in window)) {
       try {
-        var plain = html.replace(/<[^>]*>?/gm, ' ');
+        var plain = String(html || '').replace(/<[^>]*>?/gm, ' ');
         var utter = new SpeechSynthesisUtterance(plain.slice(0, 250));
         utter.lang = 'hi-IN';
         window.speechSynthesis.speak(utter);
@@ -1387,30 +1587,21 @@
       if (box) box.style.display = 'flex';
       UI.isOpen = true;
 
-      // Update meta bar with detected files
       refreshKnowledgeGraph();
-      var metaBar = document.getElementById('aiMetaBar');
-      if (metaBar) {
-        var html = '<span style="font-weight:700;color:#cbd5e1">Active Files:</span>';
-        if (KnowledgeGraph.filesSummary.length) {
-          KnowledgeGraph.filesSummary.forEach(function(f) {
-            html += '<span class="ai-tag" onclick="window.AroraAICommander.sendQuery(\'' + f.name + ' summary\')">📄 ' + f.name.slice(0, 18) + ' (' + f.totalRows + ' rows)</span>';
-          });
-        } else {
-          html += '<span style="color:#94a3b8;font-style:italic">No files loaded yet</span>';
-        }
-        metaBar.innerHTML = html;
-      }
+      renderActiveFilesBar();
 
       if (query) {
         var inp = document.getElementById('atplAiInput');
-        if (inp) inp.value = query;
+        if (inp) {
+          inp.value = query;
+          autoResizeInput(inp);
+        }
         this.onSend();
       } else {
         setTimeout(function() {
           var inp2 = document.getElementById('atplAiInput');
           if (inp2) inp2.focus();
-        }, 150);
+        }, 120);
       }
     },
 
@@ -1425,13 +1616,31 @@
       else this.open();
     },
 
+    toggleWide: function() {
+      var box = document.getElementById('atplAiContainer');
+      if (!box) return;
+      if (UI.isFullscreen) {
+        UI.isFullscreen = false;
+        box.classList.remove('fullscreen');
+        var fsBtn = document.getElementById('aiBtnFullscreen');
+        if (fsBtn) fsBtn.textContent = '⛶';
+      }
+      UI.isWide = !UI.isWide;
+      box.classList.toggle('wide', UI.isWide);
+      var btn = document.getElementById('aiBtnWide');
+      if (btn) btn.classList.toggle('active', UI.isWide);
+    },
+
     toggleFullscreen: function() {
       var box = document.getElementById('atplAiContainer');
       if (!box) return;
       UI.isFullscreen = !UI.isFullscreen;
       box.classList.toggle('fullscreen', UI.isFullscreen);
       var btn = document.getElementById('aiBtnFullscreen');
-      if (btn) btn.textContent = UI.isFullscreen ? '❐' : '⛶';
+      if (btn) {
+        btn.textContent = UI.isFullscreen ? '❐' : '⛶';
+        btn.classList.toggle('active', UI.isFullscreen);
+      }
     },
 
     toggleVoice: function() {
@@ -1458,14 +1667,14 @@
       var btn = document.getElementById('aiBtnTTS');
       if (btn) {
         btn.textContent = UI.speechSynthesisActive ? '🔈' : '🔊';
-        btn.style.background = UI.speechSynthesisActive ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.15)';
+        btn.classList.toggle('active', UI.speechSynthesisActive);
       }
     },
 
     clearChat: function() {
       var box = document.getElementById('atplAiMessages');
       if (box) {
-        box.innerHTML = '<div class="ai-row bot"><div class="ai-msg-bubble">✨ Chat history clear ho gayi. Poochho agla sawal!</div></div>';
+        box.innerHTML = '<div class="ai-row bot"><div class="ai-msg-wrap"><div class="ai-msg-bubble">' + renderWelcomeHtml() + '</div></div></div>';
       }
     },
 
@@ -1474,21 +1683,28 @@
       if (!inp) return;
       var text = inp.value.trim();
       if (!text) return;
+      if (UI.promptHistory[UI.promptHistory.length - 1] !== text) {
+        UI.promptHistory.push(text);
+        if (UI.promptHistory.length > 30) UI.promptHistory.shift();
+      }
+      UI.promptHistoryIdx = -1;
       inp.value = '';
+      autoResizeInput(inp);
       this.sendQuery(text);
     },
 
     sendQuery: function(q) {
       appendMsg(q, true);
 
-      // Typing simulation
       var box = document.getElementById('atplAiMessages');
       var typingId = 'aiTypingRow';
       if (box) {
+        var existingTyping = document.getElementById(typingId);
+        if (existingTyping) existingTyping.remove();
         var tr = document.createElement('div');
         tr.id = typingId;
         tr.className = 'ai-row bot';
-        tr.innerHTML = '<div class="ai-msg-bubble" style="color:#94a3b8">🧠 Analyzing database & records...</div>';
+        tr.innerHTML = '<div class="ai-msg-wrap"><div class="ai-msg-bubble" style="color:#94a3b8"><span class="ai-typing-dots"><span></span><span></span><span></span></span>Database &amp; records check ho rahe hain...</div></div>';
         box.appendChild(tr);
         box.scrollTop = box.scrollHeight;
       }
@@ -1498,7 +1714,7 @@
         if (trEl) trEl.remove();
         var res = queryBrain(q);
         appendMsg(res.html, false);
-      }, 300);
+      }, 180);
     },
 
     printSlip: function(empCode) {
@@ -1539,7 +1755,6 @@
     }
   };
 
-  // Wire up old globals to this new Commander
   window.toggleAIChat = function() { window.AroraAICommander.toggle(); };
   window.sendAIMsg = function() {
     var inp = document.getElementById('aiInput') || document.getElementById('atplAiInput');
@@ -1551,7 +1766,6 @@
   window.AroraAIV92 = { open: function(q) { window.AroraAICommander.open(q); } };
   window.AroraAIV9 = window.AroraAIV92;
 
-  // Intercept button click
   function attachLauncher() {
     var btn = document.getElementById('aiChatBtn');
     if (btn) {
@@ -1559,7 +1773,12 @@
         if (e) e.preventDefault();
         window.AroraAICommander.toggle();
       };
-      btn.title = '⚡ Arora AI Commander (v10 PRO)';
+      btn.title = 'Arora HR Assistant (Ctrl+K)';
+      btn.style.background = '#1e1b4b';
+      btn.style.border = '1px solid rgba(129,140,248,0.45)';
+      btn.style.color = '#e0e7ff';
+      btn.style.boxShadow = '0 10px 28px rgba(15,23,42,0.38)';
+      btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     }
   }
 
@@ -1569,25 +1788,24 @@
     attachLauncher();
   }
 
-  // Lazy monitor for files change - lightweight metadata only, zero CPU freeze
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && String(e.key || '').toLowerCase() === 'k') {
+        e.preventDefault();
+        window.AroraAICommander.toggle();
+      } else if (e.key === 'Escape' && UI.isOpen) {
+        window.AroraAICommander.close();
+      }
+    });
+  }
+
   var monitorTimer = null;
   function scheduleKnowledgeScan() {
     if (monitorTimer) clearTimeout(monitorTimer);
     monitorTimer = setTimeout(function() {
       try {
-        var files = window.getAllLoadedSalaryFiles ? window.getAllLoadedSalaryFiles() : (Array.isArray(window.FILES) ? window.FILES : []);
-        if (files.length) {
-          var metaBar = document.getElementById("aiMetaBar");
-          if (metaBar) {
-            var html = "<span style='font-weight:700;color:#cbd5e1'>Active Files:</span>";
-            files.forEach(function(f) {
-              var fName = f && f.name ? f.name : "Salary Sheet";
-              var totalR = (typeof window.safeGetWorkbookRows === 'function') ? window.safeGetWorkbookRows(f) : 0;
-              html += "<span class='ai-tag' onclick=\"window.AroraAICommander.sendQuery('" + fName + " summary')\">📄 " + fName.slice(0, 18) + " (" + totalR + " rows)</span>";
-            });
-            metaBar.innerHTML = html;
-          }
-        }
+        refreshKnowledgeGraph();
+        renderActiveFilesBar();
       } catch (_) {}
     }, 5000);
   }
