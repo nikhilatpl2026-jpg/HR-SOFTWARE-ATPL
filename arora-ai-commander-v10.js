@@ -633,29 +633,23 @@
     // 100X SUPER-INTELLIGENCE: STATUTORY, LABOUR LAWS & RULES EXPERT
     // ══════════════════════════════════════════════════════════════════
 
-    // 1. PF WAGE CEILING / NEW CEILING / EPF RULES
-    if (lower.match(/(pf|epf|provident\s*fund).*(ceiling|limit|celling|new\s*limit|hike|15000|21000|rule|percentage|rules)/i) ||
+    // 1. PF WAGE CEILING / NEW 2026 CEILING / EPF RULES
+    if (lower.match(/(pf|epf|provident\s*fund).*(ceiling|limit|celling|new\s*limit|hike|15000|21000|25000|rule|percentage|rules)/i) ||
         lower.match(/(ceiling|celling|limit).*(pf|epf)/i)) {
       var pfHtml = '<div style="line-height:1.7">';
-      pfHtml += '🏛️ <strong>EPF (Employees Provident Fund) Wage Ceiling & Latest Rules:</strong><br><br>';
-      pfHtml += '📌 <strong>1. Current Statutory Wage Ceiling:</strong><br>';
-      pfHtml += '• <strong>₹15,000 per month</strong> (Yeh statutory cap 1 September 2014 se laagu hai).<br>';
-      pfHtml += '• Jis employee ka Basic + DA ₹15,000 ya usse kam hai, uske liye PF deduction <strong>Mandatory (Anivarya)</strong> hai.<br><br>';
-      
-      pfHtml += '📌 <strong>2. Proposed / New Wage Ceiling (Latest Update):</strong><br>';
-      pfHtml += '• Labour Ministry & EPFO board ne wage ceiling ko <strong>₹15,000 se badha kar ₹21,000 per month</strong> karne ka proposal Govt ko forward kiya hua hai (ESIC limit ke barabar karne ke liye).<br>';
-      pfHtml += '• <em>Note:</em> Jab tak central government ka official gazette notification nahi aata, tab tak ERP aur payroll calculations me official ceiling <strong>₹15,000</strong> hi valid hai.<br><br>';
-
-      pfHtml += '📌 <strong>3. Contribution Breakdown (Total 24%):</strong><br>';
-      pfHtml += '• <strong>Employee Share:</strong> 12% of (Basic + DA)<br>';
-      pfHtml += '• <strong>Employer Share (12%):</strong><br>';
-      pfHtml += '  - <strong>3.67%</strong> ➔ EPF (Provident Fund)<br>';
-      pfHtml += '  - <strong>8.33%</strong> ➔ EPS (Pension Scheme - capped at max ₹1,250 on ₹15,000)<br>';
-      pfHtml += '  - <strong>0.50%</strong> ➔ EDLI (Insurance)<br>';
-      pfHtml += '  - <strong>0.50%</strong> ➔ EPF Admin Charges<br><br>';
-
-      pfHtml += '📌 <strong>4. Higher Pension / Ceiling Se Upar:</strong><br>';
-      pfHtml += '• Agar basic pay ₹15,000 se zyada hai, toh voluntary joint declaration ke under actual basic par bhi 12% PF deduct ho sakta hai.<br>';
+      pfHtml += '🏛️ <strong>EPF Wage Ceiling &amp; Latest 2026 Rules (Code on Social Security, 2020):</strong><br><br>';
+      pfHtml += '📌 <strong>1. Latest Statutory Wage Ceiling (Effective 17 Sep 2026):</strong><br>';
+      pfHtml += '• <strong>₹25,000 per month (Basic + DA)</strong> — Govt Notification S.O. 5109(E) ke baad limit ₹15,000 se badh kar <strong>₹25,000</strong> ho chuki hai.<br>';
+      pfHtml += '• Jin employees ki Basic + DA ₹25,000 ya usse kam hai, unke liye EPF, EPS aur EDLI <strong>Mandatory (Anivarya)</strong> hai.<br>';
+      pfHtml += '• <em>Historical Note:</em> Sept 2026 se pehle ki purani sheets par ₹15,000 (max ₹1,800) ceiling laagu thi.<br><br>';
+      pfHtml += '📌 <strong>2. Monthly Contribution Breakdown (₹25,000 Ceiling par):</strong><br>';
+      pfHtml += '• <strong>Employee Share:</strong> <strong>12%</strong> of Basic + DA (₹25,000 cap par max <strong>₹3,000</strong>).<br>';
+      pfHtml += '• <strong>Employer Share:</strong> <strong>12%</strong> total + admin/EDLI:<br>';
+      pfHtml += '  - <strong>3.67%</strong> ➔ EPF (max ₹917 on ceiling)<br>';
+      pfHtml += '  - <strong>8.33%</strong> ➔ EPS Pension (max <strong>₹2,083</strong> on ₹25,000)<br>';
+      pfHtml += '  - <strong>0.50%</strong> ➔ EDLI (max ₹125) + <strong>0.50%</strong> Admin Charges<br><br>';
+      pfHtml += '📌 <strong>3. 50% Wage Definition Rule (Labour Codes):</strong><br>';
+      pfHtml += '• Agar Basic + DA total remuneration (CTC) ke 50% se kam hai, toh excess allowances ko Wage mein add-back karke PF calculate karna hota hai.<br>';
       pfHtml += '</div>';
       return { html: pfHtml };
     }
@@ -664,57 +658,64 @@
     if (lower.match(/(esic|esi|bima).*(ceiling|limit|celling|rule|coverage|percentage|rate)/i) ||
         lower.match(/(ceiling|celling|limit).*(esic|esi)/i)) {
       var esiHtml = '<div style="line-height:1.7">';
-      esiHtml += '🏥 <strong>ESIC (Employee State Insurance) Wage Limit & Rules:</strong><br><br>';
+      esiHtml += '🏥 <strong>ESIC (Code on Social Security) Wage Limit &amp; Rules:</strong><br><br>';
       esiHtml += '📌 <strong>1. Statutory Gross Wage Ceiling:</strong><br>';
-      esiHtml += '• <strong>₹21,000 per month (Gross Salary)</strong>.<br>';
-      esiHtml += '• Specially-abled (PWD) employees ke liye limit <strong>₹25,000 per month</strong> hai.<br>';
-      esiHtml += '• Agar kisi employee ki Gross earning ₹21,000 se 1 rupee bhi upar chali jaye, toh wo us contribution period ke baad ESI coverage se bahar ho jata hai.<br><br>';
-      
-      esiHtml += '📌 <strong>2. Contribution Rates (Revised):</strong><br>';
-      esiHtml += '• <strong>Employee Share:</strong> <strong>0.75%</strong> of Total Gross Earning<br>';
-      esiHtml += '• <strong>Employer Share:</strong> <strong>3.25%</strong> of Total Gross Earning<br>';
-      esiHtml += '• <strong>Total Contribution:</strong> 4.00%<br><br>';
-
-      esiHtml += '📌 <strong>3. Exemption Rule:</strong><br>';
-      esiHtml += '• Jin workers ki average daily wage ₹176 ya usse kam hoti hai, unka 0.75% employee share deduct nahi hota (Govt exempt karti hai), employer ko apna share dena hota hai.<br>';
+      esiHtml += '• <strong>₹21,000 per month (Gross Wages)</strong> · Specially-abled (PwD) ke liye <strong>₹25,000/month</strong>.<br>';
+      esiHtml += '• <strong>Contribution Period Rule:</strong> <strong>Apr–Sep</strong> aur <strong>Oct–Mar</strong> — agar employee period ki shuruat mein covered hai aur beech mein salary ₹21,000 cross kare, toh us 6-month period ke end tak ESIC continue rehta hai.<br><br>';
+      esiHtml += '📌 <strong>2. Contribution Rates:</strong><br>';
+      esiHtml += '• <strong>Employee Share:</strong> <strong>0.75%</strong> · <strong>Employer Share:</strong> <strong>3.25%</strong> (Total 4.00%).<br><br>';
+      esiHtml += '📌 <strong>3. Daily Wage Exemption:</strong><br>';
+      esiHtml += '• Average daily wage <strong>₹176 ya usse kam</strong> hone par Employee 0.75% share exempt rehta hai (Employer ko 3.25% dena hota hai).<br>';
       esiHtml += '</div>';
       return { html: esiHtml };
     }
 
-    // 3. BONUS ACT RULES & CALCULATION
+    // 3. LABOUR CODES / 50% WAGE / DEDUCTION CAP / F&F TIMELINE
+    if (lower.match(/(labour\s*code|labor\s*code|50%|fifty\s*percent|wage\s*definition|deduction\s*limit|deduction\s*cap|2\s*days|new\s*rule|latest\s*rule)/i)) {
+      var lcHtml = '<div style="line-height:1.7">';
+      lcHtml += '⚖️ <strong>Latest 2026 Indian Labour Codes Compliance Summary:</strong><br><br>';
+      lcHtml += '• <strong>PF Ceiling ₹25,000:</strong> 17 Sep 2026 se EPF mandatory wage limit ₹25,000/month (max ₹3,000 employee share).<br>';
+      lcHtml += '• <strong>50% Wage Definition Rule:</strong> Basic + DA + Retaining kam se kam total salary ka <strong>50%</strong> hona chahiye; excess allowances Wages mein add-back hote hain.<br>';
+      lcHtml += '• <strong>50% Max Deduction Cap (Code on Wages):</strong> Total deductions (PF + ESIC + Advance + Fines) earned gross ke <strong>50%</strong> se zyada nahi ho sakti.<br>';
+      lcHtml += '• <strong>F&amp;F Settlement Window:</strong> Resignation / termination / retrenchment ke <strong>2 working days</strong> ke andar final wages pay karna mandatory hai.<br>';
+      lcHtml += '• <strong>Overtime &amp; Hours:</strong> OT minimum <strong>2x</strong> normal rate; weekly max <strong>48 hrs</strong> aur quarterly OT cap <strong>115 hrs</strong> (Factories Act).<br>';
+      lcHtml += '• <strong>Gratuity (FTE):</strong> Permanent ke liye 5 years, Fixed-Term Employees (FTE) ke liye <strong>1 year</strong> par pro-rata gratuity.<br>';
+      lcHtml += '</div>';
+      return { html: lcHtml };
+    }
+
+    // 4. BONUS ACT / CODE ON WAGES BONUS RULES
     if (lower.match(/(bonus|diwali\s*bonus).*(rule|calculation|percentage|formula|limit|ceiling|act)/i)) {
       var bHtml = '<div style="line-height:1.7">';
-      bHtml += '🎁 <strong>Payment of Bonus Act, 1965 (Statutory Rules):</strong><br><br>';
-      bHtml += '• <strong>Eligibility:</strong> Employee ne saal me kam se kam 30 working days kaam kiya ho aur salary ₹21,000/month tak ho.<br>';
-      bHtml += '• <strong>Minimum Statutory Bonus:</strong> <strong>8.33%</strong> of Earned Basic+DA (or ₹7,000 ceiling whichever is higher).<br>';
-      bHtml += '• <strong>Maximum Bonus:</strong> Up to <strong>20%</strong> based on allocable surplus.<br>';
-      bHtml += '• <strong>Calculation Formula:</strong> Bonus = Earned Basic (or ₹7,000 pro-rata) × 8.33%.<br>';
+      bHtml += '🎁 <strong>Statutory Bonus Rules (Code on Wages / Payment of Bonus):</strong><br><br>';
+      bHtml += '• <strong>Eligibility:</strong> Kam se kam <strong>30 working days</strong> kaam kiya ho (wages ceiling ke andar).<br>';
+      bHtml += '• <strong>Minimum Bonus:</strong> <strong>8.33%</strong> of Earned Basic+DA (subject to notified wage floor).<br>';
+      bHtml += '• <strong>Maximum Bonus:</strong> Up to <strong>20%</strong> allocable surplus ke hisaab se.<br>';
+      bHtml += '• <strong>50% Rule Impact:</strong> Agar Basic total CTC ke 50% se kam rakhi gayi ho, toh add-back Wages par bonus calculation check hoti hai.<br>';
       bHtml += '</div>';
       return { html: bHtml };
     }
 
-    // 4. GRATUITY FORMULA & RULES
+    // 5. GRATUITY FORMULA & RULES
     if (lower.match(/(gratuity).*(rule|formula|calculation|limit|act|sal|years)/i)) {
       var gHtml = '<div style="line-height:1.7">';
-      gHtml += '💰 <strong>Payment of Gratuity Act, 1972:</strong><br><br>';
-      gHtml += '• <strong>Eligibility:</strong> Minimum <strong>5 continuous years</strong> of service in the organization (exception: death or disability me 5 years condition waive off ho jati hai).<br>';
-      gHtml += '• <strong>Formula:</strong><br>';
-      gHtml += '  <code>Gratuity = (15 × Last Drawn Basic + DA × Completed Years of Service) ÷ 26</code><br>';
-      gHtml += '• <strong>Maximum Limit:</strong> Statutory tax-free gratuity limit is <strong>₹20,00,000 (20 Lakh)</strong>.<br>';
+      gHtml += '💰 <strong>Gratuity Rules (Code on Social Security, 2020):</strong><br><br>';
+      gHtml += '• <strong>Permanent Staff:</strong> Minimum <strong>5 continuous years</strong> (death/disability par waived).<br>';
+      gHtml += '• <strong>Fixed-Term Employees (FTE):</strong> Sirf <strong>1 year</strong> service complete karne par pro-rata gratuity applicable!<br>';
+      gHtml += '• <strong>Formula:</strong> <code>(15 × Last Drawn Wages (Basic+DA, min 50% CTC) × Years) ÷ 26</code><br>';
+      gHtml += '• <strong>Tax-Free Cap:</strong> <strong>₹20,00,000 (20 Lakh)</strong>.<br>';
       gHtml += '</div>';
       return { html: gHtml };
     }
 
-    // 5. SALARY DIVISOR / 26 VS 30/31 FORMULA
+    // 6. SALARY DIVISOR / 26 VS 30/31 FORMULA
     if (lower.match(/(divisor|26\s*days|30\s*days|salary\s*formula|gross\s*to\s*net|ot\s*rate)/i)) {
       var dHtml = '<div style="line-height:1.7">';
-      dHtml += '📐 <strong>Factory & Payroll Divisor Calculations (ATPL Standard):</strong><br><br>';
-      dHtml += '• <strong>Standard Factory Divisor:</strong> <strong>26 Days</strong> (excluding 4 Sundays).<br>';
+      dHtml += '📐 <strong>Factory &amp; Payroll Divisor Calculations (ATPL Standard):</strong><br><br>';
+      dHtml += '• <strong>Standard Factory Divisor:</strong> <strong>26 Days</strong>.<br>';
       dHtml += '• <strong>Per Day Rate:</strong> <code>Daily Rate = Monthly Basic ÷ 26</code>.<br>';
-      dHtml += '• <strong>Overtime (Double Rate as per Factories Act 1948):</strong><br>';
-      dHtml += '  <code>OT Rate per Hour = (Basic Salary ÷ 26 ÷ 8) × 2</code> (Double Normal Wages).<br>';
-      dHtml += '• <strong>Net Salary Calculation:</strong><br>';
-      dHtml += '  <code>Net = Earned Gross - (PF + ESIC + Advance + Loan + TDS)</code>.<br>';
+      dHtml += '• <strong>Overtime (Minimum Double Rate):</strong> <code>OT Rate/Hr = (Basic ÷ 26 ÷ 8) × 2</code> (ya Gross ÷ 104).<br>';
+      dHtml += '• <strong>Max Deduction Guard:</strong> Total Deduction ≤ 50% of Gross Earned.<br>';
       dHtml += '</div>';
       return { html: dHtml };
     }
@@ -786,6 +787,11 @@
 
     if (targetEmp) {
       return renderEmployeeDossier(targetEmp, lower);
+    }
+
+    // ── LIVE MAM COMPLIANCE AUDITOR BRAIN (2026 RULES + INLINE FIX) ──
+    if (lower.match(/mam.*compliance|compliance.*(audit|scan|check|insight|brain|sheet)|auditor|fasa|kahan.*pakad|audit.*ready/)) {
+      return runComplianceAuditorBrain();
     }
 
     // ── ANOMALIES & AUDIT SCAN ──
@@ -1004,10 +1010,340 @@
     return { html: out };
   }
 
+  function isValidStatutoryId(v) {
+    var s = String(v == null ? '' : v).trim().toUpperCase();
+    return Boolean(s && s !== 'NA' && s !== 'N/A' && s !== 'NONE' && s !== 'NO' && s !== '-' && s !== '0' && s !== 'NIL');
+  }
+
+  function formatINRVal(n) {
+    return '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
+  }
+
+  function analyzeMamComplianceSnapshot(snap) {
+    var rows = Array.isArray(snap && snap.rows) ? snap.rows : [];
+    var monthKey = String((snap && snap.month) || '');
+    var isPostSep2026 = !monthKey || monthKey >= '2026-09';
+    var pfCeiling = isPostSep2026 ? 25000 : 15000;
+
+    var deptStats = {};
+    rows.forEach(function(r) {
+      if (!r || Number(r.paidDays || 0) <= 0) return;
+      var dept = String(r.department || r.category || 'GENERAL').trim().toUpperCase();
+      if (!deptStats[dept]) deptStats[dept] = { count: 0, otSum: 0, diffSum: 0 };
+      deptStats[dept].count++;
+      deptStats[dept].otSum += Number(r.overtimeHours || 0);
+      deptStats[dept].diffSum += Math.abs(Number(r.diffAmount || 0));
+    });
+
+    var findings = [];
+    function pushFinding(r, severity, ruleCode, title, reason, auditorRisk, suggestedPatch, suggestedNote) {
+      var id = 'cf_' + findings.length + '_' + String(r.empId || r.uid || findings.length);
+      findings.push({
+        id: id,
+        uid: r.uid || r.empId,
+        empId: r.empId || '',
+        name: r.name || 'Worker',
+        department: r.department || r.category || '',
+        severity: severity,
+        ruleCode: ruleCode,
+        title: title,
+        reason: reason,
+        auditorRisk: auditorRisk,
+        suggestedPatch: suggestedPatch || null,
+        suggestedNote: suggestedNote || '',
+        snapshot: {
+          paidDays: Number(r.paidDays || 0),
+          workingDays: Number(r.workingDays || 0),
+          overtimeHours: Number(r.overtimeHours || 0),
+          basic: Number(r.basic || 0),
+          gross: Number(r.gross || 0),
+          earnBasic: Number(r.earnBasic || 0),
+          totalGross: Number(r.totalGross || 0),
+          pfEmployee: Number(r.pfEmployee || 0),
+          esiEmployee: Number(r.esiEmployee || 0),
+          totalDeduction: Number(r.totalDeduction || 0),
+          netPayable: Number(r.netPayable || 0),
+          diffAmount: Number(r.diffAmount || 0),
+          pfNo: r.pfNo || '',
+          esiNo: r.esiNo || '',
+          pfMode: r.pfMode || 'AUTO',
+          esiMode: r.esiMode || 'AUTO',
+          advance: Number(r.advance || 0),
+          remarks: r.remarks || ''
+        },
+        fixed: false
+      });
+    }
+
+    rows.forEach(function(r) {
+      if (!r) return;
+      var paidDays = Number(r.paidDays || 0);
+      var workingDays = Number(r.workingDays || 0);
+      var ot = Number(r.overtimeHours || 0);
+      var basic = Number(r.basic || 0);
+      var gross = Number(r.gross || 0);
+      var earnBasic = Number(r.earnBasic || 0);
+      var totalGross = Number(r.totalGross || 0);
+      var pfEmp = Number(r.pfEmployee || 0);
+      var esiEmp = Number(r.esiEmployee || 0);
+      var totDed = Number(r.totalDeduction || 0);
+      var diff = Number(r.diffAmount || 0);
+      var hasPfId = isValidStatutoryId(r.pfNo);
+      var hasEsiId = isValidStatutoryId(r.esiNo);
+
+      // 1. PF deducted without valid PF No / UAN
+      if (pfEmp > 0 && !hasPfId) {
+        pushFinding(
+          r, 'High', 'PF_WITHOUT_ID',
+          'PF kata (' + formatINRVal(pfEmp) + ') par PF No / UAN missing hai',
+          'Employee ka PF deduction ho gaya par PF No blank/NA hai.',
+          'EPFO ECR upload fail hoga aur Inspector unlicensed deduction par notice de sakta hai.',
+          { pfMode: 'NONE' },
+          'PF No enter karein ya PF Mode = NONE karein'
+        );
+      }
+
+      // 2. ESIC deducted without valid ESIC IP No
+      if (esiEmp > 0 && !hasEsiId) {
+        pushFinding(
+          r, 'High', 'ESI_WITHOUT_ID',
+          'ESIC kata (' + formatINRVal(esiEmp) + ') par ESIC No missing hai',
+          'ESIC contribution deduct ho raha hai bina valid IP number ke.',
+          'ESIC portal monthly return reject hogi aur auditor illegal deduction mark karega.',
+          { esiMode: 'NONE' },
+          'ESIC No enter karein ya ESIC Mode = NONE karein'
+        );
+      }
+
+      // 3. Valid PF No present, active days, but PF = 0
+      if (hasPfId && paidDays > 0 && earnBasic > 0 && pfEmp === 0 && r.pfMode !== 'NONE') {
+        pushFinding(
+          r, 'High', 'PF_MISSED_ACTIVE',
+          'Valid PF No hai par PF ₹0 hai',
+          'PF No (' + r.pfNo + ') active hone aur Earn Basic ' + formatINRVal(earnBasic) + ' ke bawajood PF nahi kata.',
+          'EPFO 7A inspection mein back-dated interest + damages penalty lag sakti hai.',
+          { pfMode: 'FULL_12' },
+          'PF Mode ko FULL_12 set karein'
+        );
+      }
+
+      // 4. New 2026 ₹25,000 PF Ceiling Alert
+      if (isPostSep2026 && hasPfId && paidDays > 0 && r.pfMode === 'CAP_15000' && earnBasic > 15000) {
+        pushFinding(
+          r, 'High', 'PF_NEW_25K_CEILING',
+          'Purana ₹15,000 PF Cap laga hai (Nayi limit ₹25,000 hai)',
+          '17 Sep 2026 se EPF ceiling ₹' + pfCeiling.toLocaleString('en-IN') + ' ho gayi hai. Abhi ' + formatINRVal(pfEmp) + ' kata jabki Earn Basic ' + formatINRVal(earnBasic) + ' hai.',
+          'Auditor naye ₹25,000 EPFO rule ke hisaab se short-deduction demand nikal sakta hai.',
+          { pfMode: 'FULL_12' },
+          'Naye ₹25,000 rule ke hisaab se FULL_12 apply karein'
+        );
+      }
+
+      // 5. ESIC ₹21,000 Ceiling & ₹176 Daily Exemption Checks
+      if (paidDays > 0 && gross > 0) {
+        var avgDaily = totalGross / Math.max(1, paidDays);
+        if (hasEsiId && gross <= 21000 && esiEmp === 0 && avgDaily > 176 && r.esiMode !== 'NONE') {
+          pushFinding(
+            r, 'High', 'ESI_MISSED_UNDER_21K',
+            'Gross ≤ ₹21,000 aur ESIC No hai par ESIC ₹0 hai',
+            'Daily wage ' + formatINRVal(avgDaily) + ' (>₹176) hai aur Gross ' + formatINRVal(gross) + ' ESIC slab mein aata hai.',
+            'ESIC Inspector non-deduction par employer + employee dono share + 12% interest maang sakta hai.',
+            { esiMode: 'TOTAL_GROSS' },
+            'ESIC Mode = TOTAL_GROSS apply karein'
+          );
+        } else if (gross > 21000 && esiEmp > 0) {
+          pushFinding(
+            r, 'Medium', 'ESI_ABOVE_21K_PROOF',
+            'Gross ₹21,000 se upar hai par ESIC (' + formatINRVal(esiEmp) + ') kat raha hai',
+            'Gross ' + formatINRVal(gross) + ' limit se upar hai. Sirf Apr–Sep / Oct–Mar mid-period continuation mein valid hota hai.',
+            'Auditor check karega ki kya employee period start mein ₹21,000 ke andar tha.',
+            { esiMode: 'NONE' },
+            'Mid-period proof nahi ho toh ESIC Mode = NONE karein'
+          );
+        }
+      }
+
+      // 6. Human-Brain "Low Working Days vs High OT Hours" Trap
+      if (paidDays > 0 && ((workingDays > 0 && workingDays <= 5 && ot >= 12) || (workingDays > 0 && ot > workingDays * 4))) {
+        var safeOt = Math.max(0, Math.round(workingDays * 2));
+        pushFinding(
+          r, 'High', 'LOW_DAYS_HIGH_OT',
+          'Sirf ' + workingDays + ' Working Days par ' + ot + ' hrs OT — Auditor Red Flag!',
+          'Itne kam working days mein itna zyada overtime physical biometric punch aur daily 12-hr spread-over limit se match nahi hota.',
+          'Factory Inspector attendance register vs salary OT match karke fake/inflated OT objection laga sakta hai.',
+          { overtimeHours: safeOt },
+          'OT ko realistic ' + safeOt + ' hrs par adjust karein'
+        );
+      } else if (ot > 48) {
+        pushFinding(
+          r, 'Medium', 'HIGH_MONTHLY_OT',
+          'Monthly OT ' + ot + ' hrs (>48 hrs) — Quarterly 115-hr limit risk',
+          'Factories Act / Labour Code ke hisaab se quarterly OT cap 115 hrs hota hai.',
+          'Lagatar 2-3 mahine itna OT hone par Inspector safety/working-hours violation mark kar sakta hai.',
+          { overtimeHours: 32 },
+          'OT hours 32 hrs tak review/cap karein'
+        );
+      }
+
+      // 7. Labour Code 50% Wage Definition Check
+      if (gross > 0 && basic > 0 && (basic / gross) < 0.50 && paidDays > 0) {
+        var minBasic50 = Math.round(gross * 0.50);
+        pushFinding(
+          r, 'Insight', 'WAGE_CODE_50_PCT',
+          'Basic (' + Math.round((basic / gross) * 100) + '%) total Gross ke 50% se kam hai',
+          'Labour Code 50% Wage Definition ke mutabiq Basic+DA kam se kam ' + formatINRVal(minBasic50) + ' hona chahiye.',
+          'Auditor excess allowances ko Wages mein add-back karke PF aur Gratuity liability badha sakta hai.',
+          { basic: minBasic50 },
+          'Basic ko 50% (' + formatINRVal(minBasic50) + ') par align karein'
+        );
+      }
+
+      // 8. Code on Wages 50% Maximum Deduction Cap
+      if (totalGross > 0 && totDed > totalGross * 0.50) {
+        var maxAdv = Math.max(0, Math.floor((totalGross * 0.50) - pfEmp - esiEmp));
+        pushFinding(
+          r, 'High', 'DEDUCTION_OVER_50_PCT',
+          'Deduction (' + formatINRVal(totDed) + ') Gross Earned ke 50% se zyada hai!',
+          'Code on Wages ke hisaab se total deduction ' + formatINRVal(totalGross * 0.50) + ' se upar nahi ja sakti.',
+          'Labour Officer isko illegal wage deduction maan kar penalty laga sakta hai.',
+          { advance: maxAdv },
+          'Advance deduction ko ' + formatINRVal(maxAdv) + ' par cap karein'
+        );
+      }
+
+      // 9. Zero Paid Days with Payout / Deduction
+      if (paidDays <= 0 && (totalGross > 0 || pfEmp > 0 || esiEmp > 0)) {
+        pushFinding(
+          r, 'High', 'ZERO_DAY_PAYOUT',
+          'Paid Days 0 hone par bhi salary/deduction entry aa rahi hai',
+          'Gross ' + formatINRVal(totalGross) + ', PF ' + formatINRVal(pfEmp) + ', ESIC ' + formatINRVal(esiEmp) + ' jabki Paid Days 0 hai.',
+          'Ghost worker / dead payroll entry hone ka shak auditor turant pakdega.',
+          { paidDays: 0, overtimeHours: 0, pfMode: 'NONE', esiMode: 'NONE' },
+          '0-day employee ko strictly ₹0 par reset karein'
+        );
+      }
+
+      // 10. Dynamic Peer-Department Outlier & Large Manual Diff
+      var dept = String(r.department || r.category || 'GENERAL').trim().toUpperCase();
+      var dStat = deptStats[dept];
+      var deptAvgOt = dStat && dStat.count > 2 ? (dStat.otSum / dStat.count) : 0;
+      if (paidDays > 0 && deptAvgOt >= 4 && ot >= 22 && ot > deptAvgOt * 2.2) {
+        pushFinding(
+          r, 'Insight', 'PEER_OT_SPIKE',
+          dept + ' avg OT (' + deptAvgOt.toFixed(1) + 'h) se 2.2x zyada OT (' + ot + 'h)',
+          'Same department ke baaki workers ke muqable is worker ka OT achanak double+ dikh raha hai.',
+          'Auditor department register se random sample check kare toh ye outlier sabse pehle dikhega.',
+          { overtimeHours: Math.round(deptAvgOt) },
+          'Dept average (' + Math.round(deptAvgOt) + ' hrs) ke paas review karein'
+        );
+      } else if (paidDays > 0 && Math.abs(diff) >= 4000) {
+        pushFinding(
+          r, 'Insight', 'LARGE_MANUAL_DIFF',
+          'Manual vs Compliance Diff ' + formatINRVal(diff) + ' ka bada gap hai',
+          'Mam sheet (' + formatINRVal(r.manualAmount) + ') aur Compliance Gross (' + formatINRVal(totalGross) + ') mein bada difference hai.',
+          'Cash/extra difference agar high ho toh auditor unexplained wage variance question kar sakta hai.',
+          null,
+          'Paid Days / OT / Basic check karke gap verify karein'
+        );
+      }
+    });
+
+    return {
+      month: monthKey,
+      monthLabel: (snap && snap.monthLabel) || monthKey || 'Active Sheet',
+      rowsCount: rows.length,
+      pfCeilingApplied: pfCeiling,
+      findings: findings
+    };
+  }
+
+  function renderComplianceAuditCards(audit) {
+    UI.complianceFindings = {};
+    if (!audit || !audit.rowsCount) {
+      return [
+        '<div style="line-height:1.6">',
+        '🛡️ <strong>Mam Compliance Auditor Co-Pilot Ready</strong><br><br>',
+        'Abhi <strong>Mam → Compliance</strong> mein koi active salary sheet generated nahi hai.<br>',
+        '1. <strong>Mam → Compliance</strong> page par jaakar Mam Sheet upload karein.<br>',
+        '2. Phir dubara <strong>"Mam compliance audit karo"</strong> bolein — main har row ko 2026 rules (PF ₹25k, ESIC ₹21k, 50% Wage/Deduction Cap, Days vs OT traps) par audit karke <strong>Accept &amp; Fix</strong> button de dunga!<br><br>',
+        '<button type="button" class="ai-act-btn" onclick="if(typeof goPage===\x27function\x27)goPage(\x27mamsalary\x27)">🧾 Open Mam → Compliance</button>',
+        '</div>'
+      ].join('');
+    }
+
+    var list = audit.findings || [];
+    var highCount = list.filter(function(f) { return f.severity === 'High'; }).length;
+    var medCount = list.filter(function(f) { return f.severity === 'Medium'; }).length;
+    var insCount = list.filter(function(f) { return f.severity === 'Insight'; }).length;
+
+    var out = '<div style="line-height:1.55">';
+    out += '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    out += '  <strong style="font-size:13.5px;color:#f8fafc">🛡️ Auditor Brain Scan · ' + escHtml(audit.monthLabel) + '</strong>';
+    out += '  <span style="font-size:11px;color:#94a3b8">' + audit.rowsCount + ' rows · PF Cap ₹' + audit.pfCeilingApplied.toLocaleString('en-IN') + '</span>';
+    out += '</div>';
+
+    if (!list.length) {
+      out += '<div class="ai-kpi-card" style="border-color:rgba(34,197,94,0.4)">';
+      out += '✅ <strong style="color:#4ade80">Audit-Ready! Zero Compliance Traps Found</strong><br>';
+      out += '<span style="font-size:12px;color:#cbd5e1">Sabhi rows latest 2026 PF (₹' + audit.pfCeilingApplied.toLocaleString('en-IN') + '), ESIC, 50% Wage/Deduction cap aur Days-vs-OT logic ke mutabiq clean hain.</span>';
+      out += '</div></div>';
+      return out;
+    }
+
+    out += '<div class="ai-kpi-card" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px">';
+    out += '  <span>🔴 Blockers: <strong style="color:#f87171">' + highCount + '</strong></span>';
+    out += '  <span>🟠 Warnings: <strong style="color:#fbbf24">' + medCount + '</strong></span>';
+    out += '  <span>💡 Smart Insights: <strong style="color:#60a5fa">' + insCount + '</strong></span>';
+    out += '</div>';
+
+    list.slice(0, 12).forEach(function(f) {
+      UI.complianceFindings[f.id] = f;
+      var sevColor = f.severity === 'High' ? '#ef4444' : (f.severity === 'Medium' ? '#f59e0b' : '#3b82f6');
+      var sevLabel = f.severity === 'High' ? '🔴 BLOCKER' : (f.severity === 'Medium' ? '🟠 RISK' : '💡 INSIGHT');
+      out += '<div class="ai-audit-card" id="aiAuditCard_' + escHtml(f.id) + '" style="background:#0f172a;border:1px solid rgba(148,163,184,0.2);border-top:2px solid ' + sevColor + ';border-radius:10px;padding:10px 12px;margin-bottom:8px">';
+      out += '  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">';
+      out += '    <strong style="font-size:12.5px;color:#f8fafc">' + escHtml(f.empId) + ' · ' + escHtml(f.name) + '</strong>';
+      out += '    <span style="font-size:10px;font-weight:700;color:' + sevColor + '">' + sevLabel + '</span>';
+      out += '  </div>';
+      out += '  <div style="font-size:12px;font-weight:700;color:#e2e8f0;margin-top:4px">' + escHtml(f.title) + '</div>';
+      out += '  <div style="font-size:11.5px;color:#94a3b8;margin-top:3px">' + escHtml(f.reason) + '</div>';
+      out += '  <div style="font-size:11px;color:#cbd5e1;margin-top:4px"><strong>Auditor Risk:</strong> ' + escHtml(f.auditorRisk) + '</div>';
+      out += '  <div style="font-size:10.5px;color:#94a3b8;margin-top:5px">Days: ' + f.snapshot.paidDays + ' · OT: ' + f.snapshot.overtimeHours + 'h · Basic: ' + formatINRVal(f.snapshot.basic) + ' · PF: ' + formatINRVal(f.snapshot.pfEmployee) + ' · ESIC: ' + formatINRVal(f.snapshot.esiEmployee) + '</div>';
+      out += '  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">';
+      out += '    <button type="button" class="ai-act-btn" id="aiFixBtn_' + escHtml(f.id) + '" onclick="window.AroraAICommander.openComplianceFixBox(\'' + escHtml(f.id) + '\')">✅ Accept &amp; Fix</button>';
+      out += '    <button type="button" class="ai-act-btn" style="background:#1e293b;border-color:rgba(148,163,184,0.3)" onclick="window.ATPLComplianceBridge && window.ATPLComplianceBridge.openRowInspector(\'' + escHtml(String(f.uid || f.empId)) + '\')">👁️ View Row</button>';
+      out += '  </div>';
+      out += '</div>';
+    });
+
+    if (list.length > 12) {
+      out += '<div style="font-size:11.5px;color:#94a3b8;margin-top:4px">...aur ' + (list.length - 12) + ' aur insights hain. Pehle upar wale fix karke dubara scan karein.</div>';
+    }
+    out += '</div>';
+    return out;
+  }
+
+  function runComplianceAuditorBrain() {
+    if (window.ATPLComplianceBridge && typeof window.ATPLComplianceBridge.getActiveSheetSnapshot === 'function') {
+      var snap = window.ATPLComplianceBridge.getActiveSheetSnapshot();
+      if (snap && Array.isArray(snap.rows) && snap.rows.length > 0) {
+        var audit = analyzeMamComplianceSnapshot(snap);
+        return { html: renderComplianceAuditCards(audit), audit: audit };
+      }
+    }
+    return { html: renderComplianceAuditCards(null), audit: null };
+  }
+
   function renderAnomaliesReport() {
+    if (window.ATPLComplianceBridge && typeof window.ATPLComplianceBridge.getActiveSheetSnapshot === 'function') {
+      var snap = window.ATPLComplianceBridge.getActiveSheetSnapshot();
+      if (snap && Array.isArray(snap.rows) && snap.rows.length > 0) {
+        return runComplianceAuditorBrain();
+      }
+    }
     var issues = KnowledgeGraph.anomalies;
     var out = '<div style="line-height:1.6">';
-    out += '🚨 <strong>Live Anomaly & Statutory Compliance Scan</strong><br><br>';
+    out += '🚨 <strong>Live Anomaly &amp; Statutory Compliance Scan</strong><br><br>';
 
     if (!issues.length) {
       out += '✅ <strong>Zero Critical Anomalies Detected!</strong><br>';
@@ -1028,7 +1364,7 @@
       var sev = list[0].severity;
       var sevColor = sev === 'High' ? '#ef4444' : '#f59e0b';
 
-      out += '<div style="background:rgba(255,255,255,0.05);border-left:3px solid ' + sevColor + ';border-radius:6px;padding:8px 12px;margin-bottom:8px">';
+      out += '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(148,163,184,0.2);border-top:2px solid ' + sevColor + ';border-radius:8px;padding:8px 12px;margin-bottom:8px">';
       out += '<div style="font-weight:700;color:#fff;font-size:12px">' + title + ' (' + list.length + ' cases)</div>';
       out += '<div style="font-size:11px;color:#cbd5e1;margin-top:3px">';
       list.slice(0, 3).forEach(function(item) {
@@ -1144,29 +1480,25 @@
   }
 
   function renderStatutoryAdvisory(query) {
-    var out = '📚 <strong>Indian Labour Compliance Guidelines (ATPL ERP):</strong><br><br>';
-    if (query.indexOf('pf') >= 0) {
-      out += '• <strong>EPF (Provident Fund):</strong><br>';
-      out += '  - Employee Share: <strong>12%</strong> of Basic + DA.<br>';
-      out += '  - Wage Ceiling: Standard statutory limit is ₹15,000/month.<br>';
-      out += '  - Employer Share: 12% (3.67% EPF + 8.33% EPS + admin charges).<br><br>';
+    var out = '📚 <strong>Latest 2026 Indian Labour Compliance Guidelines (ATPL ERP):</strong><br><br>';
+    if (query.indexOf('pf') >= 0 || query.indexOf('labour') >= 0) {
+      out += '• <strong>EPF (Code on Social Security, 2020 — Eff. 17 Sep 2026):</strong><br>';
+      out += '  - Mandatory Wage Ceiling: <strong>₹25,000/month</strong> (updated from ₹15,000).<br>';
+      out += '  - Employee Share: <strong>12%</strong> (max ₹3,000 on ceiling) · Employer: <strong>3.67% EPF + 8.33% EPS (max ₹2,083) + 0.50% EDLI + 0.50% Admin</strong>.<br><br>';
     }
-    if (query.indexOf('esic') >= 0) {
-      out += '• <strong>ESIC (Employee State Insurance):</strong><br>';
-      out += '  - Statutory Gross Limit: <strong>₹21,000/month</strong>.<br>';
-      out += '  - Employee Contribution: <strong>0.75%</strong> of Gross Earnings.<br>';
-      out += '  - Employer Contribution: <strong>3.25%</strong>.<br><br>';
+    if (query.indexOf('esic') >= 0 || query.indexOf('labour') >= 0) {
+      out += '• <strong>ESIC:</strong><br>';
+      out += '  - Statutory Gross Limit: <strong>₹21,000/month</strong> (PwD: ₹25,000) · Contribution Periods: Apr–Sep &amp; Oct–Mar.<br>';
+      out += '  - Employee: <strong>0.75%</strong> (exempt ≤ ₹176/day) · Employer: <strong>3.25%</strong>.<br><br>';
     }
-    if (query.indexOf('bonus') >= 0) {
-      out += '• <strong>Payment of Bonus Act:</strong><br>';
-      out += '  - Minimum Statutory Bonus: <strong>8.33%</strong> of Earned Basic+DA (or ₹7,000 statutory wage ceiling).<br><br>';
+    if (query.indexOf('bonus') >= 0 || query.indexOf('labour') >= 0) {
+      out += '• <strong>Statutory Bonus (Code on Wages):</strong> <strong>8.33%</strong> min to <strong>20%</strong> max (30+ working days).<br><br>';
     }
-    if (query.indexOf('gratuity') >= 0) {
-      out += '• <strong>Payment of Gratuity Act:</strong><br>';
-      out += '  - Formula: (15 × Last Drawn Basic × Years of Service) ÷ 26.<br>';
-      out += '  - Eligibility: 5 continuous years of service.<br><br>';
+    if (query.indexOf('gratuity') >= 0 || query.indexOf('labour') >= 0) {
+      out += '• <strong>Gratuity:</strong> (15 × Last Wages × Years) ÷ 26 · 5 years permanent / <strong>1 year Fixed-Term (FTE)</strong>.<br><br>';
     }
-    out += '💡 <em>ATPL HR Software in sabhi formula ko automatically real files ke sath reconcile karta hai.</em>';
+    out += '• <strong>50% Wage &amp; Deduction Rule:</strong> Basic+DA ≥ 50% CTC; total deductions ≤ 50% earned gross; F&amp;F payable within 2 working days.<br><br>';
+    out += '💡 <em>"Mam compliance audit karo" likh kar live salary sheet par turant auditor check chalayein.</em>';
     return { html: out };
   }
 
@@ -1199,7 +1531,9 @@
     recognition: null,
     history: [],
     promptHistory: [],
-    promptHistoryIdx: -1
+    promptHistoryIdx: -1,
+    complianceFindings: {},
+    activeFixFindingId: null
   };
 
   function escHtml(s) {
@@ -1400,6 +1734,8 @@
       '.ai-dossier-grid { display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px; }',
       '.ai-dossier-grid .lbl { color:#94a3b8;font-size:11px; }',
       '.ai-kpi-card { background:#0f172a;border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:11px;margin-bottom:8px; }',
+      '#aiMiniFixBox input, #aiMiniFixBox select { background:#162033;border:1px solid rgba(148,163,184,0.26);color:#f8fafc;border-radius:7px;padding:6px 8px;font-size:12px;width:100%;box-sizing:border-box; }',
+      '#aiMiniFixBox label { display:block;font-size:10px;font-weight:700;color:#94a3b8;margin-bottom:3px;text-transform:uppercase; }',
       '@media (prefers-reduced-motion: reduce) { #atplAiContainer, .ai-typing-dots span, .ai-mic-btn.active { animation:none !important;transition:none !important; } }',
       '@media (max-width: 640px) { #atplAiContainer { bottom:0 !important;right:0 !important;left:0 !important;width:100vw !important;max-width:100vw !important;height:92vh !important;max-height:92vh !important;border-radius:16px 16px 0 0 !important; } }'
     ].join('\n');
@@ -1446,6 +1782,7 @@
       '<div id="atplAiMessages">',
       '  <div class="ai-row bot"><div class="ai-msg-wrap"><div class="ai-msg-bubble">' + renderWelcomeHtml() + '</div></div></div>',
       '</div>',
+      '<div id="aiMiniFixBox" style="display:none;background:#0f172a;border-top:1px solid rgba(96,165,250,0.35);padding:12px 14px;flex-shrink:0"></div>',
       '<div class="ai-chips-wrap" id="aiChipsWrap">',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'July 2026 total salary payout kitna hai?\')">💰 Salary Payout</button>',
       '  <button type="button" class="ai-chip" onclick="window.AroraAICommander.sendQuery(\'Sabse jyada OT kisne kiya?\')">⏱️ Top Overtime</button>',
@@ -1603,6 +1940,111 @@
           if (inp2) inp2.focus();
         }, 120);
       }
+    },
+
+    openComplianceFixBox: function(findingId) {
+      var f = UI.complianceFindings && UI.complianceFindings[findingId];
+      var box = document.getElementById('aiMiniFixBox');
+      if (!f || !box) return;
+      UI.activeFixFindingId = findingId;
+      var liveRow = (window.ATPLComplianceBridge && window.ATPLComplianceBridge.getRow(f.uid || f.empId)) || f.snapshot || {};
+      var sug = f.suggestedPatch || {};
+      var pfModeVal = sug.pfMode || liveRow.pfMode || 'AUTO';
+      var esiModeVal = sug.esiMode || liveRow.esiMode || 'AUTO';
+      var otVal = sug.overtimeHours !== undefined ? sug.overtimeHours : (liveRow.overtimeHours || 0);
+      var paidDaysVal = sug.paidDays !== undefined ? sug.paidDays : (liveRow.paidDays || 0);
+      var basicVal = sug.basic !== undefined ? sug.basic : (liveRow.basic || 0);
+      var advVal = sug.advance !== undefined ? sug.advance : (liveRow.advance || 0);
+
+      box.innerHTML = [
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">',
+        '  <div>',
+        '    <div style="font-size:12px;font-weight:700;color:#93c5fd">🛠️ Mini Fix Box · ' + escHtml(f.empId) + ' (' + escHtml(f.name) + ')</div>',
+        '    <div style="font-size:11px;color:#cbd5e1">' + escHtml(f.suggestedNote || f.title) + '</div>',
+        '  </div>',
+        '  <button type="button" class="ai-icon-btn" onclick="window.AroraAICommander.closeComplianceFixBox()" title="Close Fix Box">✕</button>',
+        '</div>',
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">',
+        '  <div><label>Paid Days</label><input id="aiFixPaidDays" type="number" step="0.5" value="' + escHtml(paidDaysVal) + '"></div>',
+        '  <div><label>OT Hours</label><input id="aiFixOtHours" type="number" step="0.5" value="' + escHtml(otVal) + '"></div>',
+        '  <div><label>Basic (₹)</label><input id="aiFixBasic" type="number" step="1" value="' + escHtml(basicVal) + '"></div>',
+        '  <div><label>PF No</label><input id="aiFixPfNo" type="text" value="' + escHtml(liveRow.pfNo || '') + '"></div>',
+        '  <div><label>PF Mode</label><select id="aiFixPfMode">' +
+             ['AUTO', 'FULL_12', 'CAP_15000', 'GROSS_12', 'NONE'].map(function(m) {
+               return '<option value="' + m + '"' + (pfModeVal === m ? ' selected' : '') + '>' + m + '</option>';
+             }).join('') + '</select></div>',
+        '  <div><label>Advance (₹)</label><input id="aiFixAdvance" type="number" step="1" value="' + escHtml(advVal) + '"></div>',
+        '  <div><label>ESIC No</label><input id="aiFixEsiNo" type="text" value="' + escHtml(liveRow.esiNo || '') + '"></div>',
+        '  <div><label>ESIC Mode</label><select id="aiFixEsiMode">' +
+             ['AUTO', 'EARN_BASIC', 'TOTAL_GROSS', 'NONE'].map(function(m) {
+               return '<option value="' + m + '"' + (esiModeVal === m ? ' selected' : '') + '>' + m + '</option>';
+             }).join('') + '</select></div>',
+        '  <div><label>Remarks</label><input id="aiFixRemarks" type="text" value="' + escHtml(liveRow.remarks || 'onroll') + '"></div>',
+        '</div>',
+        '<div style="display:flex;justify-content:flex-end;gap:8px">',
+        '  <button type="button" class="ai-act-btn" style="background:#1e293b;border-color:rgba(148,163,184,0.3)" onclick="window.AroraAICommander.closeComplianceFixBox()">Cancel</button>',
+        '  <button type="button" class="ai-act-btn" style="background:#16a34a;border-color:#22c55e;color:#fff" onclick="window.AroraAICommander.applyComplianceFixBox()">💾 Apply to Salary</button>',
+        '</div>'
+      ].join('\n');
+      box.style.display = 'block';
+    },
+
+    closeComplianceFixBox: function() {
+      var box = document.getElementById('aiMiniFixBox');
+      if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+      UI.activeFixFindingId = null;
+    },
+
+    applyComplianceFixBox: function() {
+      var fid = UI.activeFixFindingId;
+      var f = fid && UI.complianceFindings && UI.complianceFindings[fid];
+      if (!f) return;
+      if (!window.ATPLComplianceBridge || typeof window.ATPLComplianceBridge.applyFix !== 'function') {
+        appendMsg('⚠️ Mam Compliance sheet active nahi hai. Pehle Mam → Compliance page kholein.', false);
+        return;
+      }
+      var liveRow = (window.ATPLComplianceBridge && typeof window.ATPLComplianceBridge.getRow === 'function'
+        ? window.ATPLComplianceBridge.getRow(f.uid || f.empId) : null) || f.snapshot || {};
+      var candidate = {
+        paidDays: Number((document.getElementById('aiFixPaidDays') || {}).value || 0),
+        overtimeHours: Number((document.getElementById('aiFixOtHours') || {}).value || 0),
+        basic: Number((document.getElementById('aiFixBasic') || {}).value || 0),
+        pfNo: String((document.getElementById('aiFixPfNo') || {}).value || '').trim(),
+        pfMode: String((document.getElementById('aiFixPfMode') || {}).value || 'AUTO'),
+        advance: Number((document.getElementById('aiFixAdvance') || {}).value || 0),
+        esiNo: String((document.getElementById('aiFixEsiNo') || {}).value || '').trim(),
+        esiMode: String((document.getElementById('aiFixEsiMode') || {}).value || 'AUTO'),
+        remarks: String((document.getElementById('aiFixRemarks') || {}).value || '').trim()
+      };
+      var patch = {};
+      ['paidDays', 'overtimeHours', 'basic', 'advance'].forEach(function(k) {
+        if (Math.abs(candidate[k] - (Number(liveRow[k]) || 0)) > 0.0001) patch[k] = candidate[k];
+      });
+      ['pfNo', 'pfMode', 'esiNo', 'esiMode', 'remarks'].forEach(function(k) {
+        var cur = k === 'remarks' ? String(liveRow[k] || 'onroll').trim() : String(liveRow[k] || (k.indexOf('Mode') >= 0 ? 'AUTO' : '')).trim();
+        if (candidate[k] !== cur) patch[k] = candidate[k];
+      });
+      if (!Object.keys(patch).length && f.suggestedPatch) patch = Object.assign({}, f.suggestedPatch);
+      var res = window.ATPLComplianceBridge.applyFix(f.uid || f.empId, patch);
+      if (!res || !res.ok) {
+        appendMsg('⚠️ Update fail hua (' + escHtml((res && res.error) || 'ROW_NOT_FOUND') + ').', false);
+        return;
+      }
+      f.fixed = true;
+      var btn = document.getElementById('aiFixBtn_' + fid);
+      if (btn) {
+        btn.textContent = '✓ Fixed in Sheet';
+        btn.style.background = '#15803d';
+        btn.style.borderColor = '#22c55e';
+      }
+      this.closeComplianceFixBox();
+      var r = res.row || {};
+      appendMsg(
+        '✅ <strong>Salary Updated: ' + escHtml(r.empId || f.empId) + ' (' + escHtml(r.name || f.name) + ')</strong><br>' +
+        '• Paid Days: <b>' + (r.paidDays || 0) + '</b> · OT: <b>' + (r.overtimeHours || 0) + 'h</b> · Total Gross: <b>' + formatINRVal(r.totalGross) + '</b><br>' +
+        '• PF: <b>' + formatINRVal(r.pfEmployee) + '</b> · ESIC: <b>' + formatINRVal(r.esiEmployee) + '</b> · Net Payable: <strong style="color:#4ade80">' + formatINRVal(r.netPayable) + '</strong>',
+        false
+      );
     },
 
     close: function() {

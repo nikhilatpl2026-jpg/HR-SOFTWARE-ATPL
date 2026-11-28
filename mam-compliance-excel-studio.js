@@ -5999,6 +5999,77 @@
     });
   }
 
+  function buildComplianceBridge() {
+    const ALLOWED_PATCH_FIELDS = [
+      'paidDays', 'workingDays', 'sunAllow', 'hd', 'overtimeHours',
+      'pfNo', 'esiNo', 'pfMode', 'esiMode', 'basic', 'hra', 'gross',
+      'manualAmount', 'advance', 'remarks', 'paymentHold'
+    ];
+    return {
+      getActiveSheetSnapshot: function() {
+        const sh = activeSheet();
+        if (!sh) return null;
+        return {
+          id: sh.id || '',
+          month: sh.month || '',
+          monthLabel: monthLabel(sh.month || sh.id || ''),
+          settings: settingsOf(sh.settings),
+          rowsCount: Array.isArray(sh.rows) ? sh.rows.length : 0,
+          rows: Array.isArray(sh.rows) ? sh.rows.map(function(r) { return Object.assign({}, r); }) : []
+        };
+      },
+      getRow: function(uidOrCode) {
+        const sh = activeSheet();
+        if (!sh || !Array.isArray(sh.rows)) return null;
+        const key = String(uidOrCode || '').trim();
+        const found = sh.rows.find(function(r) {
+          return r && (r.uid === key || codeKey(r.empId) === codeKey(key));
+        });
+        return found ? Object.assign({}, found) : null;
+      },
+      applyFix: function(uid, patchObj) {
+        const sh = activeSheet();
+        if (!sh || !Array.isArray(sh.rows)) return { ok: false, error: 'NO_ACTIVE_SHEET' };
+        const row = sh.rows.find(function(r) { return r && (r.uid === uid || codeKey(r.empId) === codeKey(uid)); });
+        if (!row) return { ok: false, error: 'ROW_NOT_FOUND' };
+        const patch = patchObj && typeof patchObj === 'object' ? patchObj : {};
+        const NUM_PATCH = new Set(['paidDays', 'workingDays', 'sunAllow', 'hd', 'overtimeHours', 'basic', 'hra', 'gross', 'manualAmount', 'advance']);
+        const keys = Object.keys(patch).filter(function(k) {
+          if (ALLOWED_PATCH_FIELDS.indexOf(k) < 0) return false;
+          if (k === 'paymentHold') return !!patch[k] !== !!row[k];
+          if (NUM_PATCH.has(k)) {
+            const nextN = Number(patch[k]);
+            const curN = Number(row[k]) || 0;
+            return Number.isFinite(nextN) && Math.abs(nextN - curN) > 0.0001;
+          }
+          return String(patch[k] == null ? '' : patch[k]).trim() !== String(row[k] == null ? '' : row[k]).trim();
+        });
+        if (!keys.length) return { ok: true, unchanged: true, row: Object.assign({}, row) };
+
+        pushUndoSnapshot();
+        for (let i = 0; i < keys.length; i++) {
+          const k = keys[i];
+          applyRowCellEdit(row.uid, k, patch[k], true);
+        }
+        render();
+        updateSummaryAndTotalsBar();
+        if (state.inspectUid === row.uid) renderInspectorBody();
+        scheduleSyncActiveSheet();
+        setNotice('AI Auditor Fix applied to ' + (row.empId || '') + ' (' + (row.name || '') + ') & recalculated.', 'ok');
+        return { ok: true, row: Object.assign({}, row) };
+      },
+      openRowInspector: function(uid) {
+        const sh = activeSheet();
+        if (!sh || !Array.isArray(sh.rows)) return false;
+        const row = sh.rows.find(function(r) { return r && (r.uid === uid || codeKey(r.empId) === codeKey(uid)); });
+        if (!row) return false;
+        if (typeof root.goPage === 'function') root.goPage('mamsalary');
+        openInspector(row.uid);
+        return true;
+      }
+    };
+  }
+
   function initStudio() {
     loadFromLocal();
     injectStyles();
@@ -6006,6 +6077,7 @@
     bindRealtimeListeners();
     render();
     pullRemoteSheets();
+    root.ATPLComplianceBridge = buildComplianceBridge();
   }
 
   if (document.readyState === 'loading') {
