@@ -3295,6 +3295,26 @@
       statusStat.textContent = `${label}: ${st.count} · Net Sum: ₹${inr(st.netPayable)} · Avg: ₹${inr(avg)}`;
     }
 
+    const aiBtn = $('mcsAiInsightsBtn');
+    if (aiBtn) {
+      if (rows.length && root.AroraAICommander && typeof root.AroraAICommander.getLiveAuditSummary === 'function') {
+        const sInfo = root.AroraAICommander.getLiveAuditSummary();
+        if (sInfo && sInfo.total > 0) {
+          aiBtn.textContent = `🛡️ AI Insights (${sInfo.total})`;
+          aiBtn.style.background = sInfo.high > 0 ? '#7f1d1d' : '#1e1b4b';
+          aiBtn.style.borderColor = sInfo.high > 0 ? '#ef4444' : '#4f46e5';
+        } else {
+          aiBtn.textContent = '🛡️ AI Audit Clean';
+          aiBtn.style.background = '#14532d';
+          aiBtn.style.borderColor = '#22c55e';
+        }
+      } else {
+        aiBtn.textContent = '🛡️ AI Insights';
+        aiBtn.style.background = '#1e1b4b';
+        aiBtn.style.borderColor = '#4f46e5';
+      }
+    }
+
     updateBulkBar();
     if (state.exportModalOpen) syncExportModalUi();
   }
@@ -5328,6 +5348,7 @@
             <button type="button" id="mcsDownloadFormBtn" class="mcs-btn mcs-btn-accent" disabled>Download Form (.xlsx)</button>
             <button type="button" id="mcsDownloadBtn" class="mcs-btn" disabled title="1-Click Download Full Styled Excel Workbook">Quick .xlsx</button>
             <button type="button" id="mcsDownloadCsvBtn" class="mcs-btn" disabled title="Export current view as CSV">CSV</button>
+            <button type="button" id="mcsAiInsightsBtn" class="mcs-btn" style="background:#1e1b4b;border-color:#4f46e5;color:#eef2ff;font-weight:700" title="Open AI Auditor Insights &amp; Mini Fix Box">🛡️ AI Insights</button>
             <button type="button" id="mcsExpandGridBtn" class="mcs-btn" title="Maximize spreadsheet area (Ctrl+Shift+F)">⛶ Expand Grid</button>
             <button type="button" id="mcsFullscreenBtn" class="mcs-btn" title="Enter/Exit Browser Full Screen">⛶ Full Screen</button>
             <button type="button" id="mcsBackBtn" class="mcs-btn">Back to ERP</button>
@@ -5668,6 +5689,11 @@
     if ($('mcsDownloadBtn')) $('mcsDownloadBtn').onclick = downloadExcel;
     if ($('mcsDownloadFormBtn')) $('mcsDownloadFormBtn').onclick = () => openExportModal(true);
     if ($('mcsDownloadCsvBtn')) $('mcsDownloadCsvBtn').onclick = () => exportCsv();
+    if ($('mcsAiInsightsBtn')) $('mcsAiInsightsBtn').onclick = () => {
+      if (root.AroraAICommander && typeof root.AroraAICommander.open === 'function') {
+        root.AroraAICommander.open('Mam compliance audit karo');
+      }
+    };
     if ($('mcsExpandGridBtn')) $('mcsExpandGridBtn').onclick = () => toggleFocusMode();
     if ($('mcsFullscreenBtn')) $('mcsFullscreenBtn').onclick = () => toggleBrowserFullscreen();
     if ($('mcsBackBtn')) $('mcsBackBtn').onclick = () => {

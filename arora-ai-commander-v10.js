@@ -2108,7 +2108,7 @@
       '  background:#0b1220;border:1px solid rgba(148,163,184,0.22);',
       '  border-radius:16px;box-shadow:0 24px 64px rgba(2,6,23,0.62);',
       '  display:none;flex-direction:column;overflow:hidden;',
-      '  z-index:99998;font-family:"Plus Jakarta Sans","DM Sans",-apple-system,BlinkMacSystemFont,sans-serif;',
+      '  z-index:100020;font-family:"Plus Jakarta Sans","DM Sans",-apple-system,BlinkMacSystemFont,sans-serif;',
       '  color:#f1f5f9;font-variant-numeric:tabular-nums;',
       '  transition:width 0.18s cubic-bezier(0.16,1,0.3,1),height 0.18s cubic-bezier(0.16,1,0.3,1),border-radius 0.18s ease;',
       '}',
@@ -2561,10 +2561,42 @@
         }
         this.onSend();
       } else {
+        var mamPage = document.getElementById('page-mamsalary');
+        var mamActive = mamPage && mamPage.classList && mamPage.classList.contains('active');
+        var snap = (window.ATPLComplianceBridge && typeof window.ATPLComplianceBridge.getActiveSheetSnapshot === 'function')
+          ? window.ATPLComplianceBridge.getActiveSheetSnapshot() : null;
+        if (mamActive && snap && Array.isArray(snap.rows) && snap.rows.length > 0 && UI.lastAutoAuditSheetId !== (snap.id + '_' + snap.rows.length)) {
+          UI.lastAutoAuditSheetId = snap.id + '_' + snap.rows.length;
+          var auditRes = runComplianceAuditorBrain();
+          if (auditRes && auditRes.html) appendMsg(auditRes.html, false);
+        }
         setTimeout(function() {
           var inp2 = document.getElementById('atplAiInput');
           if (inp2) inp2.focus();
         }, 120);
+      }
+    },
+
+    getLiveAuditSummary: function() {
+      try {
+        if (!window.ATPLComplianceBridge || typeof window.ATPLComplianceBridge.getActiveSheetSnapshot !== 'function') {
+          return { total: 0, high: 0, medium: 0, insight: 0 };
+        }
+        var snap = window.ATPLComplianceBridge.getActiveSheetSnapshot();
+        if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) {
+          return { total: 0, high: 0, medium: 0, insight: 0 };
+        }
+        var audit = analyzeMamComplianceSnapshot(snap);
+        var list = (audit && audit.findings) || [];
+        return {
+          total: list.length,
+          high: list.filter(function(f) { return f.severity === 'High'; }).length,
+          medium: list.filter(function(f) { return f.severity === 'Medium'; }).length,
+          insight: list.filter(function(f) { return f.severity === 'Insight'; }).length,
+          month: audit.monthLabel || ''
+        };
+      } catch (_) {
+        return { total: 0, high: 0, medium: 0, insight: 0 };
       }
     },
 
@@ -2664,6 +2696,7 @@
         btn.style.borderColor = '#22c55e';
       }
       this.closeComplianceFixBox();
+      refreshMamInsightsBadge();
       var r = res.row || {};
       appendMsg(
         '✅ <strong>Salary Updated: ' + escHtml(r.empId || f.empId) + ' (' + escHtml(r.name || f.name) + ')</strong><br>' +
@@ -2983,7 +3016,25 @@
   window.AroraAIV92 = { open: function(q) { window.AroraAICommander.open(q); } };
   window.AroraAIV9 = window.AroraAIV92;
 
+  function refreshMamInsightsBadge() {
+    try {
+      var aiBtn = document.getElementById('mcsAiInsightsBtn');
+      if (!aiBtn || !window.AroraAICommander || typeof window.AroraAICommander.getLiveAuditSummary !== 'function') return;
+      var sInfo = window.AroraAICommander.getLiveAuditSummary();
+      if (sInfo && sInfo.total > 0) {
+        aiBtn.textContent = '🛡️ AI Insights (' + sInfo.total + ')';
+        aiBtn.style.background = sInfo.high > 0 ? '#7f1d1d' : '#1e1b4b';
+        aiBtn.style.borderColor = sInfo.high > 0 ? '#ef4444' : '#4f46e5';
+      } else if (window.ATPLComplianceBridge && typeof window.ATPLComplianceBridge.getActiveSheetSnapshot === 'function' && window.ATPLComplianceBridge.getActiveSheetSnapshot()) {
+        aiBtn.textContent = '🛡️ AI Audit Clean';
+        aiBtn.style.background = '#14532d';
+        aiBtn.style.borderColor = '#22c55e';
+      }
+    } catch (_) {}
+  }
+
   function attachLauncher() {
+    refreshMamInsightsBadge();
     var btn = document.getElementById('aiChatBtn');
     if (btn) {
       btn.onclick = function(e) {
@@ -2994,6 +3045,7 @@
       btn.style.background = '#1e1b4b';
       btn.style.border = '1px solid rgba(129,140,248,0.45)';
       btn.style.color = '#e0e7ff';
+      btn.style.zIndex = '100019';
       btn.style.boxShadow = '0 10px 28px rgba(15,23,42,0.38)';
       btn.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     }

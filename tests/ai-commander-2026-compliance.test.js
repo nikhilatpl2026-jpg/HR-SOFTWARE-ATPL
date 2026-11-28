@@ -289,4 +289,29 @@ test('Arora AI Commander 2026 Compliance Brain & Mini Fix Box', async (t) => {
     assert.equal(sandbox.AroraAICommander.getRulesSnapshot().pfCeiling, 35000);
     assert.equal(sandbox.AroraAICommander.getRulesSnapshot().esicGrossCeiling, 26000);
   });
+
+  await t.test('5. Mam Compliance page visibility: AI Chat & button sit above #page-mamsalary z-index, topbar AI Insights button exists, and getLiveAuditSummary works', () => {
+    const mamCode = fs.readFileSync(path.join(rootDir, 'mam-compliance-excel-studio.js'), 'utf8');
+    const htmlCode = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+    assert.ok(mamCode.includes('id="mcsAiInsightsBtn"'), 'Mam Compliance topbar must render AI Insights button');
+    assert.ok(aiCode.includes('z-index:100020'), 'AI Chat Container z-index must exceed #page-mamsalary z-index (99999)');
+    assert.ok(htmlCode.includes('z-index:100019'), 'AI Chat Launcher button z-index must exceed #page-mamsalary z-index (99999)');
+
+    const sampleRows = [
+      { uid: 'u1', empId: '25191', name: 'UMMAID SINGH', department: 'FELTING', paidDays: 26, workingDays: 22, overtimeHours: 4, basic: 12000, gross: 15000, earnBasic: 12000, totalGross: 16500, pfNo: 'NA', esiNo: 'ESI101', pfEmployee: 1440, esiEmployee: 124, totalDeduction: 1564, netPayable: 14936, pfMode: 'FULL_12', esiMode: 'TOTAL_GROSS' }
+    ];
+    const { sandbox, els } = makeHarness(sampleRows, '2026-11');
+    // Simulate #page-mamsalary active
+    const mamPage = { classList: { contains: (c) => c === 'active' } };
+    const origGetById = sandbox.document.getElementById;
+    sandbox.document.getElementById = (id) => (id === 'page-mamsalary' ? mamPage : origGetById(id));
+
+    const summary = sandbox.AroraAICommander.getLiveAuditSummary();
+    assert.ok(summary.total >= 1 && summary.high >= 1, 'getLiveAuditSummary must count live Mam Compliance issues');
+
+    // Opening chat without query while on Mam Compliance auto-renders insights
+    sandbox.AroraAICommander.open();
+    const rendered = collectHtml(els.atplAiMessages);
+    assert.ok(rendered.includes('25191'), 'Opening AI Chat on active Mam Compliance must immediately display sheet insights');
+  });
 });
